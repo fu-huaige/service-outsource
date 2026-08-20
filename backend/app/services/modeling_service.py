@@ -121,7 +121,7 @@ def fit_arx_core(
     payload: ArxFitRequest,
     input_columns: list[str],
 ) -> ArxCoreResult:
-    """Fit ARX on the training split and evaluate every partition two ways."""
+    """Fit ARX on train data and evaluate validation, optionally held-out test data."""
 
     structure = _structure(payload, input_columns)
     n_samples = int(np.asarray(output, dtype=float).shape[0])
@@ -207,6 +207,7 @@ def fit_arx_core(
         val_end=val_end,
         n_samples=n_samples,
         train_rows=train_rows,
+        evaluate_test=payload.evaluate_test,
     )
     validation = validate_model(
         theta,
@@ -217,13 +218,16 @@ def fit_arx_core(
         stop=val_end,
     )
     violations = _check_priors(theta, structure, payload, validation)
+    evaluation_end = n_samples if payload.evaluate_test else val_end
     _, free_run = free_run_simulate(
-        theta, structure, inputs=inputs, output=output, start=0, stop=n_samples
+        theta, structure, inputs=inputs, output=output, start=0, stop=evaluation_end
     )
 
     names = structure.feature_names()
     coefficients = {name: float(value) for name, value in zip(names, theta, strict=True)}
-    stride = max(1, full.n_rows // MAX_PLOT_POINTS)
+    visible_rows = np.nonzero(full.time_indices < evaluation_end)[0]
+    stride = max(1, visible_rows.size // MAX_PLOT_POINTS)
+    visible_rows = visible_rows[::stride]
     return ArxCoreResult(
         structure=structure,
         theta=theta,
@@ -235,14 +239,14 @@ def fit_arx_core(
         },
         metrics=metrics,
         plot_data=ArxPlotData(
-            indices=[int(v) for v in full.time_indices[::stride]],
-            y_true=[float(v) for v in full.targets[::stride]],
-            y_pred=[float(v) for v in predicted[::stride]],
-            residuals=[float(v) for v in residuals[::stride]],
+            indices=[int(full.time_indices[row]) for row in visible_rows],
+            y_true=[float(full.targets[row]) for row in visible_rows],
+            y_pred=[float(predicted[row]) for row in visible_rows],
+            residuals=[float(residuals[row]) for row in visible_rows],
             splits=SplitIndices(train_end=train_end, val_end=val_end, test_end=n_samples),
             split_indices=SplitIndices(train_end=train_end, val_end=val_end, test_end=n_samples),
         ),
-        residual_diagnostics=_acf(residuals),
+        residual_diagnostics=_acf(residuals[train_rows]),
         validation=validation,
         prior_violations=violations,
         training_rows=int(train_rows.size),
@@ -427,14 +431,16 @@ def _metrics(
     val_end: int,
     n_samples: int,
     train_rows: np.ndarray,
+    evaluate_test: bool,
 ) -> ArxMetrics:
     predicted = regressor.features @ theta
     guard = structure.max_history
     windows = {
         "train": (0, max(train_end - guard, 0)),
         "validation": (train_end + guard, max(val_end - guard, train_end + guard)),
-        "test": (val_end + guard, n_samples),
     }
+    if evaluate_test:
+        windows["test"] = (val_end + guard, n_samples)
     one_step: dict[str, dict[str, float | None]] = {}
     free_run: dict[str, float | None] = {}
     for label, (start, stop) in windows.items():
@@ -454,7 +460,7 @@ def _metrics(
         aic = n_train * float(np.log(rss / n_train)) + 2 * parameters
         bic = n_train * float(np.log(rss / n_train)) + parameters * float(np.log(n_train))
 
-    test = one_step["test"]
+    test = one_step.get("test", _empty_scores())
     return ArxMetrics(
         train_r2=one_step["train"]["r2"],
         train_fit=one_step["train"]["fit"],
@@ -470,7 +476,7 @@ def _metrics(
         nrmse=test["nrmse"],
         train_free_run_fit=free_run["train"],
         val_free_run_fit=free_run["validation"],
-        test_free_run_fit=free_run["test"],
+        test_free_run_fit=free_run.get("test"),
         aic=aic,
         bic=bic,
     )
@@ -510,6 +516,10 @@ def _scores(actual: FloatArray, predicted: FloatArray) -> dict[str, float | None
         "fit": None if norm == 0 else float(100 * (1 - np.linalg.norm(residual) / norm)),
         "nrmse": None if spread == 0 else float(rmse / spread),
     }
+
+
+def _empty_scores() -> dict[str, float | None]:
+    return {"rmse": None, "mae": None, "r2": None, "fit": None, "nrmse": None}
 
 
 def _acf(residuals: FloatArray) -> ArxResidualDiagnostics:

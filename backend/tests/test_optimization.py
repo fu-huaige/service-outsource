@@ -202,6 +202,62 @@ class TestObjective:
         assert free_run_gap > one_step_gap
 
 
+class TestFormalEvaluation:
+    def test_baseline_is_deterministic_and_does_not_create_trials(self) -> None:
+        from app.schemas.optimization import OptimizationStartRequest
+        from app.services.optimization_service import run_baseline
+
+        series = make_series()
+        payload = OptimizationStartRequest(
+            version_id=series.version_id,
+            input_columns=["u1", "u2"],
+            output_column="y",
+            max_trials=2,
+        )
+        first = run_baseline(
+            series, payload, input_columns=["u1", "u2"], output_column="y"
+        )
+        second = run_baseline(
+            series, payload, input_columns=["u1", "u2"], output_column="y"
+        )
+
+        assert first.status == second.status == "succeeded"
+        assert first.parameters == second.parameters
+        assert first.validation_free_run_fit == pytest.approx(second.validation_free_run_fit)
+        assert first.test_free_run_fit == pytest.approx(second.test_free_run_fit)
+        assert first.parameters["window_size"] == 60
+        assert first.parameters["train_ratio"] == 0.6
+        assert first.parameters["validation_ratio"] == 0.2
+        assert first.parameters["test_ratio"] == pytest.approx(0.2)
+
+    def test_optuna_trials_do_not_evaluate_the_test_partition(self) -> None:
+        from app.schemas.optimization import OptimizationStartRequest
+        from app.services.optimization_service import run_study
+
+        series = make_series()
+        outcome = run_study(
+            series,
+            OptimizationStartRequest(
+                version_id=series.version_id,
+                input_columns=["u1", "u2"],
+                output_column="y",
+                max_trials=3,
+                random_seed=5,
+            ),
+            input_columns=["u1", "u2"],
+            output_column="y",
+        )
+
+        completed = [trial for trial in outcome.trials if trial.state == "complete"]
+        assert completed
+        assert all("test_free_run_fit" not in trial.metrics for trial in completed)
+        assert all("test_rmse" not in trial.metrics for trial in completed)
+        assert all(
+            trial.params.get("estimator") == "ridge" or "ridge_alpha" not in trial.params
+            for trial in completed
+        )
+
+
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'optimize.db'}")
@@ -235,6 +291,48 @@ def generate(client: TestClient, *, seed: int = 4, scenario: str = "S2") -> str:
 
 
 class TestOptimizationApi:
+    def test_persists_strict_baseline_and_final_held_out_evaluation(
+        self, client: TestClient
+    ) -> None:
+        version_id = generate(client, seed=52)
+        started = client.post(
+            "/api/v1/optimization/optuna/start",
+            json={
+                "version_id": version_id,
+                "input_columns": ["u1", "u2"],
+                "output_column": "y",
+                "max_trials": 4,
+                "random_seed": 19,
+            },
+        )
+        assert started.status_code == 202, started.text
+        data = client.get(
+            f"/api/v1/optimization/optuna/{started.json()['data']['study_id']}/status"
+        ).json()["data"]
+
+        baseline = data["baseline"]
+        final = data["final_test_evaluation"]
+        assert baseline["status"] == "succeeded"
+        assert baseline["processing_run_id"]
+        assert baseline["parameters"]["window_size"] == 60
+        assert baseline["validation_free_run_fit"] is not None
+        assert baseline["test_free_run_fit"] is not None
+        assert len(data["trials"]) == 4, "Baseline must not become an Optuna trial."
+
+        complete = [trial for trial in data["trials"] if trial["state"] == "complete"]
+        selected = max(complete, key=lambda trial: trial["value"])
+        assert data["best_trial_id"] == selected["trial_id"]
+        assert final["status"] == "succeeded"
+        assert final["best_trial_number"] == selected["trial_id"]
+        assert final["processing_run_id"]
+        assert final["test_free_run_fit"] is not None
+        assert final["test_mae"] is not None
+        assert final["test_rmse"] is not None
+        assert final["test_r2"] is not None
+        assert final["generalization_gap"] == pytest.approx(
+            final["validation_free_run_fit"] - final["test_free_run_fit"]
+        )
+
     def test_closed_loop_runs_and_reports_cache_statistics(self, client: TestClient) -> None:
         version_id = generate(client)
         started = client.post(

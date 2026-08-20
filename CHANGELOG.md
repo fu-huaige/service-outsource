@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+### Added (evaluation baseline and generalization, 2026-08-20)
+
+- 正式确定性 Baseline：每个 OptimizationStudy 在 Optuna 前以统一工程默认门控、D-最优选段和 ARX 配置执行，持久化参数、指标、耗时、错误状态和 ProcessingRun；
+- 时间顺序 Train/Validation/Test 评价协议与 `docs/algorithms/model-evaluation.md`；Best Trial 按 validation 选定后才进行一次 held-out Test 评价；
+- Dashboard 返回并展示 baseline validation FIT、optimized validation FIT、optimized test FIT、generalization gap、可用性标记和统一的系统工程风险提示。
+
+### Changed (evaluation baseline and generalization, 2026-08-20)
+
+- Optuna trial 改为显式 `evaluate_test=false`，不计算或持久化 Test 指标、曲线和残差；Test 只在最终 best-trial replay 中计算；
+- 历史 Study 没有正式 Baseline/Test evaluation 时显示缺失值，不再将第一个 Trial 伪装为基线。
+
 ### Fixed (unified dataset dashboard, 2026-08-20)
 
 - S1–S6 仿真生成后现在注册为真实 `Dataset`、根 `DatasetVersion`、列角色和数据质量 Profile；上传与仿真通过同一套数据集详情、Profile、版本和下载 API 查询；

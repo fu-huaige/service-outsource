@@ -122,7 +122,7 @@ def test_simulation_report_and_empty_dashboard_use_real_asset_lifecycle(
     assert artifact_uri
 
 
-def test_dashboard_leaderboard_never_invents_dataset_ids(
+def test_dashboard_historical_study_never_invents_baseline_or_dataset_ids(
     lifecycle_client: TestClient,
 ) -> None:
     generated = _generate(lifecycle_client)
@@ -177,6 +177,74 @@ def test_dashboard_leaderboard_never_invents_dataset_ids(
     assert len(entries) == 1
     assert entries[0]["dataset_id"] == dataset_id
     assert entries[0]["version_id"] == version_id
-    assert entries[0]["baseline_fit"] == 20.0
-    assert entries[0]["optimized_fit"] == 60.0
-    assert entries[0]["improvement"] == 40.0
+    assert entries[0]["baseline_available"] is False
+    assert entries[0]["baseline_validation_fit"] is None
+    assert entries[0]["optimized_validation_fit"] == 60.0
+    assert entries[0]["optimized_test_fit"] is None
+    assert entries[0]["improvement"] is None
+
+
+def test_dashboard_reads_persisted_baseline_and_final_test_evaluation(
+    lifecycle_client: TestClient,
+) -> None:
+    generated = _generate(lifecycle_client)
+    dataset_id = UUID(str(generated["dataset_id"]))
+    version_id = UUID(str(generated["version_id"]))
+
+    async def seed_study() -> None:
+        session_factory = lifecycle_client.app.state.session_factory
+        async with session_factory() as session:
+            study = OptimizationStudy(
+                id=UUID("22222222-2222-4222-8222-222222222222"),
+                dataset_id=dataset_id,
+                version_id=version_id,
+                status="succeeded",
+                objective="val_free_run_fit",
+                parameters={},
+                best_trial_number=1,
+                best_value=0.6,
+                best_params={"window_size": 60, "max_segments": 4, "nk": 3},
+                fingerprint={},
+                statistics={
+                    "evaluations": {
+                        "baseline": {"validation_free_run_fit": 20.0},
+                        "final_test": {"test_free_run_fit": 40.0, "generalization_gap": 20.0},
+                    }
+                },
+            )
+            session.add(study)
+            session.add_all(
+                [
+                    OptimizationTrialRecord(
+                        study_id=study.id,
+                        trial_number=0,
+                        state="complete",
+                        value=0.2,
+                        params={},
+                        metrics={"val_free_run_fit": 88.0},
+                        cache_hit=False,
+                    ),
+                    OptimizationTrialRecord(
+                        study_id=study.id,
+                        trial_number=1,
+                        state="complete",
+                        value=0.6,
+                        params={},
+                        metrics={"val_free_run_fit": 60.0},
+                        cache_hit=False,
+                    ),
+                ]
+            )
+            await session.commit()
+
+    asyncio.run(seed_study())
+    entries = lifecycle_client.get("/api/v1/dashboard/leaderboard").json()["data"]["items"]
+    entry = next(item for item in entries if item["study_id"] == "22222222-2222-4222-8222-222222222222")
+    assert entry["baseline_validation_fit"] == 20.0
+    assert entry["optimized_validation_fit"] == 60.0
+    assert entry["optimized_test_fit"] == 40.0
+    assert entry["improvement"] == 40.0
+    assert entry["generalization_gap"] == 20.0
+    assert entry["baseline_available"] is True
+    assert entry["test_available"] is True
+    assert entry["generalization_risk"] == "attention"

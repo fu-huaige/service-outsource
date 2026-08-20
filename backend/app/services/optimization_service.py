@@ -40,10 +40,13 @@ from optuna.samplers import TPESampler
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.dataset import ProcessingRun
 from app.models.operation_log import OperationLog
 from app.models.optimization import OptimizationStudy, OptimizationTrialRecord, StrategyMemory
 from app.schemas.modeling import ArxFitRequest
 from app.schemas.optimization import (
+    BaselineEvaluation,
+    FinalTestEvaluation,
     OptimizationStartData,
     OptimizationStartRequest,
     OptimizationStatusData,
@@ -51,6 +54,7 @@ from app.schemas.optimization import (
 )
 from app.schemas.preprocessing import SegmentRequest
 from app.services.contract_stubs import completed_task, queued_task
+from app.services.evaluation_policy import DEFAULT_BASELINE_CONFIG
 from app.services.job_queue import submit_optimization
 from app.services.modeling_service import ArxCoreResult, ModelingDomainError, fit_arx_core
 from app.services.segment_service import SegmentDomainError, run_segment_selection
@@ -121,6 +125,25 @@ class StudyOutcome:
     warm_start_params: list[dict[str, Any]] = field(default_factory=list)
 
 
+@dataclass
+class EvaluationOutcome:
+    """One persisted non-Optuna evaluation run."""
+
+    status: str
+    parameters: dict[str, Any]
+    validation_free_run_fit: float | None
+    test_free_run_fit: float | None
+    test_mae: float | None
+    test_rmse: float | None
+    test_r2: float | None
+    generalization_gap: float | None
+    duration_ms: float
+    started_at: datetime
+    finished_at: datetime
+    error_code: str | None = None
+    best_trial_number: int | None = None
+
+
 def objective_value(result: ArxCoreResult) -> tuple[float, dict[str, Any]]:
     """Score a candidate model the way an APC engineer would rank it.
 
@@ -160,6 +183,198 @@ def objective_value(result: ArxCoreResult) -> tuple[float, dict[str, Any]]:
     return float(value), breakdown
 
 
+def run_baseline(
+    series: VersionSeries,
+    payload: OptimizationStartRequest,
+    *,
+    input_columns: list[str],
+    output_column: str,
+) -> EvaluationOutcome:
+    """Run the deterministic pre-Optuna baseline through the formal pipeline."""
+
+    started_at = datetime.now(UTC)
+    started = time.perf_counter()
+    parameters = DEFAULT_BASELINE_CONFIG.to_payload(
+        input_columns=input_columns,
+        train_ratio=payload.train_ratio,
+        validation_ratio=payload.validation_ratio,
+    )
+    try:
+        selection = run_segment_selection(
+            series,
+            SegmentRequest(
+                version_id=series.version_id,
+                input_columns=input_columns,
+                output_column=output_column,
+                window_size=DEFAULT_BASELINE_CONFIG.window_size,
+                max_segments=DEFAULT_BASELINE_CONFIG.max_segments,
+                min_segment_length=DEFAULT_BASELINE_CONFIG.min_segment_length,
+                max_missing_ratio=DEFAULT_BASELINE_CONFIG.max_missing_ratio,
+                max_anomaly_ratio=DEFAULT_BASELINE_CONFIG.max_anomaly_ratio,
+                min_input_activity_ratio=DEFAULT_BASELINE_CONFIG.min_input_activity_ratio,
+                na=DEFAULT_BASELINE_CONFIG.selection_na,
+                nb=DEFAULT_BASELINE_CONFIG.selection_nb,
+                nk=DEFAULT_BASELINE_CONFIG.selection_nk,
+                train_ratio=payload.train_ratio,
+            ),
+        )
+        result = fit_arx_core(
+            inputs={column: series.values[column] for column in input_columns},
+            output=series.values[output_column],
+            payload=ArxFitRequest(
+                version_id=series.version_id,
+                input_columns=input_columns,
+                output_column=output_column,
+                na=DEFAULT_BASELINE_CONFIG.na,
+                nb={column: DEFAULT_BASELINE_CONFIG.nb for column in input_columns},
+                delays={column: DEFAULT_BASELINE_CONFIG.nk for column in input_columns},
+                estimator=DEFAULT_BASELINE_CONFIG.estimator,
+                ridge_alpha=DEFAULT_BASELINE_CONFIG.ridge_alpha,
+                train_ratio=payload.train_ratio,
+                validation_ratio=payload.validation_ratio,
+                training_sample_indices=selection.selected_sample_indices,
+                evaluate_test=True,
+            ),
+            input_columns=input_columns,
+        )
+        return _evaluation_from_result(
+            result,
+            parameters=parameters,
+            started_at=started_at,
+            started=started,
+        )
+    except (SegmentDomainError, ModelingDomainError) as error:
+        return _failed_evaluation(
+            parameters=parameters,
+            started_at=started_at,
+            started=started,
+            error_code=error.code,
+        )
+
+
+def evaluate_best_trial(
+    series: VersionSeries,
+    payload: OptimizationStartRequest,
+    outcome: StudyOutcome,
+    *,
+    input_columns: list[str],
+    output_column: str,
+) -> EvaluationOutcome:
+    """Evaluate the validation-selected winner once on the held-out test tail."""
+
+    started_at = datetime.now(UTC)
+    started = time.perf_counter()
+    parameters = dict(outcome.best_params)
+    try:
+        selection_params = _selection_params(
+            parameters,
+            input_columns,
+            output_column,
+            train_ratio=payload.train_ratio,
+        )
+        selection = run_segment_selection(
+            series,
+            SegmentRequest(version_id=series.version_id, **selection_params),
+        )
+        result = fit_arx_core(
+            inputs={column: series.values[column] for column in input_columns},
+            output=series.values[output_column],
+            payload=ArxFitRequest(
+                version_id=series.version_id,
+                input_columns=input_columns,
+                output_column=output_column,
+                na=int(parameters["na"]),
+                nb={column: int(parameters["nb"]) for column in input_columns},
+                delays={column: int(parameters["nk"]) for column in input_columns},
+                estimator=parameters["estimator"],
+                ridge_alpha=parameters.get("ridge_alpha"),
+                train_ratio=payload.train_ratio,
+                validation_ratio=payload.validation_ratio,
+                training_sample_indices=selection.selected_sample_indices,
+                evaluate_test=True,
+            ),
+            input_columns=input_columns,
+        )
+        evaluation = _evaluation_from_result(
+            result,
+            parameters=parameters,
+            started_at=started_at,
+            started=started,
+            best_trial_number=outcome.best_number,
+        )
+        validation_fit = outcome.best_metrics.get("val_free_run_fit")
+        if isinstance(validation_fit, (int, float)) and evaluation.test_free_run_fit is not None:
+            evaluation.validation_free_run_fit = float(validation_fit)
+            evaluation.generalization_gap = float(validation_fit) - evaluation.test_free_run_fit
+        return evaluation
+    except (KeyError, SegmentDomainError, ModelingDomainError) as error:
+        return _failed_evaluation(
+            parameters=parameters,
+            started_at=started_at,
+            started=started,
+            error_code=error.code if isinstance(error, (SegmentDomainError, ModelingDomainError)) else "BEST_TRIAL_REPLAY_FAILED",
+            best_trial_number=outcome.best_number,
+        )
+
+
+def _evaluation_from_result(
+    result: ArxCoreResult,
+    *,
+    parameters: dict[str, Any],
+    started_at: datetime,
+    started: float,
+    best_trial_number: int | None = None,
+) -> EvaluationOutcome:
+    test_fit = result.metrics.test_free_run_fit
+    validation_fit = result.metrics.val_free_run_fit
+    error_code = None
+    if validation_fit is None or test_fit is None:
+        error_code = "EVALUATION_METRIC_UNAVAILABLE"
+    finished_at = datetime.now(UTC)
+    return EvaluationOutcome(
+        status="failed" if error_code else "succeeded",
+        parameters=parameters,
+        validation_free_run_fit=validation_fit,
+        test_free_run_fit=test_fit,
+        test_mae=result.metrics.mae,
+        test_rmse=result.metrics.test_rmse,
+        test_r2=result.metrics.test_r2,
+        generalization_gap=(validation_fit - test_fit)
+        if validation_fit is not None and test_fit is not None
+        else None,
+        duration_ms=(time.perf_counter() - started) * 1000.0,
+        started_at=started_at,
+        finished_at=finished_at,
+        error_code=error_code,
+        best_trial_number=best_trial_number,
+    )
+
+
+def _failed_evaluation(
+    *,
+    parameters: dict[str, Any],
+    started_at: datetime,
+    started: float,
+    error_code: str,
+    best_trial_number: int | None = None,
+) -> EvaluationOutcome:
+    return EvaluationOutcome(
+        status="failed",
+        parameters=parameters,
+        validation_free_run_fit=None,
+        test_free_run_fit=None,
+        test_mae=None,
+        test_rmse=None,
+        test_r2=None,
+        generalization_gap=None,
+        duration_ms=(time.perf_counter() - started) * 1000.0,
+        started_at=started_at,
+        finished_at=datetime.now(UTC),
+        error_code=error_code,
+        best_trial_number=best_trial_number,
+    )
+
+
 def run_study(
     series: VersionSeries,
     payload: OptimizationStartRequest,
@@ -194,10 +409,16 @@ def run_study(
     def evaluate(trial: optuna.Trial) -> float:
         nonlocal structure_evaluations
         started = time.perf_counter()
-        params = _suggest(trial, payload.search_space)
+        sampled_params = _suggest(trial, payload.search_space)
+        params = dict(sampled_params)
         cache_hit = False
         try:
-            selection_params = _selection_params(params, input_columns, output_column)
+            selection_params = _selection_params(
+                sampled_params,
+                input_columns,
+                output_column,
+                train_ratio=payload.train_ratio,
+            )
             key = stage_key(
                 parent_key=base_key,
                 tool_name="segment_selection",
@@ -223,17 +444,23 @@ def run_study(
             best_structure_value = float("-inf")
             best_breakdown: dict[str, Any] = {}
             last_error: SegmentDomainError | ModelingDomainError | None = None
-            for structure in _structure_grid(params):
+            for structure in _structure_grid(sampled_params):
+                candidate_params = {**sampled_params, **structure}
+                if candidate_params["estimator"] != "ridge":
+                    candidate_params.pop("ridge_alpha", None)
                 fit_request = ArxFitRequest(
                     version_id=series.version_id,
                     input_columns=input_columns,
                     output_column=output_column,
                     na=structure["na"],
                     nb={column: structure["nb"] for column in input_columns},
-                    delays={column: params["nk"] for column in input_columns},
+                    delays={column: sampled_params["nk"] for column in input_columns},
                     estimator=structure["estimator"],
                     ridge_alpha=structure.get("ridge_alpha"),
+                    train_ratio=payload.train_ratio,
+                    validation_ratio=payload.validation_ratio,
                     training_sample_indices=selected,
+                    evaluate_test=False,
                 )
                 try:
                     candidate = fit_arx_core(
@@ -251,7 +478,7 @@ def run_study(
                     best_structure_value = candidate_value
                     best_breakdown = candidate_breakdown
                     result = candidate
-                    params = {**params, **structure}
+                    params = candidate_params
             if result is None:
                 raise last_error or ModelingDomainError(
                     "NUMERICAL_INSTABILITY", "该配置下所有模型结构均求解失败。"
@@ -439,6 +666,31 @@ async def execute_study(
 
     await _mark_study_running(session, study_id=study_id)
 
+    baseline = run_baseline(
+        series,
+        payload,
+        input_columns=input_columns,
+        output_column=output_column,
+    )
+    await _persist_evaluation(
+        session,
+        study_id=study_id,
+        series=series,
+        evaluation=baseline,
+        kind="baseline",
+    )
+    if baseline.status != "succeeded":
+        await _mark_study_failed(
+            session,
+            study_id=study_id,
+            reason=baseline.error_code or "BASELINE_EVALUATION_FAILED",
+        )
+        raise OptimizationDomainError(
+            baseline.error_code or "BASELINE_EVALUATION_FAILED",
+            "默认基线流程失败，未开始 Optuna 寻优。",
+            details={"baseline": _evaluation_payload(baseline)},
+        )
+
     fingerprint = build_fingerprint(
         inputs={column: series.values[column] for column in input_columns},
         output=series.values[output_column],
@@ -462,6 +714,21 @@ async def execute_study(
         raise
 
     await _persist_study(session, series=series, payload=payload, outcome=outcome)
+    if outcome.best_number is not None:
+        final_evaluation = evaluate_best_trial(
+            series,
+            payload,
+            outcome,
+            input_columns=input_columns,
+            output_column=output_column,
+        )
+        await _persist_evaluation(
+            session,
+            study_id=study_id,
+            series=series,
+            evaluation=final_evaluation,
+            kind="final_test",
+        )
     return dict(outcome.statistics)
 
 
@@ -514,6 +781,8 @@ async def get_optimization_status(
         statistics=dict(study.statistics),
         best_params=dict(study.best_params),
         warm_started_from=study.warm_started_from,
+        baseline=_stored_baseline(study.statistics),
+        final_test_evaluation=_stored_final_evaluation(study.statistics),
     )
 
 
@@ -590,7 +859,11 @@ def _bounds_float(value: Any) -> tuple[float, float]:
 
 
 def _selection_params(
-    params: dict[str, Any], input_columns: list[str], output_column: str
+    params: dict[str, Any],
+    input_columns: list[str],
+    output_column: str,
+    *,
+    train_ratio: float,
 ) -> dict[str, Any]:
     """Only the parameters that actually change the selected rows enter the cache key."""
 
@@ -602,6 +875,7 @@ def _selection_params(
         "max_anomaly_ratio": params["max_anomaly_ratio"],
         "max_missing_ratio": params["max_missing_ratio"],
         "min_input_activity_ratio": params["min_input_activity_ratio"],
+        "train_ratio": train_ratio,
     }
 
 
@@ -700,6 +974,83 @@ async def _mark_study_failed(session: AsyncSession, *, study_id: UUID, reason: s
         study.statistics = {**dict(study.statistics), "error_code": reason}
         study.finished_at = datetime.now(UTC)
         await session.commit()
+
+
+async def _persist_evaluation(
+    session: AsyncSession,
+    *,
+    study_id: UUID,
+    series: VersionSeries,
+    evaluation: EvaluationOutcome,
+    kind: str,
+) -> None:
+    """Persist a baseline/final evaluation without introducing a new table."""
+
+    study = await session.get(OptimizationStudy, study_id)
+    if study is None:
+        return
+    run_id = uuid4()
+    payload = _evaluation_payload(evaluation, processing_run_id=run_id)
+    evaluations = dict(study.statistics.get("evaluations", {}))
+    evaluations[kind] = payload
+    study.statistics = {**dict(study.statistics), "evaluations": evaluations}
+    session.add(
+        ProcessingRun(
+            id=run_id,
+            dataset_id=series.dataset_id,
+            source_version_id=series.version_id,
+            run_type=f"optimization.{kind}",
+            status=evaluation.status,
+            parameters=evaluation.parameters,
+            result=payload,
+            created_at=evaluation.started_at,
+            finished_at=evaluation.finished_at,
+        )
+    )
+    await session.commit()
+
+
+def _evaluation_payload(
+    evaluation: EvaluationOutcome,
+    *,
+    processing_run_id: UUID | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "status": evaluation.status,
+        "parameters": evaluation.parameters,
+        "validation_free_run_fit": evaluation.validation_free_run_fit,
+        "test_free_run_fit": evaluation.test_free_run_fit,
+        "test_mae": evaluation.test_mae,
+        "test_rmse": evaluation.test_rmse,
+        "test_r2": evaluation.test_r2,
+        "generalization_gap": evaluation.generalization_gap,
+        "duration_ms": evaluation.duration_ms,
+        "processing_run_id": str(processing_run_id) if processing_run_id else None,
+        "error_code": evaluation.error_code,
+        "started_at": evaluation.started_at.isoformat(),
+        "finished_at": evaluation.finished_at.isoformat(),
+    }
+    if evaluation.best_trial_number is not None:
+        payload["best_trial_number"] = evaluation.best_trial_number
+    return payload
+
+
+def _stored_baseline(statistics: dict[str, Any]) -> BaselineEvaluation | None:
+    payload = _stored_evaluation(statistics, "baseline")
+    return BaselineEvaluation.model_validate(payload) if payload else None
+
+
+def _stored_final_evaluation(statistics: dict[str, Any]) -> FinalTestEvaluation | None:
+    payload = _stored_evaluation(statistics, "final_test")
+    return FinalTestEvaluation.model_validate(payload) if payload else None
+
+
+def _stored_evaluation(statistics: dict[str, Any], kind: str) -> dict[str, Any] | None:
+    evaluations = statistics.get("evaluations")
+    if not isinstance(evaluations, dict):
+        return None
+    value = evaluations.get(kind)
+    return dict(value) if isinstance(value, dict) else None
 
 
 async def _persist_study(

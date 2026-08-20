@@ -282,3 +282,29 @@ Vite chunk 偏大；Node/jsdom 有 engine warning；README Compose 验证口径�
 - 既有 Optuna trial 仅持久化 validation 指标，尚无 test FIT/generalization gap 的真实持久化与展示；本轮已明确显示缺失而非伪造。
 - 同配置、同 CSV 的仿真重复生成会复用数据库资产，但已写出的重复文件产物仍待后续做受控清理策略；不能在此处自动删除用户数据。
 - Agent 的真实清洗执行、确认后续跑、报告/导出工具执行及 LLM 配置仍按原分析结论暂缓。
+
+## 22. 第二轮-A：严格 Baseline 与独立泛化评价（2026-08-20）
+
+### 原问题
+
+第一轮排行榜把首个 Optuna trial 的 validation free-run FIT 当作 baseline。该 trial 已属于随机/热启动搜索，不是确定性的优化前工程默认方案；同时 trial 内部虽不以 Test 为 objective，核心辨识仍会计算 Test 指标，隔离边界不够严格。
+
+### 本轮修改
+
+- 在 `evaluation_policy.py` 定义唯一 `DEFAULT_BASELINE_CONFIG` 与 10/25 个百分点的系统工程泛化风险阈值。每个 Study 先执行一次完整、确定性的 Baseline（门控、D-最优选段、ARX），而后才进入 Optuna。
+- Baseline 与 final Test replay 的配置、validation/test 指标、耗时、时间戳、错误码和 ProcessingRun ID 保存在 `optimization_studies.statistics.evaluations`，并分别记录为 `optimization.baseline`、`optimization.final_test` 审计运行；现有 JSON 持久化字段足以可靠表达，因此未新增数据库迁移。
+- Optuna 每个 trial 显式关闭 `evaluate_test`：不产生 Test 指标、图表或残差。Best Trial 按既有 validation objective 固定后，才以固定参数重放一次完整流程并产生 Test free-run FIT、Test one-step MAE/RMSE/R²。
+- 统一定义 `generalization_gap = optimized_validation_fit - optimized_test_fit`；Dashboard 用真实持久化 Baseline、Best Trial validation 和 final Test 数据展示，历史 Study 则显示缺失而不补算/伪造。
+- 具体口径见 `docs/algorithms/model-evaluation.md`。
+
+### 实测验证
+
+- 本地 S6（1200 点、seed 20260820）生成 `dataset_id=34397c5e-4597-4b37-a81e-9dec9483f514`、`version_id=1ac49157-109a-4c1c-86bc-f78d5c95a0dd`；5-trial Study 为 `25cfda1b-6451-4901-b91b-82c199482de0`。
+- Baseline 使用记录的默认参数，validation free-run FIT 为 76.19%，Test free-run FIT 为 30.63%。
+- Validation 选中的 best trial（窗口 140、预算 12、nk=4、na=2、nb=3、OLS）validation FIT 为 83.49%，相对 Baseline 提升 7.30 个百分点。
+- 固定该 trial 后的独立 Test free-run FIT 为 13.05%，Test one-step MAE/RMSE/R² 为 0.0252 / 0.0318 / 0.9409，generalization gap 为 70.44 个百分点。Dashboard 真实显示“系统工程风险提示：泛化风险高”；没有为改善结果修改 S6、真值或切分。
+- 数据集详情 API 对上述真实 UUID 返回 HTTP 200；迁移 head 仍为 `0003_optimization_and_memory`。
+
+### 尚待后续
+
+- 下一步应将最终 Test 评价与报告模板、导出产物和更细的泛化诊断联动；本轮未改 Agent、LLM、PCA、新模型或核心工业算法。

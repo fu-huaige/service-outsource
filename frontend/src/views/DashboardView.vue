@@ -14,7 +14,7 @@
       </div>
       <div class="industrial-card stat-card">
         <div class="stat-title">最高辨识 FIT 拟合度</div>
-        <div class="stat-val highlight">{{ topEntry ? formatFit(topEntry.validation_fit) : "—" }}</div>
+        <div class="stat-val highlight">{{ topEntry ? formatOptionalFit(topEntry.optimized_validation_fit) : "—" }}</div>
         <div class="stat-sub">{{ topEntry ? topEntry.dataset_name : "暂无已完成寻优" }}</div>
       </div>
       <div class="industrial-card stat-card">
@@ -60,25 +60,38 @@
       <el-alert v-if="loadError" type="error" :title="loadError" show-icon :closable="false" style="margin-bottom: 16px" />
       <el-table v-if="leaderboardData.length" :data="leaderboardData" stripe style="width: 100%">
         <el-table-column prop="dataset_name" label="数据集名称" width="180" />
-        <el-table-column label="首轮验证 FIT" width="120">
-          <template #default="{ row }">{{ formatFit(row.baseline_fit) }}</template>
+        <el-table-column label="基线验证 FIT" width="120">
+          <template #default="{ row }">{{ formatOptionalFit(row.baseline_validation_fit) }}</template>
         </el-table-column>
         <el-table-column label="优化后验证 FIT" width="130">
           <template #default="{ row }">
-            <span class="fit-val">{{ formatFit(row.optimized_fit) }}</span>
+            <span class="fit-val">{{ formatOptionalFit(row.optimized_validation_fit) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="improvement" label="提升幅度" width="120">
+        <el-table-column label="优化后测试 FIT" width="130">
           <template #default="{ row }">
-            <span :class="row.improvement >= 0 ? 'improvement-text' : 'risk-text'">{{ formatSigned(row.improvement) }}</span>
+            {{ row.optimized_test_fit === null ? "暂无测试集评价" : formatFit(row.optimized_test_fit) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="提升幅度" width="120">
+          <template #default="{ row }">
+            <span v-if="row.improvement !== null" :class="row.improvement >= 0 ? 'improvement-text' : 'risk-text'">
+              {{ formatSigned(row.improvement) }}
+            </span>
+            <span v-else>—</span>
           </template>
         </el-table-column>
         <el-table-column label="真实最优参数">
           <template #default="{ row }">{{ row.contribution_summary || "—" }}</template>
         </el-table-column>
-        <el-table-column label="泛化风险" width="150">
+        <el-table-column label="泛化差距" width="130">
           <template #default="{ row }">
-            {{ row.generalization_gap === null ? "暂无测试集指标" : `测试差距 ${formatFit(row.generalization_gap)}` }}
+            {{ row.generalization_gap === null ? "暂无测试集评价" : formatFit(row.generalization_gap) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="系统工程风险提示" width="180">
+          <template #default="{ row }">
+            <el-tag :type="riskTagType(row.generalization_risk)">{{ row.risk_message }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="120">
@@ -106,8 +119,15 @@ const loadError = ref("");
 const leaderboardData = ref<DashboardLeaderboardEntry[]>([]);
 const topEntry = computed(() => leaderboardData.value[0] ?? null);
 const formatFit = (value: number) => value.toFixed(2) + "%";
+const formatOptionalFit = (value: number | null) => value === null ? "—" : formatFit(value);
 const formatSigned = (value: number) => (value >= 0 ? "+" : "") + value.toFixed(2) + "%";
 const goToDataset = (datasetId: string) => router.push("/datasets/" + datasetId);
+const riskTagType = (risk: DashboardLeaderboardEntry["generalization_risk"]) => ({
+  normal: "success",
+  attention: "warning",
+  high: "danger",
+  unavailable: "info",
+}[risk] as "success" | "warning" | "danger" | "info");
 
 onMounted(async () => {
   try {

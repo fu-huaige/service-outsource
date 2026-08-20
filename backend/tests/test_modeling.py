@@ -101,6 +101,16 @@ class TestIdentification:
         ):
             assert value is not None
 
+    def test_validation_only_fit_does_not_evaluate_held_out_test_partition(self) -> None:
+        inputs = make_inputs(3000)
+        result = fit(inputs, simulate(inputs, noise=0.03), evaluate_test=False)
+        assert result.metrics.val_free_run_fit is not None
+        assert result.metrics.test_fit is None
+        assert result.metrics.test_free_run_fit is None
+        assert 0 < result.plot_data.splits.train_end < result.plot_data.splits.val_end
+        assert result.plot_data.splits.val_end < result.plot_data.splits.test_end
+        assert max(result.plot_data.indices) < result.plot_data.splits.val_end
+
     def test_one_step_fit_hides_a_degraded_model_that_free_run_exposes(self) -> None:
         """The whole reason free-run is the primary metric, asserted on real numbers."""
 

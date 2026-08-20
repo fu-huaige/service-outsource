@@ -110,12 +110,15 @@ export interface DashboardLeaderboardEntry {
   version_id: string;
   study_id: string;
   status: string;
-  baseline_fit: number;
-  optimized_fit: number;
-  improvement: number;
-  validation_fit: number;
-  test_fit: number | null;
+  baseline_validation_fit: number | null;
+  optimized_validation_fit: number | null;
+  optimized_test_fit: number | null;
+  improvement: number | null;
   generalization_gap: number | null;
+  baseline_available: boolean;
+  test_available: boolean;
+  generalization_risk: "unavailable" | "normal" | "attention" | "high";
+  risk_message: string;
   contribution_summary: string | null;
 }
 
