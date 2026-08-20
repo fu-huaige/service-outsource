@@ -20,6 +20,9 @@ class LeaderboardEntry(Schema):
     optimized_test_fit: float | None = Field(
         default=None, description="Best Trial 固定后仅执行一次的 held-out Test 自由仿真 FIT。"
     )
+    optimized_test_one_step_fit: float | None = None
+    optimized_test_one_step_r2: float | None = None
+    optimized_test_free_run_r2: float | None = None
     improvement: float | None = None
     generalization_gap: float | None = None
     baseline_available: bool = False

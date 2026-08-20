@@ -329,9 +329,40 @@ class TestOptimizationApi:
         assert final["test_mae"] is not None
         assert final["test_rmse"] is not None
         assert final["test_r2"] is not None
+        assert final["test_one_step_fit"] is not None
+        assert final["test_one_step_r2"] == final["test_r2"]
+        assert final["test_free_run_r2"] is not None
         assert final["generalization_gap"] == pytest.approx(
             final["validation_free_run_fit"] - final["test_free_run_fit"]
         )
+
+    def test_diagnostics_replay_fixed_winner_without_changing_study(self, client: TestClient) -> None:
+        version_id = generate(client, seed=73)
+        started = client.post(
+            "/api/v1/optimization/optuna/start",
+            json={
+                "version_id": version_id,
+                "input_columns": ["u1", "u2"],
+                "output_column": "y",
+                "max_trials": 2,
+                "random_seed": 23,
+            },
+        )
+        assert started.status_code == 202, started.text
+        study_id = started.json()["data"]["study_id"]
+        before = client.get(f"/api/v1/optimization/optuna/{study_id}/status").json()["data"]
+
+        response = client.get(f"/api/v1/optimization/optuna/{study_id}/diagnostics")
+        assert response.status_code == 200, response.text
+        diagnostics = response.json()["data"]
+        assert set(diagnostics["partitions"]) == {"train", "validation", "test"}
+        assert diagnostics["partitions"]["test"]["one_step"]["r2"] is not None
+        assert diagnostics["partitions"]["test"]["free_run"]["fit"] is not None
+        assert diagnostics["metric_semantics"]["one_step"]
+
+        after = client.get(f"/api/v1/optimization/optuna/{study_id}/status").json()["data"]
+        assert after["best_trial_id"] == before["best_trial_id"]
+        assert len(after["trials"]) == len(before["trials"])
 
     def test_closed_loop_runs_and_reports_cache_statistics(self, client: TestClient) -> None:
         version_id = generate(client)

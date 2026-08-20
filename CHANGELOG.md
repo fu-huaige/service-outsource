@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+### Added (evaluation metric audit and diagnostics, 2026-08-20)
+
+- ARX 指标按 `one_step` 与 `free_run` 分区持久化/返回；保留旧 one-step 与 free-run 字段为兼容别名，避免将不同预测模式混称为 Test 指标；
+- Dashboard 新增测试 one-step FIT/R²、测试 free-run R²及两种预测模式的说明；
+- 新增只读 `GET /optimization/optuna/{study_id}/diagnostics`：重放 Validation 已固定的 Best Trial，输出分区分布、活动度、选段覆盖、可辨识性、候选时滞证据、残差白度、稳定性与证据约束的泛化提示；
+- `docs/algorithms/generalization-diagnostics.md` 与 FIT/R² 数学口径、预测模式和诊断边界说明。
+
+### Fixed (evaluation metric audit and diagnostics, 2026-08-20)
+
+- 纠正优化过程记录 OLS Best Trial 时残留 `ridge_alpha` 的参数溯源错误；OLS 记录不再伪带 Ridge 超参数。
+
 ### Added (evaluation baseline and generalization, 2026-08-20)
 
 - 正式确定性 Baseline：每个 OptimizationStudy 在 Optuna 前以统一工程默认门控、D-最优选段和 ARX 配置执行，持久化参数、指标、耗时、错误状态和 ProcessingRun；

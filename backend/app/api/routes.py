@@ -27,6 +27,7 @@ from app.schemas.datasets import (
     DatasetUploadData,
     DatasetVersionsData,
 )
+from app.schemas.diagnostics import GeneralizationDiagnosticsData
 from app.schemas.modeling import (
     ArxFitData,
     ArxFitRequest,
@@ -76,6 +77,7 @@ from app.services.dataset_service import (
 from app.services.dataset_service import (
     get_dataset_versions as get_dataset_versions_service,
 )
+from app.services.generalization_diagnostics_service import get_generalization_diagnostics
 from app.services.modeling_service import ModelingDomainError, fit_arx_on_version
 from app.services.optimization_service import (
     OptimizationDomainError,
@@ -610,6 +612,34 @@ async def optimization_status(
 ) -> SuccessEnvelope[OptimizationStatusData]:
     try:
         data = await get_optimization_status(session, study_id=study_id)
+    except OptimizationDomainError as error:
+        raise AppError(
+            error.code,
+            error.message,
+            status_code=error.status_code,
+            details=error.details,
+        ) from error
+    return success(request, data)
+
+
+@router.get(
+    "/optimization/optuna/{study_id}/diagnostics",
+    tags=["Optimization"],
+    summary="Replay the validation-selected winner for read-only generalization diagnostics",
+    response_model=SuccessEnvelope[GeneralizationDiagnosticsData],
+    responses=ERROR_RESPONSES,
+)
+async def optimization_diagnostics(
+    request: Request,
+    study_id: Annotated[UUID, Path(description="Optuna study UUID。")],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessEnvelope[GeneralizationDiagnosticsData]:
+    """Inspect the fixed winner without running a new Optuna trial or changing the study."""
+
+    try:
+        data = await get_generalization_diagnostics(
+            session, study_id=study_id, artifact_root=get_settings().artifact_root
+        )
     except OptimizationDomainError as error:
         raise AppError(
             error.code,

@@ -41,7 +41,7 @@ Baseline 同样执行质量门控、D-最优选段和 ARX，不调用 Optuna。�
 2. objective 为稳定模型的 validation free-run FIT 及既有工程惩罚项；Test 从不参与 objective、trial 排名、search space 调整或 warm start；
 3. 以最大 objective 选定 `best_trial_number`；
 4. 用该 trial 的固定参数重放一次门控、选段和 ARX，开启 Test 评价；
-5. 保存 `test_free_run_fit`、Test one-step MAE/RMSE/R²，以及下述泛化差距到 `statistics.evaluations.final_test` 和 `optimization.final_test` ProcessingRun。
+5. 保存 `test_free_run_fit`、Test one-step 与 free-run 的模式明确指标，以及下述泛化差距到 `statistics.evaluations.final_test` 和 `optimization.final_test` ProcessingRun。
 
 最终 Test evaluation 失败不会伪造数值：Study 的寻优结果仍可查询，但 Test 字段为空并带错误状态。
 
@@ -53,7 +53,39 @@ Baseline 同样执行质量门控、D-最优选段和 ARX，不调用 Optuna。�
 - Improvement：`optimized_validation_fit - baseline_validation_fit`；
 - Generalization gap：`optimized_validation_fit - optimized_test_fit`。
 
-MAE、RMSE、R²来自最终 Test 的 one-step 诊断；FIT 的正式主口径始终是 free-run FIT。
+## 一步预测与自由仿真
+
+同一个 ARX 在两种预测模式下的分数不能混写为无前缀的“Test 指标”：
+
+| 模式 | 历史输出来源 | 用途 |
+| --- | --- | --- |
+| One-step | 每一步均使用真实历史输出 `y(k-1..k-na)` | 诊断短期回归/噪声拟合能力 |
+| Free-run | 分区起点前仅以真实输出暖启动；之后连续使用模型自身预测 | 正式动态泛化与稳定性评价 |
+
+两类数据分别保存在 `ArxMetrics.one_step.{train,validation,test}` 与
+`ArxMetrics.free_run.{train,validation,test}`，每个对象都可以包含 MAE、RMSE、R²、FIT、NRMSE。
+旧字段 `test_r2`、`test_rmse`、`mae`、`nrmse` 为 **one-step 兼容别名**；
+`*_free_run_fit` 为 **free-run 兼容别名**。新接口、Dashboard 和报告代码不得再使用没有预测模式的字段名。
+
+对同一组已对齐的 `y` 和 `y_hat`，当前代码采用：
+
+```text
+SSE = Σ(y - y_hat)²
+SST = Σ(y - mean(y))²
+R² = 1 - SSE / SST
+FIT = 100 × (1 - ||y - y_hat||₂ / ||y - mean(y)||₂)
+```
+
+因此，在 `SST > 0`、同一模式、同一批样本且 FIT 未触发下限时：
+
+```text
+FIT = 100 × (1 - √(1 - R²))
+```
+
+`fit_percentage` 对自由仿真保留历史的 `-100%` 下限，故极差的自由仿真不必满足上式。
+One-step R² 很高而 free-run FIT 很低并不矛盾：前者每一步被真实历史输出纠正，后者会暴露递推误差累积。
+
+MAE、RMSE、R²必须随 `one_step_` 或 `free_run_` 前缀展示；FIT 的正式闭环主口径始终是 validation/test free-run FIT。
 
 ## Dashboard
 
@@ -64,3 +96,7 @@ Dashboard 仅以真实数据库记录显示上述指标。历史 Study 没有正
 - 禁止用第一个 trial、固定值或前端计算补充缺失值。
 
 泛化风险为系统工程提示，不是行业标准或“模型必然失效”的结论：gap ≤ 10 个百分点为正常，10–25 为注意，>25 为高风险。阈值统一位于 `evaluation_policy.py`。
+
+## 只读泛化诊断
+
+`GET /api/v1/optimization/optuna/{study_id}/diagnostics` 只重放已经由 Validation 固定的 Best Trial，输出按评分样本对齐的 Train/Validation/Test 分布、活动度、回归矩阵秩/条件数、预白化互相关峰、残差白度、one-step/free-run 指标与极点稳定性。它不会调用 Optuna、创建 Trial、写入 Study，也不会用 Test 修改最佳参数。

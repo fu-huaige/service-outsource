@@ -55,6 +55,9 @@ async def get_dashboard_leaderboard(session: AsyncSession) -> DashboardLeaderboa
             continue
         baseline = _evaluation_metric(study.statistics, "baseline", "validation_free_run_fit")
         test_fit = _evaluation_metric(study.statistics, "final_test", "test_free_run_fit")
+        test_one_step_fit = _evaluation_metric(study.statistics, "final_test", "test_one_step_fit")
+        test_one_step_r2 = _evaluation_metric(study.statistics, "final_test", "test_one_step_r2")
+        test_free_run_r2 = _evaluation_metric(study.statistics, "final_test", "test_free_run_r2")
         gap = _evaluation_metric(study.statistics, "final_test", "generalization_gap")
         baseline_available = baseline is not None
         test_available = test_fit is not None and gap is not None
@@ -70,6 +73,9 @@ async def get_dashboard_leaderboard(session: AsyncSession) -> DashboardLeaderboa
                 baseline_validation_fit=baseline,
                 optimized_validation_fit=optimized,
                 optimized_test_fit=test_fit,
+                optimized_test_one_step_fit=test_one_step_fit,
+                optimized_test_one_step_r2=test_one_step_r2,
+                optimized_test_free_run_r2=test_free_run_r2,
                 improvement=optimized - baseline if baseline is not None else None,
                 generalization_gap=gap,
                 baseline_available=baseline_available,

@@ -48,6 +48,14 @@ class BaselineEvaluation(Schema):
     test_mae: float | None = None
     test_rmse: float | None = None
     test_r2: float | None = None
+    # Deprecated aliases above are one-step diagnostics. Use explicit fields below.
+    test_one_step_fit: float | None = None
+    test_one_step_mae: float | None = None
+    test_one_step_rmse: float | None = None
+    test_one_step_r2: float | None = None
+    test_free_run_mae: float | None = None
+    test_free_run_rmse: float | None = None
+    test_free_run_r2: float | None = None
     generalization_gap: float | None = None
     duration_ms: float | None = None
     processing_run_id: UUID | None = None
@@ -65,6 +73,14 @@ class FinalTestEvaluation(Schema):
     test_mae: float | None = None
     test_rmse: float | None = None
     test_r2: float | None = None
+    # Deprecated aliases above are one-step diagnostics. Use explicit fields below.
+    test_one_step_fit: float | None = None
+    test_one_step_mae: float | None = None
+    test_one_step_rmse: float | None = None
+    test_one_step_r2: float | None = None
+    test_free_run_mae: float | None = None
+    test_free_run_rmse: float | None = None
+    test_free_run_r2: float | None = None
     generalization_gap: float | None = None
     duration_ms: float | None = None
     processing_run_id: UUID | None = None

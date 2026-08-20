@@ -58,6 +58,13 @@
         <el-tag type="info">按验证集 FIT 排名</el-tag>
       </div>
       <el-alert v-if="loadError" type="error" :title="loadError" show-icon :closable="false" style="margin-bottom: 16px" />
+      <el-alert
+        v-else
+        type="info"
+        title="指标说明：一步预测使用真实历史输出预测下一步；自由仿真仅依赖模型自身历史预测连续滚动，因而更严格。"
+        :closable="false"
+        style="margin-bottom: 16px"
+      />
       <el-table v-if="leaderboardData.length" :data="leaderboardData" stripe style="width: 100%">
         <el-table-column prop="dataset_name" label="数据集名称" width="180" />
         <el-table-column label="基线验证 FIT" width="120">
@@ -72,6 +79,15 @@
           <template #default="{ row }">
             {{ row.optimized_test_fit === null ? "暂无测试集评价" : formatFit(row.optimized_test_fit) }}
           </template>
+        </el-table-column>
+        <el-table-column label="测试一步 FIT" width="120">
+          <template #default="{ row }">{{ formatOptionalFit(row.optimized_test_one_step_fit) }}</template>
+        </el-table-column>
+        <el-table-column label="测试一步 R²" width="120">
+          <template #default="{ row }">{{ formatOptionalNumber(row.optimized_test_one_step_r2) }}</template>
+        </el-table-column>
+        <el-table-column label="测试自由仿真 R²" width="140">
+          <template #default="{ row }">{{ formatOptionalNumber(row.optimized_test_free_run_r2) }}</template>
         </el-table-column>
         <el-table-column label="提升幅度" width="120">
           <template #default="{ row }">
@@ -120,6 +136,7 @@ const leaderboardData = ref<DashboardLeaderboardEntry[]>([]);
 const topEntry = computed(() => leaderboardData.value[0] ?? null);
 const formatFit = (value: number) => value.toFixed(2) + "%";
 const formatOptionalFit = (value: number | null) => value === null ? "—" : formatFit(value);
+const formatOptionalNumber = (value: number | null) => value === null ? "—" : value.toFixed(3);
 const formatSigned = (value: number) => (value >= 0 ? "+" : "") + value.toFixed(2) + "%";
 const goToDataset = (datasetId: string) => router.push("/datasets/" + datasetId);
 const riskTagType = (risk: DashboardLeaderboardEntry["generalization_risk"]) => ({

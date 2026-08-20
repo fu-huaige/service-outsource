@@ -79,7 +79,27 @@ class ModelValidationData(Schema):
     )
 
 
+class PredictionMetrics(Schema):
+    """Metrics calculated from one aligned actual/predicted sequence."""
+
+    mae: float | None = None
+    rmse: float | None = None
+    r2: float | None = None
+    fit: float | None = None
+    nrmse: float | None = None
+
+
 class ArxMetrics(Schema):
+    """Compatibility metrics plus prediction-mode-explicit partition metrics.
+
+    ``test_r2`` / ``test_rmse`` / ``mae`` historically mean one-step values. New code
+    must use ``one_step`` or ``free_run`` below so a value is never detached from the
+    prediction mode that produced it.
+    """
+
+    one_step: dict[str, PredictionMetrics] = Field(default_factory=dict)
+    free_run: dict[str, PredictionMetrics] = Field(default_factory=dict)
+    # Deprecated compatibility aliases for one-step metrics.
     train_r2: float | None = None
     train_fit: float | None = None
     train_rmse: float | None = None
@@ -98,8 +118,6 @@ class ArxMetrics(Schema):
     test_free_run_fit: float | None = None
     aic: float | None = None
     bic: float | None = None
-
-
 class SplitIndices(Schema):
     train_end: int = Field(ge=0)
     val_end: int = Field(ge=0)

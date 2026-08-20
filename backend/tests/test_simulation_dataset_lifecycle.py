@@ -208,7 +208,13 @@ def test_dashboard_reads_persisted_baseline_and_final_test_evaluation(
                 statistics={
                     "evaluations": {
                         "baseline": {"validation_free_run_fit": 20.0},
-                        "final_test": {"test_free_run_fit": 40.0, "generalization_gap": 20.0},
+                        "final_test": {
+                            "test_free_run_fit": 40.0,
+                            "test_one_step_fit": 80.0,
+                            "test_one_step_r2": 0.96,
+                            "test_free_run_r2": 0.64,
+                            "generalization_gap": 20.0,
+                        },
                     }
                 },
             )
@@ -243,6 +249,9 @@ def test_dashboard_reads_persisted_baseline_and_final_test_evaluation(
     assert entry["baseline_validation_fit"] == 20.0
     assert entry["optimized_validation_fit"] == 60.0
     assert entry["optimized_test_fit"] == 40.0
+    assert entry["optimized_test_one_step_fit"] == 80.0
+    assert entry["optimized_test_one_step_r2"] == 0.96
+    assert entry["optimized_test_free_run_r2"] == 0.64
     assert entry["improvement"] == 40.0
     assert entry["generalization_gap"] == 20.0
     assert entry["baseline_available"] is True

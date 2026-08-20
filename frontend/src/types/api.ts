@@ -113,6 +113,9 @@ export interface DashboardLeaderboardEntry {
   baseline_validation_fit: number | null;
   optimized_validation_fit: number | null;
   optimized_test_fit: number | null;
+  optimized_test_one_step_fit: number | null;
+  optimized_test_one_step_r2: number | null;
+  optimized_test_free_run_r2: number | null;
   improvement: number | null;
   generalization_gap: number | null;
   baseline_available: boolean;

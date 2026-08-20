@@ -136,6 +136,10 @@ class EvaluationOutcome:
     test_mae: float | None
     test_rmse: float | None
     test_r2: float | None
+    test_one_step_fit: float | None
+    test_free_run_mae: float | None
+    test_free_run_rmse: float | None
+    test_free_run_r2: float | None
     generalization_gap: float | None
     duration_ms: float
     started_at: datetime
@@ -325,7 +329,9 @@ def _evaluation_from_result(
     started: float,
     best_trial_number: int | None = None,
 ) -> EvaluationOutcome:
-    test_fit = result.metrics.test_free_run_fit
+    one_step = result.metrics.one_step.get("test")
+    free_run = result.metrics.free_run.get("test")
+    test_fit = free_run.fit if free_run is not None else None
     validation_fit = result.metrics.val_free_run_fit
     error_code = None
     if validation_fit is None or test_fit is None:
@@ -336,9 +342,13 @@ def _evaluation_from_result(
         parameters=parameters,
         validation_free_run_fit=validation_fit,
         test_free_run_fit=test_fit,
-        test_mae=result.metrics.mae,
-        test_rmse=result.metrics.test_rmse,
-        test_r2=result.metrics.test_r2,
+        test_mae=one_step.mae if one_step is not None else None,
+        test_rmse=one_step.rmse if one_step is not None else None,
+        test_r2=one_step.r2 if one_step is not None else None,
+        test_one_step_fit=one_step.fit if one_step is not None else None,
+        test_free_run_mae=free_run.mae if free_run is not None else None,
+        test_free_run_rmse=free_run.rmse if free_run is not None else None,
+        test_free_run_r2=free_run.r2 if free_run is not None else None,
         generalization_gap=(validation_fit - test_fit)
         if validation_fit is not None and test_fit is not None
         else None,
@@ -366,6 +376,10 @@ def _failed_evaluation(
         test_mae=None,
         test_rmse=None,
         test_r2=None,
+        test_one_step_fit=None,
+        test_free_run_mae=None,
+        test_free_run_rmse=None,
+        test_free_run_r2=None,
         generalization_gap=None,
         duration_ms=(time.perf_counter() - started) * 1000.0,
         started_at=started_at,
@@ -1023,6 +1037,13 @@ def _evaluation_payload(
         "test_mae": evaluation.test_mae,
         "test_rmse": evaluation.test_rmse,
         "test_r2": evaluation.test_r2,
+        "test_one_step_fit": evaluation.test_one_step_fit,
+        "test_one_step_mae": evaluation.test_mae,
+        "test_one_step_rmse": evaluation.test_rmse,
+        "test_one_step_r2": evaluation.test_r2,
+        "test_free_run_mae": evaluation.test_free_run_mae,
+        "test_free_run_rmse": evaluation.test_free_run_rmse,
+        "test_free_run_r2": evaluation.test_free_run_r2,
         "generalization_gap": evaluation.generalization_gap,
         "duration_ms": evaluation.duration_ms,
         "processing_run_id": str(processing_run_id) if processing_run_id else None,

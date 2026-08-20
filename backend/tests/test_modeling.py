@@ -14,7 +14,7 @@ from app.core.db import get_session
 from app.main import create_app
 from app.models import Base
 from app.schemas.modeling import ArxFitRequest
-from app.services.modeling_service import ModelingDomainError, fit_arx_core
+from app.services.modeling_service import ModelingDomainError, _scores, fit_arx_core
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -100,6 +100,20 @@ class TestIdentification:
             result.metrics.test_free_run_fit,
         ):
             assert value is not None
+        assert result.metrics.one_step["test"].r2 == result.metrics.test_r2
+        assert result.metrics.one_step["test"].rmse == result.metrics.test_rmse
+        assert result.metrics.free_run["test"].fit == result.metrics.test_free_run_fit
+
+    def test_fit_and_r2_are_mathematically_consistent_for_one_aligned_series(self) -> None:
+        actual = np.array([0.2, 0.5, 0.7, 1.2, 1.5], dtype=float)
+        predicted = np.array([0.1, 0.45, 0.8, 1.0, 1.4], dtype=float)
+
+        scores = _scores(actual, predicted)
+        assert scores["r2"] is not None
+        assert scores["fit"] is not None
+        assert scores["fit"] == pytest.approx(
+            100.0 * (1.0 - np.sqrt(1.0 - scores["r2"])), abs=1e-12
+        )
 
     def test_validation_only_fit_does_not_evaluate_held_out_test_partition(self) -> None:
         inputs = make_inputs(3000)

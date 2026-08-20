@@ -308,3 +308,29 @@ Vite chunk 偏大；Node/jsdom 有 engine warning；README Compose 验证口径�
 ### 尚待后续
 
 - 下一步应将最终 Test 评价与报告模板、导出产物和更细的泛化诊断联动；本轮未改 Agent、LLM、PCA、新模型或核心工业算法。
+
+## 23. 第二轮-B：评价指标一致性审计与 S6 泛化诊断（2026-08-20）
+
+### 原问题与根因
+
+S6 final Test 同时出现 free-run FIT 13.05% 与 R² 0.9409。它们并非同一预测序列：`test_r2`、`test_rmse`、`test_mae` 当时由使用真实历史输出的 one-step 回归残差计算，而 `test_free_run_fit` 由递推使用模型自身历史预测的 free-run 仿真计算。把它们都写成无前缀的“Test 指标”会制造看似违反 FIT/R² 数学关系的假象。
+
+### 本轮修改
+
+- `ArxMetrics` 现在显式返回 `one_step.{train,validation,test}` 与 `free_run.{train,validation,test}`，每组记录同一对齐样本的 MAE、RMSE、R²、FIT、NRMSE；旧字段保留为兼容别名并注明预测模式。
+- final evaluation、Dashboard 和前端类型新增 Test one-step FIT/R²、Test free-run R²；正式排行榜仍按 validation free-run FIT 排名，generalization gap 仍以两个 free-run FIT 计算。
+- 新增只读 diagnostics API：仅重放 Validation 已确定的 best params，按真实时间分区计算分布、活动度、D-optimal 选段覆盖、秩/条件数/PE、预白化互相关峰、残差白度、极点稳定性和 one-step/free-run 差距。它不会调用 Optuna、写 Trial 或改变最佳参数。
+- 追加 `model-evaluation.md` 的 FIT/R² 公式和预测模式定义，并新增 `generalization-diagnostics.md` 记录诊断证据与因果边界。
+
+### 审计结论与验证
+
+- 对同一 `y_true/y_pred`、未触发自由仿真 -100% 下限的标准公式，`FIT = 100 × (1 - sqrt(1 - R²))`；回归测试覆盖这一关系。
+- S6 的 0.9409 是 Test one-step R²，而 13.05% 是 Test free-run FIT，因此可以同时成立：模型的短期一步预测较好，但连续递推会明显累积误差。
+- 新增诊断回归测试确认 `/optimization/optuna/{study_id}/diagnostics` 返回 Train/Validation/Test 的模式明确指标，并且调用前后 best trial 和 trial 数量不变。
+- 本轮最新源码的隔离 S6 API E2E（1200 点、seed `20260820`、3 输入、5 trials、Optuna seed `42`）得到 baseline validation/test free-run FIT `76.19% / 30.63%`，best validation free-run FIT `85.98%`，final Test free-run FIT `19.83%`，gap `66.14` 个百分点。对应 Test one-step 为 MAE/RMSE/R²/FIT `0.0253 / 0.0318 / 0.9491 / 77.45%`，Test free-run 为 MAE/RMSE/R²/FIT `0.0931 / 0.1129 / 0.3573 / 19.83%`。
+- 同一 E2E 诊断显示 Test 三个输入活动率均为 `0`，其回归矩阵秩为 `3/12`（Train 为 `12/12`）；极点最大模 `0.7844`、Test one-step 残差白度 `0.95`。因此当前证据首先支持“测试尾段没有新输入激励 + free-run 递推误差累积”，而不是模型极点不稳定；预白化互相关在 Test 无有效相关时不再被误报为 delay drift。
+
+### 尚待后续
+
+- diagnostics 已能给出真实证据与“证据不足”的保守结论；报告/导出页面尚未消费这份结构化诊断。
+- 上述 E2E 使用隔离 SQLite 与临时产物，以避免改写本地展示数据库；生产 Compose 镜像仍需重建后才能直接暴露新 diagnostics 路由，但这不应触发任何 Test 驱动调参。

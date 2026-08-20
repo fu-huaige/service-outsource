@@ -56,6 +56,7 @@ from app.schemas.modeling import (
     ArxPlotData,
     ArxResidualDiagnostics,
     ModelValidationData,
+    PredictionMetrics,
     PriorViolation,
     SplitIndices,
 )
@@ -442,11 +443,11 @@ def _metrics(
     if evaluate_test:
         windows["test"] = (val_end + guard, n_samples)
     one_step: dict[str, dict[str, float | None]] = {}
-    free_run: dict[str, float | None] = {}
+    free_run: dict[str, dict[str, float | None]] = {}
     for label, (start, stop) in windows.items():
         rows = _partition_rows(regressor, start, stop)
         one_step[label] = _scores(regressor.targets[rows], predicted[rows])
-        free_run[label] = _free_run_fit(
+        free_run[label] = _free_run_scores(
             theta, structure, inputs=inputs, output=output, start=start, stop=stop
         )
 
@@ -462,6 +463,8 @@ def _metrics(
 
     test = one_step.get("test", _empty_scores())
     return ArxMetrics(
+        one_step={label: _to_prediction_metrics(scores) for label, scores in one_step.items()},
+        free_run={label: _to_prediction_metrics(scores) for label, scores in free_run.items()},
         train_r2=one_step["train"]["r2"],
         train_fit=one_step["train"]["fit"],
         train_rmse=one_step["train"]["rmse"],
@@ -474,15 +477,15 @@ def _metrics(
         rmse=test["rmse"],
         mae=test["mae"],
         nrmse=test["nrmse"],
-        train_free_run_fit=free_run["train"],
-        val_free_run_fit=free_run["validation"],
-        test_free_run_fit=free_run.get("test"),
+        train_free_run_fit=free_run["train"]["fit"],
+        val_free_run_fit=free_run["validation"]["fit"],
+        test_free_run_fit=free_run.get("test", _empty_scores())["fit"],
         aic=aic,
         bic=bic,
     )
 
 
-def _free_run_fit(
+def _free_run_scores(
     theta: FloatArray,
     structure: ArxStructure,
     *,
@@ -490,14 +493,17 @@ def _free_run_fit(
     output: FloatArray,
     start: int,
     stop: int,
-) -> float | None:
+) -> dict[str, float | None]:
     try:
         measured, simulated = free_run_simulate(
             theta, structure, inputs=inputs, output=output, start=start, stop=stop
         )
-        return fit_percentage(measured, simulated)
+        scores = _scores(measured, simulated)
+        # Keep the established public free-run FIT definition, including its -100% floor.
+        scores["fit"] = fit_percentage(measured, simulated)
+        return scores
     except IdentifiabilityError:
-        return None
+        return _empty_scores()
 
 
 def _scores(actual: FloatArray, predicted: FloatArray) -> dict[str, float | None]:
@@ -520,6 +526,10 @@ def _scores(actual: FloatArray, predicted: FloatArray) -> dict[str, float | None
 
 def _empty_scores() -> dict[str, float | None]:
     return {"rmse": None, "mae": None, "r2": None, "fit": None, "nrmse": None}
+
+
+def _to_prediction_metrics(scores: dict[str, float | None]) -> PredictionMetrics:
+    return PredictionMetrics(**scores)
 
 
 def _acf(residuals: FloatArray) -> ArxResidualDiagnostics:
