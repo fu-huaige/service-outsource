@@ -166,6 +166,9 @@ def generate_simulation(
         scenario=payload.scenario,
         file_path=_artifact_uri(csv_path, artifact_root),
         ground_truth_path=_artifact_uri(ground_truth_path, artifact_root),
+        manifest_path=_artifact_uri(manifest_path, artifact_root),
+        # This is completed by the API after the artifact is registered as a Dataset.
+        download_url="",
         num_rows=n_samples,
         num_cols=len(columns),
         columns=columns,

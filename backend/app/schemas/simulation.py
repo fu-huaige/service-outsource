@@ -79,6 +79,8 @@ class SimulationGenerateData(Schema):
     scenario: SimulationScenario
     file_path: str = Field(description="受控的相对仿真产物标识，不是服务器绝对路径。")
     ground_truth_path: str = Field(description="受控的相对真值产物标识，不是服务器绝对路径。")
+    manifest_path: str = Field(description="受控的仿真 manifest 相对路径。")
+    download_url: str = Field(description="通过数据资产接口下载真实 CSV 的 URL。")
     num_rows: int = Field(ge=0)
     num_cols: int = Field(ge=0)
     columns: list[str]

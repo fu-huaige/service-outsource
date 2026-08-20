@@ -65,7 +65,7 @@ export interface SystemInfoData {
 
 // Simulation API Types
 export interface SimulationGenerateRequest {
-  scenario: "S1" | "S2" | "S3" | "S4" | "S5";
+  scenario: "S1" | "S2" | "S3" | "S4" | "S5" | "S6";
   dataset_name: string;
   num_samples?: number;
   noise_level?: number;
@@ -95,10 +95,32 @@ export interface SimulationGenerateResponse {
   version_id: string;
   scenario: string;
   file_path: string;
+  ground_truth_path: string;
+  manifest_path: string;
+  download_url: string;
   num_rows: number;
   num_cols: number;
   columns: string[];
   ground_truth: SimulationGroundTruth;
+}
+
+export interface DashboardLeaderboardEntry {
+  dataset_id: string;
+  dataset_name: string;
+  version_id: string;
+  study_id: string;
+  status: string;
+  baseline_fit: number;
+  optimized_fit: number;
+  improvement: number;
+  validation_fit: number;
+  test_fit: number | null;
+  generalization_gap: number | null;
+  contribution_summary: string | null;
+}
+
+export interface DashboardLeaderboardResponse {
+  items: DashboardLeaderboardEntry[];
 }
 
 // Dataset API Types (Phase 3 Real Models)

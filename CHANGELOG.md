@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Fixed (unified dataset dashboard, 2026-08-20)
+
+- S1–S6 仿真生成后现在注册为真实 `Dataset`、根 `DatasetVersion`、列角色和数据质量 Profile；上传与仿真通过同一套数据集详情、Profile、版本和下载 API 查询；
+- 仿真生成响应返回真实 `dataset_id` / `version_id`、场景、产物路径、ground truth 摘要和真实 CSV 下载地址；
+- Dashboard Leaderboard 移除 S2/S3/S4、FIT 和优化步骤等静态演示数据，改为读取数据库中成功 Optuna study 的真实 trial 指标；
+- 修复仿真版本生成报告时 `source_version_id` 指向不存在外键而导致的 HTTP 500；
+- Simulation 下载改为下载后端已保存的真实 CSV；Cleaning API 失败时不再绘制正弦波假数据。
+
 ### Added
 
 - 阶段 1 FastAPI、Pydantic v2、SQLAlchemy Async、Alembic、Redis/RQ 工程骨架；

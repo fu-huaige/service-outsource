@@ -130,7 +130,7 @@ const handleGenerate = async () => {
       id: res.dataset_id,
       name: res.dataset_name,
       version_id: res.version_id,
-      file_size_bytes: res.num_rows * 50,
+      file_size_bytes: 0,
       row_count: res.num_rows,
       col_count: res.num_cols,
       created_at: new Date().toISOString(),
@@ -147,16 +147,8 @@ const handleGenerate = async () => {
 };
 
 const handleDownloadCSV = () => {
-  if (!result.value) return;
-  const content = "timestamp,u1,y\n" + Array.from({ length: 50 }, (_, i) => `${i},${Math.sin(i / 5)},${Math.sin(i / 5) * 2}`).join("\n");
-  const blob = new Blob([content], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${result.value.dataset_name}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-  ElMessage.success(`开始下载 ${result.value.dataset_name}.csv`);
+  if (!result.value?.download_url) return;
+  window.open(result.value.download_url, "_blank", "noopener");
 };
 
 const handleGoToARX = () => {

@@ -2,6 +2,7 @@ from typing import Annotated, Any, TypeVar
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Path, Query, Request, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -15,6 +16,7 @@ from app.schemas.copilot import (
     CopilotConfirmData,
     CopilotConfirmRequest,
 )
+from app.schemas.dashboard import DashboardLeaderboardData
 from app.schemas.datasets import (
     DatasetConfigData,
     DatasetConfigRequest,
@@ -57,12 +59,15 @@ from app.services.agent_service import AgentDomainError, run_copilot
 from app.services.benchmark_service import BenchmarkDomainError, run_benchmark
 from app.services.cleaning_service import CleaningDomainError, clean_dataset_version
 from app.services.contract_stubs import completed_task, queued_task
+from app.services.dashboard_service import get_dashboard_leaderboard
 from app.services.dataset_service import (
     DatasetDomainError,
     configure_dataset_columns,
     delete_dataset_asset,
     get_dataset_detail,
+    get_dataset_download,
     list_dataset_summaries,
+    register_simulation_dataset,
     upload_csv_dataset,
 )
 from app.services.dataset_service import (
@@ -156,19 +161,44 @@ async def system_info(request: Request) -> SuccessEnvelope[SystemInfoData]:
     )
 
 
+@router.get(
+    "/dashboard/leaderboard",
+    tags=["Dashboard"],
+    summary="List real completed optimisation studies ranked by validation free-run FIT",
+    response_model=SuccessEnvelope[DashboardLeaderboardData],
+    responses=ERROR_RESPONSES,
+)
+async def dashboard_leaderboard(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessEnvelope[DashboardLeaderboardData]:
+    return success(request, await get_dashboard_leaderboard(session))
+
+
 @router.post(
     "/simulation/generate",
     tags=["Simulation"],
-    summary="Generate an S1-S5 benchmark dataset",
+    summary="Generate and register an S1-S6 benchmark dataset",
     status_code=status.HTTP_201_CREATED,
     response_model=SuccessEnvelope[SimulationGenerateData],
     responses=ERROR_RESPONSES,
 )
 async def generate_simulation(
-    request: Request, payload: SimulationGenerateRequest
+    request: Request,
+    payload: SimulationGenerateRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SuccessEnvelope[SimulationGenerateData]:
     generated = generate_simulation_service(payload, artifact_root=get_settings().artifact_root)
-    return success(request, generated)
+    try:
+        registered = await register_simulation_dataset(
+            session,
+            generated=generated,
+            request=payload,
+            artifact_root=get_settings().artifact_root,
+        )
+    except DatasetDomainError as error:
+        raise AppError(error.code, error.message, status_code=error.status_code, details=error.details) from error
+    return success(request, registered)
 
 
 @router.post(
@@ -286,6 +316,27 @@ async def get_dataset(
             details=error.details,
         ) from error
     return success(request, data)
+
+
+@router.get(
+    "/datasets/{dataset_id}/download",
+    tags=["Datasets"],
+    summary="Download the exact CSV artifact of the active dataset version",
+    responses={404: {"model": ErrorEnvelope, "description": "数据集或 CSV 产物不存在。"}},
+)
+async def download_dataset(
+    dataset_id: DatasetId,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FileResponse:
+    try:
+        path, filename = await get_dataset_download(
+            session, dataset_id=dataset_id, artifact_root=get_settings().artifact_root
+        )
+    except DatasetDomainError as error:
+        raise AppError(
+            error.code, error.message, status_code=error.status_code, details=error.details
+        ) from error
+    return FileResponse(path, media_type="text/csv", filename=filename)
 
 
 @router.delete(

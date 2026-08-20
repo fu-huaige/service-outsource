@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -41,10 +42,12 @@ from app.schemas.datasets import (
     VersionEdge,
     VersionNode,
 )
+from app.schemas.simulation import SimulationGenerateData, SimulationGenerateRequest
 from app.services.dataset_csv import (
     DatasetCsvError,
     ParsedCsv,
     discard_staged_upload,
+    load_parsed_csv,
     move_to_immutable_storage,
     parse_csv,
     stage_upload,
@@ -184,6 +187,128 @@ async def upload_csv_dataset(
             discard_staged_upload(staged)
 
 
+async def register_simulation_dataset(
+    session: AsyncSession,
+    *,
+    generated: SimulationGenerateData,
+    request: SimulationGenerateRequest,
+    artifact_root: Path,
+) -> SimulationGenerateData:
+    """Register a generated CSV through the same Dataset/V0/Profile lifecycle as uploads."""
+
+    csv_path = artifact_root / generated.file_path
+    try:
+        parsed = load_parsed_csv(
+            artifact_root=artifact_root,
+            relative_path=generated.file_path,
+            encoding="utf-8",
+            delimiter=",",
+        )
+    except DatasetCsvError as error:
+        raise DatasetDomainError(error.code, error.message, details=error.details) from error
+
+    digest = _file_sha256(csv_path)
+    existing = await session.scalar(select(DatasetModel).where(DatasetModel.raw_sha256 == digest))
+    if existing is not None:
+        version = await _active_version_or_error(session, existing)
+        parameters = dict(version.parameters or {})
+        return generated.model_copy(
+            update={
+                "dataset_id": existing.id,
+                "dataset_name": existing.name,
+                "version_id": version.id,
+                "file_path": existing.raw_path,
+                "ground_truth_path": str(parameters.get("ground_truth_path") or ""),
+                "manifest_path": str(parameters.get("manifest_path") or ""),
+                "download_url": f"/api/v1/datasets/{existing.id}/download",
+            }
+        )
+    created_at = datetime.now(UTC)
+    dataset = DatasetModel(
+        id=generated.dataset_id,
+        name=generated.dataset_name,
+        source="simulation",
+        status="ready",
+        raw_sha256=digest,
+        raw_path=generated.file_path,
+        byte_size=csv_path.stat().st_size,
+        encoding="utf-8",
+        delimiter=",",
+        created_at=created_at,
+        updated_at=created_at,
+    )
+    version = DatasetVersionModel(
+        id=generated.version_id,
+        dataset_id=dataset.id,
+        version_index=0,
+        name="V0 · 仿真原始数据",
+        operation_name="simulation_generate",
+        parameters={
+            "csv_encoding": "utf-8",
+            "csv_delimiter": ",",
+            "scenario": generated.scenario,
+            "simulation_request": request.model_dump(mode="json"),
+            "ground_truth_path": generated.ground_truth_path,
+            "manifest_path": generated.manifest_path,
+            "ground_truth_summary": {
+                "true_na": generated.ground_truth.true_na,
+                "true_delays_by_input": generated.ground_truth.true_delays_by_input,
+                "seed": generated.ground_truth.seed,
+            },
+        },
+        artifact_path=generated.file_path,
+        sha256=digest,
+        row_count=len(parsed.rows),
+        column_count=len(parsed.headers),
+        time_range_start=min(parsed.timestamps),
+        time_range_end=max(parsed.timestamps),
+        created_at=created_at,
+    )
+    dataset.active_version_id = version.id
+    columns = [
+        DatasetColumnModel(
+            id=uuid4(),
+            dataset_id=dataset.id,
+            version_id=version.id,
+            position=position,
+            name=header,
+            inferred_type=parsed.inferred_types[header],
+            role=(
+                "timestamp"
+                if header == parsed.timestamp_column
+                else "input"
+                if header.startswith("u")
+                else "output"
+                if header == "y"
+                else "ignore"
+            ),
+            nullable=parsed.nullable[header],
+        )
+        for position, header in enumerate(parsed.headers)
+    ]
+    profile = _build_profile(dataset.id, version.id, parsed)
+    profile_record = DatasetProfileRecord(
+        id=uuid4(),
+        dataset_id=dataset.id,
+        version_id=version.id,
+        quality_score=float(profile["quality_score"]),
+        profile=profile,
+        created_at=created_at,
+        updated_at=created_at,
+    )
+    try:
+        session.add_all([dataset, version])
+        await session.flush()
+        session.add_all([*columns, profile_record])
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    return generated.model_copy(
+        update={"download_url": f"/api/v1/datasets/{dataset.id}/download"}
+    )
+
+
 async def list_dataset_summaries(
     session: AsyncSession, *, page: int, page_size: int
 ) -> DatasetListData:
@@ -236,6 +361,26 @@ async def get_dataset_detail(
             "recommended_downsample_factor": max(1, int((len(parsed.rows) + 9_999) / 10_000)),
         },
     )
+
+
+async def get_dataset_download(
+    session: AsyncSession, *, dataset_id: UUID, artifact_root: Path
+) -> tuple[Path, str]:
+    """Return the immutable artifact registered for the active dataset version."""
+
+    dataset = await _dataset_or_404(session, dataset_id)
+    version = await _active_version_or_error(session, dataset)
+    path = artifact_root / version.artifact_path
+    if not path.is_file():
+        raise DatasetDomainError(
+            "DATASET_ARTIFACT_MISSING",
+            "数据集 CSV 产物不存在。",
+            status_code=404,
+            details={"artifact_path": version.artifact_path},
+        )
+    suffix = Path(dataset.name).suffix or ".csv"
+    filename = f"{Path(dataset.name).stem}{suffix}"
+    return path, filename
 
 
 async def delete_dataset_asset(session: AsyncSession, *, dataset_id: UUID) -> None:
@@ -535,3 +680,11 @@ def _display_name(display_name: str | None, filename: str) -> str:
 
 def _delimiter_label(delimiter: str) -> str:
     return {",": "comma", ";": "semicolon", "\t": "tab"}.get(delimiter, delimiter)
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        while chunk := source.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()

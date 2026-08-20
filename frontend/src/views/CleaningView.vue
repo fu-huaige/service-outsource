@@ -99,17 +99,9 @@ const handleClean = async () => {
     const res = await cleanDataset(form);
     cleanedData.value = res;
     ElMessage.success(`成功生成清洗后数据版本: ${res.new_version_id}`);
-  } catch (err) {
-    // Mock fallback for Phase 1
-    cleanedData.value = {
-      dataset_id: form.dataset_id,
-      new_version_id: "V1_Cleaned",
-      raw_series: Array.from({ length: 60 }, (_, i) => 10 + Math.sin(i / 4) * 5 + (i === 15 || i === 42 ? 35 : 0)),
-      cleaned_series: Array.from({ length: 60 }, (_, i) => 10 + Math.sin(i / 4) * 5),
-      replaced_indices: [15, 42],
-      total_cleaned_points: 14,
-    };
-    ElMessage.success("成功生成清洗后数据版本: V1_Cleaned");
+  } catch (err: any) {
+    cleanedData.value = null;
+    ElMessage.error(`清洗失败 [${err.code || "ERR"}]: ${err.message || "未知错误"}`);
   } finally {
     loading.value = false;
   }

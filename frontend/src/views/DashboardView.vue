@@ -9,23 +9,23 @@
     <div class="stat-cards">
       <div class="industrial-card stat-card">
         <div class="stat-title">活跃数据集</div>
-        <div class="stat-val">{{ datasetStore.datasetsList.length || 5 }} <span class="unit">个</span></div>
-        <div class="stat-sub">最新数据: S4_Noise_Data</div>
+        <div class="stat-val">{{ datasetCount }} <span class="unit">个</span></div>
+        <div class="stat-sub">上传与仿真数据均计入</div>
       </div>
       <div class="industrial-card stat-card">
         <div class="stat-title">最高辨识 FIT 拟合度</div>
-        <div class="stat-val highlight">89.2%</div>
-        <div class="stat-sub">数据集: S3_Simulation_Opt</div>
+        <div class="stat-val highlight">{{ topEntry ? formatFit(topEntry.validation_fit) : "—" }}</div>
+        <div class="stat-sub">{{ topEntry ? topEntry.dataset_name : "暂无已完成寻优" }}</div>
       </div>
       <div class="industrial-card stat-card">
-        <div class="stat-title">已执行闭环 Trial</div>
-        <div class="stat-val">128 <span class="unit">次</span></div>
-        <div class="stat-sub">收敛率: 94.2%</div>
+        <div class="stat-title">已完成闭环研究</div>
+        <div class="stat-val">{{ leaderboardData.length }} <span class="unit">项</span></div>
+        <div class="stat-sub">仅统计真实成功的 Optuna study</div>
       </div>
       <div class="industrial-card stat-card">
-        <div class="stat-title">Agent 调度状态</div>
-        <div class="stat-val success-text">Standby</div>
-        <div class="stat-sub">白名单工具 12 个就绪</div>
+        <div class="stat-title">排行榜数据源</div>
+        <div class="stat-val success-text">{{ loadError ? "不可用" : "真实记录" }}</div>
+        <div class="stat-sub">仅使用数据库中已完成的寻优结果</div>
       </div>
     </div>
 
@@ -38,7 +38,7 @@
       </div>
       <div class="action-buttons">
         <el-button type="primary" size="large" icon="Plus" @click="$router.push('/simulation')">
-          新建 S1-S5 仿真数据集
+          新建 S1-S6 仿真数据集
         </el-button>
         <el-button type="success" size="large" icon="Upload" @click="$router.push('/datasets')">
           上传工业 CSV 数据集
@@ -57,42 +57,67 @@
         </div>
         <el-tag type="info">按验证集 FIT 排名</el-tag>
       </div>
-      <el-table :data="leaderboardData" stripe style="width: 100%">
-        <el-table-column prop="name" label="数据集名称" width="180" />
-        <el-table-column prop="baselineFit" label="基线 FIT" width="120" />
-        <el-table-column prop="optimizedFit" label="优化后 FIT" width="130">
+      <el-alert v-if="loadError" type="error" :title="loadError" show-icon :closable="false" style="margin-bottom: 16px" />
+      <el-table v-if="leaderboardData.length" :data="leaderboardData" stripe style="width: 100%">
+        <el-table-column prop="dataset_name" label="数据集名称" width="180" />
+        <el-table-column label="首轮验证 FIT" width="120">
+          <template #default="{ row }">{{ formatFit(row.baseline_fit) }}</template>
+        </el-table-column>
+        <el-table-column label="优化后验证 FIT" width="130">
           <template #default="{ row }">
-            <span class="fit-val">{{ row.optimizedFit }}</span>
+            <span class="fit-val">{{ formatFit(row.optimized_fit) }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="improvement" label="提升幅度" width="120">
           <template #default="{ row }">
-            <span class="improvement-text">+{{ row.improvement }}</span>
+            <span :class="row.improvement >= 0 ? 'improvement-text' : 'risk-text'">{{ formatSigned(row.improvement) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="keyAction" label="主要优化贡献步骤" />
+        <el-table-column label="真实最优参数">
+          <template #default="{ row }">{{ row.contribution_summary || "—" }}</template>
+        </el-table-column>
+        <el-table-column label="泛化风险" width="150">
+          <template #default="{ row }">
+            {{ row.generalization_gap === null ? "暂无测试集指标" : `测试差距 ${formatFit(row.generalization_gap)}` }}
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="120">
           <template #default="{ row }">
-            <el-button type="primary" text size="small" @click="$router.push(`/datasets/${row.id}`)">查看细节</el-button>
+            <el-button type="primary" text size="small" @click="goToDataset(row.dataset_id)">查看细节</el-button>
           </template>
         </el-table-column>
       </el-table>
+      <el-empty v-else description="暂无已完成的闭环寻优结果。请先生成或上传数据集并完成一次闭环寻优。" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { Lightning, Trophy } from "@element-plus/icons-vue";
-import { useDatasetStore } from "../stores/datasetStore";
+import { useRouter } from "vue-router";
+import { getDashboardLeaderboard } from "../api/dashboard";
+import { getDatasets } from "../api/datasets";
+import type { DashboardLeaderboardEntry } from "../types/api";
 
-const datasetStore = useDatasetStore();
+const router = useRouter();
+const datasetCount = ref(0);
+const loadError = ref("");
+const leaderboardData = ref<DashboardLeaderboardEntry[]>([]);
+const topEntry = computed(() => leaderboardData.value[0] ?? null);
+const formatFit = (value: number) => value.toFixed(2) + "%";
+const formatSigned = (value: number) => (value >= 0 ? "+" : "") + value.toFixed(2) + "%";
+const goToDataset = (datasetId: string) => router.push("/datasets/" + datasetId);
 
-const leaderboardData = ref([
-  { id: "ds_s3", name: "S3_Simulation", baselineFit: "42.1%", optimizedFit: "89.2%", improvement: "47.1%", keyAction: "动态截取 + 时滞补偿 (delay=5)" },
-  { id: "ds_s4", name: "S4_Noise_Data", baselineFit: "31.0%", optimizedFit: "78.5%", improvement: "47.5%", keyAction: "Hampel 异常清洗 + Ridge 估计" },
-  { id: "ds_s2", name: "S2_Multi_Input", baselineFit: "55.4%", optimizedFit: "84.1%", improvement: "28.7%", keyAction: "共线性剔除 U2 + 滞后步数对齐" },
-]);
+onMounted(async () => {
+  try {
+    const [datasets, leaderboard] = await Promise.all([getDatasets(1, 1), getDashboardLeaderboard()]);
+    datasetCount.value = datasets.page?.total ?? datasets.items.length;
+    leaderboardData.value = leaderboard.items;
+  } catch (error: any) {
+    loadError.value = "获取真实 Dashboard 数据失败：" + (error.message || "未知错误");
+  }
+});
 </script>
 
 <style scoped>
@@ -161,6 +186,12 @@ const leaderboardData = ref([
 
 .improvement-text {
   color: var(--color-success);
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+.risk-text {
+  color: var(--color-danger);
   font-weight: 600;
   font-family: var(--font-mono);
 }
