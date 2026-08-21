@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict
 from datetime import UTC, datetime
 from math import ceil
@@ -107,6 +107,7 @@ async def clean_dataset_version(
         raise CleaningDomainError("INVALID_DATASET_SCHEMA", "数据版本不包含可清洗的数值列。")
 
     derived_version_id = uuid4()
+    processing_run_id = uuid4()
     artifact_path: str | None = None
     try:
         artifact_path, checksum = write_derived_csv(
@@ -165,7 +166,7 @@ async def clean_dataset_version(
             updated_at=now,
         )
         run = ProcessingRun(
-            id=uuid4(),
+            id=processing_run_id,
             dataset_id=dataset.id,
             source_version_id=source_version.id,
             run_type="preprocessing.clean",
@@ -174,11 +175,13 @@ async def clean_dataset_version(
             result={
                 "derived_version_id": str(derived_version.id),
                 "total_cleaned_points": result.total_changed_points,
+                "change_summary": result.change_summary,
                 "outlier_counts": {
                     column: len(indices)
                     for column, indices in result.detected_outlier_indices.items()
                 },
-                "frozen_segment_count": len(result.frozen_segments),
+                "constant_value_segment_count": len(result.constant_value_segments),
+                "candidate_frozen_segment_count": len(result.candidate_frozen_segments),
                 "warnings": result.warnings,
             },
             created_at=now,
@@ -195,6 +198,7 @@ async def clean_dataset_version(
                     "algorithm": CleaningPipeline.name,
                     "parameters": _jsonable_parameters(parameters),
                     "total_cleaned_points": result.total_changed_points,
+                    "change_summary": result.change_summary,
                     "replaced_indices": result.changed_indices,
                     "executed_at": now.isoformat(),
                 },
@@ -220,6 +224,9 @@ async def clean_dataset_version(
         source_version_id=source_version.id,
         derived_version_id=derived_version_id,
         source_columns=source_columns,
+        source_row_count=source_version.row_count,
+        processing_run_id=processing_run_id,
+        parameters=parameters,
         result=result,
     )
 
@@ -311,10 +318,14 @@ def _version_parameters(
         "request": payload.model_dump(mode="json", exclude_none=True),
         "resolved_parameters": _jsonable_parameters(parameters),
         "total_cleaned_points": result.total_changed_points,
+        "change_summary": result.change_summary,
         "detected_outlier_counts": {
             column: len(indices) for column, indices in result.detected_outlier_indices.items()
         },
-        "frozen_segment_count": len(result.frozen_segments),
+        "constant_value_segment_count": len(result.constant_value_segments),
+        "constant_value_segments": result.constant_value_segments,
+        "candidate_frozen_segment_count": len(result.candidate_frozen_segments),
+        "candidate_frozen_segments": result.candidate_frozen_segments,
         "warnings": result.warnings,
         "csv_encoding": "utf-8",
         "csv_delimiter": ",",
@@ -325,12 +336,51 @@ def _jsonable_parameters(parameters: CleaningParameters) -> dict[str, object]:
     return asdict(parameters)
 
 
+def replay_cleaning_audit(
+    *,
+    dataset: Dataset,
+    source_version: DatasetVersion,
+    resolved_parameters: Mapping[str, object],
+    artifact_root: Path,
+) -> dict[str, object]:
+    """Rebuild read-only audit counts for a legacy immutable Cleaning version.
+
+    The function only reads the parent CSV and runs the deterministic pure pipeline. It
+    never persists a version, profile, processing run, or artifact.
+    """
+
+    parameters = CleaningParameters(**dict(resolved_parameters))  # type: ignore[arg-type]
+    parsed = load_version_csv(
+        dataset=dataset,
+        version=source_version,
+        artifact_root=artifact_root,
+    )
+    result = CleaningPipeline().execute(
+        CleaningContext(
+            headers=parsed.headers,
+            timestamp_column=parsed.timestamp_column,
+            timestamps=parsed.timestamps,
+            rows=parsed.rows,
+            inferred_types=parsed.inferred_types,
+        ),
+        parameters,
+    )
+    return {
+        "change_summary": result.change_summary,
+        "constant_value_segment_count": len(result.constant_value_segments),
+        "candidate_frozen_segment_count": len(result.candidate_frozen_segments),
+    }
+
+
 def _clean_data(
     *,
     dataset_id: UUID,
     source_version_id: UUID,
     derived_version_id: UUID,
     source_columns: Sequence[DatasetColumn],
+    source_row_count: int,
+    processing_run_id: UUID,
+    parameters: CleaningParameters,
     result: CleaningResult,
 ) -> CleanData:
     series, downsample_factor = _series_projection(result)
@@ -346,12 +396,38 @@ def _clean_data(
         series=series,
         dataset_id=dataset_id,
         new_version_id=derived_version_id,
+        processing_run_id=processing_run_id,
         raw_series=selected.raw_series,
         cleaned_series=selected.cleaned_series,
         replaced_indices=selected.replaced_indices,
         total_cleaned_points=result.total_changed_points,
         warnings=result.warnings,
         recommended_downsample_factor=downsample_factor,
+        summary={
+            "rows_before": source_row_count,
+            "rows_after": len(result.timestamps),
+            "columns_before": len(source_columns),
+            "columns_after": len(source_columns),
+            "changes": result.change_summary,
+            "missing": {
+                "method": _jsonable_parameters(parameters).get("interpolation"),
+                "filled_cells": result.change_summary["missing_value_fills"],
+            },
+            "outliers": {
+                "method": _jsonable_parameters(parameters).get("outlier_detector"),
+                "detected": sum(len(indices) for indices in result.detected_outlier_indices.values()),
+                "repaired": result.change_summary["outlier_replacements"],
+            },
+            "smoothing": {
+                "method": _jsonable_parameters(parameters).get("smoothing"),
+                "window": _jsonable_parameters(parameters).get("smoothing_window"),
+                "changed_cells": result.change_summary["smoothing_changes"],
+            },
+            "constant_value_segments": {
+                "audit_count": len(result.constant_value_segments),
+                "candidate_abnormal_count": len(result.candidate_frozen_segments),
+            },
+        },
     )
 
 

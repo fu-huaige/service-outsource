@@ -155,3 +155,29 @@ def test_upload_detects_gbk_and_semicolon_delimiter(dataset_client: TestClient) 
     detail = dataset_client.get(f"/api/v1/datasets/{dataset['id']}")
     assert detail.status_code == 200
     assert detail.json()["data"]["preview"]["columns"] == ["时间", "u1", "y"]
+
+
+def test_detail_preview_is_bounded_real_data_and_get_does_not_change_lineage(
+    dataset_client: TestClient,
+) -> None:
+    lines = ["timestamp,u1,y"]
+    for index in range(150):
+        minute, second = divmod(index, 60)
+        lines.append(f"2026-01-01 00:{minute:02d}:{second:02d},{index},{index * 2}")
+    uploaded = _upload(dataset_client, ("\n".join(lines) + "\n").encode())
+    dataset = uploaded["dataset"]
+    assert isinstance(dataset, dict)
+    dataset_id = dataset["id"]
+    before = dataset_client.get(f"/api/v1/datasets/{dataset_id}/versions").json()["data"]
+
+    response = dataset_client.get(f"/api/v1/datasets/{dataset_id}")
+
+    assert response.status_code == 200
+    preview = response.json()["data"]["preview"]
+    assert preview["columns"] == ["timestamp", "u1", "y"]
+    assert len(preview["rows"]) == 100
+    assert preview["rows"][0]["u1"] == 0
+    assert preview["rows"][99]["y"] == 198
+    assert preview["truncated"] is True
+    after = dataset_client.get(f"/api/v1/datasets/{dataset_id}/versions").json()["data"]
+    assert after == before

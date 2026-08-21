@@ -44,8 +44,11 @@ from app.schemas.preprocessing import (
     CollinearityRequest,
     DelayData,
     DelayRequest,
+    FeatureSelectionApplyRequest,
+    LagCompensationRequest,
     SegmentData,
     SegmentRequest,
+    VersionApplyData,
 )
 from app.schemas.reporting import (
     ExportDatasetData,
@@ -96,6 +99,11 @@ from app.services.report_service import (
 )
 from app.services.segment_service import SegmentDomainError, select_dynamic_segments
 from app.services.simulation_service import generate_simulation as generate_simulation_service
+from app.services.versioned_preprocessing_service import (
+    VersionedPreprocessingError,
+    apply_feature_selection,
+    apply_lag_compensation,
+)
 
 router = APIRouter()
 DataT = TypeVar("DataT")
@@ -323,16 +331,17 @@ async def get_dataset(
 @router.get(
     "/datasets/{dataset_id}/download",
     tags=["Datasets"],
-    summary="Download the exact CSV artifact of the active dataset version",
+    summary="Download the active or explicitly requested immutable CSV version",
     responses={404: {"model": ErrorEnvelope, "description": "数据集或 CSV 产物不存在。"}},
 )
 async def download_dataset(
     dataset_id: DatasetId,
     session: Annotated[AsyncSession, Depends(get_session)],
+    version_id: Annotated[UUID | None, Query(description="可选的 DatasetVersion UUID。")] = None,
 ) -> FileResponse:
     try:
         path, filename = await get_dataset_download(
-            session, dataset_id=dataset_id, artifact_root=get_settings().artifact_root
+            session, dataset_id=dataset_id, version_id=version_id, artifact_root=get_settings().artifact_root
         )
     except DatasetDomainError as error:
         raise AppError(
@@ -376,9 +385,12 @@ async def get_dataset_profile(
     request: Request,
     dataset_id: DatasetId,
     session: Annotated[AsyncSession, Depends(get_session)],
+    version_id: Annotated[UUID | None, Query(description="可选的 DatasetVersion UUID。")] = None,
 ) -> SuccessEnvelope[DatasetProfile]:
     try:
-        data = await get_dataset_profile_service(session, dataset_id=dataset_id)
+        data = await get_dataset_profile_service(
+            session, dataset_id=dataset_id, version_id=version_id
+        )
     except DatasetDomainError as error:
         raise AppError(
             error.code,
@@ -402,7 +414,11 @@ async def get_dataset_versions(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SuccessEnvelope[DatasetVersionsData]:
     try:
-        data = await get_dataset_versions_service(session, dataset_id=dataset_id)
+        data = await get_dataset_versions_service(
+            session,
+            dataset_id=dataset_id,
+            artifact_root=get_settings().artifact_root,
+        )
     except DatasetDomainError as error:
         raise AppError(
             error.code,
@@ -507,6 +523,28 @@ async def estimate_delay(
 
 
 @router.post(
+    "/preprocessing/delay/apply",
+    tags=["Preprocessing"],
+    summary="Apply confirmed lag compensation and create an immutable DatasetVersion",
+    status_code=status.HTTP_201_CREATED,
+    response_model=SuccessEnvelope[VersionApplyData],
+    responses=ERROR_RESPONSES,
+)
+async def apply_delay_compensation(
+    request: Request,
+    payload: LagCompensationRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessEnvelope[VersionApplyData]:
+    try:
+        data = await apply_lag_compensation(
+            session, payload=payload, artifact_root=get_settings().artifact_root
+        )
+    except VersionedPreprocessingError as error:
+        raise AppError(error.code, error.message, status_code=error.status_code, details=error.details) from error
+    return success(request, data)
+
+
+@router.post(
     "/preprocessing/collinearity",
     tags=["Preprocessing"],
     summary="Queue Pearson and VIF collinearity diagnostics",
@@ -534,6 +572,28 @@ async def analyze_collinearity(
             status_code=error.status_code,
             details=error.details,
         ) from error
+    return success(request, data)
+
+
+@router.post(
+    "/preprocessing/features/apply",
+    tags=["Preprocessing"],
+    summary="Drop confirmed redundant inputs and create an immutable DatasetVersion",
+    status_code=status.HTTP_201_CREATED,
+    response_model=SuccessEnvelope[VersionApplyData],
+    responses=ERROR_RESPONSES,
+)
+async def apply_features(
+    request: Request,
+    payload: FeatureSelectionApplyRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessEnvelope[VersionApplyData]:
+    try:
+        data = await apply_feature_selection(
+            session, payload=payload, artifact_root=get_settings().artifact_root
+        )
+    except VersionedPreprocessingError as error:
+        raise AppError(error.code, error.message, status_code=error.status_code, details=error.details) from error
     return success(request, data)
 
 

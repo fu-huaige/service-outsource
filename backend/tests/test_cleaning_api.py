@@ -11,7 +11,7 @@ import pytest
 from app.core.config import Settings
 from app.core.db import get_session
 from app.main import create_app
-from app.models import Base
+from app.models import Base, DatasetVersion
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -33,6 +33,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
 
     monkeypatch.setattr("app.api.routes.get_settings", lambda: Settings(artifact_root=tmp_path))
     app = create_app()
+    app.state.session_factory = session_factory
     app.dependency_overrides[get_session] = session_override
     with TestClient(app) as client:
         yield client
@@ -68,6 +69,69 @@ def upload(client: TestClient, content: bytes) -> str:
 
 
 class TestCleaningRoute:
+    def test_canonical_default_cleaning_contract_creates_a_derived_version(
+        self, client: TestClient
+    ) -> None:
+        version_id = upload(client, build_csv())
+
+        response = client.post(
+            "/api/v1/preprocessing/clean",
+            json={
+                "version_id": version_id,
+                "target_sample_period_seconds": 1.0,
+                "interpolation": "linear",
+                "anomaly_detector": "hampel",
+                "hampel_window": 5,
+            },
+        )
+
+        assert response.status_code == 202, response.text
+        assert response.json()["data"]["source_version_id"] == version_id
+
+    def test_validation_failure_exposes_field_details_without_calling_cleaning_service(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        source_version_id = upload(client, build_csv())
+        dataset_id = client.get("/api/v1/datasets").json()["data"]["items"][0]["id"]
+        before = client.get(f"/api/v1/datasets/{dataset_id}/versions").json()["data"]
+        called = False
+
+        async def cleaning_service_must_not_run(*args: object, **kwargs: object) -> None:
+            nonlocal called
+            called = True
+            raise AssertionError("Pydantic validation must reject this request before service execution")
+
+        monkeypatch.setattr(
+            "app.api.routes.clean_dataset_version", cleaning_service_must_not_run
+        )
+        response = client.post(
+            "/api/v1/preprocessing/clean",
+            json={
+                "dataset_id": dataset_id,
+                "version_id": "V0_Original",
+                "target_sample_period_seconds": 1.0,
+                "interpolation": "linear",
+                "anomaly_detector": "hampel",
+                "hampel_window": 5,
+            },
+        )
+
+        assert response.status_code == 422
+        issues = response.json()["error"]["details"]["issues"]
+        assert issues == [
+            {
+                "type": "uuid_parsing",
+                "loc": ["body", "version_id"],
+                "msg": "Input should be a valid UUID, invalid character: found `V` at 1",
+                "input": "V0_Original",
+                "ctx": {"error": "invalid character: found `V` at 1"},
+            }
+        ]
+        assert called is False
+        after = client.get(f"/api/v1/datasets/{dataset_id}/versions").json()["data"]
+        assert after["active_version_id"] == source_version_id
+        assert after["nodes"] == before["nodes"]
+
     def test_clean_creates_a_derived_version_and_reports_changes(self, client: TestClient) -> None:
         version_id = upload(client, build_csv())
 
@@ -106,9 +170,91 @@ class TestCleaningRoute:
         assert derived_id in by_id
         assert by_id[derived_id]["parent_version_id"] == version_id
         assert by_id[derived_id]["tool"] == "preprocessing.clean"
+        parameters = by_id[derived_id]["parameters"]
+        assert "constant_value_segment_count" in parameters
+        assert "candidate_frozen_segment_count" in parameters
+        assert "change_summary" in parameters
+        assert "frozen_segment_count" not in parameters
+        assert by_id[derived_id]["audit_summary"]["processing"]["count_unit"] == "cell"
         assert {"source": version_id, "target": derived_id} in [
             {"source": edge["source"], "target": edge["target"]} for edge in payload["edges"]
         ]
+
+    def test_change_summary_separates_missing_outlier_and_other_operations(
+        self, client: TestClient
+    ) -> None:
+        version_id = upload(client, build_csv())
+        response = client.post(
+            "/api/v1/preprocessing/clean",
+            json={
+                "version_id": version_id,
+                "target_sample_period_seconds": 1.0,
+                "interpolation": "linear",
+                "anomaly_detector": "hampel",
+                "hampel_window": 5,
+            },
+        )
+        assert response.status_code == 202, response.text
+        data = response.json()["data"]
+        changes = data["summary"]["changes"]
+
+        assert changes["count_unit"] == "cell"
+        assert changes["unique_changed_cells"] == data["total_cleaned_points"]
+        assert changes["missing_value_fills"] >= 5
+        assert changes["outlier_replacements"] >= 1
+        assert changes["smoothing_changes"] == 0
+        assert changes["duplicate_timestamps_processed"] == 0
+        assert changes["category_counts_may_overlap"] is True
+        assert data["summary"]["outliers"]["repaired"] == changes["outlier_replacements"]
+
+    def test_regular_holds_are_not_reported_as_many_candidate_freezes(
+        self, client: TestClient
+    ) -> None:
+        version_id = upload(client, build_csv(rows=480, gap=(450, 450)))
+        response = client.post(
+            "/api/v1/preprocessing/clean",
+            json={"version_id": version_id, "anomaly_strategy": "keep"},
+        )
+        assert response.status_code == 202, response.text
+        data = response.json()["data"]
+        assert all("冻结段" not in warning for warning in data["warnings"])
+
+    def test_legacy_cleaning_metadata_is_enriched_for_display_without_rewrite(
+        self, client: TestClient
+    ) -> None:
+        source_version_id = upload(client, build_csv())
+        cleaned = client.post(
+            "/api/v1/preprocessing/clean",
+            json={"version_id": source_version_id, "anomaly_strategy": "keep"},
+        )
+        assert cleaned.status_code == 202, cleaned.text
+        derived_id = cleaned.json()["data"]["derived_version_id"]
+        dataset_id = cleaned.json()["data"]["dataset_id"]
+
+        async def make_metadata_legacy() -> dict[str, object]:
+            async with client.app.state.session_factory() as session:
+                version = await session.get(DatasetVersion, derived_id)
+                assert version is not None
+                parameters = dict(version.parameters)
+                old_count = int(parameters.pop("constant_value_segment_count"))
+                parameters.pop("constant_value_segments")
+                parameters.pop("candidate_frozen_segment_count")
+                parameters.pop("candidate_frozen_segments")
+                parameters.pop("change_summary")
+                parameters["frozen_segment_count"] = old_count
+                version.parameters = parameters
+                await session.commit()
+                return parameters
+
+        stored_parameters = asyncio.run(make_metadata_legacy())
+        lineage = client.get(f"/api/v1/datasets/{dataset_id}/versions")
+        assert lineage.status_code == 200, lineage.text
+        node = next(item for item in lineage.json()["data"]["nodes"] if item["id"] == derived_id)
+
+        assert node["parameters"] == stored_parameters
+        assert node["audit_summary"]["freeze"]["historical_constant_value_segment_count"] >= 1
+        assert node["audit_summary"]["processing"]["count_unit"] == "cell"
+        assert "change_summary" not in node["parameters"]
 
     def test_raw_version_is_never_mutated(self, client: TestClient) -> None:
         version_id = upload(client, build_csv())

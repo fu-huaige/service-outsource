@@ -95,6 +95,12 @@
               </template>
             </el-table-column>
           </el-table>
+          <div class="apply-actions">
+            <el-alert type="warning" :closable="false" show-icon title="应用会创建新版本：保持 y 与时间轴不变，将每个输入改为 u(t-nk)，并裁剪开头无效行。此操作不会覆盖源版本。" />
+            <el-button type="warning" :loading="applying" :disabled="!!result.uncertain_columns.length" @click="handleApply">
+              确认应用时滞补偿并创建版本
+            </el-button>
+          </div>
         </div>
 
         <div class="industrial-card">
@@ -118,14 +124,15 @@
 import { computed, reactive, ref } from "vue";
 import { DataLine, Search, Timer, TrendCharts } from "@element-plus/icons-vue";
 import ChartContainer from "../components/ChartContainer.vue";
-import { calculateDelay } from "../api/preprocessing";
+import { applyLagCompensation, calculateDelay } from "../api/preprocessing";
 import type { DelayRequest, DelayResponse } from "../types/api";
 import { ApiError } from "../api/client";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 
 const PALETTE = ["#2A9D8F", "#F4A261", "#1E6091", "#E76F51", "#8E7DBE", "#457B9D"];
 
 const loading = ref(false);
+const applying = ref(false);
 const result = ref<DelayResponse | null>(null);
 const errorMessage = ref("");
 const inputColumnsText = ref("u1,u2");
@@ -163,6 +170,29 @@ const handleEstimate = async () => {
     errorMessage.value = err instanceof ApiError ? err.message : String(err);
   } finally {
     loading.value = false;
+  }
+};
+
+const handleApply = async () => {
+  if (!result.value) return;
+  try {
+    await ElMessageBox.confirm("将创建新的不可变 DatasetVersion，源版本不会被覆盖。是否继续？", "确认时滞补偿", { type: "warning" });
+    applying.value = true;
+    const applied = await applyLagCompensation({
+      version_id: form.version_id,
+      lag_map: result.value.best_delays,
+      user_confirmed: true,
+      recommendation_source: "delay_analysis",
+      evidence_summary: Object.fromEntries(
+        Object.entries(result.value.best_delays).map(([column, lag]) => [column, `validation-refined nk=${lag}`])
+      ),
+    });
+    ElMessage.success(`已创建时滞补偿版本：${applied.result_version_id}`);
+    form.version_id = applied.result_version_id;
+  } catch (err) {
+    if (err !== "cancel") ElMessage.error(err instanceof ApiError ? err.message : String(err));
+  } finally {
+    applying.value = false;
   }
 };
 
@@ -245,6 +275,13 @@ const formatNumber = (value: number | null | undefined) => {
 
 .candidate-tag {
   margin-right: 4px;
+}
+
+.apply-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
 }
 
 .chart-note {

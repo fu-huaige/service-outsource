@@ -85,6 +85,38 @@ def test_simulation_is_registered_as_dataset_version_profile_and_download(
     assert downloaded.text.splitlines()[0] == "timestamp,u1,u2,y"
 
 
+def test_s4_lineage_separates_user_request_from_ground_truth_resolved_parameters(
+    lifecycle_client: TestClient,
+) -> None:
+    response = lifecycle_client.post(
+        "/api/v1/simulation/generate",
+        json={
+            "scenario": "S4",
+            "num_samples": 1_200,
+            "noise_level": 0,
+            "anomaly_rate": 0,
+            "missing_rate": 0,
+            "seed": 9_999,
+        },
+    )
+    assert response.status_code == 201, response.text
+    dataset_id = response.json()["data"]["dataset_id"]
+    lineage = lifecycle_client.get(f"/api/v1/datasets/{dataset_id}/versions")
+    assert lineage.status_code == 200, lineage.text
+    node = lineage.json()["data"]["nodes"][0]
+
+    assert node["parameters"]["simulation_request"]["anomaly_rate"] == 0
+    assert node["parameters"]["simulation_request"]["missing_rate"] == 0
+    resolved = node["parameters"]["resolved_scenario_parameters"]
+    assert resolved["noise_level"] == 0
+    assert resolved["anomaly_count_by_column"] == {"y": 12}
+    assert resolved["missing_count_by_column"] == {"u1": 36, "y": 36}
+    assert resolved["irregular_timestamp_count"] == 19
+    assert resolved["duplicate_timestamp_count"] == 12
+    assert node["provenance"]["user_request"]["anomaly_rate"] == 0
+    assert node["provenance"]["resolved_scenario_parameters"] == resolved
+
+
 def test_simulation_report_and_empty_dashboard_use_real_asset_lifecycle(
     lifecycle_client: TestClient,
 ) -> None:

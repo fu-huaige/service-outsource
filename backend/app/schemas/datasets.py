@@ -95,6 +95,19 @@ class ColumnStatistics(Schema):
     q75: float | None = None
 
 
+class FrozenSegment(Schema):
+    column: str
+    start_index: int = Field(ge=0)
+    end_index: int = Field(ge=0)
+    length: int = Field(ge=1)
+
+
+class FreezeDetectionSummary(Schema):
+    candidate_count: int = Field(ge=0)
+    affected_column_count: int = Field(ge=0)
+    longest_segment: FrozenSegment | None = None
+
+
 class DatasetProfile(Schema):
     dataset_id: UUID
     version_id: UUID
@@ -106,7 +119,9 @@ class DatasetProfile(Schema):
     duplicate_timestamp_count: int = Field(ge=0)
     irregular_sampling_rate: float = Field(ge=0, le=1)
     constant_columns: list[str]
-    frozen_segments: list[dict[str, int | str]]
+    frozen_segments: list[FrozenSegment]
+    candidate_frozen_segments: list[FrozenSegment] = Field(default_factory=list)
+    freeze_detection_summary: FreezeDetectionSummary | None = None
     recommended_downsample_factor: int = Field(ge=1)
     quality_issues: list[QualityIssue]
     total_rows: int = Field(ge=0)
@@ -128,6 +143,12 @@ class VersionNode(Schema):
     created_at: datetime
     parent_version_id: UUID | None = None
     parameters: dict[str, Any] = Field(default_factory=dict)
+    row_count: int = Field(ge=0)
+    column_count: int = Field(ge=0)
+    artifact_path: str
+    processing_run_id: UUID | None = None
+    audit_summary: dict[str, Any] = Field(default_factory=dict)
+    provenance: dict[str, Any] = Field(default_factory=dict)
 
 
 class VersionEdge(Schema):

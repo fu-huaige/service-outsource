@@ -36,22 +36,14 @@ export interface TaskResource {
 
 // System API Types
 export interface LivenessData {
-  status: string;
-  uptime_seconds: number;
-}
-
-export interface ComponentHealth {
-  status: string;
-  latency_ms?: number | null;
-  error?: string | null;
+  status: "ok";
+  service: string;
 }
 
 export interface ReadinessData {
-  status: string;
-  components: {
-    postgres: ComponentHealth;
-    redis: ComponentHealth;
-  };
+  status: "ready";
+  database: "connected";
+  queue: "connected";
 }
 
 export interface SystemInfoData {
@@ -155,7 +147,14 @@ export interface DatasetItem {
   input_columns: string[];
   output_column: string | null;
   columns?: DatasetColumnInfo[];
-  preview?: Record<string, any>[];
+  preview?: DatasetPreview | null;
+}
+
+export interface DatasetPreview {
+  columns: string[];
+  rows: Array<Record<string, string | number | boolean | null>>;
+  truncated: boolean;
+  recommended_downsample_factor: number;
 }
 
 export interface DatasetListResponse {
@@ -201,7 +200,9 @@ export interface DatasetProfile {
   interval_histogram: Array<{ bin: number; count: number }>;
   duplicate_timestamp_count?: number;
   irregular_sampling_rate?: number;
-  frozen_segments?: number;
+  frozen_segments?: FrozenSegment[];
+  candidate_frozen_segments?: FrozenSegment[];
+  freeze_detection_summary?: FreezeDetectionSummary | null;
   constant_columns?: string[];
   time_range_start?: string | null;
   time_range_end?: string | null;
@@ -212,12 +213,45 @@ export interface DatasetProfile {
   quality_issues?: string[];
 }
 
+export interface FrozenSegment {
+  column: string;
+  start_index: number;
+  end_index: number;
+  length: number;
+}
+
+export interface FreezeDetectionSummary {
+  candidate_count: number;
+  affected_column_count: number;
+  longest_segment: FrozenSegment | null;
+}
+
 export interface DatasetVersionNode {
-  version_id: string;
+  id: string;
+  name: string;
+  tool: string;
   parent_version_id?: string | null;
-  operation_name: string;
   parameters?: Record<string, any>;
   created_at: string;
+  row_count: number;
+  column_count: number;
+  artifact_path: string;
+  processing_run_id?: string | null;
+  audit_summary?: {
+    freeze?: {
+      historical_constant_value_segment_count?: number;
+      constant_value_segment_count?: number;
+      candidate_frozen_segment_count?: number;
+      candidate_frozen_segments?: FrozenSegment[];
+    };
+    processing?: CleaningChangeSummary | Record<string, unknown>;
+    warnings?: string[];
+  };
+  provenance?: {
+    user_request?: Record<string, unknown>;
+    resolved_scenario_parameters?: Record<string, unknown>;
+    evidence_source?: string;
+  };
 }
 
 export interface DatasetVersionsResponse {
@@ -248,8 +282,11 @@ export interface DatasetConfigRequest {
 
 // Preprocessing API Types
 export interface CleanRequest {
-  dataset_id: string;
+  dataset_id?: string;
   version_id: string;
+  target_sample_period_seconds?: number;
+  interpolation?: "linear" | "forward_fill" | "backward_fill" | "none";
+  anomaly_detector?: "hampel" | "iqr" | "z_score";
   resample_period_s?: number;
   interpolation_method?: "linear" | "ffill" | "bfill";
   outlier_method?: "hampel" | "iqr" | "zscore";
@@ -260,10 +297,33 @@ export interface CleanRequest {
 export interface CleanResponse {
   dataset_id: string;
   new_version_id: string;
+  source_version_id?: string;
+  derived_version_id?: string;
+  processing_run_id?: string | null;
   raw_series: number[];
   cleaned_series: number[];
   replaced_indices: number[];
   total_cleaned_points: number;
+  warnings?: string[];
+  summary?: {
+    changes?: CleaningChangeSummary;
+    [key: string]: unknown;
+  };
+}
+
+export interface CleaningChangeSummary {
+  count_unit: "cell";
+  unique_changed_cells: number | null;
+  missing_value_fills?: number;
+  outlier_replacements?: number;
+  smoothing_changes?: number;
+  overlapping_changed_cells?: number;
+  category_counts_may_overlap?: boolean;
+  duplicate_timestamps_processed?: number;
+  resampling_empty_rows_created?: number;
+  source_missing_cells?: number;
+  aligned_missing_cells_before_interpolation?: number;
+  breakdown_status?: "not_recorded";
 }
 
 export interface SegmentItem {
@@ -385,6 +445,24 @@ export interface DelayResponse {
   prewhitening_orders: Record<string, number>;
 }
 
+export interface VersionApplyResponse {
+  source_version_id: string;
+  result_version_id: string;
+  dataset_id: string;
+  processing_run_id: string;
+  operation: string;
+  summary: Record<string, any>;
+}
+
+export interface LagCompensationRequest {
+  version_id: string;
+  dataset_id?: string;
+  lag_map: Record<string, number>;
+  user_confirmed: boolean;
+  recommendation_source: "manual" | "delay_analysis";
+  evidence_summary?: Record<string, string>;
+}
+
 export interface VariableRecommendation {
   variable: string;
   action: "keep" | "drop" | "merge" | "review";
@@ -412,6 +490,15 @@ export interface CollinearityResponse {
   condition_number: number | null;
   correlated_groups: string[][];
   recommendations: VariableRecommendation[];
+}
+
+export interface FeatureSelectionApplyRequest {
+  version_id: string;
+  dataset_id?: string;
+  drop_columns: string[];
+  user_confirmed: boolean;
+  recommendation_source: "manual" | "collinearity_analysis";
+  evidence?: Record<string, Record<string, any>>;
 }
 
 // Modeling & Optimization API Types

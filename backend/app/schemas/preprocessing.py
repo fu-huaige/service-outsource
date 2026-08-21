@@ -44,6 +44,7 @@ class CleanSeries(Schema):
 class CleanData(Schema):
     source_version_id: UUID
     derived_version_id: UUID
+    processing_run_id: UUID | None = None
     task: TaskResource
     series: list[CleanSeries]
     # Additive browser-friendly projection. It describes the configured output
@@ -56,6 +57,7 @@ class CleanData(Schema):
     total_cleaned_points: int = Field(default=0, ge=0)
     warnings: list[str] = Field(default_factory=list)
     recommended_downsample_factor: int = Field(default=1, ge=1)
+    summary: dict[str, object] = Field(default_factory=dict)
 
 
 class SegmentRequest(Schema):
@@ -185,6 +187,32 @@ class DelayData(Schema):
     prewhitening_orders: dict[str, int] = Field(default_factory=dict)
 
 
+class LagCompensationRequest(Schema):
+    """Apply an explicitly confirmed ARX ``nk`` alignment to input columns.
+
+    For this project ``y(k)`` depends on ``u(k-nk)``.  Applying ``nk=d`` therefore
+    writes source ``u(t-d)`` alongside unchanged ``y(t)`` and drops the leading boundary
+    rows that cannot be aligned.  The API never infers or applies a lag by itself.
+    """
+
+    version_id: UUID
+    dataset_id: UUID | None = None
+    lag_map: dict[str, int] = Field(min_length=1)
+    user_confirmed: bool = False
+    recommendation_source: Literal["manual", "delay_analysis"] = "manual"
+    evidence_summary: dict[str, str] = Field(default_factory=dict)
+
+
+class VersionApplyData(Schema):
+    source_version_id: UUID
+    result_version_id: UUID
+    dataset_id: UUID
+    processing_run_id: UUID
+    operation: str
+    summary: dict[str, object] = Field(default_factory=dict)
+    task: TaskResource
+
+
 class CollinearityRequest(Schema):
     version_id: UUID
     input_columns: list[str] = Field(min_length=2)
@@ -212,3 +240,14 @@ class CollinearityData(Schema):
     dataset_id: UUID | None = None
     spearman_matrix: list[list[float]] = Field(default_factory=list)
     correlated_groups: list[list[str]] = Field(default_factory=list)
+
+
+class FeatureSelectionApplyRequest(Schema):
+    """Drop only explicitly confirmed redundant input columns."""
+
+    version_id: UUID
+    dataset_id: UUID | None = None
+    drop_columns: list[str] = Field(min_length=1)
+    user_confirmed: bool = False
+    recommendation_source: Literal["manual", "collinearity_analysis"] = "manual"
+    evidence: dict[str, dict[str, object]] = Field(default_factory=dict)

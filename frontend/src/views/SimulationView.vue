@@ -16,7 +16,7 @@
 
         <el-form :model="form" label-width="130px" label-position="left">
           <el-form-item label="仿真场景">
-            <el-radio-group v-model="form.scenario" size="default">
+            <el-radio-group v-model="form.scenario" size="default" @change="handleScenarioChange">
               <el-radio-button label="S1">S1 基础单输入 (基线可信度)</el-radio-button>
               <el-radio-button label="S2">S2 多输入不同滞后</el-radio-button>
               <el-radio-button label="S3">S3 长稳态短动态</el-radio-button>
@@ -27,7 +27,7 @@
           </el-form-item>
 
           <el-form-item label="数据集名称">
-            <el-input v-model="form.dataset_name" placeholder="请输入数据集标识名" />
+            <el-input v-model="form.dataset_name" placeholder="请输入数据集标识名" @input="handleDatasetNameInput" />
           </el-form-item>
 
           <el-form-item label="采样步数 N">
@@ -113,13 +113,42 @@ const router = useRouter();
 const loading = ref(false);
 const result = ref<SimulationGenerateResponse | null>(null);
 
+type SimulationScenario = SimulationGenerateRequest["scenario"];
+
+const SCENARIO_DEFAULT_DATASET_NAMES: Record<SimulationScenario, string> = {
+  S1: "S1_Single_Input_Baseline",
+  S2: "S2_Multi_Input_Delay",
+  S3: "S3_Long_Steady_State",
+  S4: "S4_Noise_And_Anomaly",
+  S5: "S5_High_Collinearity",
+  S6: "S6_Heterogeneous_Excitation",
+};
+
+const initialScenario: SimulationScenario = "S1";
+const isDatasetNameDirty = ref(false);
+
 const form = reactive<SimulationGenerateRequest>({
-  scenario: "S1",
-  dataset_name: "S1_Single_Input_Baseline",
+  scenario: initialScenario,
+  dataset_name: SCENARIO_DEFAULT_DATASET_NAMES[initialScenario],
   num_samples: 1500,
   noise_level: 0,
   seed: 42,
 });
+
+const isSimulationScenario = (value: unknown): value is SimulationScenario =>
+  typeof value === "string" && Object.prototype.hasOwnProperty.call(SCENARIO_DEFAULT_DATASET_NAMES, value);
+
+const handleScenarioChange = (value: unknown) => {
+  if (!isSimulationScenario(value)) return;
+  form.scenario = value;
+  if (!isDatasetNameDirty.value) {
+    form.dataset_name = SCENARIO_DEFAULT_DATASET_NAMES[value];
+  }
+};
+
+const handleDatasetNameInput = () => {
+  isDatasetNameDirty.value = true;
+};
 
 const handleGenerate = async () => {
   loading.value = true;

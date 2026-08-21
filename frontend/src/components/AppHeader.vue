@@ -15,10 +15,10 @@
     </div>
 
     <div class="header-right">
-      <el-tooltip content="后端系统实时健康状态" placement="bottom">
+      <el-tooltip content="后端、PostgreSQL 与 Redis 的健康状态，每 5 秒自动检测" placement="bottom">
         <div class="status-indicator">
-          <span class="dot" :class="{ ready: systemStore.isHealthy }"></span>
-          <span class="status-text">{{ systemStore.isHealthy ? 'System Ready' : 'Connecting' }}</span>
+          <span class="dot" :class="systemStore.status"></span>
+          <span class="status-text">{{ statusLabel }}</span>
         </div>
       </el-tooltip>
 
@@ -31,6 +31,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import { DataAnalysis, ChatDotSquare } from "@element-plus/icons-vue";
 import { useDatasetStore } from "../stores/datasetStore";
 import { useSystemStore } from "../stores/systemStore";
@@ -39,6 +40,11 @@ defineEmits(["toggle-copilot"]);
 
 const datasetStore = useDatasetStore();
 const systemStore = useSystemStore();
+const statusLabel = computed(() => ({
+  connecting: "Connecting",
+  ready: "System Ready",
+  offline: "Backend Offline",
+}[systemStore.status]));
 </script>
 
 <style scoped>
@@ -111,5 +117,9 @@ const systemStore = useSystemStore();
 
 .dot.ready {
   background: var(--color-success);
+}
+
+.dot.offline {
+  background: var(--color-danger);
 }
 </style>

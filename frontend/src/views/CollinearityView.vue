@@ -126,6 +126,14 @@
 
           <div class="footer-actions">
             <el-button
+              type="warning"
+              :disabled="!dropCandidates.length"
+              :loading="applying"
+              @click="handleApply"
+            >
+              确认剔除建议变量并创建版本
+            </el-button>
+            <el-button
               type="success"
               icon="ArrowRight"
               @click="$router.push('/modeling/arx')"
@@ -151,10 +159,10 @@ import {
   TrendCharts,
 } from "@element-plus/icons-vue";
 import ChartContainer from "../components/ChartContainer.vue";
-import { calculateCollinearity } from "../api/preprocessing";
+import { applyFeatureSelection, calculateCollinearity } from "../api/preprocessing";
 import type { CollinearityRequest, CollinearityResponse } from "../types/api";
 import { ApiError } from "../api/client";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 
 const ACTION_LABELS: Record<string, string> = {
   keep: "保留",
@@ -164,6 +172,7 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const loading = ref(false);
+const applying = ref(false);
 const result = ref<CollinearityResponse | null>(null);
 const errorMessage = ref("");
 const inputColumnsText = ref("u1,u2,u3");
@@ -205,6 +214,9 @@ const handleAnalyze = async () => {
 
 const dropCount = computed(
   () => (result.value?.recommendations ?? []).filter((item) => item.action === "drop").length
+);
+const dropCandidates = computed(
+  () => (result.value?.recommendations ?? []).filter((item) => item.action === "drop")
 );
 
 const conditionSeverity = computed(() => {
@@ -288,6 +300,37 @@ const formatNumber = (value: number | null | undefined) => {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   if (Math.abs(value) >= 10000) return value.toExponential(2);
   return value.toFixed(2);
+};
+
+const handleApply = async () => {
+  if (!result.value || !dropCandidates.value.length) return;
+  const names = dropCandidates.value.map((item) => item.variable);
+  try {
+    await ElMessageBox.confirm(
+      `将从新版本中删除：${names.join(", ")}。源版本不会被覆盖。是否确认？`,
+      "确认变量筛选",
+      { type: "warning" }
+    );
+    applying.value = true;
+    const applied = await applyFeatureSelection({
+      version_id: form.version_id,
+      drop_columns: names,
+      user_confirmed: true,
+      recommendation_source: "collinearity_analysis",
+      evidence: Object.fromEntries(dropCandidates.value.map((item) => [item.variable, {
+        reason: item.reason,
+        related_variables: item.related_variables,
+        vif: result.value!.vif_scores[item.variable],
+        threshold: form.vif_threshold ?? 10,
+      }])),
+    });
+    ElMessage.success(`已创建变量筛选版本：${applied.result_version_id}`);
+    form.version_id = applied.result_version_id;
+  } catch (err) {
+    if (err !== "cancel") ElMessage.error(err instanceof ApiError ? err.message : String(err));
+  } finally {
+    applying.value = false;
+  }
 };
 </script>
 

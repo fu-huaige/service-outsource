@@ -63,6 +63,12 @@ def build_quality_profile(
         if values and np.isclose(np.ptp(np.asarray(values, dtype=float)), 0.0):
             constant_columns.append(column)
 
+    candidate_frozen_segments = classify_candidate_frozen_segments(
+        frozen_segments=frozen_segments,
+        constant_columns=constant_columns,
+        row_count=row_count,
+    )
+
     intervals = [
         (timestamps[index] - timestamps[index - 1]).total_seconds()
         for index in range(1, len(timestamps))
@@ -86,13 +92,13 @@ def build_quality_profile(
         irregular_rate=irregular_rate,
         duplicate_rate=duplicate_rate,
         anomaly_rate=anomaly_rate,
-        frozen_segments=frozen_segments,
+        frozen_segments=candidate_frozen_segments,
     )
     issues = _quality_issues(
         missing_rates=missing_rates,
         duplicate_count=duplicate_count,
         irregular_rate=irregular_rate,
-        frozen_segments=frozen_segments,
+        frozen_segments=candidate_frozen_segments,
         anomaly_counts=anomaly_counts,
     )
     recommendations = _recommendations(
@@ -100,7 +106,7 @@ def build_quality_profile(
         sample_period=sample_period,
         duplicate_count=duplicate_count,
         irregular_rate=irregular_rate,
-        frozen_segments=frozen_segments,
+        frozen_segments=candidate_frozen_segments,
         anomaly_counts=anomaly_counts,
     )
     payload: dict[str, Any] = {
@@ -119,6 +125,8 @@ def build_quality_profile(
         "irregular_sampling_rate": _round(irregular_rate),
         "constant_columns": constant_columns,
         "frozen_segments": frozen_segments,
+        "candidate_frozen_segments": candidate_frozen_segments,
+        "freeze_detection_summary": _freeze_detection_summary(candidate_frozen_segments),
         "recommended_downsample_factor": max(1, int(np.ceil(row_count / 10_000))),
         "quality_issues": issues,
         "time_range_start": min(timestamps).isoformat() if timestamps else None,
@@ -130,6 +138,139 @@ def build_quality_profile(
         "column_missing_counts": missing_counts,
     }
     return QualityProfileResult(payload=payload)
+
+
+def classify_candidate_frozen_segments(
+    *,
+    frozen_segments: Sequence[Mapping[str, int | str]],
+    constant_columns: Sequence[str],
+    row_count: int,
+) -> list[dict[str, int | str]]:
+    """Separate regular control holds from candidate abnormal frozen-value runs.
+
+    ``frozen_segments`` intentionally remains a complete audit trail of all constant
+    runs.  A regular staircase input naturally has many such runs, so it is not
+    sufficient evidence of an instrument fault.  A run becomes a candidate only
+    when the entire column is constant, it dominates the observed record, or it is
+    a robust upper-tail outlier relative to that column's other constant runs.
+    """
+
+    by_column: dict[str, list[dict[str, int | str]]] = {}
+    for segment in frozen_segments:
+        column = segment.get("column")
+        length = segment.get("length")
+        start = segment.get("start_index")
+        end = segment.get("end_index")
+        if (
+            not isinstance(column, str)
+            or not isinstance(length, int)
+            or not isinstance(start, int)
+            or not isinstance(end, int)
+            or length <= 0
+        ):
+            continue
+        by_column.setdefault(column, []).append(
+            {
+                "column": column,
+                "start_index": start,
+                "end_index": end,
+                "length": length,
+            }
+        )
+
+    candidates: list[dict[str, int | str]] = []
+    constant_column_set = set(constant_columns)
+    for column, segments in by_column.items():
+        segments.sort(key=lambda item: int(item["start_index"]))
+        if column in constant_column_set:
+            candidates.append(max(segments, key=lambda item: int(item["length"])))
+            continue
+
+        lengths = np.asarray([int(segment["length"]) for segment in segments], dtype=float)
+        dominant_runs = [
+            segment
+            for segment in segments
+            if row_count > 0 and int(segment["length"]) / row_count >= 0.5
+        ]
+        if dominant_runs:
+            candidates.extend(dominant_runs)
+            continue
+        if len(lengths) < 4:
+            continue
+
+        q25, q75 = np.quantile(lengths, [0.25, 0.75])
+        typical_hold = float(np.median(lengths))
+        robust_upper_fence = float(q75 + 1.5 * (q75 - q25))
+        exceptional_hold = max(robust_upper_fence, typical_hold * 2.0)
+        candidates.extend(
+            segment for segment in segments if int(segment["length"]) > exceptional_hold
+        )
+
+    return sorted(
+        candidates,
+        key=lambda item: (str(item["column"]), int(item["start_index"])),
+    )
+
+
+def enrich_freeze_diagnostics(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Add current freeze semantics when serving a profile stored by an older build."""
+
+    enriched = dict(payload)
+    candidates = classify_candidate_frozen_segments(
+        frozen_segments=_as_segment_sequence(enriched.get("frozen_segments")),
+        constant_columns=_as_string_sequence(enriched.get("constant_columns")),
+        row_count=_as_non_negative_int(enriched.get("row_count", enriched.get("total_rows", 0))),
+    )
+    enriched["candidate_frozen_segments"] = candidates
+    enriched["freeze_detection_summary"] = _freeze_detection_summary(candidates)
+
+    existing_issues = enriched.get("quality_issues")
+    issues = [
+        issue
+        for issue in existing_issues
+        if isinstance(issue, Mapping) and issue.get("code") != "FROZEN_SEGMENTS"
+    ] if isinstance(existing_issues, Sequence) else []
+    if candidates:
+        issues.append(_frozen_segment_issue(candidates))
+    enriched["quality_issues"] = issues
+
+    existing_recommendations = enriched.get("recommendations")
+    recommendations = [
+        recommendation
+        for recommendation in existing_recommendations
+        if isinstance(recommendation, str)
+        and "冻结段可能代表仪表死值" not in recommendation
+        and "候选异常冻结段" not in recommendation
+    ] if isinstance(existing_recommendations, Sequence) else []
+    if candidates:
+        recommendations.append("检测到候选异常冻结段，建议结合工艺操作记录复核后再处理。")
+    elif not recommendations:
+        recommendations.append("数据质量良好；确认输入和输出列映射后可进入后续分析。")
+    enriched["recommendations"] = recommendations
+
+    numeric_count = sum(
+        _as_non_negative_int(statistics.get("count"))
+        for statistics in _as_mapping_values(enriched.get("column_statistics"))
+        if isinstance(statistics, Mapping)
+    )
+    anomaly_rate = sum(
+        _as_non_negative_int(value) for value in _as_mapping_values(enriched.get("anomaly_counts"))
+    ) / numeric_count if numeric_count else 0.0
+    enriched["quality_score"] = _round(
+        _quality_score(
+            missing_rate=_as_float(enriched.get("missing_rate")),
+            irregular_rate=_as_float(enriched.get("irregular_sampling_rate")),
+            duplicate_rate=(
+                _as_non_negative_int(enriched.get("duplicate_timestamp_count"))
+                / _as_non_negative_int(enriched.get("row_count", enriched.get("total_rows", 0)))
+                if _as_non_negative_int(enriched.get("row_count", enriched.get("total_rows", 0)))
+                else 0.0
+            ),
+            anomaly_rate=anomaly_rate,
+            frozen_segments=candidates,
+        )
+    )
+    return enriched
 
 
 def _numeric_values(values: Sequence[str | None]) -> list[float]:
@@ -325,14 +466,7 @@ def _quality_issues(
             }
         )
     if frozen_segments:
-        issues.append(
-            {
-                "code": "FROZEN_SEGMENTS",
-                "severity": "warning",
-                "message": f"检测到 {len(frozen_segments)} 段连续不变的变量值。",
-                "affected_columns": sorted({str(item["column"]) for item in frozen_segments}),
-            }
-        )
+        issues.append(_frozen_segment_issue(frozen_segments))
     anomaly_columns = [column for column, count in anomaly_counts.items() if count]
     if anomaly_columns:
         issues.append(
@@ -365,7 +499,7 @@ def _recommendations(
     if duplicate_count:
         recommendations.append("请确认重复时间戳的保留规则，避免同一时刻观测重复进入模型。")
     if frozen_segments:
-        recommendations.append("冻结段可能代表仪表死值，建议在动态区间筛选前标记或剔除。")
+        recommendations.append("检测到候选异常冻结段，建议结合工艺操作记录复核后再处理。")
     if any(anomaly_counts.values()):
         recommendations.append("候选异常点可在清洗阶段使用 Hampel 或 IQR 方法复核。")
     if not recommendations:
@@ -375,3 +509,68 @@ def _recommendations(
 
 def _round(value: float | None) -> float | None:
     return round(value, 8) if value is not None else None
+
+
+def _freeze_detection_summary(
+    frozen_segments: Sequence[Mapping[str, int | str]],
+) -> dict[str, Any]:
+    longest = (
+        max(
+            frozen_segments,
+            key=lambda item: (int(item["length"]), -int(item["start_index"])),
+        )
+        if frozen_segments
+        else None
+    )
+    return {
+        "candidate_count": len(frozen_segments),
+        "affected_column_count": len({str(item["column"]) for item in frozen_segments}),
+        "longest_segment": dict(longest) if longest is not None else None,
+    }
+
+
+def _frozen_segment_issue(
+    frozen_segments: Sequence[Mapping[str, int | str]],
+) -> dict[str, Any]:
+    return {
+        "code": "FROZEN_SEGMENTS",
+        "severity": "warning",
+        "message": f"检测到 {len(frozen_segments)} 段候选异常冻结段，需结合工艺记录复核。",
+        "affected_columns": sorted({str(item["column"]) for item in frozen_segments}),
+    }
+
+
+def _as_segment_sequence(value: object) -> list[Mapping[str, int | str]]:
+    if not isinstance(value, Sequence) or isinstance(value, str | bytes):
+        return []
+    return [item for item in value if isinstance(item, Mapping)]
+
+
+def _as_string_sequence(value: object) -> list[str]:
+    if not isinstance(value, Sequence) or isinstance(value, str | bytes):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _as_mapping_values(value: object) -> list[Mapping[str, object] | int | float]:
+    if not isinstance(value, Mapping):
+        return []
+    return [item for item in value.values() if isinstance(item, Mapping | int | float)]
+
+
+def _as_non_negative_int(value: object) -> int:
+    if isinstance(value, Mapping):
+        value = value.get("count")
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int | float):
+        return max(0, int(value))
+    return 0
+
+
+def _as_float(value: object) -> float:
+    if isinstance(value, bool):
+        return 0.0
+    if isinstance(value, int | float):
+        return float(value)
+    return 0.0

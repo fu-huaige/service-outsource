@@ -23,3 +23,30 @@ frontend/npm-debug.log*
 frontend/yarn-debug.log*
 frontend/yarn-error.log*
 frontend/pnpm-debug.log*
+
+# Local scratch and generated inspection artifacts
+/tmp/
+*.orig
+*.rej
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Additional local database artifacts
+*.sqlite
+*.sqlite3
+
+# Windows and editor files
+Thumbs.db
+/.idea/
+/.vscode/
+
+# Local reference archive excluded from source control
+/math-modeling.zip

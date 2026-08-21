@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Sequence
+import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from algorithms.cleaning.quality import build_quality_profile
+from algorithms.cleaning.quality import build_quality_profile, enrich_freeze_diagnostics
 from fastapi import UploadFile
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,6 +44,7 @@ from app.schemas.datasets import (
     VersionNode,
 )
 from app.schemas.simulation import SimulationGenerateData, SimulationGenerateRequest
+from app.services.cleaning_service import replay_cleaning_audit
 from app.services.dataset_csv import (
     DatasetCsvError,
     ParsedCsv,
@@ -255,6 +257,9 @@ async def register_simulation_dataset(
                 "true_delays_by_input": generated.ground_truth.true_delays_by_input,
                 "seed": generated.ground_truth.seed,
             },
+            "resolved_scenario_parameters": _resolved_scenario_parameters(
+                generated.ground_truth.model_dump(mode="json"), len(parsed.rows)
+            ),
         },
         artifact_path=generated.file_path,
         sha256=digest,
@@ -364,12 +369,17 @@ async def get_dataset_detail(
 
 
 async def get_dataset_download(
-    session: AsyncSession, *, dataset_id: UUID, artifact_root: Path
+    session: AsyncSession, *, dataset_id: UUID, artifact_root: Path, version_id: UUID | None = None
 ) -> tuple[Path, str]:
-    """Return the immutable artifact registered for the active dataset version."""
+    """Return the active or explicitly requested immutable version artifact."""
 
     dataset = await _dataset_or_404(session, dataset_id)
     version = await _active_version_or_error(session, dataset)
+    if version_id is not None:
+        requested = await session.get(DatasetVersionModel, version_id)
+        if requested is None or requested.dataset_id != dataset.id:
+            raise DatasetDomainError("DATASET_VERSION_NOT_FOUND", "请求下载的数据版本不存在。", status_code=404)
+        version = requested
     path = artifact_root / version.artifact_path
     if not path.is_file():
         raise DatasetDomainError(
@@ -379,7 +389,7 @@ async def get_dataset_download(
             details={"artifact_path": version.artifact_path},
         )
     suffix = Path(dataset.name).suffix or ".csv"
-    filename = f"{Path(dataset.name).stem}{suffix}"
+    filename = f"{Path(dataset.name).stem}-v{version.version_index}{suffix}"
     return path, filename
 
 
@@ -402,14 +412,23 @@ async def delete_dataset_asset(session: AsyncSession, *, dataset_id: UUID) -> No
     await session.commit()
 
 
-async def get_dataset_profile(session: AsyncSession, *, dataset_id: UUID) -> DatasetProfile:
+async def get_dataset_profile(
+    session: AsyncSession, *, dataset_id: UUID, version_id: UUID | None = None
+) -> DatasetProfile:
     dataset = await _dataset_or_404(session, dataset_id)
     version = await _active_version_or_error(session, dataset)
+    if version_id is not None:
+        requested = await session.get(DatasetVersionModel, version_id)
+        if requested is None or requested.dataset_id != dataset.id:
+            raise DatasetDomainError("DATASET_VERSION_NOT_FOUND", "请求的数据版本不存在。", status_code=404)
+        version = requested
     record = await _profile_or_error(session, dataset.id, version.id)
     return _profile_schema(record.profile)
 
 
-async def get_dataset_versions(session: AsyncSession, *, dataset_id: UUID) -> DatasetVersionsData:
+async def get_dataset_versions(
+    session: AsyncSession, *, dataset_id: UUID, artifact_root: Path | None = None
+) -> DatasetVersionsData:
     dataset = await _dataset_or_404(session, dataset_id)
     versions = list(
         (
@@ -420,17 +439,27 @@ async def get_dataset_versions(session: AsyncSession, *, dataset_id: UUID) -> Da
             )
         ).all()
     )
-    nodes = [
-        VersionNode(
+    nodes: list[VersionNode] = []
+    for version in versions:
+        nodes.append(VersionNode(
             id=version.id,
             name=version.name,
             tool=version.operation_name,
             created_at=version.created_at,
             parent_version_id=version.parent_version_id,
             parameters=version.parameters,
-        )
-        for version in versions
-    ]
+            row_count=version.row_count,
+            column_count=version.column_count,
+            artifact_path=version.artifact_path,
+            processing_run_id=await _result_run_id(session, version.id),
+            audit_summary=await _version_audit_summary(
+                session,
+                dataset=dataset,
+                version=version,
+                artifact_root=artifact_root,
+            ),
+            provenance=_version_provenance(version, artifact_root=artifact_root),
+        ))
     edges = [
         VersionEdge(
             source=version.parent_version_id, target=version.id, operation=version.operation_name
@@ -444,6 +473,209 @@ async def get_dataset_versions(session: AsyncSession, *, dataset_id: UUID) -> Da
         nodes=nodes,
         edges=edges,
     )
+
+
+async def _version_audit_summary(
+    session: AsyncSession,
+    *,
+    dataset: DatasetModel,
+    version: DatasetVersionModel,
+    artifact_root: Path | None,
+) -> dict[str, Any]:
+    parameters = version.parameters if isinstance(version.parameters, dict) else {}
+    profile_record = await session.scalar(
+        select(DatasetProfileRecord).where(DatasetProfileRecord.version_id == version.id)
+    )
+    profile_payload = (
+        enrich_freeze_diagnostics(profile_record.profile)
+        if profile_record is not None and isinstance(profile_record.profile, dict)
+        else {}
+    )
+    candidates = profile_payload.get("candidate_frozen_segments")
+    candidate_count = len(candidates) if isinstance(candidates, list) else 0
+    freeze: dict[str, Any] = {
+        "candidate_frozen_segment_count": candidate_count,
+        "candidate_frozen_segments": candidates if isinstance(candidates, list) else [],
+    }
+    if "constant_value_segment_count" in parameters:
+        freeze["constant_value_segment_count"] = parameters["constant_value_segment_count"]
+    elif "frozen_segment_count" in parameters:
+        freeze["historical_constant_value_segment_count"] = parameters["frozen_segment_count"]
+
+    processing = parameters.get("change_summary")
+    if not isinstance(processing, dict) and version.operation_name == "preprocessing.clean":
+        processing = await _replay_legacy_cleaning_summary(
+            session,
+            dataset=dataset,
+            version=version,
+            artifact_root=artifact_root,
+        )
+    if not isinstance(processing, dict):
+        processing = {}
+    return {
+        "freeze": freeze,
+        "processing": processing,
+        "warnings": _display_warnings(parameters, freeze),
+    }
+
+
+def _display_warnings(
+    parameters: Mapping[str, Any], freeze: Mapping[str, Any]
+) -> list[str]:
+    raw = parameters.get("warnings")
+    warnings = [item for item in raw if isinstance(item, str)] if isinstance(raw, list) else []
+    historical = freeze.get("historical_constant_value_segment_count")
+    if not isinstance(historical, int):
+        return warnings
+    warnings = [warning for warning in warnings if "冻结段" not in warning]
+    candidates = freeze.get("candidate_frozen_segment_count")
+    warnings.append(
+        f"历史版本记录了 {historical} 个恒值区段审计项；"
+        f"按当前统一口径识别出 {candidates if isinstance(candidates, int) else 0} 个候选异常冻结段。"
+    )
+    return warnings
+
+
+async def _replay_legacy_cleaning_summary(
+    session: AsyncSession,
+    *,
+    dataset: DatasetModel,
+    version: DatasetVersionModel,
+    artifact_root: Path | None,
+) -> dict[str, Any]:
+    parameters = version.parameters if isinstance(version.parameters, dict) else {}
+    resolved = parameters.get("resolved_parameters")
+    source_id = version.parent_version_id or parameters.get("source_version_id")
+    if artifact_root is None or not isinstance(resolved, Mapping) or source_id is None:
+        return _legacy_total_only(parameters)
+    try:
+        source_uuid = source_id if isinstance(source_id, UUID) else UUID(str(source_id))
+        source = await session.get(DatasetVersionModel, source_uuid)
+        if source is None or source.dataset_id != dataset.id:
+            return _legacy_total_only(parameters)
+        replayed = replay_cleaning_audit(
+            dataset=dataset,
+            source_version=source,
+            resolved_parameters=resolved,
+            artifact_root=artifact_root,
+        )
+        summary = replayed.get("change_summary")
+        return dict(summary) if isinstance(summary, dict) else _legacy_total_only(parameters)
+    except (TypeError, ValueError, DatasetVersionArtifactError):
+        return _legacy_total_only(parameters)
+
+
+def _legacy_total_only(parameters: Mapping[str, Any]) -> dict[str, Any]:
+    total = parameters.get("total_cleaned_points")
+    return {
+        "count_unit": "cell",
+        "unique_changed_cells": total if isinstance(total, int) else None,
+        "breakdown_status": "not_recorded",
+    }
+
+
+def _version_provenance(
+    version: DatasetVersionModel, *, artifact_root: Path | None
+) -> dict[str, Any]:
+    parameters = version.parameters if isinstance(version.parameters, dict) else {}
+    if version.operation_name != "simulation_generate":
+        return {}
+    user_request = parameters.get("simulation_request")
+    resolved = parameters.get("resolved_scenario_parameters")
+    evidence_source = "stored_resolved_scenario_parameters"
+    if not isinstance(resolved, dict):
+        ground_truth = _read_json_artifact(
+            artifact_root, parameters.get("ground_truth_path")
+        )
+        if isinstance(ground_truth, dict):
+            resolved = _resolved_scenario_parameters(ground_truth, version.row_count)
+            evidence_source = "ground_truth"
+        else:
+            resolved = {}
+            evidence_source = "not_recorded"
+    return {
+        "user_request": user_request if isinstance(user_request, dict) else {},
+        "resolved_scenario_parameters": resolved,
+        "evidence_source": evidence_source,
+    }
+
+
+def _read_json_artifact(artifact_root: Path | None, relative_path: object) -> dict[str, Any] | None:
+    if artifact_root is None or not isinstance(relative_path, str) or not relative_path:
+        return None
+    root = artifact_root.resolve()
+    candidate = (root / relative_path).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return None
+    if not candidate.is_file():
+        return None
+    try:
+        value = json.loads(candidate.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _resolved_scenario_parameters(
+    ground_truth: Mapping[str, Any], row_count: int
+) -> dict[str, Any]:
+    anomaly_indices = ground_truth.get("anomaly_indices")
+    missing_indices = ground_truth.get("missing_indices")
+    anomaly_counts = _index_counts(anomaly_indices)
+    missing_counts = _index_counts(missing_indices)
+    return {
+        "noise_level": ground_truth.get("noise_level"),
+        "anomaly_count_by_column": anomaly_counts,
+        "anomaly_rate_by_column": _rates(anomaly_counts, row_count),
+        "missing_count_by_column": missing_counts,
+        "missing_rate_by_column": _rates(missing_counts, row_count),
+        "freeze_segments": ground_truth.get("freeze_segments", []),
+        "drift_segments": ground_truth.get("drift_segments", []),
+        "irregular_timestamp_count": _sequence_length(
+            ground_truth.get("irregular_timestamp_indices")
+        ),
+        "duplicate_timestamp_count": _sequence_length(
+            ground_truth.get("duplicate_timestamp_indices")
+        ),
+        "seed": ground_truth.get("seed"),
+    }
+
+
+def _index_counts(value: object) -> dict[str, int]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {
+        str(column): _sequence_length(indices)
+        for column, indices in value.items()
+    }
+
+
+def _sequence_length(value: object) -> int:
+    return len(value) if isinstance(value, Sequence) and not isinstance(value, str | bytes) else 0
+
+
+def _rates(counts: Mapping[str, int], row_count: int) -> dict[str, float]:
+    if row_count <= 0:
+        return {column: 0.0 for column in counts}
+    return {column: round(count / row_count, 8) for column, count in counts.items()}
+
+
+async def _result_run_id(session: AsyncSession, version_id: UUID) -> UUID | None:
+    runs = list(
+        (
+            await session.scalars(
+                select(ProcessingRun)
+                .order_by(ProcessingRun.created_at.desc())
+            )
+        ).all()
+    )
+    for run in runs:
+        value = run.result.get("result_version_id") if isinstance(run.result, dict) else None
+        if value == str(version_id):
+            return run.id
+    return None
 
 
 async def configure_dataset_columns(
@@ -596,7 +828,8 @@ def _build_profile(dataset_id: UUID, version_id: UUID, parsed: ParsedCsv) -> dic
 
 
 def _profile_schema(payload: dict[str, Any]) -> DatasetProfile:
-    external = {key: value for key, value in payload.items() if key != "column_missing_counts"}
+    enriched = enrich_freeze_diagnostics(payload)
+    external = {key: value for key, value in enriched.items() if key != "column_missing_counts"}
     return DatasetProfile.model_validate(external)
 
 

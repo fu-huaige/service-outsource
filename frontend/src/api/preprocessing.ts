@@ -8,6 +8,9 @@ import type {
   DelayResponse,
   CollinearityRequest,
   CollinearityResponse,
+  FeatureSelectionApplyRequest,
+  LagCompensationRequest,
+  VersionApplyResponse,
 } from "../types/api";
 
 export const cleanDataset = (req: CleanRequest): Promise<CleanResponse> =>
@@ -19,5 +22,11 @@ export const segmentDataset = (req: SegmentRequest): Promise<SegmentResponse> =>
 export const calculateDelay = (req: DelayRequest): Promise<DelayResponse> =>
   apiClient.post("/preprocessing/delay", req);
 
+export const applyLagCompensation = (req: LagCompensationRequest): Promise<VersionApplyResponse> =>
+  apiClient.post("/preprocessing/delay/apply", req);
+
 export const calculateCollinearity = (req: CollinearityRequest): Promise<CollinearityResponse> =>
   apiClient.post("/preprocessing/collinearity", req);
+
+export const applyFeatureSelection = (req: FeatureSelectionApplyRequest): Promise<VersionApplyResponse> =>
+  apiClient.post("/preprocessing/features/apply", req);

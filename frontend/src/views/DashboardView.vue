@@ -9,22 +9,22 @@
     <div class="stat-cards">
       <div class="industrial-card stat-card">
         <div class="stat-title">活跃数据集</div>
-        <div class="stat-val">{{ datasetCount }} <span class="unit">个</span></div>
+        <div class="stat-val">{{ dashboardAvailable ? datasetCount : "—" }} <span v-if="dashboardAvailable" class="unit">个</span></div>
         <div class="stat-sub">上传与仿真数据均计入</div>
       </div>
       <div class="industrial-card stat-card">
         <div class="stat-title">最高辨识 FIT 拟合度</div>
         <div class="stat-val highlight">{{ topEntry ? formatOptionalFit(topEntry.optimized_validation_fit) : "—" }}</div>
-        <div class="stat-sub">{{ topEntry ? topEntry.dataset_name : "暂无已完成寻优" }}</div>
+        <div class="stat-sub">{{ dashboardAvailable ? (topEntry ? topEntry.dataset_name : "暂无已完成寻优") : "数据不可用" }}</div>
       </div>
       <div class="industrial-card stat-card">
         <div class="stat-title">已完成闭环研究</div>
-        <div class="stat-val">{{ leaderboardData.length }} <span class="unit">项</span></div>
+        <div class="stat-val">{{ dashboardAvailable ? leaderboardData.length : "—" }} <span v-if="dashboardAvailable" class="unit">项</span></div>
         <div class="stat-sub">仅统计真实成功的 Optuna study</div>
       </div>
       <div class="industrial-card stat-card">
         <div class="stat-title">排行榜数据源</div>
-        <div class="stat-val success-text">{{ loadError ? "不可用" : "真实记录" }}</div>
+        <div class="stat-val success-text">{{ dashboardAvailable ? "真实记录" : "不可用" }}</div>
         <div class="stat-sub">仅使用数据库中已完成的寻优结果</div>
       </div>
     </div>
@@ -57,7 +57,11 @@
         </div>
         <el-tag type="info">按验证集 FIT 排名</el-tag>
       </div>
-      <el-alert v-if="loadError" type="error" :title="loadError" show-icon :closable="false" style="margin-bottom: 16px" />
+      <el-alert v-if="loadError" type="error" :title="loadError" show-icon :closable="false" style="margin-bottom: 16px">
+        <template #default>
+          <el-button type="danger" plain size="small" :loading="isLoading" @click="loadDashboard">重新加载</el-button>
+        </template>
+      </el-alert>
       <el-alert
         v-else
         type="info"
@@ -65,7 +69,7 @@
         :closable="false"
         style="margin-bottom: 16px"
       />
-      <el-table v-if="leaderboardData.length" :data="leaderboardData" stripe style="width: 100%">
+      <el-table v-if="dashboardAvailable && leaderboardData.length" :data="leaderboardData" stripe style="width: 100%">
         <el-table-column prop="dataset_name" label="数据集名称" width="180" />
         <el-table-column label="基线验证 FIT" width="120">
           <template #default="{ row }">{{ formatOptionalFit(row.baseline_validation_fit) }}</template>
@@ -116,24 +120,33 @@
           </template>
         </el-table-column>
       </el-table>
-      <el-empty v-else description="暂无已完成的闭环寻优结果。请先生成或上传数据集并完成一次闭环寻优。" />
+      <el-empty
+        v-else-if="dashboardAvailable"
+        description="暂无已完成的闭环寻优结果。请先生成或上传数据集并完成一次闭环寻优。"
+      />
+      <el-empty v-else-if="isLoading" description="正在加载 Dashboard 数据" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { Lightning, Trophy } from "@element-plus/icons-vue";
 import { useRouter } from "vue-router";
 import { getDashboardLeaderboard } from "../api/dashboard";
 import { getDatasets } from "../api/datasets";
+import { useSystemStore } from "../stores/systemStore";
 import type { DashboardLeaderboardEntry } from "../types/api";
 
 const router = useRouter();
-const datasetCount = ref(0);
+const systemStore = useSystemStore();
+const datasetCount = ref<number | null>(null);
 const loadError = ref("");
 const leaderboardData = ref<DashboardLeaderboardEntry[]>([]);
+const isLoading = ref(false);
+const hasLoaded = ref(false);
 const topEntry = computed(() => leaderboardData.value[0] ?? null);
+const dashboardAvailable = computed(() => hasLoaded.value && !loadError.value);
 const formatFit = (value: number) => value.toFixed(2) + "%";
 const formatOptionalFit = (value: number | null) => value === null ? "—" : formatFit(value);
 const formatOptionalNumber = (value: number | null) => value === null ? "—" : value.toFixed(3);
@@ -146,14 +159,36 @@ const riskTagType = (risk: DashboardLeaderboardEntry["generalization_risk"]) => 
   unavailable: "info",
 }[risk] as "success" | "warning" | "danger" | "info");
 
-onMounted(async () => {
+const loadDashboard = async () => {
+  if (isLoading.value) {
+    return;
+  }
+
+  isLoading.value = true;
   try {
     const [datasets, leaderboard] = await Promise.all([getDatasets(1, 1), getDashboardLeaderboard()]);
     datasetCount.value = datasets.page?.total ?? datasets.items.length;
     leaderboardData.value = leaderboard.items;
+    loadError.value = "";
+    hasLoaded.value = true;
   } catch (error: any) {
-    loadError.value = "获取真实 Dashboard 数据失败：" + (error.message || "未知错误");
+    datasetCount.value = null;
+    leaderboardData.value = [];
+    hasLoaded.value = false;
+    loadError.value = "Dashboard数据加载失败：" + (error.message || "未知错误");
+  } finally {
+    isLoading.value = false;
   }
+};
+
+watch(() => systemStore.status, (next, previous) => {
+  if (next === "ready" && previous !== "ready" && loadError.value) {
+    void loadDashboard();
+  }
+});
+
+onMounted(() => {
+  void loadDashboard();
 });
 </script>
 

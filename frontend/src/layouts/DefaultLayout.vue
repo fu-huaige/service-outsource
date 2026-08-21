@@ -44,11 +44,15 @@ const isCopilotOpen = ref(false);
 .layout-body {
   display: flex;
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
 
 .layout-main {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   padding: 20px;
   overflow-y: auto;
   background-color: var(--bg-app);

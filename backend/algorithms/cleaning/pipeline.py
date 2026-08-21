@@ -10,7 +10,7 @@ from typing import Literal
 
 import numpy as np
 
-from algorithms.cleaning.quality import is_missing
+from algorithms.cleaning.quality import classify_candidate_frozen_segments, is_missing
 from algorithms.cleaning.tool import AlgorithmTool
 
 InterpolationMethod = Literal["linear", "ffill", "bfill", "none"]
@@ -59,13 +59,53 @@ class CleaningResult:
     raw_numeric: dict[str, list[float | None]]
     cleaned_numeric: dict[str, list[float | None]]
     changed_indices: dict[str, list[int]]
+    interpolation_changed_indices: dict[str, list[int]]
+    outlier_replacement_indices: dict[str, list[int]]
+    smoothing_changed_indices: dict[str, list[int]]
     detected_outlier_indices: dict[str, list[int]]
-    frozen_segments: list[dict[str, int | str]]
+    constant_value_segments: list[dict[str, int | str]]
+    candidate_frozen_segments: list[dict[str, int | str]]
+    duplicate_timestamp_count: int
+    resampling_empty_row_count: int
+    source_missing_cell_count: int
+    aligned_missing_cell_count: int
     warnings: list[str]
 
     @property
     def total_changed_points(self) -> int:
         return sum(len(indices) for indices in self.changed_indices.values())
+
+    @property
+    def frozen_segments(self) -> list[dict[str, int | str]]:
+        """Compatibility alias for callers that still consume the raw constant-run audit."""
+
+        return self.constant_value_segments
+
+    @property
+    def change_summary(self) -> dict[str, int | bool | str]:
+        interpolation_count = sum(
+            len(indices) for indices in self.interpolation_changed_indices.values()
+        )
+        outlier_count = sum(
+            len(indices) for indices in self.outlier_replacement_indices.values()
+        )
+        smoothing_count = sum(
+            len(indices) for indices in self.smoothing_changed_indices.values()
+        )
+        category_total = interpolation_count + outlier_count + smoothing_count
+        return {
+            "count_unit": "cell",
+            "unique_changed_cells": self.total_changed_points,
+            "missing_value_fills": interpolation_count,
+            "outlier_replacements": outlier_count,
+            "smoothing_changes": smoothing_count,
+            "overlapping_changed_cells": max(0, category_total - self.total_changed_points),
+            "category_counts_may_overlap": True,
+            "duplicate_timestamps_processed": self.duplicate_timestamp_count,
+            "resampling_empty_rows_created": self.resampling_empty_row_count,
+            "source_missing_cells": self.source_missing_cell_count,
+            "aligned_missing_cells_before_interpolation": self.aligned_missing_cell_count,
+        }
 
 
 @dataclass(frozen=True)
@@ -84,16 +124,20 @@ class CleaningPipeline(AlgorithmTool[CleaningContext, CleaningParameters, Cleani
 
     def execute(self, context: CleaningContext, parameters: CleaningParameters) -> CleaningResult:
         normalised, duplicate_count = _normalise_timestamps(context, parameters.duplicate_strategy)
-        aligned = (
-            _resample(normalised, parameters.resample_period_seconds)
-            if parameters.resample_period_seconds is not None
-            else normalised
-        )
+        if parameters.resample_period_seconds is not None:
+            aligned, resampling_empty_row_count = _resample_with_audit(
+                normalised, parameters.resample_period_seconds
+            )
+        else:
+            aligned, resampling_empty_row_count = normalised, 0
         raw_numeric = {column: values.copy() for column, values in aligned.numeric.items()}
         cleaned_numeric: dict[str, list[float | None]] = {}
         changed_indices: dict[str, list[int]] = {}
+        interpolation_changed_indices: dict[str, list[int]] = {}
+        outlier_replacement_indices: dict[str, list[int]] = {}
+        smoothing_changed_indices: dict[str, list[int]] = {}
         detected_indices: dict[str, list[int]] = {}
-        frozen_segments: list[dict[str, int | str]] = []
+        constant_value_segments: list[dict[str, int | str]] = []
         warnings: list[str] = []
 
         for column, raw_values in raw_numeric.items():
@@ -124,9 +168,23 @@ class CleaningPipeline(AlgorithmTool[CleaningContext, CleaningParameters, Cleani
             changed_indices[column] = sorted(
                 interpolation_changes | treatment_changes | smoothing_changes
             )
+            interpolation_changed_indices[column] = sorted(interpolation_changes)
+            outlier_replacement_indices[column] = sorted(treatment_changes)
+            smoothing_changed_indices[column] = sorted(smoothing_changes)
             detected_indices[column] = [item.index for item in outliers]
             cleaned_numeric[column] = smoothed
-            frozen_segments.extend(_frozen_segments(column, smoothed))
+            constant_value_segments.extend(_frozen_segments(column, smoothed))
+
+        constant_columns = [
+            column
+            for column, values in cleaned_numeric.items()
+            if _is_constant_numeric_series(values)
+        ]
+        candidate_frozen_segments = classify_candidate_frozen_segments(
+            frozen_segments=constant_value_segments,
+            constant_columns=constant_columns,
+            row_count=len(aligned.timestamps),
+        )
 
         if duplicate_count:
             warnings.append(
@@ -137,8 +195,11 @@ class CleaningPipeline(AlgorithmTool[CleaningContext, CleaningParameters, Cleani
         )
         if remaining_missing:
             warnings.append(f"仍保留 {remaining_missing} 个超出插值上限或边界的缺失值。")
-        if frozen_segments:
-            warnings.append(f"检测到 {len(frozen_segments)} 个冻结段，未自动删除。")
+        if candidate_frozen_segments:
+            warnings.append(
+                f"检测到 {len(candidate_frozen_segments)} 个候选异常冻结段，未自动处理；"
+                "请结合工艺记录复核。"
+            )
 
         values: dict[str, list[str | float | None]] = {}
         for column in context.headers:
@@ -154,8 +215,22 @@ class CleaningPipeline(AlgorithmTool[CleaningContext, CleaningParameters, Cleani
             raw_numeric=raw_numeric,
             cleaned_numeric=cleaned_numeric,
             changed_indices=changed_indices,
+            interpolation_changed_indices=interpolation_changed_indices,
+            outlier_replacement_indices=outlier_replacement_indices,
+            smoothing_changed_indices=smoothing_changed_indices,
             detected_outlier_indices=detected_indices,
-            frozen_segments=frozen_segments,
+            constant_value_segments=constant_value_segments,
+            candidate_frozen_segments=candidate_frozen_segments,
+            duplicate_timestamp_count=duplicate_count,
+            resampling_empty_row_count=resampling_empty_row_count,
+            source_missing_cell_count=sum(
+                _to_float(row.get(column)) is None
+                for row in context.rows
+                for column in raw_numeric
+            ),
+            aligned_missing_cell_count=sum(
+                value is None for values in raw_numeric.values() for value in values
+            ),
             warnings=warnings,
         )
 
@@ -203,8 +278,14 @@ def _normalise_timestamps(
 
 
 def _resample(frame: _NormalisedFrame, period_seconds: float) -> _NormalisedFrame:
+    return _resample_with_audit(frame, period_seconds)[0]
+
+
+def _resample_with_audit(
+    frame: _NormalisedFrame, period_seconds: float
+) -> tuple[_NormalisedFrame, int]:
     if len(frame.timestamps) < 2:
-        return frame
+        return frame, 0
     start = frame.timestamps[0]
     duration = (frame.timestamps[-1] - start).total_seconds()
     target_count = int(floor(duration / period_seconds + 1e-9)) + 1
@@ -228,7 +309,10 @@ def _resample(frame: _NormalisedFrame, period_seconds: float) -> _NormalisedFram
             _first_present([labels[index] for index in bucket]) if bucket else None
             for bucket in bins
         ]
-    return _NormalisedFrame(timestamps=timestamps, numeric=numeric, categorical=categorical)
+    return (
+        _NormalisedFrame(timestamps=timestamps, numeric=numeric, categorical=categorical),
+        sum(not bucket for bucket in bins),
+    )
 
 
 def _interpolate_missing(
@@ -425,6 +509,11 @@ def _frozen_segments(column: str, values: Sequence[float | None]) -> list[dict[s
             start, previous = None, value
     _append_segment(segments, column, start, len(values) - 1)
     return segments
+
+
+def _is_constant_numeric_series(values: Sequence[float | None]) -> bool:
+    finite = [value for value in values if value is not None]
+    return bool(finite) and isclose(max(finite), min(finite), rel_tol=1e-9, abs_tol=1e-12)
 
 
 def _append_segment(

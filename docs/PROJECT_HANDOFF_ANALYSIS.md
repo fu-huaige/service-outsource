@@ -334,3 +334,11 @@ S6 final Test 同时出现 free-run FIT 13.05% 与 R² 0.9409。它们并非同�
 
 - diagnostics 已能给出真实证据与“证据不足”的保守结论；报告/导出页面尚未消费这份结构化诊断。
 - 上述 E2E 使用隔离 SQLite 与临时产物，以避免改写本地展示数据库；生产 Compose 镜像仍需重建后才能直接暴露新 diagnostics 路由，但这不应触发任何 Test 驱动调参。
+
+## 24. 第三轮：可追溯版本化工业预处理流水线（2026-08-20）
+
+- Cleaning 继续作为真实派生版本操作，并补充 ProcessingRun ID 和处理摘要；时滞、共线性分析保持只读。
+- 新增 `preprocessing.lag_compensation`：根据当前 ARX `y(k) ← u(k-nk)` 语义写入 `u_aligned(t)=u_source(t-nk)`，保持 y/时间轴，裁剪首端边界行，创建新 Version/Profile/ProcessingRun。
+- 新增 `preprocessing.feature_selection`：仅在用户确认后删除冗余 input，保存证据；时间/目标列受保护且至少留一个输入。两种 Apply 都不会覆盖父 CSV。
+- 版本 DAG 补充行列、artifact、处理运行信息，下载 API 可按 Version UUID 下载历史版本；具体语义见 `docs/architecture/dataset-versioning.md`。
+- 隔离 API E2E（S5、1200 行、seed 31）已跑通：V0 仿真 `e22698fd-a59f-4589-8f70-7b8d7a0c4dbf` → V1 清洗 `b58e29ea-db5f-40c7-a3ca-13215816dc15` → V2 时滞补偿 `a7e8632f-b7f0-47fc-ab86-0f1fab778ff7`（裁剪 8 行）→ V3 特征筛选 `db80f751-3f2f-479f-8d15-c07bbd16c732`（删除 `u2`）。ARX 对末版返回 HTTP 200，Optuna Study `8cb562b2-b391-4485-8595-d680a5fb9b83` 也以末版启动成功。

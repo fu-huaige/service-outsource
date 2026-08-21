@@ -10,21 +10,53 @@
 
     <el-tabs v-model="activeTab" type="card" class="detail-tabs">
       <!-- Tab 1: Overview & Time-Series Plot -->
-      <el-tab-pane label="概览与多变量时序预览" name="overview">
-        <div class="industrial-card" v-if="dataset">
+      <el-tab-pane label="概览与多变量时序预览" name="overview" class="overview-tab-pane">
+        <div class="preview-tab-content">
+        <StateView
+          class="preview-state"
+          v-if="detailLoading"
+          state="loading"
+          title="正在加载真实数据预览…"
+        />
+        <div v-else-if="detailError" class="industrial-card preview-error">
+          <el-alert
+            type="error"
+            title="数据预览加载失败"
+            :description="detailError"
+            :closable="false"
+            show-icon
+          />
+          <el-button type="primary" plain @click="fetchDetail">重新加载</el-button>
+        </div>
+        <div class="industrial-card preview-card" v-else-if="dataset">
           <div class="industrial-card-header">
             <div class="industrial-card-title">
-              <el-icon><DataLine /></el-icon> 多变量数据前 100 行预览
+              <el-icon><DataLine /></el-icon> 多变量数据预览
+            </div>
+            <div class="preview-row-status" aria-live="polite">
+              <strong>当前预览 {{ previewRows.length }} / {{ dataset.row_count }} 行</strong>
+              <el-tag v-if="dataset.preview?.truncated" size="small" type="info">
+                仅展示前{{ previewRows.length }}行
+              </el-tag>
             </div>
           </div>
 
-          <el-table v-if="dataset.preview && dataset.preview.length > 0" :data="dataset.preview" stripe style="width: 100%; max-height: 300px">
-            <el-table-column v-for="col in Object.keys(dataset.preview[0])" :key="col" :prop="col" :label="col" />
-          </el-table>
-          <div v-else style="padding: 20px 0; text-align: center; color: var(--text-secondary)">
-            无数据行预览
+          <div v-if="previewRows.length > 0" class="preview-table-region">
+            <el-table class="preview-table" :data="previewRows" height="100%" stripe>
+              <el-table-column v-for="col in previewColumns" :key="col" :prop="col" :label="col" min-width="130">
+                <template #default="scope">
+                  <span :class="{ 'preview-null': scope.row[col] === null }">
+                    {{ formatPreviewValue(scope.row[col]) }}
+                  </span>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+          <div v-else class="preview-empty">
+            该版本文件不包含可预览的数据行
           </div>
         </div>
+      </div>
       </el-tab-pane>
 
       <!-- Tab 2: Quality Profile -->
@@ -41,12 +73,40 @@
               <p>
                 总体缺失率: {{ (profile.missing_rate * 100).toFixed(2) }}% |
                 不规则采样率: {{ ((profile.irregular_sampling_rate || 0) * 100).toFixed(2) }}% |
-                死值冻结段: {{ profile.frozen_segments || 0 }} 处
+                {{ candidateFreezeSummary }}
               </p>
             </div>
           </div>
 
           <el-divider />
+
+          <div class="freeze-segments" aria-label="候选异常冻结段">
+            <h4>候选异常冻结段</h4>
+            <p class="freeze-hint">
+              连续恒值不必然代表仪表故障；仅展示相对该变量常规保持长度显著异常的候选区段。
+            </p>
+            <el-empty
+              v-if="candidateFrozenSegments.length === 0"
+              description="未检测到异常冻结段"
+              :image-size="72"
+            />
+            <el-collapse v-else v-model="expandedFreezePanels">
+              <el-collapse-item name="candidate-freezes">
+                <template #title>
+                  查看区段详情（首屏显示前 {{ candidateFrozenSegments.length > freezeSegmentDisplayLimit ? freezeSegmentDisplayLimit : candidateFrozenSegments.length }} 段，共 {{ candidateFrozenSegments.length }} 段）
+                </template>
+                <el-table :data="visibleCandidateFrozenSegments" stripe size="small" style="width: 100%">
+                  <el-table-column prop="column" label="变量" min-width="130" />
+                  <el-table-column prop="start_index" label="开始位置" min-width="110" />
+                  <el-table-column prop="end_index" label="结束位置" min-width="110" />
+                  <el-table-column prop="length" label="持续点数" min-width="110" />
+                </el-table>
+                <p v-if="candidateFrozenSegments.length > freezeSegmentDisplayLimit" class="freeze-limit-note">
+                  为避免页面过长，当前仅显示前 {{ freezeSegmentDisplayLimit }} 段；完整结构化审计数据可通过 Profile API 获取。
+                </p>
+              </el-collapse-item>
+            </el-collapse>
+          </div>
 
           <!-- Column Missing Rates Breakdown -->
           <div style="margin-bottom: 20px">
@@ -85,7 +145,7 @@
           </div>
 
           <div style="margin-top: 20px">
-            <el-button type="primary" icon="ArrowRight" @click="$router.push('/preprocessing/cleaning')">
+            <el-button type="primary" icon="ArrowRight" @click="openCleaning">
               前往执行时间规整与异常清洗
             </el-button>
           </div>
@@ -103,15 +163,177 @@
           <el-timeline v-if="versionNodes.length > 0">
             <el-timeline-item
               v-for="node in versionNodes"
-              :key="node.version_id"
+              :key="node.id"
               :timestamp="node.created_at"
-              :type="node.version_id === (dataset?.version_id || dataset?.latest_version_id) ? 'primary' : 'info'"
+              :type="node.id === (dataset?.version_id || dataset?.latest_version_id) ? 'primary' : 'info'"
               placement="top"
             >
               <el-card>
-                <h4>{{ node.operation_name }} (<span class="code-inline">{{ node.version_id }}</span>)</h4>
-                <p v-if="node.parent_version_id">父版本: <span class="code-inline">{{ node.parent_version_id }}</span></p>
-                <p v-if="node.parameters">参数: {{ JSON.stringify(node.parameters) }}</p>
+                <div class="version-card">
+                  <h4>{{ node.name }}</h4>
+                  <dl class="version-basics">
+                    <div><dt>版本 UUID</dt><dd class="audit-break">{{ node.id }}</dd></div>
+                    <div><dt>父版本</dt><dd class="audit-break">{{ node.parent_version_id || '根版本' }}</dd></div>
+                    <div><dt>操作类型</dt><dd>{{ operationLabel(node.tool) }}</dd></div>
+                    <div><dt>创建时间</dt><dd>{{ formatDateTime(node.created_at) }}</dd></div>
+                    <div><dt>行 / 列</dt><dd>{{ node.row_count }} / {{ node.column_count }}</dd></div>
+                    <div><dt>文件路径</dt><dd class="audit-break">{{ node.artifact_path }}</dd></div>
+                    <div v-if="node.processing_run_id"><dt>处理运行 UUID</dt><dd class="audit-break">{{ node.processing_run_id }}</dd></div>
+                  </dl>
+
+                  <div v-if="node.tool === 'preprocessing.clean'" class="audit-groups">
+                    <section class="audit-group">
+                      <h5>采样与插值</h5>
+                      <dl class="audit-list">
+                        <div><dt>目标采样周期</dt><dd>{{ cleaningDisplay(node, 'resample_period_seconds', 'target_sample_period_seconds') }}</dd></div>
+                        <div><dt>插值方式</dt><dd>{{ cleaningDisplay(node, 'interpolation') }}</dd></div>
+                        <div><dt>重复时间戳策略</dt><dd>{{ cleaningDisplay(node, 'duplicate_strategy') }}</dd></div>
+                      </dl>
+                    </section>
+                    <section class="audit-group">
+                      <h5>异常处理</h5>
+                      <dl class="audit-list">
+                        <div><dt>检测方法</dt><dd>{{ cleaningDisplay(node, 'outlier_detector', 'anomaly_detector') }}</dd></div>
+                        <div><dt>处理策略</dt><dd>{{ cleaningDisplay(node, 'outlier_strategy', 'anomaly_strategy') }}</dd></div>
+                        <div><dt>Hampel 窗口</dt><dd>{{ cleaningDisplay(node, 'hampel_window') }}</dd></div>
+                        <div><dt>平滑方法</dt><dd>{{ cleaningDisplay(node, 'smoothing') }}</dd></div>
+                      </dl>
+                    </section>
+                    <section class="audit-group">
+                      <h5>处理结果</h5>
+                      <dl class="audit-list">
+                        <div><dt>唯一变更</dt><dd>{{ processingCount(node, 'unique_changed_cells') }}</dd></div>
+                        <div><dt>缺失值填补</dt><dd>{{ processingCount(node, 'missing_value_fills') }}</dd></div>
+                        <div><dt>异常值替换</dt><dd>{{ processingCount(node, 'outlier_replacements') }}</dd></div>
+                        <div><dt>重复时间戳</dt><dd>{{ processingCount(node, 'duplicate_timestamps_processed', '行') }}</dd></div>
+                        <div><dt>平滑修改</dt><dd>{{ processingCount(node, 'smoothing_changes') }}</dd></div>
+                      </dl>
+                    </section>
+                    <section class="audit-group">
+                      <h5>审计与告警</h5>
+                      <dl class="audit-list">
+                        <div v-if="legacyConstantCount(node) !== null"><dt>历史恒值区段审计数</dt><dd>{{ legacyConstantCount(node) }}段</dd></div>
+                        <div v-else><dt>恒值区段审计数</dt><dd>{{ currentConstantCount(node) }}</dd></div>
+                        <div><dt>候选异常冻结段</dt><dd>{{ candidateFreezeCount(node) }}</dd></div>
+                      </dl>
+                      <ul v-if="displayWarnings(node).length" class="audit-warnings">
+                        <li v-for="warning in displayWarnings(node)" :key="warning">{{ warning }}</li>
+                      </ul>
+                    </section>
+                  </div>
+
+                  <div v-if="node.tool === 'simulation_generate'" class="audit-groups simulation-audit-groups">
+                    <section class="audit-group provenance-summary">
+                      <h5>仿真溯源</h5>
+                      <dl class="audit-list">
+                        <div><dt>证据来源</dt><dd>{{ node.provenance?.evidence_source || '未记录' }}</dd></div>
+                        <div><dt>展示说明</dt><dd>用户请求与实际生效参数分层展示，原始字段保留在审计区。</dd></div>
+                      </dl>
+                    </section>
+                    <el-collapse class="audit-collapse structured-audit-collapse">
+                      <el-collapse-item title="用户请求参数" :name="`${node.id}-request`">
+                        <div class="audit-structured request-parameters-view">
+                          <p class="audit-section-note">以下为用户提交的原始请求值，最终结果以实际生效参数为准。</p>
+                          <dl class="audit-list request-audit-list">
+                            <div><dt>场景</dt><dd>{{ requestValue(node, 'scenario') }}</dd></div>
+                            <div><dt>数据集名称</dt><dd>{{ requestValue(node, 'dataset_name', 'name') }}</dd></div>
+                            <div><dt>样本数</dt><dd>{{ requestValue(node, 'num_samples', 'n_steps', '个采样点') }}</dd></div>
+                            <div><dt>采样周期</dt><dd>{{ requestValue(node, 'sample_period_seconds', undefined, ' 秒') }}</dd></div>
+                            <div><dt>输入变量数量</dt><dd>{{ requestValue(node, 'input_count', undefined, '个变量') }}</dd></div>
+                            <div><dt>请求噪声水平</dt><dd>{{ requestRateValue(node, 'noise_level', false) }}</dd></div>
+                            <div><dt>请求异常率</dt><dd>{{ requestRateValue(node, 'anomaly_rate', true) }}</dd></div>
+                            <div><dt>请求缺失率</dt><dd>{{ requestRateValue(node, 'missing_rate', true) }}</dd></div>
+                            <div><dt>随机种子</dt><dd>{{ requestValue(node, 'seed') }}</dd></div>
+                          </dl>
+                        </div>
+                      </el-collapse-item>
+                      <el-collapse-item title="场景解析后实际生效参数" :name="`${node.id}-resolved`">
+                        <div class="audit-structured resolved-parameters-view">
+                          <section class="audit-subsection" data-audit-section="basic">
+                            <h6>基础配置</h6>
+                            <dl class="audit-list audit-basic-grid">
+                              <div><dt>场景</dt><dd>{{ requestValue(node, 'scenario') }}</dd></div>
+                              <div><dt>随机种子</dt><dd>{{ resolvedScalar(node, 'seed') }}</dd></div>
+                              <div><dt>实际噪声水平</dt><dd>{{ resolvedScalar(node, 'noise_level') }}</dd></div>
+                            </dl>
+                          </section>
+
+                          <section class="audit-subsection" data-audit-section="anomaly">
+                            <h6>异常值注入</h6>
+                            <div v-if="injectionData(node, 'anomaly_count_by_column', 'anomaly_rate_by_column').state === 'missing'" class="audit-empty">未记录</div>
+                            <div v-else-if="injectionData(node, 'anomaly_count_by_column', 'anomaly_rate_by_column').state === 'empty'" class="audit-empty">未注入</div>
+                            <div v-else class="audit-table-wrap">
+                              <el-table class="audit-data-table anomaly-injection-table" :data="injectionData(node, 'anomaly_count_by_column', 'anomaly_rate_by_column').rows" stripe size="small">
+                                <el-table-column prop="variable" label="变量" min-width="120" />
+                                <el-table-column prop="count_label" label="注入数量" min-width="120" />
+                                <el-table-column prop="rate_label" label="注入比例" min-width="120" />
+                              </el-table>
+                            </div>
+                          </section>
+
+                          <section class="audit-subsection" data-audit-section="missing">
+                            <h6>缺失值注入</h6>
+                            <div v-if="injectionData(node, 'missing_count_by_column', 'missing_rate_by_column').state === 'missing'" class="audit-empty">未记录</div>
+                            <div v-else-if="injectionData(node, 'missing_count_by_column', 'missing_rate_by_column').state === 'empty'" class="audit-empty">未注入</div>
+                            <div v-else class="audit-table-wrap">
+                              <el-table class="audit-data-table missing-injection-table" :data="injectionData(node, 'missing_count_by_column', 'missing_rate_by_column').rows" stripe size="small">
+                                <el-table-column prop="variable" label="变量" min-width="120" />
+                                <el-table-column prop="count_label" label="注入数量" min-width="120" />
+                                <el-table-column prop="rate_label" label="注入比例" min-width="120" />
+                              </el-table>
+                            </div>
+                          </section>
+
+                          <section class="audit-subsection" data-audit-section="freeze">
+                            <h6>已知冻结注入</h6>
+                            <div v-if="segmentData(node, 'freeze_segments').state === 'missing'" class="audit-empty">未记录</div>
+                            <div v-else-if="segmentData(node, 'freeze_segments').state === 'empty'" class="audit-empty">未注入</div>
+                            <div v-else class="audit-table-wrap">
+                              <el-table class="audit-data-table freeze-injection-table" :data="segmentData(node, 'freeze_segments').rows" stripe size="small">
+                                <el-table-column prop="variable" label="变量" min-width="120" />
+                                <el-table-column prop="start_label" label="开始位置" min-width="120" />
+                                <el-table-column prop="end_label" label="结束位置" min-width="120" />
+                                <el-table-column prop="length_label" label="持续点数" min-width="120" />
+                              </el-table>
+                            </div>
+                          </section>
+
+                          <section class="audit-subsection" data-audit-section="drift">
+                            <h6>已知漂移注入</h6>
+                            <div v-if="segmentData(node, 'drift_segments').state === 'missing'" class="audit-empty">未记录</div>
+                            <div v-else-if="segmentData(node, 'drift_segments').state === 'empty'" class="audit-empty">未注入</div>
+                            <div v-else class="audit-table-wrap">
+                              <el-table class="audit-data-table drift-injection-table" :data="segmentData(node, 'drift_segments').rows" stripe size="small">
+                                <el-table-column prop="variable" label="变量" min-width="120" />
+                                <el-table-column prop="start_label" label="开始位置" min-width="120" />
+                                <el-table-column prop="end_label" label="结束位置" min-width="120" />
+                                <el-table-column prop="length_label" label="持续点数" min-width="120" />
+                              </el-table>
+                            </div>
+                          </section>
+
+                          <section class="audit-subsection" data-audit-section="timestamps">
+                            <h6>时间戳污染</h6>
+                            <dl class="audit-list audit-basic-grid">
+                              <div data-audit-field="irregular-timestamps"><dt>不规则时间戳</dt><dd>{{ resolvedCount(node, 'irregular_timestamp_count', '个') }}</dd></div>
+                              <div><dt>重复时间戳</dt><dd>{{ resolvedCount(node, 'duplicate_timestamp_count', '个') }}</dd></div>
+                            </dl>
+                          </section>
+                        </div>
+                      </el-collapse-item>
+                    </el-collapse>
+                  </div>
+
+                  <el-collapse class="audit-collapse raw-audit-collapse">
+                    <el-collapse-item title="查看原始审计参数" :name="`${node.id}-raw`">
+                      <div class="raw-audit-toolbar">
+                        <span>完整原始字段和值，未经翻译或改写。</span>
+                        <el-button size="small" plain @click="copyAuditJson(node)">复制 JSON</el-button>
+                      </div>
+                      <pre class="audit-json raw-audit-json">{{ formatAuditJson(node.parameters) }}</pre>
+                    </el-collapse-item>
+                  </el-collapse>
+                </div>
               </el-card>
             </el-timeline-item>
           </el-timeline>
@@ -126,28 +348,42 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { DataLine, Share, ArrowRight } from "@element-plus/icons-vue";
 import StateView from "../components/StateView.vue";
 import { getDatasetDetail, getDatasetProfile, getDatasetVersions } from "../api/datasets";
 import type { DatasetItem, DatasetProfile, DatasetVersionNode } from "../types/api";
 import { ElMessage } from "element-plus";
+import { useDatasetStore } from "../stores/datasetStore";
 
 const route = useRoute();
+const router = useRouter();
+const datasetStore = useDatasetStore();
 const activeTab = ref("overview");
 const datasetId = (route.params.id as string) || "ds_s1";
 
 const dataset = ref<DatasetItem | null>(null);
+const detailLoading = ref(true);
+const detailError = ref("");
 const profile = ref<DatasetProfile | null>(null);
 const profileLoading = ref(false);
 const versionNodes = ref<DatasetVersionNode[]>([]);
+const expandedFreezePanels = ref<string[]>([]);
+const freezeSegmentDisplayLimit = 20;
 
 const fetchDetail = async () => {
+  detailLoading.value = true;
+  detailError.value = "";
   try {
     const res = await getDatasetDetail(datasetId);
     dataset.value = res;
+    datasetStore.setActiveDataset(res);
   } catch (err: any) {
-    ElMessage.error(`获取数据集详情失败 [${err.code || 'ERR'}]: ${err.message}`);
+    dataset.value = null;
+    detailError.value = `获取数据集详情失败 [${err.code || 'ERR'}]：${err.message || '未知错误'}`;
+    ElMessage.error(detailError.value);
+  } finally {
+    detailLoading.value = false;
   }
 };
 
@@ -185,6 +421,260 @@ const formattedColStats = computed(() => {
   }));
 });
 
+const candidateFrozenSegments = computed(() => profile.value?.candidate_frozen_segments || []);
+const previewRows = computed(() => dataset.value?.preview?.rows || []);
+const previewColumns = computed(() => dataset.value?.preview?.columns || []);
+const visibleCandidateFrozenSegments = computed(() =>
+  candidateFrozenSegments.value.slice(0, freezeSegmentDisplayLimit)
+);
+const candidateFreezeSummary = computed(() => {
+  const summary = profile.value?.freeze_detection_summary;
+  const segments = candidateFrozenSegments.value;
+  if (!summary || summary.candidate_count === 0 || !summary.longest_segment || segments.length === 0) {
+    return "未检测到异常冻结段";
+  }
+  const longest = summary.longest_segment;
+  return `候选异常冻结：共 ${summary.candidate_count} 段，涉及 ${summary.affected_column_count} 个变量；最长区段为 ${longest.column}，第${longest.start_index}–${longest.end_index}行，共${longest.length}点。`;
+});
+
+const formatPreviewValue = (value: unknown) => value === null || value === undefined ? "缺失" : String(value);
+
+const formatDateTime = (value: string) => {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString("zh-CN");
+};
+
+const operationLabel = (tool: string) => ({
+  raw_upload: "CSV 上传",
+  simulation_generate: "仿真生成",
+  "preprocessing.clean": "数据清洗",
+  "preprocessing.lag_compensation": "时滞补偿",
+  "preprocessing.feature_selection": "变量筛选",
+}[tool] || tool);
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+
+type AuditDataState = "missing" | "empty" | "data";
+
+type InjectionRow = {
+  variable: string;
+  count_label: string;
+  rate_label: string;
+};
+
+type SegmentRow = {
+  variable: string;
+  start_label: string;
+  end_label: string;
+  length_label: string;
+};
+
+const CLEANING_ENUM_LABELS: Record<string, string> = {
+  hampel: "Hampel 滤波",
+  iqr: "IQR 四分位距",
+  zscore: "Z-score 标准分数",
+  z_score: "Z-score 标准分数",
+  linear_interpolate: "线性插值替换",
+  clip: "边界截断",
+  none: "未启用",
+  linear: "线性插值",
+  ffill: "前向填充",
+  forward_fill: "前向填充",
+  bfill: "后向填充",
+  backward_fill: "后向填充",
+  mean: "均值聚合",
+};
+
+const ENUM_CLEANING_KEYS = new Set([
+  "interpolation",
+  "duplicate_strategy",
+  "outlier_detector",
+  "outlier_strategy",
+  "smoothing",
+]);
+
+const cleaningEnumLabel = (value: string) =>
+  CLEANING_ENUM_LABELS[value] || `${value}（未识别参数）`;
+
+const hasOwn = (record: Record<string, unknown>, key: string) =>
+  Object.prototype.hasOwnProperty.call(record, key);
+
+const formatScalar = (value: unknown) => {
+  if (value === null || value === undefined || value === "") return "未记录";
+  return String(value);
+};
+
+const formatPercentage = (value: unknown) => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "未记录";
+  return `${(value * 100).toFixed(2)}%`;
+};
+
+const cleaningRawValue = (node: DatasetVersionNode, resolvedKey: string, requestKey?: string) => {
+  const parameters = asRecord(node.parameters);
+  const resolved = asRecord(parameters.resolved_parameters);
+  const request = asRecord(parameters.request);
+  return resolved[resolvedKey] ?? request[requestKey || resolvedKey];
+};
+
+const cleaningDisplay = (node: DatasetVersionNode, resolvedKey: string, requestKey?: string) => {
+  const value = cleaningRawValue(node, resolvedKey, requestKey);
+  if (value === null || value === undefined || value === "") return "未记录";
+  if (resolvedKey === "resample_period_seconds") return `${String(value)} 秒`;
+  if (resolvedKey === "hampel_window") return `${String(value)}个采样点`;
+  if (ENUM_CLEANING_KEYS.has(resolvedKey) && typeof value === "string") {
+    return cleaningEnumLabel(value);
+  }
+  return String(value);
+};
+
+const processingCount = (node: DatasetVersionNode, key: string, suffix = "个单元格") => {
+  const processing = asRecord(node.audit_summary?.processing);
+  const value = processing[key];
+  return value === null || value === undefined ? "未记录" : `${String(value)}${suffix}`;
+};
+
+const legacyConstantCount = (node: DatasetVersionNode) =>
+  node.audit_summary?.freeze?.historical_constant_value_segment_count ?? null;
+const currentConstantCount = (node: DatasetVersionNode) => {
+  const value = node.audit_summary?.freeze?.constant_value_segment_count;
+  return value === undefined ? "未记录" : `${value}段`;
+};
+const candidateFreezeCount = (node: DatasetVersionNode) => {
+  const value = node.audit_summary?.freeze?.candidate_frozen_segment_count;
+  return value === undefined ? "未记录" : `${value}段`;
+};
+
+const LEGACY_DUPLICATE_WARNING = /^已按\s+\S+\s+规则处理\s+\d+\s*个重复时间戳。?$/;
+
+const displayWarnings = (node: DatasetVersionNode) => {
+  const warnings = node.audit_summary?.warnings || [];
+  const processing = asRecord(node.audit_summary?.processing);
+  const duplicateCount = processing.duplicate_timestamps_processed;
+  const duplicateStrategy = cleaningRawValue(node, "duplicate_strategy");
+  const formattedDuplicateWarning =
+    typeof duplicateCount === "number" && duplicateCount > 0 && typeof duplicateStrategy === "string"
+      ? `已采用${cleaningEnumLabel(duplicateStrategy)}处理${duplicateCount}行重复时间戳。`
+      : null;
+  let replacedLegacyWarning = false;
+  const formattedWarnings = warnings.map((warning) => {
+    if (formattedDuplicateWarning && LEGACY_DUPLICATE_WARNING.test(warning)) {
+      replacedLegacyWarning = true;
+      return formattedDuplicateWarning;
+    }
+    return warning;
+  });
+  if (formattedDuplicateWarning && !replacedLegacyWarning && !warnings.some((warning) => warning.includes("重复时间戳"))) {
+    formattedWarnings.unshift(formattedDuplicateWarning);
+  }
+  return formattedWarnings;
+};
+
+const requestRecord = (node: DatasetVersionNode) => {
+  const provenanceRequest = asRecord(node.provenance?.user_request);
+  if (Object.keys(provenanceRequest).length > 0) return provenanceRequest;
+  const parameters = asRecord(node.parameters);
+  return asRecord(parameters.simulation_request);
+};
+
+const resolvedRecord = (node: DatasetVersionNode) => asRecord(node.provenance?.resolved_scenario_parameters);
+
+const requestValue = (node: DatasetVersionNode, key: string, fallbackKey?: string, suffix = "") => {
+  const request = requestRecord(node);
+  const value = request[key] ?? (fallbackKey ? request[fallbackKey] : undefined);
+  return value === null || value === undefined || value === "" ? "未记录" : `${String(value)}${suffix}`;
+};
+
+const requestRateValue = (node: DatasetVersionNode, key: string, zeroUsesScenarioDefault: boolean) => {
+  const request = requestRecord(node);
+  const value = request[key];
+  if (value === null || value === undefined || value === "") return "未记录";
+  if (value === 0 && zeroUsesScenarioDefault) return "使用场景默认值（原始请求值：0）";
+  if (key === "noise_level") {
+    return `${String(value)}（原始请求值；最终生效值见下方实际生效参数）`;
+  }
+  return typeof value === "number" ? formatPercentage(value) : String(value);
+};
+
+const resolvedScalar = (node: DatasetVersionNode, key: string) => {
+  const resolved = resolvedRecord(node);
+  return hasOwn(resolved, key) ? formatScalar(resolved[key]) : "未记录";
+};
+
+const resolvedCount = (node: DatasetVersionNode, key: string, suffix: string) => {
+  const resolved = resolvedRecord(node);
+  const value = resolved[key];
+  if (!hasOwn(resolved, key) || value === null || value === undefined || value === "") return "未记录";
+  return `${String(value)}${suffix}`;
+};
+
+const injectionData = (
+  node: DatasetVersionNode,
+  countKey: string,
+  rateKey: string,
+): { state: AuditDataState; rows: InjectionRow[] } => {
+  const resolved = resolvedRecord(node);
+  if (!hasOwn(resolved, countKey) && !hasOwn(resolved, rateKey)) return { state: "missing", rows: [] };
+  const counts = asRecord(resolved[countKey]);
+  const rates = asRecord(resolved[rateKey]);
+  const variables = [...new Set([...Object.keys(counts), ...Object.keys(rates)])];
+  if (variables.length === 0) return { state: "empty", rows: [] };
+  return {
+    state: "data",
+    rows: variables.map((variable) => ({
+      variable,
+      count_label: hasOwn(counts, variable) ? `${formatScalar(counts[variable])}个` : "未记录",
+      rate_label: hasOwn(rates, variable) ? formatPercentage(rates[variable]) : "未记录",
+    })),
+  };
+};
+
+const segmentData = (node: DatasetVersionNode, key: string): { state: AuditDataState; rows: SegmentRow[] } => {
+  const resolved = resolvedRecord(node);
+  if (!hasOwn(resolved, key) || !Array.isArray(resolved[key])) return { state: "missing", rows: [] };
+  const segments = resolved[key] as unknown[];
+  if (segments.length === 0) return { state: "empty", rows: [] };
+  return {
+    state: "data",
+    rows: segments.map((segment) => {
+      const item = asRecord(segment);
+      const start = item.start_index ?? item.start_idx;
+      const end = item.end_index ?? item.end_idx;
+      const length = typeof start === "number" && typeof end === "number" ? end - start + 1 : null;
+      return {
+        variable: formatScalar(item.column ?? item.variable),
+        start_label: formatScalar(start),
+        end_label: formatScalar(end),
+        length_label: length === null ? "未记录" : `${length}点`,
+      };
+    }),
+  };
+};
+
+const formatAuditJson = (value: unknown) => JSON.stringify(value === undefined ? {} : value, null, 2);
+
+const copyAuditJson = async (node: DatasetVersionNode) => {
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
+    await navigator.clipboard.writeText(formatAuditJson(node.parameters));
+    ElMessage.success("原始审计 JSON 已复制");
+  } catch {
+    ElMessage.error("复制失败，请手动选择原始审计 JSON");
+  }
+};
+
+const openCleaning = () => {
+  if (!dataset.value) return;
+  datasetStore.setActiveDataset(dataset.value);
+  const versionId = dataset.value.version_id || dataset.value.latest_version_id;
+  router.push({
+    name: "Cleaning",
+    query: { dataset_id: dataset.value.id, version_id: versionId },
+  });
+};
+
 onMounted(() => {
   fetchDetail();
   fetchProfile();
@@ -193,6 +683,107 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.dataset-detail-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.page-header {
+  flex: 0 0 auto;
+}
+
+.detail-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.detail-tabs :deep(.el-tabs__header) {
+  flex: 0 0 auto;
+}
+
+.detail-tabs :deep(.el-tabs__content) {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.detail-tabs :deep(.overview-tab-pane) {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.preview-tab-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.preview-card {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  margin-bottom: 0;
+  overflow: hidden;
+}
+
+.preview-card .industrial-card-header {
+  flex: 0 0 auto;
+  gap: 12px;
+  min-width: 0;
+}
+
+.preview-row-status {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.preview-row-status strong {
+  color: var(--text-primary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.preview-table-region {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.preview-table {
+  width: 100%;
+  height: 100%;
+}
+
+.preview-empty,
+.preview-state {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  place-items: center;
+}
+
+.preview-empty {
+  padding: 20px 0;
+  color: var(--text-secondary);
+}
 .page-header {
   margin-bottom: 20px;
 }
@@ -230,6 +821,239 @@ onMounted(() => {
   font-size: 18px;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.freeze-segments {
+  margin-bottom: 20px;
+  padding: 14px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+}
+
+.preview-error {
+  display: grid;
+  gap: 16px;
+  justify-items: start;
+}
+
+.preview-null {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.version-card,
+.audit-break,
+.audit-json {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.version-card h4 {
+  margin: 0 0 14px;
+}
+
+.version-basics,
+.audit-list {
+  margin: 0;
+}
+
+.version-basics > div,
+.audit-list > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.version-basics dt,
+.audit-list dt {
+  color: var(--text-secondary);
+}
+
+.version-basics dd,
+.audit-list dd {
+  margin: 0;
+}
+
+.audit-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.audit-group {
+  padding: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+}
+
+.audit-group h5 {
+  margin: 0 0 8px;
+}
+
+.audit-warnings {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  color: var(--color-warning-dark);
+}
+
+.audit-collapse {
+  grid-column: 1 / -1;
+  margin-top: 14px;
+}
+
+.audit-json {
+  max-width: 100%;
+  max-height: 320px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  white-space: pre;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.simulation-audit-groups .provenance-summary {
+  grid-column: 1 / -1;
+}
+
+.structured-audit-collapse {
+  margin-top: 0;
+}
+
+.audit-structured {
+  min-width: 0;
+  padding: 12px 4px 4px;
+}
+
+.audit-section-title,
+.audit-subsection h6 {
+  margin: 0 0 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.audit-section-note {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.resolved-parameters-view {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.resolved-parameters-view > .audit-section-title {
+  grid-column: 1 / -1;
+}
+
+.resolved-parameters-view [data-audit-section='basic'],
+.resolved-parameters-view [data-audit-section='timestamps'] {
+  grid-column: 1 / -1;
+}
+
+.audit-subsection {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+}
+
+.audit-basic-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0 12px;
+}
+
+.audit-table-wrap {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.audit-data-table {
+  min-width: 460px;
+}
+
+.audit-empty {
+  padding: 14px;
+  color: var(--text-secondary);
+  text-align: center;
+  background: var(--bg-surface);
+  border: 1px dashed var(--border-light);
+  border-radius: 4px;
+}
+
+.raw-audit-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.raw-audit-toolbar .el-button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 980px) {
+  .resolved-parameters-view {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .resolved-parameters-view > .audit-section-title {
+    grid-column: auto;
+  }
+
+  .resolved-parameters-view [data-audit-section='basic'],
+  .resolved-parameters-view [data-audit-section='timestamps'] {
+    grid-column: auto;
+  }
+}
+@media (max-width: 720px) {
+  .version-basics > div,
+  .audit-list > div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .raw-audit-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+.freeze-segments h4 {
+  margin: 0 0 6px;
+  color: var(--text-primary);
+}
+
+.freeze-hint,
+.freeze-limit-note {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.freeze-limit-note {
+  margin: 10px 0 0;
 }
 
 .stat-mini-card {

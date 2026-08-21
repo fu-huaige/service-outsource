@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+### Added (versioned preprocessing pipeline, 2026-08-20)
+
+- 新增确认式时滞补偿与冗余变量剔除 Apply API；二者各自创建不可变 CSV、DatasetVersion、Profile、ProcessingRun 与审计日志；
+- 支持按 `version_id` 下载任意历史 DatasetVersion，版本 DAG 返回行列数、artifact 与 ProcessingRun；
+- 前端 Delay / Collinearity 页面增加人工确认后创建新版本的入口；
+- 新增不可变版本、ARX `nk` 补偿语义和 Analyze/Apply 边界文档。
+
 ### Added (evaluation metric audit and diagnostics, 2026-08-20)
 
 - ARX 指标按 `one_step` 与 `free_run` 分区持久化/返回；保留旧 one-step 与 free-run 字段为兼容别名，避免将不同预测模式混称为 Test 指标；
