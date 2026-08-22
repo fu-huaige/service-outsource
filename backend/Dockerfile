@@ -1,5 +1,7 @@
 FROM python:3.11-slim
 
+ARG PIP_INDEX_URL=https://pypi.org/simple
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app
@@ -12,7 +14,7 @@ COPY algorithms ./algorithms
 COPY alembic ./alembic
 COPY alembic.ini ./
 
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" .
 
 EXPOSE 8000
 

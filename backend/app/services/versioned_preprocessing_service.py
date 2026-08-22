@@ -30,6 +30,7 @@ from app.schemas.preprocessing import (
     VersionApplyData,
 )
 from app.services.contract_stubs import completed_task
+from app.services.dataset_csv import ParsedCsv
 from app.services.dataset_version_io import (
     DatasetVersionArtifactError,
     load_version_csv,
@@ -165,7 +166,7 @@ async def apply_feature_selection(
 
 async def _source(
     session: AsyncSession, version_id: UUID, dataset_id: UUID | None, artifact_root: Path
-) -> tuple[DatasetVersion, Dataset, list[DatasetColumn], object]:
+) -> tuple[DatasetVersion, Dataset, list[DatasetColumn], ParsedCsv]:
     source = await session.get(DatasetVersion, version_id)
     if source is None:
         raise VersionedPreprocessingError("DATASET_VERSION_NOT_FOUND", "源数据版本不存在。", status_code=404)

@@ -30,12 +30,36 @@ def test_validation_errors_use_the_standard_error_envelope() -> None:
     assert UUID(payload["request_id"]).version == 4
 
 
-def test_simulation_contract_returns_truth_fields() -> None:
-    with TestClient(create_app()) as client:
+def test_simulation_contract_returns_truth_fields(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import asyncio
+    from collections.abc import AsyncIterator
+
+    from app.core.db import get_session
+    from app.models import Base
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'simulation-contract.db'}")
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async def prepare() -> None:
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+
+    asyncio.run(prepare())
+
+    async def session_override() -> AsyncIterator[AsyncSession]:
+        async with session_factory() as session:
+            yield session
+
+    monkeypatch.setattr("app.api.routes.get_settings", lambda: Settings(artifact_root=tmp_path))
+    app = create_app()
+    app.dependency_overrides[get_session] = session_override
+    with TestClient(app) as client:
         response = client.post(
             "/api/v1/simulation/generate",
             json={"scenario": "S2", "input_count": 2, "seed": 7},
         )
+    asyncio.run(engine.dispose())
 
     assert response.status_code == 201
     payload = response.json()["data"]
