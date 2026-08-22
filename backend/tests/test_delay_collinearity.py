@@ -149,6 +149,31 @@ class TestDelayRefinement:
         assert np.isfinite(result.validation_fit)
         assert result.validation_fit > 50.0
 
+    def test_frozen_s2_acceptance_seed_recovers_exact_delays(self, tmp_path: Path) -> None:
+        from app.schemas.simulation import SimulationGenerateRequest
+        from app.services.simulation_service import generate_simulation, load_simulation_by_version
+
+        generated = generate_simulation(
+            SimulationGenerateRequest(
+                scenario="S2",
+                num_samples=1200,
+                input_count=2,
+                seed=9002,
+                noise_level=0.0,
+            ),
+            artifact_root=tmp_path,
+        )
+        stored = load_simulation_by_version(generated.version_id, artifact_root=tmp_path)
+
+        result = estimate_delays(
+            inputs={column: stored.values[column] for column in ("u1", "u2")},
+            output=stored.values["y"],
+            max_lag=8,
+        )
+
+        assert result.refined_delays == generated.ground_truth.true_delays_by_input
+        assert result.validation_fit > 95.0
+
     def test_short_record_is_rejected_rather_than_guessed(self) -> None:
         inputs = {"u1": np.zeros(60), "u2": np.zeros(60)}
         with pytest.raises(IdentifiabilityError) as error:

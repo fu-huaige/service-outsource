@@ -343,7 +343,7 @@ def estimate_delays(
     )
 
 
-def _widen(lags: list[int], *, max_lag: int, radius: int = 1) -> list[int]:
+def _widen(lags: list[int], *, max_lag: int, radius: int = 2) -> list[int]:
     """Expand each candidate peak into a small neighbourhood, nearest-first."""
 
     expanded: list[int] = []
