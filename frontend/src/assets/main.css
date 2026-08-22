@@ -112,3 +112,140 @@ body {
   font-size: 13px;
   border: 1px solid var(--border-light);
 }
+
+/* Shared parameter-form layout
+ *
+ * Keep labels beside their controls on desktop, but align every field to the
+ * same three-column grid. This replaces content-dependent inline wrapping and
+ * the scattered per-control widths that previously made parameter cards look
+ * ragged from one row to the next.
+ */
+.parameter-form-grid {
+  --parameter-form-label-width: 104px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: 16px 24px;
+}
+
+.parameter-form-grid .el-form-item {
+  display: grid;
+  grid-template-columns: var(--parameter-form-label-width) minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+}
+
+.parameter-form-grid .el-form-item__label {
+  width: auto !important;
+  height: auto;
+  min-height: 32px;
+  padding: 0 12px 0 0;
+  line-height: 1.35;
+  white-space: normal;
+  text-align: right;
+  justify-content: flex-end;
+}
+
+.parameter-form-grid .el-form-item__content {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  min-width: 0;
+  min-height: 32px;
+  line-height: 1.35;
+}
+
+.parameter-form-grid .el-input,
+.parameter-form-grid .el-input-number,
+.parameter-form-grid .el-select,
+.parameter-form-grid .el-slider {
+  width: 100% !important;
+  min-width: 0;
+}
+
+.parameter-form-grid .el-slider .el-input-number {
+  flex: 0 0 130px;
+  width: 130px !important;
+}
+
+.parameter-form-grid .el-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 0;
+}
+
+.parameter-form-grid .form-span-2 {
+  grid-column: span 2;
+}
+
+.parameter-form-grid .form-span-full,
+.parameter-form-grid .parameter-form-actions,
+.parameter-form-grid .parameter-form-note {
+  grid-column: 1 / -1;
+}
+
+.parameter-form-grid.parameter-form-grid--single {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 680px;
+}
+
+.parameter-form-grid .parameter-form-actions {
+  display: block;
+  padding-top: 4px;
+}
+
+.parameter-form-grid .parameter-form-actions .el-form-item__content {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.parameter-form-grid .parameter-form-actions .el-button + .el-button {
+  margin-left: 0;
+}
+
+.form-control-suffix {
+  flex: 0 0 auto;
+  margin-left: 8px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+@media (max-width: 1400px) {
+  .parameter-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .parameter-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .parameter-form-grid .form-span-2 {
+    grid-column: span 1;
+  }
+
+  .parameter-form-grid .el-form-item {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .parameter-form-grid .el-form-item__label {
+    min-height: 0;
+    padding: 0;
+    text-align: left;
+    justify-content: flex-start;
+  }
+
+  .parameter-form-grid .parameter-form-actions .el-form-item__content {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .parameter-form-grid .parameter-form-actions .el-button {
+    width: 100%;
+  }
+}

@@ -16,15 +16,15 @@
           </div>
         </div>
 
-        <el-form :inline="true" :model="form" label-width="110px">
+        <el-form :model="form" class="parameter-form-grid">
           <el-form-item label="数据版本 ID">
-            <el-input v-model="form.version_id" placeholder="version_id" style="width: 320px" />
+            <el-input v-model="form.version_id" placeholder="version_id" />
           </el-form-item>
           <el-form-item label="输入变量">
-            <el-input v-model="inputColumnsText" placeholder="u1,u2" style="width: 180px" />
+            <el-input v-model="inputColumnsText" placeholder="u1,u2" />
           </el-form-item>
           <el-form-item label="输出变量">
-            <el-input v-model="form.output_column" placeholder="y" style="width: 110px" />
+            <el-input v-model="form.output_column" placeholder="y" />
           </el-form-item>
           <el-form-item label="Trial 次数">
             <el-input-number v-model="form.max_trials" :min="1" :max="500" :step="5" />
@@ -32,7 +32,7 @@
           <el-form-item label="随机种子">
             <el-input-number v-model="form.random_seed" :min="0" :max="99999" />
           </el-form-item>
-          <el-form-item>
+          <el-form-item class="parameter-form-actions">
             <el-button
               type="primary"
               :loading="isSearching"

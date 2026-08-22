@@ -37,9 +37,9 @@
           </div>
         </div>
 
-        <el-form label-width="140px" label-position="left" style="max-width: 600px">
+        <el-form class="parameter-form-grid parameter-form-grid--single">
           <el-form-item label="LLM Provider">
-            <el-select v-model="llmProvider" style="width: 220px">
+            <el-select v-model="llmProvider">
               <el-option label="DeepSeek-V3" value="deepseek" />
               <el-option label="通义千问 (Qwen)" value="qwen" />
             </el-select>
@@ -47,7 +47,7 @@
           <el-form-item label="API Key">
             <el-input v-model="apiKey" type="password" show-password placeholder="sk-..." />
           </el-form-item>
-          <el-form-item>
+          <el-form-item class="parameter-form-actions">
             <el-button type="primary" icon="Check" @click="handleSave">保存设置</el-button>
           </el-form-item>
         </el-form>

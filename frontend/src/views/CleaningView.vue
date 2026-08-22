@@ -14,8 +14,8 @@
           </div>
         </div>
 
-        <el-form :model="form" label-width="140px" label-position="left">
-          <el-form-item label="源数据版本（本次清洗输入）">
+        <el-form :model="form" class="parameter-form-grid">
+          <el-form-item label="源数据版本（本次清洗输入）" class="form-span-full">
             <template v-if="sourceVersion">
               <span>{{ sourceVersion.name }}</span>
               <span class="code-inline source-version-id">{{ sourceVersion.id }}</span>
@@ -23,14 +23,14 @@
             <span v-else class="source-version-pending">{{ sourceLoadMessage }}</span>
           </el-form-item>
 
-          <p class="source-version-note">清洗成功后将生成新的不可变版本，源版本不会被覆盖。</p>
+          <p class="source-version-note parameter-form-note">清洗成功后将生成新的不可变版本，源版本不会被覆盖。</p>
 
           <el-form-item label="重采样周期 Ts">
             <el-input-number v-model="form.target_sample_period_seconds" :min="0.1" :max="60" :step="0.5" />
-            <span style="margin-left: 8px">秒 (s)</span>
+            <span class="form-control-suffix">秒 (s)</span>
           </el-form-item>
 
-          <el-form-item label="缺失值插值算法">
+          <el-form-item label="缺失值插值算法" class="form-span-2">
             <el-radio-group v-model="form.interpolation">
               <el-radio label="linear">线性插值 (Linear)</el-radio>
               <el-radio label="forward_fill">前向填充 (FFill)</el-radio>
@@ -39,7 +39,7 @@
           </el-form-item>
 
           <el-form-item label="异常值检测算法">
-            <el-select v-model="form.anomaly_detector" style="width: 220px">
+            <el-select v-model="form.anomaly_detector">
               <el-option label="Hampel Filter (推荐)" value="hampel" />
               <el-option label="IQR 四分位距" value="iqr" />
               <el-option label="Z-Score 阈值" value="z_score" />
@@ -50,7 +50,7 @@
             <el-input-number v-model="form.hampel_window" :min="3" :max="21" :step="2" />
           </el-form-item>
 
-          <el-form-item>
+          <el-form-item class="parameter-form-actions">
             <el-button type="primary" :loading="loading" :disabled="!sourceVersion || loading" icon="MagicStick" @click="handleClean">
               执行清洗并生成新版本 V1_Cleaned
             </el-button>

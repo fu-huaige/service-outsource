@@ -28,7 +28,7 @@
           </div>
         </div>
 
-        <el-form :inline="true" :model="form">
+        <el-form :model="form" class="parameter-form-grid">
           <el-form-item label="输出阶数 na">
             <el-input-number v-model="form.na" :min="1" :max="5" />
           </el-form-item>
@@ -50,7 +50,7 @@
           </el-form-item>
 
           <el-form-item label="求解算法">
-            <el-select v-model="form.estimation_method" style="width: 160px">
+            <el-select v-model="form.estimation_method">
               <el-option label="最小二乘 (OLS)" value="ols" />
               <el-option label="岭回归 (Ridge)" value="ridge" />
             </el-select>
@@ -60,7 +60,7 @@
             <el-input-number v-model="form.ridge_alpha" :min="0.001" :max="10" :step="0.1" />
           </el-form-item>
 
-          <el-form-item>
+          <el-form-item class="parameter-form-actions">
             <el-button type="primary" :loading="loading" icon="VideoPlay" @click="handleFit">
               运行 ARX 辨识
             </el-button>

@@ -15,12 +15,11 @@
           </div>
         </div>
 
-        <el-form :inline="true" :model="form" label-width="100px">
+        <el-form :model="form" class="parameter-form-grid parameter-form-grid--single">
           <el-form-item label="数据版本 ID">
             <el-input
               v-model="form.active_version_id"
               placeholder="留空则只生成计划，不执行"
-              style="width: 340px"
             />
           </el-form-item>
         </el-form>

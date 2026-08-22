@@ -15,20 +15,20 @@
           </div>
         </div>
 
-        <el-form :inline="true" :model="form" label-width="110px">
+        <el-form :model="form" class="parameter-form-grid">
           <el-form-item label="数据版本 ID">
-            <el-input v-model="form.version_id" placeholder="version_id" style="width: 320px" />
+            <el-input v-model="form.version_id" placeholder="version_id" />
           </el-form-item>
           <el-form-item label="寻优任务 ID">
-            <el-input v-model="studyId" placeholder="可选" style="width: 320px" />
+            <el-input v-model="studyId" placeholder="可选" />
           </el-form-item>
           <el-form-item label="输入变量">
-            <el-input v-model="inputColumnsText" placeholder="u1,u2" style="width: 180px" />
+            <el-input v-model="inputColumnsText" placeholder="u1,u2" />
           </el-form-item>
           <el-form-item label="输出变量">
-            <el-input v-model="outputColumn" placeholder="y" style="width: 110px" />
+            <el-input v-model="outputColumn" placeholder="y" />
           </el-form-item>
-          <el-form-item>
+          <el-form-item class="parameter-form-actions">
             <el-button
               type="primary"
               :loading="reporting"

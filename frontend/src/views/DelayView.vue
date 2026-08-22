@@ -15,15 +15,15 @@
           </div>
         </div>
 
-        <el-form :inline="true" :model="form" label-width="110px">
+        <el-form :model="form" class="parameter-form-grid">
           <el-form-item label="数据版本 ID">
-            <el-input v-model="form.version_id" placeholder="version_id" style="width: 320px" />
+            <el-input v-model="form.version_id" placeholder="version_id" />
           </el-form-item>
           <el-form-item label="输入变量">
-            <el-input v-model="inputColumnsText" placeholder="u1,u2" style="width: 200px" />
+            <el-input v-model="inputColumnsText" placeholder="u1,u2" />
           </el-form-item>
           <el-form-item label="输出变量">
-            <el-input v-model="form.output_column" placeholder="y" style="width: 120px" />
+            <el-input v-model="form.output_column" placeholder="y" />
           </el-form-item>
           <el-form-item label="最大滞后">
             <el-input-number v-model="form.max_lag" :min="1" :max="1000" :step="5" />
@@ -31,7 +31,7 @@
           <el-form-item label="候选数 K">
             <el-input-number v-model="form.top_k" :min="1" :max="10" />
           </el-form-item>
-          <el-form-item>
+          <el-form-item class="parameter-form-actions">
             <el-button type="primary" :loading="loading" icon="Search" @click="handleEstimate">
               估计多变量时滞
             </el-button>

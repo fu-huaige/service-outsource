@@ -84,7 +84,7 @@
 
     <!-- Column Config Dialog -->
     <el-dialog v-model="configDialogVisible" title="配置数据集列角色 (Schema Mapping)" width="500px">
-      <el-form label-width="120px">
+      <el-form class="parameter-form-grid parameter-form-grid--single">
         <el-form-item label="时间戳列 (Time)">
           <el-input v-model="configForm.time_column" placeholder="例如: timestamp" />
         </el-form-item>

@@ -15,19 +15,15 @@
           </div>
         </div>
 
-        <el-form :inline="true" :model="form" label-width="110px">
+        <el-form :model="form" class="parameter-form-grid">
           <el-form-item label="数据版本 ID">
-            <el-input v-model="form.version_id" placeholder="version_id" style="width: 320px" />
+            <el-input v-model="form.version_id" placeholder="version_id" />
           </el-form-item>
           <el-form-item label="输入变量">
-            <el-input
-              v-model="inputColumnsText"
-              placeholder="u1,u2,u3"
-              style="width: 200px"
-            />
+            <el-input v-model="inputColumnsText" placeholder="u1,u2,u3" />
           </el-form-item>
           <el-form-item label="输出变量">
-            <el-input v-model="form.output_column" placeholder="y" style="width: 120px" />
+            <el-input v-model="form.output_column" placeholder="y" />
           </el-form-item>
           <el-form-item label="窗口长度">
             <el-input-number v-model="form.window_size" :min="5" :max="2000" :step="10" />
@@ -37,7 +33,7 @@
           </el-form-item>
           <el-form-item label="最低 SNR">
             <el-input-number v-model="form.min_snr_db" :min="-20" :max="60" :step="1" />
-            <span style="margin-left: 6px">dB</span>
+            <span class="form-control-suffix">dB</span>
           </el-form-item>
           <el-form-item label="最大缺失率">
             <el-input-number
@@ -57,7 +53,7 @@
               :precision="2"
             />
           </el-form-item>
-          <el-form-item>
+          <el-form-item class="parameter-form-actions">
             <el-button type="primary" :loading="loading" icon="Search" @click="handleSegment">
               执行门控与信息增益优选
             </el-button>

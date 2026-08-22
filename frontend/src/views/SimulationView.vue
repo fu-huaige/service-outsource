@@ -14,8 +14,8 @@
           </div>
         </div>
 
-        <el-form :model="form" label-width="130px" label-position="left">
-          <el-form-item label="仿真场景">
+        <el-form :model="form" class="parameter-form-grid">
+          <el-form-item label="仿真场景" class="form-span-full">
             <el-radio-group v-model="form.scenario" size="default" @change="handleScenarioChange">
               <el-radio-button label="S1">S1 基础单输入 (基线可信度)</el-radio-button>
               <el-radio-button label="S2">S2 多输入不同滞后</el-radio-button>
@@ -26,7 +26,7 @@
             </el-radio-group>
           </el-form-item>
 
-          <el-form-item label="数据集名称">
+          <el-form-item label="数据集名称" class="form-span-2">
             <el-input v-model="form.dataset_name" placeholder="请输入数据集标识名" @input="handleDatasetNameInput" />
           </el-form-item>
 
@@ -34,7 +34,7 @@
             <el-input-number v-model="form.num_samples" :min="500" :max="50000" :step="500" />
           </el-form-item>
 
-          <el-form-item label="噪声水平 σ">
+          <el-form-item label="噪声水平 σ" class="form-span-2">
             <el-slider v-model="form.noise_level" :min="0" :max="1" :step="0.05" show-input />
           </el-form-item>
 
@@ -42,7 +42,7 @@
             <el-input-number v-model="form.seed" :min="1" :max="9999" />
           </el-form-item>
 
-          <el-form-item>
+          <el-form-item class="parameter-form-actions">
             <el-button type="primary" :loading="loading" icon="VideoPlay" @click="handleGenerate">
               生成仿真数据集并解析真值
             </el-button>
