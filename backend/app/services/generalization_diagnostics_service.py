@@ -7,6 +7,7 @@ search.  Its purpose is diagnosis, not another round of tuning.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -37,7 +38,7 @@ from app.services.version_data import VersionDataError, load_version_series
 
 
 async def get_generalization_diagnostics(
-    session: AsyncSession, *, study_id: UUID, artifact_root: str
+    session: AsyncSession, *, study_id: UUID, artifact_root: Path
 ) -> GeneralizationDiagnosticsData:
     """Replay a validation-fixed winner to inspect its chronological partitions."""
 

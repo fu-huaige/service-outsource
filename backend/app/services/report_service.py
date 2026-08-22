@@ -271,7 +271,7 @@ def _compose(index: RunIndex, payload: ReportRequest) -> list[ReportSection]:
                 title="二、数据清洗与规整",
                 body=(
                     f"清洗共修改数据点 {{{{run:{clean}.total_cleaned_points}}}} 个，"
-                    f"检出冻结段 {{{{run:{clean}.frozen_segment_count}}}} 个，"
+                    f"检出恒值段 {{{{run:{clean}.constant_value_segment_count}}}} 个，"
                     f"派生版本 {{{{run:{clean}.derived_version_id}}}}。"
                 ),
             )

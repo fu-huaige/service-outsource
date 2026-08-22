@@ -67,6 +67,11 @@ WARM_START_MAX_DISTANCE = 0.35
 WARM_START_LIMIT = 3
 # Quantisation of the gating thresholds in the search space. See _suggest() for why.
 THRESHOLD_STEP = 0.02
+# The formal baseline remains OLS when the selected design is identifiable.  Sparse,
+# heterogeneous excitation can make that exact selected matrix rank deficient even though
+# the closed-loop search still has viable Ridge candidates.  Use the same conservative
+# Ridge value already present in the structure grid, and record the fallback in provenance.
+BASELINE_RIDGE_FALLBACK_ALPHA = 0.1
 # Bounds the gating ranges so that low/high are both multiples of THRESHOLD_STEP.
 _GATING_BOUNDS = {
     "max_anomaly_ratio": (0.02, 0.30),
@@ -222,25 +227,46 @@ def run_baseline(
                 train_ratio=payload.train_ratio,
             ),
         )
-        result = fit_arx_core(
-            inputs={column: series.values[column] for column in input_columns},
-            output=series.values[output_column],
-            payload=ArxFitRequest(
-                version_id=series.version_id,
+        def fit(*, estimator: str, ridge_alpha: float | None) -> ArxCoreResult:
+            return fit_arx_core(
+                inputs={column: series.values[column] for column in input_columns},
+                output=series.values[output_column],
+                payload=ArxFitRequest(
+                    version_id=series.version_id,
+                    input_columns=input_columns,
+                    output_column=output_column,
+                    na=DEFAULT_BASELINE_CONFIG.na,
+                    nb={column: DEFAULT_BASELINE_CONFIG.nb for column in input_columns},
+                    delays={column: DEFAULT_BASELINE_CONFIG.nk for column in input_columns},
+                    estimator=estimator,
+                    ridge_alpha=ridge_alpha,
+                    train_ratio=payload.train_ratio,
+                    validation_ratio=payload.validation_ratio,
+                    training_sample_indices=selection.selected_sample_indices,
+                    evaluate_test=True,
+                ),
                 input_columns=input_columns,
-                output_column=output_column,
-                na=DEFAULT_BASELINE_CONFIG.na,
-                nb={column: DEFAULT_BASELINE_CONFIG.nb for column in input_columns},
-                delays={column: DEFAULT_BASELINE_CONFIG.nk for column in input_columns},
+            )
+
+        try:
+            result = fit(
                 estimator=DEFAULT_BASELINE_CONFIG.estimator,
                 ridge_alpha=DEFAULT_BASELINE_CONFIG.ridge_alpha,
-                train_ratio=payload.train_ratio,
-                validation_ratio=payload.validation_ratio,
-                training_sample_indices=selection.selected_sample_indices,
-                evaluate_test=True,
-            ),
-            input_columns=input_columns,
-        )
+            )
+        except ModelingDomainError as error:
+            if (
+                error.code != "DESIGN_MATRIX_RANK_DEFICIENT"
+                or DEFAULT_BASELINE_CONFIG.estimator != "ols"
+            ):
+                raise
+            parameters.update(
+                {
+                    "estimator": "ridge",
+                    "ridge_alpha": BASELINE_RIDGE_FALLBACK_ALPHA,
+                    "fallback_reason": error.code,
+                }
+            )
+            result = fit(estimator="ridge", ridge_alpha=BASELINE_RIDGE_FALLBACK_ALPHA)
         return _evaluation_from_result(
             result,
             parameters=parameters,
