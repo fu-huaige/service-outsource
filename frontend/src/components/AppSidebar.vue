@@ -98,6 +98,8 @@ const activePath = computed(() => route.path);
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .app-sidebar.collapsed {
@@ -119,6 +121,25 @@ const activePath = computed(() => route.path);
   border-right: none;
   background: transparent;
   flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(160, 174, 192, 0.45) transparent;
+  scrollbar-width: thin;
+}
+
+.sidebar-menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-menu::-webkit-scrollbar-thumb {
+  background: rgba(160, 174, 192, 0.45);
+  border-radius: 999px;
+}
+
+.sidebar-menu::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 :deep(.el-menu) {

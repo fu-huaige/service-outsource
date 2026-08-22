@@ -121,7 +121,7 @@ body {
  * ragged from one row to the next.
  */
 .parameter-form-grid {
-  --parameter-form-label-width: 104px;
+  --parameter-form-label-width: 136px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: start;

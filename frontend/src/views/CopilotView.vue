@@ -2,8 +2,8 @@
   <div class="copilot-view">
     <div class="page-header">
       <h2>Agent 工作台</h2>
-      <p class="subtitle">
-        自然语言 → 意图解析 → 白名单计划 → 静态合规校验 → 真实算法执行 → 结论
+      <p class="subtitle copilot-flow" aria-label="Agent 执行流程">
+        <span v-for="step in FLOW_STEPS" :key="step" class="flow-step">{{ step }}</span>
       </p>
     </div>
 
@@ -15,38 +15,52 @@
           </div>
         </div>
 
-        <el-form :model="form" class="parameter-form-grid parameter-form-grid--single">
+        <el-form :model="form" class="copilot-command-form">
           <el-form-item label="数据版本 ID">
             <el-input
               v-model="form.active_version_id"
               placeholder="留空则只生成计划，不执行"
             />
           </el-form-item>
-        </el-form>
 
-        <el-input
-          v-model="prompt"
-          type="textarea"
-          :rows="3"
-          placeholder="例如：提取 1 号塔高信噪比的动态数据，处理共线性后，通过闭环寻优找出最佳模型数据"
-        />
+          <el-form-item label="任务描述">
+            <el-input
+              v-model="prompt"
+              type="textarea"
+              :rows="4"
+              resize="vertical"
+              placeholder="例如：清洗数据并估计时滞，然后做 ARX 辨识"
+            />
+          </el-form-item>
 
-        <div class="prompt-actions">
-          <div class="examples">
-            <el-tag
-              v-for="example in EXAMPLES"
-              :key="example"
-              class="example-tag"
-              effect="plain"
-              @click="prompt = example"
-            >
-              {{ example }}
-            </el-tag>
+          <el-form-item label="示例指令" class="examples-form-item">
+            <div class="examples-grid">
+              <button
+                v-for="example in EXAMPLES"
+                :key="example.title"
+                type="button"
+                class="example-card"
+                @click="prompt = example.prompt"
+              >
+                <span class="example-title">{{ example.title }}</span>
+                <span class="example-description">{{ example.description }}</span>
+              </button>
+            </div>
+          </el-form-item>
+
+          <div class="copilot-action-row">
+            <div class="copilot-action-content">
+              <el-button
+                type="primary"
+                :loading="sending"
+                icon="Promotion"
+                @click="handleSend"
+              >
+                提交给 Agent
+              </el-button>
+            </div>
           </div>
-          <el-button type="primary" :loading="sending" icon="Promotion" @click="handleSend">
-            提交给 Agent
-          </el-button>
-        </div>
+        </el-form>
 
         <el-alert v-if="errorMessage" type="error" :closable="false" show-icon class="alert-gap">
           <template #title>执行失败：{{ errorMessage }}</template>
@@ -209,10 +223,24 @@ import type { AgentStepStatus, CopilotChatRequest, CopilotChatResponse } from ".
 import { ApiError } from "../api/client";
 import { ElMessage } from "element-plus";
 
+const FLOW_STEPS = ["自然语言", "意图解析", "白名单计划", "静态合规校验", "真实算法执行", "结论"];
+
 const EXAMPLES = [
-  "提取 1 号塔高信噪比的动态数据，处理共线性后，通过闭环寻优找出最佳模型数据",
-  "清洗数据并估计时滞，然后做 ARX 辨识",
-  "用窗口 90 做动态区间优选并导出优选数据集",
+  {
+    title: "完整建模流程",
+    description: "筛选高信噪比动态数据，处理共线性并进行闭环寻优",
+    prompt: "提取 1 号塔高信噪比的动态数据，处理共线性后，通过闭环寻优找出最佳模型数据",
+  },
+  {
+    title: "清洗与系统辨识",
+    description: "清洗异常数据，估计时滞并完成 ARX 辨识",
+    prompt: "清洗数据并估计时滞，然后做 ARX 辨识",
+  },
+  {
+    title: "区间优选与导出",
+    description: "使用窗口 90 优选动态区间并导出数据集",
+    prompt: "用窗口 90 做动态区间优选并导出优选数据集",
+  },
 ];
 
 const STATUS_LABELS: Record<string, string> = {
@@ -297,30 +325,143 @@ const stepStatus = (status: AgentStepStatus) =>
   margin-top: 4px;
 }
 
+.copilot-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 0;
+}
+
+.flow-step {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.flow-step + .flow-step::before {
+  content: "→";
+  margin: 0 7px;
+  color: var(--text-muted);
+}
+
 .copilot-layout {
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
-.prompt-actions {
-  margin-top: 12px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+.copilot-command-form {
+  --copilot-label-width: 136px;
+  container-type: inline-size;
+  display: grid;
   gap: 16px;
-  flex-wrap: wrap;
+  width: min(100%, 1120px);
+  margin: 0 auto;
 }
 
-.examples {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-width: 70%;
+.copilot-command-form :deep(.el-form-item) {
+  display: grid;
+  grid-template-columns: var(--copilot-label-width) minmax(0, 1fr);
+  align-items: start;
+  min-width: 0;
+  margin: 0;
 }
 
-.example-tag {
+.copilot-command-form :deep(.el-form-item__label) {
+  width: auto !important;
+  height: auto;
+  min-height: 32px;
+  padding: 0 16px 0 0;
+  line-height: 32px;
+  text-align: right;
+  justify-content: flex-end;
+}
+
+.copilot-command-form :deep(.el-form-item__content) {
+  display: block;
+  min-width: 0;
+  width: 100%;
+  line-height: 1.5;
+}
+
+.copilot-command-form :deep(.el-input),
+.copilot-command-form :deep(.el-textarea) {
+  width: 100%;
+}
+
+.examples-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.example-card {
+  appearance: none;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  padding: 11px 12px;
+  overflow: hidden;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
   cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.example-card:hover {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
+}
+
+.example-card:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.example-title,
+.example-description {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.example-title {
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.example-description {
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.copilot-action-row {
+  display: grid;
+  grid-template-columns: var(--copilot-label-width) minmax(0, 1fr);
+  min-width: 0;
+}
+
+.copilot-action-content {
+  display: flex;
+  grid-column: 2;
+  justify-content: flex-end;
+}
+
+.copilot-action-content :deep(.el-button) {
+  min-width: 160px;
 }
 
 .alert-gap {
@@ -430,5 +571,46 @@ const stepStatus = (status: AgentStepStatus) =>
 .stop-conditions {
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+@container (max-width: 900px) {
+  .examples-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 680px) {
+  .copilot-command-form :deep(.el-form-item),
+  .copilot-action-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .copilot-command-form :deep(.el-form-item__label) {
+    min-height: 0;
+    padding: 0;
+    line-height: 1.5;
+    text-align: left;
+    justify-content: flex-start;
+  }
+
+  .examples-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .copilot-action-content {
+    grid-column: 1;
+  }
+
+  .copilot-action-content :deep(.el-button) {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+@media (max-width: 600px) {
+  .copilot-view .industrial-card {
+    padding: 16px;
+  }
 }
 </style>
