@@ -230,6 +230,54 @@ class TestFormalEvaluation:
         assert first.parameters["validation_ratio"] == 0.2
         assert first.parameters["test_ratio"] == pytest.approx(0.2)
 
+    def test_s6_rank_deficient_baseline_falls_back_to_ridge(self, tmp_path: Path) -> None:
+        from app.schemas.optimization import OptimizationStartRequest
+        from app.schemas.simulation import SimulationGenerateRequest
+        from app.services.optimization_service import run_baseline
+        from app.services.simulation_service import generate_simulation, load_simulation_by_version
+        from app.services.version_data import VersionSeries
+
+        generated = generate_simulation(
+            SimulationGenerateRequest(
+                scenario="S6",
+                num_samples=1200,
+                input_count=2,
+                seed=9006,
+                noise_level=0.0,
+            ),
+            artifact_root=tmp_path,
+        )
+        stored = load_simulation_by_version(generated.version_id, artifact_root=tmp_path)
+        series = VersionSeries(
+            dataset_id=stored.dataset_id,
+            version_id=stored.version_id,
+            dataset_name=stored.dataset_name,
+            origin="simulation",
+            timestamps=[],
+            values={key: value for key, value in stored.values.items() if key != "timestamp"},
+            declared_inputs=("u1", "u2"),
+            declared_output="y",
+            sample_period_seconds=1.0,
+        )
+        payload = OptimizationStartRequest(
+            version_id=series.version_id,
+            input_columns=["u1", "u2"],
+            output_column="y",
+            max_trials=5,
+            random_seed=42,
+        )
+
+        baseline = run_baseline(
+            series, payload, input_columns=["u1", "u2"], output_column="y"
+        )
+
+        assert baseline.status == "succeeded"
+        assert baseline.parameters["estimator"] == "ridge"
+        assert baseline.parameters["ridge_alpha"] == pytest.approx(0.1)
+        assert baseline.parameters["fallback_reason"] == "DESIGN_MATRIX_RANK_DEFICIENT"
+        assert baseline.validation_free_run_fit is not None
+        assert baseline.test_free_run_fit is not None
+
     def test_optuna_trials_do_not_evaluate_the_test_partition(self) -> None:
         from app.schemas.optimization import OptimizationStartRequest
         from app.services.optimization_service import run_study

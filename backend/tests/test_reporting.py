@@ -213,6 +213,36 @@ class TestReportApi:
         assert response.status_code == 404
         assert response.json()["error"]["code"] == "REPORT_NO_RUNS"
 
+    def test_report_accepts_a_cleaning_derived_version(self, client: TestClient) -> None:
+        generated = client.post(
+            "/api/v1/simulation/generate",
+            json={"scenario": "S4", "n_steps": 1200, "seed": 77, "input_count": 2},
+        )
+        assert generated.status_code == 201, generated.text
+        source_version_id = generated.json()["data"]["version_id"]
+
+        cleaned = client.post(
+            "/api/v1/preprocessing/clean",
+            json={
+                "version_id": source_version_id,
+                "target_sample_period_seconds": 1.0,
+                "interpolation": "linear",
+                "anomaly_detector": "hampel",
+                "hampel_window": 5,
+            },
+        )
+        assert cleaned.status_code == 202, cleaned.text
+        derived_version_id = cleaned.json()["data"]["derived_version_id"]
+
+        response = client.post(
+            "/api/v1/reports/generate", json={"version_id": derived_version_id}
+        )
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+        assert data["fully_resolved"] is True
+        assert data["unresolved"] == []
+        assert any(section["key"] == "cleaning" for section in data["sections"])
+
 
 class TestExportApi:
     def test_export_writes_the_selected_rows_and_a_manifest(

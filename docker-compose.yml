@@ -2,6 +2,8 @@ services:
   backend:
     build:
       context: ./backend
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
     environment:
       INDUSOPT_DATABASE_URL: postgresql+asyncpg://indusopt:indusopt@postgres:5432/indusopt
       INDUSOPT_REDIS_URL: redis://redis:6379/0
@@ -34,6 +36,8 @@ services:
   worker:
     build:
       context: ./backend
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
     # Must name the queue: jobs are enqueued to "indusopt", and a worker left on the
     # default queue would idle forever while studies pile up unprocessed.
     command: rq worker indusopt --url redis://redis:6379/0
