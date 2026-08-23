@@ -119,6 +119,11 @@ const activePath = computed(() => route.path);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.app-sidebar.collapsed .toggle-btn {
+  justify-content: center;
+  padding: 0;
+}
+
 .sidebar-menu {
   border-right: none;
   background: transparent;
