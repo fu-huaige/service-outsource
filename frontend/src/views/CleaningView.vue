@@ -16,15 +16,20 @@
         </div>
 
         <el-form :model="form" class="parameter-form-grid">
-          <el-form-item label="源数据版本（本次清洗输入）" class="form-span-full">
-            <template v-if="sourceVersion">
-              <span>{{ sourceVersion.name }}</span>
-              <span class="code-inline source-version-id">{{ sourceVersion.id }}</span>
-            </template>
-            <span v-else class="source-version-pending">{{ sourceLoadMessage }}</span>
-          </el-form-item>
-
-          <p class="source-version-note parameter-form-note">清洗成功后将生成新的不可变版本，源版本不会被覆盖。</p>
+          <div class="source-version-row parameter-form-note">
+            <div class="source-version-label">源数据版本</div>
+            <div class="source-version-content">
+              <div class="source-version-primary">
+                <el-tag size="small" type="info" effect="plain">本次清洗输入</el-tag>
+                <template v-if="sourceVersion">
+                  <span class="source-version-name">{{ sourceVersion.name }}</span>
+                  <span class="code-inline source-version-id">{{ sourceVersion.id }}</span>
+                </template>
+                <span v-else class="source-version-pending">{{ sourceLoadMessage }}</span>
+                <span class="source-version-note">清洗后将生成新版本，源版本不会被覆盖。</span>
+              </div>
+            </div>
+          </div>
 
           <el-form-item label="重采样周期 Ts">
             <el-input-number v-model="form.target_sample_period_seconds" :min="0.1" :max="60" :step="0.5" />
@@ -264,8 +269,43 @@ onMounted(loadSourceVersion);
   margin-top: 4px;
 }
 
+.source-version-row {
+  display: grid;
+  grid-template-columns: var(--parameter-form-label-width) minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 2px 0 16px;
+  border-bottom: 1px dashed var(--border-light);
+}
+
+.source-version-label {
+  padding-right: 12px;
+  color: var(--text-secondary);
+  line-height: 28px;
+  text-align: right;
+}
+
+.source-version-content {
+  min-width: 0;
+}
+
+.source-version-primary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.source-version-name {
+  font-weight: 500;
+}
+
 .source-version-id {
-  margin-left: 8px;
+  max-width: min(100%, 520px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .source-version-pending,
@@ -275,7 +315,11 @@ onMounted(loadSourceVersion);
 }
 
 .source-version-note {
-  margin: -8px 0 16px 140px;
+  margin-left: 2px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border-light);
+  line-height: 1.5;
+  white-space: nowrap;
 }
 
 .validation-issues {
@@ -291,5 +335,29 @@ onMounted(loadSourceVersion);
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+@media (max-width: 900px) {
+  .source-version-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .source-version-label {
+    padding-right: 0;
+    line-height: 1.5;
+    text-align: left;
+  }
+
+  .source-version-primary {
+    align-items: flex-start;
+  }
+
+  .source-version-note {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: 0;
+    white-space: normal;
+  }
 }
 </style>
