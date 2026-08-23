@@ -1,6 +1,7 @@
 <template>
   <div class="deliverables-view">
     <div class="page-header">
+      <span class="page-eyebrow">成果交付</span>
       <h2>报告生成与数据交付</h2>
       <p class="subtitle">
         报告中的每一个数值都由运行记录解析而来；大模型只负责组织语言，不产生任何数字
@@ -15,20 +16,20 @@
           </div>
         </div>
 
-        <el-form :inline="true" :model="form" label-width="110px">
+        <el-form :model="form" class="parameter-form-grid">
           <el-form-item label="数据版本 ID">
-            <el-input v-model="form.version_id" placeholder="version_id" style="width: 320px" />
+            <el-input v-model="form.version_id" placeholder="version_id" />
           </el-form-item>
           <el-form-item label="寻优任务 ID">
-            <el-input v-model="studyId" placeholder="可选" style="width: 320px" />
+            <el-input v-model="studyId" placeholder="可选" />
           </el-form-item>
           <el-form-item label="输入变量">
-            <el-input v-model="inputColumnsText" placeholder="u1,u2" style="width: 180px" />
+            <el-input v-model="inputColumnsText" placeholder="u1,u2" />
           </el-form-item>
           <el-form-item label="输出变量">
-            <el-input v-model="outputColumn" placeholder="y" style="width: 110px" />
+            <el-input v-model="outputColumn" placeholder="y" />
           </el-form-item>
-          <el-form-item>
+          <el-form-item class="parameter-form-actions">
             <el-button
               type="primary"
               :loading="reporting"

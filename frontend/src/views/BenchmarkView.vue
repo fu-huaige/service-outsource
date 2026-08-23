@@ -1,6 +1,7 @@
 <template>
   <div class="benchmark-view">
     <div class="page-header">
+      <span class="page-eyebrow">质量验证</span>
       <h2>一键自评测基准</h2>
       <p class="subtitle">
         系统用带真值的仿真基准检验自己的技术主张。下表每个数字都在本次请求中实时计算，
@@ -16,9 +17,9 @@
           </div>
         </div>
 
-        <el-form :inline="true" :model="form" label-width="100px">
+        <el-form :model="form" class="parameter-form-grid">
           <el-form-item label="场景">
-            <el-select v-model="form.scenarios" multiple style="width: 260px">
+            <el-select v-model="form.scenarios" multiple>
               <el-option v-for="name in SCENARIOS" :key="name" :label="name" :value="name" />
             </el-select>
           </el-form-item>
@@ -34,7 +35,7 @@
           <el-form-item label="窗口预算">
             <el-input-number v-model="form.budget_windows" :min="1" :max="100" />
           </el-form-item>
-          <el-form-item>
+          <el-form-item class="parameter-form-actions">
             <el-button type="primary" :loading="running" icon="VideoPlay" @click="handleRun">
               运行自评测基准
             </el-button>

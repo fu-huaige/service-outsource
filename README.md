@@ -180,9 +180,14 @@ docker compose up
 # 后端 http://localhost:18000/docs
 ```
 
-> 本仓库当前开发环境无 Docker 守护进程，Compose 未实机验证。已核对：Dockerfile 复制
-> `app/`、`algorithms/`、`alembic/` 全部运行期代码；`pyproject.toml` 含 `optuna`；
-> Alembic 为单一 head `0003_optimization_and_memory`。首次部署请复核一次。
+> 本仓库当前开发环境仍未完成 Docker Compose 实机启动验证。已核对 Dockerfile、
+> Compose 配置和运行期文件范围，但首次部署仍需复核数据库迁移、健康检查与 Worker 队列。
+
+如当前网络无法直接访问 PyPI，可显式传入兼容镜像后构建：
+
+```bash
+PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple docker compose up --build
+```
 
 ### 质量门禁
 

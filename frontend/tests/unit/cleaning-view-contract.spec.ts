@@ -99,7 +99,8 @@ describe("CleaningView request contract", () => {
     const wrapper = mount(CleaningView, { global: { plugins: [createPinia()], stubs } });
     await flushPromises();
 
-    expect(wrapper.text()).toContain("源数据版本（本次清洗输入）");
+    expect(wrapper.text()).toContain("源数据版本");
+    expect(wrapper.text()).toContain("本次清洗输入");
     expect(wrapper.text()).toContain("V0 · 仿真原始数据");
     expect(wrapper.text()).toContain(versionId);
     await wrapper.get("button").trigger("click");

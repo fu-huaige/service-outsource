@@ -1,7 +1,8 @@
 <template>
   <div class="cleaning-view">
     <div class="page-header">
-      <h2>时间规整与清洗 (Cleaning & Resampling)</h2>
+      <span class="page-eyebrow">预处理与优选</span>
+      <h2>时间规整与清洗</h2>
       <p class="subtitle">消除采样不均匀、补全缺失值并过滤尖峰异常点，派生可信数据版本</p>
     </div>
 
@@ -14,32 +15,37 @@
           </div>
         </div>
 
-        <el-form :model="form" label-width="140px" label-position="left">
-          <el-form-item label="源数据版本（本次清洗输入）">
-            <template v-if="sourceVersion">
-              <span>{{ sourceVersion.name }}</span>
-              <span class="code-inline source-version-id">{{ sourceVersion.id }}</span>
-            </template>
-            <span v-else class="source-version-pending">{{ sourceLoadMessage }}</span>
-          </el-form-item>
-
-          <p class="source-version-note">清洗成功后将生成新的不可变版本，源版本不会被覆盖。</p>
+        <el-form :model="form" class="parameter-form-grid">
+          <div class="source-version-row parameter-form-note">
+            <div class="source-version-label">源数据版本</div>
+            <div class="source-version-content">
+              <div class="source-version-primary">
+                <el-tag size="small" type="info" effect="plain">本次清洗输入</el-tag>
+                <template v-if="sourceVersion">
+                  <span class="source-version-name">{{ sourceVersion.name }}</span>
+                  <span class="code-inline source-version-id">{{ sourceVersion.id }}</span>
+                </template>
+                <span v-else class="source-version-pending">{{ sourceLoadMessage }}</span>
+                <span class="source-version-note">清洗后将生成新版本，源版本不会被覆盖。</span>
+              </div>
+            </div>
+          </div>
 
           <el-form-item label="重采样周期 Ts">
             <el-input-number v-model="form.target_sample_period_seconds" :min="0.1" :max="60" :step="0.5" />
-            <span style="margin-left: 8px">秒 (s)</span>
+            <span class="form-control-suffix">秒 (s)</span>
           </el-form-item>
 
-          <el-form-item label="缺失值插值算法">
+          <el-form-item label="缺失值插值算法" class="form-span-2">
             <el-radio-group v-model="form.interpolation">
-              <el-radio label="linear">线性插值 (Linear)</el-radio>
-              <el-radio label="forward_fill">前向填充 (FFill)</el-radio>
-              <el-radio label="backward_fill">后向填充 (BFill)</el-radio>
+              <el-radio label="linear">线性插值</el-radio>
+              <el-radio label="forward_fill">前向填充</el-radio>
+              <el-radio label="backward_fill">后向填充</el-radio>
             </el-radio-group>
           </el-form-item>
 
           <el-form-item label="异常值检测算法">
-            <el-select v-model="form.anomaly_detector" style="width: 220px">
+            <el-select v-model="form.anomaly_detector">
               <el-option label="Hampel Filter (推荐)" value="hampel" />
               <el-option label="IQR 四分位距" value="iqr" />
               <el-option label="Z-Score 阈值" value="z_score" />
@@ -50,7 +56,7 @@
             <el-input-number v-model="form.hampel_window" :min="3" :max="21" :step="2" />
           </el-form-item>
 
-          <el-form-item>
+          <el-form-item class="parameter-form-actions">
             <el-button type="primary" :loading="loading" :disabled="!sourceVersion || loading" icon="MagicStick" @click="handleClean">
               执行清洗并生成新版本 V1_Cleaned
             </el-button>
@@ -68,7 +74,7 @@
       <div class="industrial-card result-card" v-if="cleanedData">
         <div class="industrial-card-header">
           <div class="industrial-card-title">
-            <el-icon><DataAnalysis /></el-icon> 清洗前后叠加对比图 (Before vs After)
+              <el-icon><DataAnalysis /></el-icon> 清洗前后对比
           </div>
           <el-tag type="success">已修复 {{ cleanedData.total_cleaned_points }} 个唯一数据单元格</el-tag>
         </div>
@@ -205,20 +211,20 @@ const compareChartOptions = computed(() => {
 
   return {
     tooltip: { trigger: "axis" },
-    legend: { data: ["原始序列 (Raw Series)", "清洗后序列 (Cleaned Series)"] },
+    legend: { data: ["原始序列", "清洗后序列"] },
     grid: { left: "3%", right: "4%", bottom: "10%", containLabel: true },
     xAxis: { type: "category", data: xData },
     yAxis: { type: "value" },
     series: [
       {
-        name: "原始序列 (Raw Series)",
+        name: "原始序列",
         type: "line",
         color: "#E76F51",
         lineStyle: { type: "dashed", width: 1 },
         data: cleanedData.value.raw_series,
       },
       {
-        name: "清洗后序列 (Cleaned Series)",
+        name: "清洗后序列",
         type: "line",
         color: "#1E6091",
         lineStyle: { width: 2 },
@@ -263,8 +269,43 @@ onMounted(loadSourceVersion);
   margin-top: 4px;
 }
 
+.source-version-row {
+  display: grid;
+  grid-template-columns: var(--parameter-form-label-width) minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 2px 0 16px;
+  border-bottom: 1px dashed var(--border-light);
+}
+
+.source-version-label {
+  padding-right: 12px;
+  color: var(--text-secondary);
+  line-height: 28px;
+  text-align: right;
+}
+
+.source-version-content {
+  min-width: 0;
+}
+
+.source-version-primary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.source-version-name {
+  font-weight: 500;
+}
+
 .source-version-id {
-  margin-left: 8px;
+  max-width: min(100%, 520px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .source-version-pending,
@@ -274,7 +315,11 @@ onMounted(loadSourceVersion);
 }
 
 .source-version-note {
-  margin: -8px 0 16px 140px;
+  margin-left: 2px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border-light);
+  line-height: 1.5;
+  white-space: nowrap;
 }
 
 .validation-issues {
@@ -290,5 +335,29 @@ onMounted(loadSourceVersion);
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+@media (max-width: 900px) {
+  .source-version-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .source-version-label {
+    padding-right: 0;
+    line-height: 1.5;
+    text-align: left;
+  }
+
+  .source-version-primary {
+    align-items: flex-start;
+  }
+
+  .source-version-note {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: 0;
+    white-space: normal;
+  }
 }
 </style>

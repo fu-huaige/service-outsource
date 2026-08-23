@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from app.core.config import Settings
@@ -233,7 +234,7 @@ class TestCleaningRoute:
 
         async def make_metadata_legacy() -> dict[str, object]:
             async with client.app.state.session_factory() as session:
-                version = await session.get(DatasetVersion, derived_id)
+                version = await session.get(DatasetVersion, UUID(derived_id))
                 assert version is not None
                 parameters = dict(version.parameters)
                 old_count = int(parameters.pop("constant_value_segment_count"))

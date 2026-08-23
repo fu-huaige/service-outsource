@@ -4,13 +4,18 @@
       <div class="logo">
         <el-icon class="logo-icon"><DataAnalysis /></el-icon>
         <span class="logo-text">IndusOpt 工模智优</span>
-        <span class="logo-tag">Agent v0.1</span>
+        <span class="logo-tag">A14</span>
       </div>
       <div class="dataset-selector" v-if="datasetStore.activeDataset">
-        <span class="label">当前活跃数据集:</span>
-        <el-tag type="primary" effect="light" class="ds-tag">
-          {{ datasetStore.activeDataset.name }} ({{ datasetStore.activeDataset.version_id }})
-        </el-tag>
+        <span class="label">当前工作数据</span>
+        <el-tooltip
+          :content="`版本 ID：${datasetStore.activeDataset.version_id}`"
+          placement="bottom"
+        >
+          <el-tag type="primary" effect="light" class="ds-tag">
+            {{ datasetStore.activeDataset.name }}
+          </el-tag>
+        </el-tooltip>
       </div>
     </div>
 
@@ -24,7 +29,7 @@
 
       <el-button type="primary" size="default" class="copilot-btn" @click="$emit('toggle-copilot')">
         <el-icon><ChatDotSquare /></el-icon>
-        <span>Agent Copilot</span>
+        <span>打开 Agent</span>
       </el-button>
     </div>
   </header>
@@ -41,9 +46,9 @@ defineEmits(["toggle-copilot"]);
 const datasetStore = useDatasetStore();
 const systemStore = useSystemStore();
 const statusLabel = computed(() => ({
-  connecting: "Connecting",
-  ready: "System Ready",
-  offline: "Backend Offline",
+  connecting: "正在检测",
+  ready: "系统就绪",
+  offline: "服务离线",
 }[systemStore.status]));
 </script>
 
@@ -73,6 +78,10 @@ const statusLabel = computed(() => ({
   color: var(--color-primary);
 }
 
+.logo-text {
+  white-space: nowrap;
+}
+
 .logo-icon {
   font-size: 22px;
 }
@@ -93,6 +102,12 @@ const statusLabel = computed(() => ({
   gap: 8px;
   padding-left: 16px;
   border-left: 1px solid var(--border-light);
+}
+
+.ds-tag {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .label {
@@ -121,5 +136,22 @@ const statusLabel = computed(() => ({
 
 .dot.offline {
   background: var(--color-danger);
+}
+
+@media (max-width: 980px) {
+  .dataset-selector,
+  .logo-tag {
+    display: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .app-header {
+    padding: 0 12px;
+  }
+
+  .copilot-btn span {
+    display: none;
+  }
 }
 </style>

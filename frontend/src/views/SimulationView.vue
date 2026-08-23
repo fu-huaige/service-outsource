@@ -1,8 +1,9 @@
 <template>
   <div class="simulation-view">
     <div class="page-header">
-      <h2>仿真测试集生成器 (Simulation Benchmark Generator)</h2>
-      <p class="subtitle">在线构造带有精确真值 (Ground Truth) 的工业时序 S1-S6 测试场景，建立辨识算法基线</p>
+      <span class="page-eyebrow">准备数据</span>
+      <h2>仿真测试集生成器</h2>
+      <p class="subtitle">构造带有精确真值的工业时序 S1–S6 测试场景，用于验证辨识算法</p>
     </div>
 
     <div class="simulation-layout">
@@ -14,8 +15,8 @@
           </div>
         </div>
 
-        <el-form :model="form" label-width="130px" label-position="left">
-          <el-form-item label="仿真场景">
+        <el-form :model="form" class="parameter-form-grid">
+          <el-form-item label="仿真场景" class="form-span-full">
             <el-radio-group v-model="form.scenario" size="default" @change="handleScenarioChange">
               <el-radio-button label="S1">S1 基础单输入 (基线可信度)</el-radio-button>
               <el-radio-button label="S2">S2 多输入不同滞后</el-radio-button>
@@ -26,7 +27,7 @@
             </el-radio-group>
           </el-form-item>
 
-          <el-form-item label="数据集名称">
+          <el-form-item label="数据集名称" class="form-span-2">
             <el-input v-model="form.dataset_name" placeholder="请输入数据集标识名" @input="handleDatasetNameInput" />
           </el-form-item>
 
@@ -34,7 +35,7 @@
             <el-input-number v-model="form.num_samples" :min="500" :max="50000" :step="500" />
           </el-form-item>
 
-          <el-form-item label="噪声水平 σ">
+          <el-form-item label="噪声水平 σ" class="form-span-2">
             <el-slider v-model="form.noise_level" :min="0" :max="1" :step="0.05" show-input />
           </el-form-item>
 
@@ -42,7 +43,7 @@
             <el-input-number v-model="form.seed" :min="1" :max="9999" />
           </el-form-item>
 
-          <el-form-item>
+          <el-form-item class="parameter-form-actions">
             <el-button type="primary" :loading="loading" icon="VideoPlay" @click="handleGenerate">
               生成仿真数据集并解析真值
             </el-button>
@@ -54,7 +55,7 @@
       <div class="industrial-card result-card" v-if="result">
         <div class="industrial-card-header">
           <div class="industrial-card-title">
-            <el-icon><Check /></el-icon> 仿真结果与真值卡片 (Ground Truth Card)
+            <el-icon><Check /></el-icon> 仿真结果与真值
           </div>
           <el-tag type="success">可复现实验基线集</el-tag>
         </div>
@@ -76,7 +77,7 @@
 
         <!-- Ground Truth Parameters Details -->
         <div class="gt-params-box">
-          <h4>📌 系统方程真值参数 (Ground Truth Parameters):</h4>
+          <h4>系统方程真值参数</h4>
           <p class="code-inline">
             y(t) = -a₁ y(t-1) - a₂ y(t-2) + ∑ b_{i,j} u_i(t - d_i - j) + e(t)
           </p>

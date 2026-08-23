@@ -28,7 +28,7 @@
     <!-- HITL Waiting Confirmation State -->
     <div v-else-if="state === 'hitl_wait'" class="state-box hitl">
       <el-alert
-        title="需要人工确认 (Human-in-the-Loop)"
+        title="需要人工确认"
         type="warning"
         :closable="false"
         show-icon

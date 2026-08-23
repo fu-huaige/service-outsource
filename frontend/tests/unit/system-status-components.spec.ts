@@ -8,12 +8,16 @@ import SettingsView from "../../src/views/SettingsView.vue";
 import { useSystemStore } from "../../src/stores/systemStore";
 import { getDashboardLeaderboard } from "../../src/api/dashboard";
 import { getDatasets } from "../../src/api/datasets";
-import { getHealthLive, getHealthReady } from "../../src/api/health";
+import { getHealthLive, getHealthReady, getSystemInfo } from "../../src/api/health";
 import { ElMessage } from "element-plus";
 
 vi.mock("../../src/api/dashboard", () => ({ getDashboardLeaderboard: vi.fn() }));
 vi.mock("../../src/api/datasets", () => ({ getDatasets: vi.fn() }));
-vi.mock("../../src/api/health", () => ({ getHealthLive: vi.fn(), getHealthReady: vi.fn() }));
+vi.mock("../../src/api/health", () => ({
+  getHealthLive: vi.fn(),
+  getHealthReady: vi.fn(),
+  getSystemInfo: vi.fn(),
+}));
 vi.mock("vue-router", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("element-plus", () => ({
   ElMessage: { success: vi.fn(), error: vi.fn() },
@@ -23,6 +27,7 @@ const mockedGetDashboardLeaderboard = vi.mocked(getDashboardLeaderboard);
 const mockedGetDatasets = vi.mocked(getDatasets);
 const mockedGetHealthLive = vi.mocked(getHealthLive);
 const mockedGetHealthReady = vi.mocked(getHealthReady);
+const mockedGetSystemInfo = vi.mocked(getSystemInfo);
 
 const componentStubs = {
   "el-tooltip": { template: "<div><slot /></div>" },
@@ -40,6 +45,8 @@ const componentStubs = {
   "el-select": { template: "<select><slot /></select>" },
   "el-option": true,
   "el-input": true,
+  "el-collapse": { template: "<div><slot /></div>" },
+  "el-collapse-item": { props: ["title"], template: "<section>{{ title }}<slot /></section>" },
   DataAnalysis: true,
   ChatDotSquare: true,
   Lightning: true,
@@ -62,16 +69,25 @@ describe("system status components", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.clearAllMocks();
+    mockedGetSystemInfo.mockResolvedValue({
+      name: "IndusOpt API",
+      version: "0.4.0",
+      api_version: "v1",
+      environment: "test",
+      docs_url: "/docs",
+      openapi_url: "/openapi.json",
+    });
   });
 
   it.each([
-    ["connecting", "Connecting"],
-    ["ready", "System Ready"],
-    ["offline", "Backend Offline"],
+    ["connecting", "正在检测"],
+    ["ready", "系统就绪"],
+    ["offline", "服务离线"],
   ] as const)("renders %s as %s in the header", async (status, expected) => {
     const wrapper = mountWithPinia(AppHeader);
     useSystemStore().status = status;
     await nextTick();
+    expect(wrapper.text()).toContain("IndusOpt 工模智优");
     expect(wrapper.get(".status-text").text()).toBe(expected);
   });
 
@@ -81,8 +97,8 @@ describe("system status components", () => {
     const wrapper = mountWithPinia(DashboardView);
     await flushPromises();
 
-    expect(wrapper.text()).toContain("Dashboard数据加载失败");
-    expect(wrapper.text()).toContain("不可用");
+    expect(wrapper.text()).toContain("工作台数据加载失败");
+    expect(wrapper.text()).toContain("暂不可用");
     expect(wrapper.text()).not.toContain("0 个");
 
     mockedGetDatasets.mockResolvedValue(datasets);
@@ -92,8 +108,8 @@ describe("system status components", () => {
     await retryButton!.trigger("click");
     await flushPromises();
 
-    expect(wrapper.text()).not.toContain("Dashboard数据加载失败");
-    expect(wrapper.text()).toContain("真实记录");
+    expect(wrapper.text()).not.toContain("工作台数据加载失败");
+    expect(wrapper.text()).toContain("2 个");
   });
 
   it("retries a failed Dashboard request once when health recovers", async () => {
@@ -108,7 +124,7 @@ describe("system status components", () => {
     await flushPromises();
 
     expect(mockedGetDashboardLeaderboard).toHaveBeenCalledTimes(2);
-    expect(wrapper.text()).toContain("真实记录");
+    expect(wrapper.text()).toContain("2 个");
   });
 
   it("reports a real offline result in Settings without a mock success", async () => {
@@ -119,7 +135,17 @@ describe("system status components", () => {
     await flushPromises();
 
     expect(useSystemStore().status).toBe("offline");
-    expect(ElMessage.error).toHaveBeenCalledWith("Backend Offline：无法连接后端或其依赖未就绪");
+    expect(ElMessage.error).toHaveBeenCalledWith("服务离线：无法连接后端，或数据库、任务队列尚未就绪");
     expect(ElMessage.success).not.toHaveBeenCalled();
+  });
+
+  it("does not render an editable or demo API key", async () => {
+    const wrapper = mountWithPinia(SettingsView);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("当前网页不会读取、保存或回显 API Key");
+    expect(wrapper.text()).toContain("确定性规则编排");
+    expect(wrapper.text()).not.toContain("sk-demo-key-indusopt-2026");
+    expect(wrapper.find('input[type="password"]').exists()).toBe(false);
   });
 });

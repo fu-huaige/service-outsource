@@ -23,7 +23,7 @@ const routes: RouteRecordRaw[] = [
         path: "datasets",
         name: "Datasets",
         component: () => import("../views/DatasetsView.vue"),
-        meta: { title: "数据资产 Hub" },
+        meta: { title: "数据资产" },
       },
       {
         path: "datasets/:id",
@@ -89,7 +89,7 @@ const routes: RouteRecordRaw[] = [
         path: "settings",
         name: "Settings",
         component: () => import("../views/SettingsView.vue"),
-        meta: { title: "系统配置" },
+        meta: { title: "系统设置" },
       },
     ],
   },

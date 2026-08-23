@@ -1,7 +1,8 @@
 <template>
   <div class="arx-modeling-view">
     <div class="page-header">
-      <h2>ARX 系统辨识与模型评价 (ARX System Identification)</h2>
+      <span class="page-eyebrow">辨识与寻优</span>
+      <h2>ARX 系统辨识与模型评价</h2>
       <p class="subtitle">在精选数据版本上求解离散时间 ARX 结构参数，验证 R²、FIT 拟合度与残差独立性</p>
     </div>
 
@@ -15,8 +16,8 @@
           <el-tag type="primary">ID: {{ activeDataset.id }} (版本: {{ activeDataset.version_id }})</el-tag>
         </div>
         <p class="dataset-meta">
-          过程输入 (Inputs): <span class="code-inline">{{ inputCols.join(", ") }}</span> |
-          控制输出 (Output): <span class="code-inline">{{ activeDataset.output_column }}</span>
+          过程输入：<span class="code-inline">{{ inputCols.join(", ") }}</span> |
+          目标输出：<span class="code-inline">{{ activeDataset.output_column }}</span>
         </p>
       </div>
 
@@ -28,7 +29,7 @@
           </div>
         </div>
 
-        <el-form :inline="true" :model="form">
+        <el-form :model="form" class="parameter-form-grid">
           <el-form-item label="输出阶数 na">
             <el-input-number v-model="form.na" :min="1" :max="5" />
           </el-form-item>
@@ -50,7 +51,7 @@
           </el-form-item>
 
           <el-form-item label="求解算法">
-            <el-select v-model="form.estimation_method" style="width: 160px">
+            <el-select v-model="form.estimation_method">
               <el-option label="最小二乘 (OLS)" value="ols" />
               <el-option label="岭回归 (Ridge)" value="ridge" />
             </el-select>
@@ -60,7 +61,7 @@
             <el-input-number v-model="form.ridge_alpha" :min="0.001" :max="10" :step="0.1" />
           </el-form-item>
 
-          <el-form-item>
+          <el-form-item class="parameter-form-actions">
             <el-button type="primary" :loading="loading" icon="VideoPlay" @click="handleFit">
               运行 ARX 辨识
             </el-button>
