@@ -1,8 +1,9 @@
 <template>
   <div class="simulation-view">
     <div class="page-header">
-      <h2>仿真测试集生成器 (Simulation Benchmark Generator)</h2>
-      <p class="subtitle">在线构造带有精确真值 (Ground Truth) 的工业时序 S1-S6 测试场景，建立辨识算法基线</p>
+      <span class="page-eyebrow">准备数据</span>
+      <h2>仿真测试集生成器</h2>
+      <p class="subtitle">构造带有精确真值的工业时序 S1–S6 测试场景，用于验证辨识算法</p>
     </div>
 
     <div class="simulation-layout">
@@ -54,7 +55,7 @@
       <div class="industrial-card result-card" v-if="result">
         <div class="industrial-card-header">
           <div class="industrial-card-title">
-            <el-icon><Check /></el-icon> 仿真结果与真值卡片 (Ground Truth Card)
+            <el-icon><Check /></el-icon> 仿真结果与真值
           </div>
           <el-tag type="success">可复现实验基线集</el-tag>
         </div>
@@ -76,7 +77,7 @@
 
         <!-- Ground Truth Parameters Details -->
         <div class="gt-params-box">
-          <h4>📌 系统方程真值参数 (Ground Truth Parameters):</h4>
+          <h4>系统方程真值参数</h4>
           <p class="code-inline">
             y(t) = -a₁ y(t-1) - a₂ y(t-2) + ∑ b_{i,j} u_i(t - d_i - j) + e(t)
           </p>

@@ -1,4 +1,4 @@
-/* IndusOpt Industrial Design Tokens & Base CSS */
+/* IndusOpt industrial workspace tokens and base styles */
 
 :root {
   /* Industrial Color Palette */
@@ -28,6 +28,11 @@
   --border-light: #E2E7EC;
   --border-active: #1E6091;
 
+  --el-color-primary: #1E6091;
+  --el-color-success: #2A9D8F;
+  --el-color-warning: #D4A373;
+  --el-color-danger: #E76F51;
+
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", Consolas, Monaco, monospace;
 }
@@ -46,13 +51,55 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.page-header {
+  margin-bottom: 22px;
+}
+
+.page-header h2 {
+  margin: 3px 0 0;
+  color: var(--text-primary);
+  font-size: 25px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.page-header .subtitle {
+  max-width: 780px;
+  margin-top: 7px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.page-eyebrow {
+  display: block;
+  color: var(--color-primary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
 /* Common Layout Helpers */
 .industrial-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-light);
-  border-radius: 6px;
+  border-radius: 10px;
   padding: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 3px 14px rgba(31, 53, 72, 0.045);
   margin-bottom: 20px;
 }
 
@@ -111,6 +158,21 @@ body {
   border-radius: 4px;
   font-size: 13px;
   border: 1px solid var(--border-light);
+}
+
+@media (max-width: 700px) {
+  .industrial-card {
+    padding: 16px;
+  }
+
+  .industrial-card-header {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .page-header h2 {
+    font-size: 22px;
+  }
 }
 
 /* Shared parameter-form layout

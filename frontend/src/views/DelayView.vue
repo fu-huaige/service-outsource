@@ -1,6 +1,7 @@
 <template>
   <div class="delay-view">
     <div class="page-header">
+      <span class="page-eyebrow">预处理与优选</span>
       <h2>时滞分析与补偿</h2>
       <p class="subtitle">
         预白化互相关生成候选（消除输入自相关造成的伪峰），再由验证集自由仿真 FIT 决定最终时滞

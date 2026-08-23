@@ -1,7 +1,8 @@
 <template>
   <div class="cleaning-view">
     <div class="page-header">
-      <h2>时间规整与清洗 (Cleaning & Resampling)</h2>
+      <span class="page-eyebrow">预处理与优选</span>
+      <h2>时间规整与清洗</h2>
       <p class="subtitle">消除采样不均匀、补全缺失值并过滤尖峰异常点，派生可信数据版本</p>
     </div>
 
@@ -32,9 +33,9 @@
 
           <el-form-item label="缺失值插值算法" class="form-span-2">
             <el-radio-group v-model="form.interpolation">
-              <el-radio label="linear">线性插值 (Linear)</el-radio>
-              <el-radio label="forward_fill">前向填充 (FFill)</el-radio>
-              <el-radio label="backward_fill">后向填充 (BFill)</el-radio>
+              <el-radio label="linear">线性插值</el-radio>
+              <el-radio label="forward_fill">前向填充</el-radio>
+              <el-radio label="backward_fill">后向填充</el-radio>
             </el-radio-group>
           </el-form-item>
 
@@ -68,7 +69,7 @@
       <div class="industrial-card result-card" v-if="cleanedData">
         <div class="industrial-card-header">
           <div class="industrial-card-title">
-            <el-icon><DataAnalysis /></el-icon> 清洗前后叠加对比图 (Before vs After)
+              <el-icon><DataAnalysis /></el-icon> 清洗前后对比
           </div>
           <el-tag type="success">已修复 {{ cleanedData.total_cleaned_points }} 个唯一数据单元格</el-tag>
         </div>
@@ -205,20 +206,20 @@ const compareChartOptions = computed(() => {
 
   return {
     tooltip: { trigger: "axis" },
-    legend: { data: ["原始序列 (Raw Series)", "清洗后序列 (Cleaned Series)"] },
+    legend: { data: ["原始序列", "清洗后序列"] },
     grid: { left: "3%", right: "4%", bottom: "10%", containLabel: true },
     xAxis: { type: "category", data: xData },
     yAxis: { type: "value" },
     series: [
       {
-        name: "原始序列 (Raw Series)",
+        name: "原始序列",
         type: "line",
         color: "#E76F51",
         lineStyle: { type: "dashed", width: 1 },
         data: cleanedData.value.raw_series,
       },
       {
-        name: "清洗后序列 (Cleaned Series)",
+        name: "清洗后序列",
         type: "line",
         color: "#1E6091",
         lineStyle: { width: 2 },

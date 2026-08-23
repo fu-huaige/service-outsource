@@ -1,6 +1,7 @@
 <template>
   <div class="optuna-view">
     <div class="page-header">
+      <span class="page-eyebrow">辨识与寻优</span>
       <h2>闭环参数自动寻优</h2>
       <p class="subtitle">
         以<strong>验证集自由仿真 FIT</strong> 为反馈目标，自动迭代寻优质量门控阈值、优选预算与

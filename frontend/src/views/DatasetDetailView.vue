@@ -1,10 +1,15 @@
 <template>
   <div class="dataset-detail-view">
     <div class="page-header" v-if="dataset">
-      <h2>数据集详情: {{ dataset.name }}</h2>
+      <span class="page-eyebrow">数据资产</span>
+      <h2>{{ dataset.name }}</h2>
       <p class="subtitle">
-        ID: {{ dataset.id }} | 激活版本: <span class="code-inline">{{ dataset.version_id || dataset.latest_version_id }}</span> |
-        来源: <el-tag size="small" type="info">{{ dataset.source || 'upload' }}</el-tag>
+        当前版本：<span class="code-inline">{{ shortIdentifier(dataset.version_id || dataset.latest_version_id) }}</span>
+        <el-tooltip :content="dataset.version_id || dataset.latest_version_id" placement="top">
+          <span class="version-id-help">查看完整 ID</span>
+        </el-tooltip>
+        ·
+        来源：<el-tag size="small" type="info">{{ dataset.source || 'upload' }}</el-tag>
       </p>
     </div>
 
@@ -110,7 +115,7 @@
 
           <!-- Column Missing Rates Breakdown -->
           <div style="margin-bottom: 20px">
-            <h4>📊 各变量缺失率分布 (Missing Rates):</h4>
+            <h4>各变量缺失率分布</h4>
             <el-row :gutter="16" style="margin-top: 10px">
               <el-col :span="6" v-for="(rate, col) in profile.missing_rates" :key="col">
                 <div class="stat-mini-card">
@@ -124,21 +129,21 @@
 
           <!-- Column Statistics Table -->
           <div style="margin-bottom: 20px" v-if="profile.column_statistics">
-            <h4>📐 变量统计量矩阵 (Column Statistics):</h4>
+            <h4>变量统计量矩阵</h4>
             <el-table :data="formattedColStats" stripe style="width: 100%; margin-top: 10px">
               <el-table-column prop="col" label="变量名" width="120" />
               <el-table-column prop="count" label="有效行" width="100" />
-              <el-table-column prop="mean" label="均值 (Mean)" />
-              <el-table-column prop="std" label="标准差 (Std)" />
-              <el-table-column prop="min" label="最小值 (Min)" />
-              <el-table-column prop="max" label="最大值 (Max)" />
+              <el-table-column prop="mean" label="均值" />
+              <el-table-column prop="std" label="标准差" />
+              <el-table-column prop="min" label="最小值" />
+              <el-table-column prop="max" label="最大值" />
               <el-table-column prop="q50" label="中位数 (Q50)" />
             </el-table>
           </div>
 
           <!-- Recommendations -->
           <div class="recommendations">
-            <h4>💡 智能预处理建议 (Recommendations)：</h4>
+            <h4>预处理建议</h4>
             <ul>
               <li v-for="(rec, idx) in profile.recommendations" :key="idx">{{ rec }}</li>
             </ul>
@@ -153,11 +158,11 @@
       </el-tab-pane>
 
       <!-- Tab 3: Version Lineage DAG -->
-      <el-tab-pane label="数据版本血缘 (DAG)" name="versions">
+      <el-tab-pane label="数据版本血缘（DAG）" name="versions">
         <div class="industrial-card">
           <div class="industrial-card-header">
             <div class="industrial-card-title">
-              <el-icon><Share /></el-icon> 真实版本演化拓扑 (Dataset Version Nodes)
+              <el-icon><Share /></el-icon> 版本演化记录
             </div>
           </div>
           <el-timeline v-if="versionNodes.length > 0">
@@ -438,6 +443,7 @@ const candidateFreezeSummary = computed(() => {
 });
 
 const formatPreviewValue = (value: unknown) => value === null || value === undefined ? "缺失" : String(value);
+const shortIdentifier = (value?: string) => value ? `${value.slice(0, 8)}…` : "尚未生成";
 
 const formatDateTime = (value: string) => {
   const parsed = new Date(value);
@@ -792,6 +798,15 @@ onMounted(() => {
   font-size: 13px;
   color: var(--text-secondary);
   margin-top: 4px;
+}
+
+.version-id-help {
+  margin-left: 6px;
+  color: var(--color-primary);
+  cursor: help;
+  font-size: 12px;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
 }
 
 .profile-score-box {

@@ -1,6 +1,7 @@
 <template>
   <div class="collinearity-view">
     <div class="page-header">
+      <span class="page-eyebrow">预处理与优选</span>
       <h2>共线性检测与冗余变量处理</h2>
       <p class="subtitle">
         Pearson / Spearman 相关、方差膨胀因子 VIF 与设计矩阵条件数；剔除建议需人工确认后生效
@@ -95,7 +96,7 @@
         <div class="industrial-card">
           <div class="industrial-card-header">
             <div class="industrial-card-title">
-              <el-icon><Histogram /></el-icon> 方差膨胀因子 (VIF)
+              <el-icon><Histogram /></el-icon> 方差膨胀因子（VIF）
             </div>
           </div>
           <ChartContainer :options="vifOptions" height="300px" />

@@ -1,6 +1,7 @@
 <template>
   <div class="deliverables-view">
     <div class="page-header">
+      <span class="page-eyebrow">成果交付</span>
       <h2>报告生成与数据交付</h2>
       <p class="subtitle">
         报告中的每一个数值都由运行记录解析而来；大模型只负责组织语言，不产生任何数字

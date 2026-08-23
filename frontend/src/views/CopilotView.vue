@@ -1,6 +1,7 @@
 <template>
   <div class="copilot-view">
     <div class="page-header">
+      <span class="page-eyebrow">智能协作</span>
       <h2>Agent 工作台</h2>
       <p class="subtitle copilot-flow" aria-label="Agent 执行流程">
         <span v-for="step in FLOW_STEPS" :key="step" class="flow-step">{{ step }}</span>

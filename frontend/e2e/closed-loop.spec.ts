@@ -38,7 +38,7 @@ async function generateDataset(page: Page, name: string): Promise<string> {
   const body = await (await pending).json();
 
   expect(body.success, "仿真生成必须成功，否则后续步骤没有输入").toBe(true);
-  await expect(page.getByText("仿真结果与真值卡片", { exact: false })).toBeVisible({
+  await expect(page.getByText("仿真结果与真值", { exact: false })).toBeVisible({
     timeout: 30_000,
   });
   return body.data.version_id as string;

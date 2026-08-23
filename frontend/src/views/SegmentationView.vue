@@ -1,6 +1,7 @@
 <template>
   <div class="segmentation-view">
     <div class="page-header">
+      <span class="page-eyebrow">预处理与优选</span>
       <h2>质量约束 D-最优动态区间优选</h2>
       <p class="subtitle">
         先做质量门控（缺失 / 异常 / 稳态 / 信噪比），再在合格窗口上按 Fisher 信息增益贪心优选

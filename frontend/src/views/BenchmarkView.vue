@@ -1,6 +1,7 @@
 <template>
   <div class="benchmark-view">
     <div class="page-header">
+      <span class="page-eyebrow">质量验证</span>
       <h2>一键自评测基准</h2>
       <p class="subtitle">
         系统用带真值的仿真基准检验自己的技术主张。下表每个数字都在本次请求中实时计算，

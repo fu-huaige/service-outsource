@@ -1,15 +1,16 @@
 <template>
   <div class="datasets-view">
     <div class="page-header">
-      <h2>数据资产 Hub (Dataset Management)</h2>
-      <p class="subtitle">管理真实上传的工业 CSV、配置列角色并查看关联数据版本</p>
+      <span class="page-eyebrow">准备数据</span>
+      <h2>数据资产</h2>
+      <p class="subtitle">上传工业 CSV、配置变量角色，并追踪每一次处理产生的数据版本</p>
     </div>
 
     <!-- Upload Card -->
     <div class="industrial-card">
       <div class="industrial-card-header">
         <div class="industrial-card-title">
-          <el-icon><Upload /></el-icon> 上传本地工业 CSV 数据文件
+          <el-icon><Upload /></el-icon> 上传工业 CSV
         </div>
       </div>
       <el-upload
@@ -25,7 +26,7 @@
         </div>
         <template #tip>
           <div class="el-upload__tip">
-            支持最大 100MB 工业 CSV 文件 (自动识别 UTF-8 / GBK / GB2312 编码与逗号/分号/Tab 分隔符)
+            支持最大 100 MB；自动识别 UTF-8、GBK、GB2312 编码及逗号、分号、制表符分隔
           </div>
         </template>
       </el-upload>
@@ -35,16 +36,18 @@
     <div class="industrial-card">
       <div class="industrial-card-header">
         <div class="industrial-card-title">
-          <el-icon><List /></el-icon> 数据库已登记数据集列表
+          <el-icon><List /></el-icon> 已登记数据集
         </div>
         <el-button type="primary" size="small" icon="Refresh" @click="fetchDatasets">刷新列表</el-button>
       </div>
 
       <el-table :data="datasetList" stripe style="width: 100%" v-loading="loading">
         <el-table-column prop="name" label="数据集名称" width="200" />
-        <el-table-column prop="version_id" label="激活版本" width="140">
+        <el-table-column prop="version_id" label="当前版本" width="150">
           <template #default="{ row }">
-            <span class="code-inline">{{ row.version_id || row.latest_version_id }}</span>
+            <el-tooltip :content="row.version_id || row.latest_version_id" placement="top">
+              <span class="version-summary">{{ shortIdentifier(row.version_id || row.latest_version_id) }}</span>
+            </el-tooltip>
           </template>
         </el-table-column>
         <el-table-column prop="row_count" label="样本行数" width="130" />
@@ -62,14 +65,14 @@
         <el-table-column label="输入/输出变量角色">
           <template #default="{ row }">
             <span v-if="row.input_columns && row.input_columns.length > 0" class="badge-primary industrial-badge">
-              In: {{ row.input_columns.join(",") }}
+              输入：{{ row.input_columns.join(", ") }}
             </span>
-            <span v-else class="industrial-badge" style="background: #edf2f7; color: #718096">In: 待配置</span>
+            <span v-else class="industrial-badge" style="background: #edf2f7; color: #718096">输入：待配置</span>
 
             <span v-if="row.output_column" class="badge-success industrial-badge" style="margin-left: 6px">
-              Out: {{ row.output_column }}
+              输出：{{ row.output_column }}
             </span>
-            <span v-else class="industrial-badge" style="margin-left: 6px; background: #edf2f7; color: #718096">Out: 待配置</span>
+            <span v-else class="industrial-badge" style="margin-left: 6px; background: #edf2f7; color: #718096">输出：待配置</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="240">
@@ -83,15 +86,15 @@
     </div>
 
     <!-- Column Config Dialog -->
-    <el-dialog v-model="configDialogVisible" title="配置数据集列角色 (Schema Mapping)" width="500px">
+    <el-dialog v-model="configDialogVisible" title="配置数据集列角色" width="500px">
       <el-form class="parameter-form-grid parameter-form-grid--single">
-        <el-form-item label="时间戳列 (Time)">
+        <el-form-item label="时间戳列">
           <el-input v-model="configForm.time_column" placeholder="例如: timestamp" />
         </el-form-item>
-        <el-form-item label="输入变量 (Inputs)">
+        <el-form-item label="输入变量">
           <el-input v-model="configForm.input_columns_str" placeholder="多个以逗号分隔, 如: u1,u2" />
         </el-form-item>
-        <el-form-item label="目标输出 (Output)">
+        <el-form-item label="目标输出">
           <el-input v-model="configForm.output_column" placeholder="例如: y" />
         </el-form-item>
       </el-form>
@@ -126,6 +129,8 @@ const configForm = reactive({
   input_columns_str: "u1,u2",
   output_column: "y",
 });
+
+const shortIdentifier = (value?: string) => value ? `${value.slice(0, 8)}…` : "尚未生成";
 
 const fetchDatasets = async () => {
   loading.value = true;
@@ -215,5 +220,12 @@ onMounted(() => {
 
 .upload-area {
   width: 100%;
+}
+
+.version-summary {
+  color: var(--color-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: help;
 }
 </style>

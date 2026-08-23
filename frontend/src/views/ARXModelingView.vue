@@ -1,7 +1,8 @@
 <template>
   <div class="arx-modeling-view">
     <div class="page-header">
-      <h2>ARX 系统辨识与模型评价 (ARX System Identification)</h2>
+      <span class="page-eyebrow">辨识与寻优</span>
+      <h2>ARX 系统辨识与模型评价</h2>
       <p class="subtitle">在精选数据版本上求解离散时间 ARX 结构参数，验证 R²、FIT 拟合度与残差独立性</p>
     </div>
 
@@ -15,8 +16,8 @@
           <el-tag type="primary">ID: {{ activeDataset.id }} (版本: {{ activeDataset.version_id }})</el-tag>
         </div>
         <p class="dataset-meta">
-          过程输入 (Inputs): <span class="code-inline">{{ inputCols.join(", ") }}</span> |
-          控制输出 (Output): <span class="code-inline">{{ activeDataset.output_column }}</span>
+          过程输入：<span class="code-inline">{{ inputCols.join(", ") }}</span> |
+          目标输出：<span class="code-inline">{{ activeDataset.output_column }}</span>
         </p>
       </div>
 
