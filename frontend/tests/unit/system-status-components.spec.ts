@@ -9,7 +9,13 @@ import { useSystemStore } from "../../src/stores/systemStore";
 import { getDashboardLeaderboard } from "../../src/api/dashboard";
 import { getDatasets } from "../../src/api/datasets";
 import { getHealthLive, getHealthReady, getSystemInfo } from "../../src/api/health";
-import { ElMessage } from "element-plus";
+import {
+  getAgentLlmConfig,
+  resetAgentLlmConfig,
+  testAgentLlmConnection,
+  updateAgentLlmConfig,
+} from "../../src/api/agentSettings";
+import { ElMessage, ElMessageBox } from "element-plus";
 
 vi.mock("../../src/api/dashboard", () => ({ getDashboardLeaderboard: vi.fn() }));
 vi.mock("../../src/api/datasets", () => ({ getDatasets: vi.fn() }));
@@ -18,9 +24,16 @@ vi.mock("../../src/api/health", () => ({
   getHealthReady: vi.fn(),
   getSystemInfo: vi.fn(),
 }));
+vi.mock("../../src/api/agentSettings", () => ({
+  getAgentLlmConfig: vi.fn(),
+  resetAgentLlmConfig: vi.fn(),
+  testAgentLlmConnection: vi.fn(),
+  updateAgentLlmConfig: vi.fn(),
+}));
 vi.mock("vue-router", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("element-plus", () => ({
   ElMessage: { success: vi.fn(), error: vi.fn() },
+  ElMessageBox: { confirm: vi.fn() },
 }));
 
 const mockedGetDashboardLeaderboard = vi.mocked(getDashboardLeaderboard);
@@ -28,6 +41,10 @@ const mockedGetDatasets = vi.mocked(getDatasets);
 const mockedGetHealthLive = vi.mocked(getHealthLive);
 const mockedGetHealthReady = vi.mocked(getHealthReady);
 const mockedGetSystemInfo = vi.mocked(getSystemInfo);
+const mockedGetAgentLlmConfig = vi.mocked(getAgentLlmConfig);
+const mockedResetAgentLlmConfig = vi.mocked(resetAgentLlmConfig);
+const mockedTestAgentLlmConnection = vi.mocked(testAgentLlmConnection);
+const mockedUpdateAgentLlmConfig = vi.mocked(updateAgentLlmConfig);
 
 const componentStubs = {
   "el-tooltip": { template: "<div><slot /></div>" },
@@ -42,9 +59,31 @@ const componentStubs = {
   "el-descriptions-item": { template: "<div><slot /></div>" },
   "el-form": { template: "<form><slot /></form>" },
   "el-form-item": { template: "<div><slot /></div>" },
-  "el-select": { template: "<select><slot /></select>" },
+  "el-select": {
+    name: "ElSelect",
+    props: ["modelValue"],
+    emits: ["update:modelValue", "change"],
+    template: "<select><slot /></select>",
+  },
   "el-option": true,
-  "el-input": true,
+  "el-input": {
+    name: "ElInput",
+    props: ["modelValue", "type"],
+    emits: ["update:modelValue"],
+    template: "<input :type=\"type || 'text'\" :value=\"modelValue\" />",
+  },
+  "el-input-number": {
+    name: "ElInputNumber",
+    props: ["modelValue"],
+    emits: ["update:modelValue"],
+    template: "<input type=\"number\" :value=\"modelValue\" />",
+  },
+  "el-checkbox": {
+    name: "ElCheckbox",
+    props: ["modelValue"],
+    emits: ["update:modelValue"],
+    template: "<label><input type=\"checkbox\" /><slot /></label>",
+  },
   "el-collapse": { template: "<div><slot /></div>" },
   "el-collapse-item": { props: ["title"], template: "<section>{{ title }}<slot /></section>" },
   DataAnalysis: true,
@@ -64,6 +103,27 @@ const mountWithPinia = (component: typeof AppHeader | typeof DashboardView | typ
 };
 const leaderboard = { items: [] };
 const datasets = { items: [], page: { current_page: 1, page_size: 1, total_items: 2, total_pages: 2 } };
+const defaultAgentConfig = {
+  source: "environment" as const,
+  persistence: "process_memory" as const,
+  enabled: false,
+  provider: "none",
+  base_url: "",
+  model: "",
+  has_api_key: false,
+  timeout_seconds: 60,
+  updated_at: null,
+};
+const runtimeAgentConfig = {
+  ...defaultAgentConfig,
+  source: "runtime" as const,
+  enabled: true,
+  provider: "deepseek",
+  base_url: "https://example.invalid/v1",
+  model: "planner-model",
+  has_api_key: true,
+  updated_at: "2026-08-24T00:00:00Z",
+};
 
 describe("system status components", () => {
   beforeEach(() => {
@@ -77,6 +137,17 @@ describe("system status components", () => {
       docs_url: "/docs",
       openapi_url: "/openapi.json",
     });
+    mockedGetAgentLlmConfig.mockResolvedValue(defaultAgentConfig);
+    mockedUpdateAgentLlmConfig.mockResolvedValue(runtimeAgentConfig);
+    mockedResetAgentLlmConfig.mockResolvedValue(defaultAgentConfig);
+    mockedTestAgentLlmConnection.mockResolvedValue({
+      connected: true,
+      provider: "deepseek",
+      model: "planner-model",
+      latency_ms: 12,
+      message: "模型服务连接成功。",
+    });
+    vi.mocked(ElMessageBox.confirm).mockResolvedValue("confirm");
   });
 
   it.each([
@@ -139,13 +210,60 @@ describe("system status components", () => {
     expect(ElMessage.success).not.toHaveBeenCalled();
   });
 
-  it("does not render an editable or demo API key", async () => {
+  it("loads the real Agent configuration without rendering a secret", async () => {
+    mockedGetAgentLlmConfig.mockResolvedValue(runtimeAgentConfig);
     const wrapper = mountWithPinia(SettingsView);
     await flushPromises();
 
-    expect(wrapper.text()).toContain("当前网页不会读取、保存或回显 API Key");
-    expect(wrapper.text()).toContain("确定性规则编排");
+    expect(mockedGetAgentLlmConfig).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain("运行时配置已生效");
+    expect(wrapper.text()).toContain("已配置（不回显）");
     expect(wrapper.text()).not.toContain("sk-demo-key-indusopt-2026");
-    expect(wrapper.find('input[type="password"]').exists()).toBe(false);
+    expect(wrapper.find('input[type="password"]').exists()).toBe(true);
+    expect(wrapper.find<HTMLInputElement>('input[type="password"]').element.value).toBe("");
+  });
+
+  it("fills the current official DeepSeek endpoint and default model", async () => {
+    const wrapper = mountWithPinia(SettingsView);
+    await flushPromises();
+
+    const provider = wrapper.findComponent({ name: "ElSelect" });
+    await provider.vm.$emit("update:modelValue", "deepseek");
+    await provider.vm.$emit("change", "deepseek");
+    await nextTick();
+
+    const inputs = wrapper.findAllComponents({ name: "ElInput" });
+    expect(inputs[0]!.props("modelValue")).toBe("deepseek-v4-flash");
+    expect(inputs[1]!.props("modelValue")).toBe("https://api.deepseek.com");
+  });
+
+  it("saves a new runtime configuration and immediately clears the input key", async () => {
+    const wrapper = mountWithPinia(SettingsView);
+    await flushPromises();
+
+    const provider = wrapper.findComponent({ name: "ElSelect" });
+    await provider.vm.$emit("update:modelValue", "deepseek");
+    await provider.vm.$emit("change", "deepseek");
+    const inputs = wrapper.findAllComponents({ name: "ElInput" });
+    await inputs[0]!.vm.$emit("update:modelValue", "planner-model");
+    await inputs[1]!.vm.$emit("update:modelValue", "https://example.invalid/v1");
+    await inputs[2]!.vm.$emit("update:modelValue", "temporary-secret");
+
+    const save = wrapper.findAll("button").find((button) => button.text().includes("保存并立即生效"));
+    expect(save).toBeDefined();
+    await save!.trigger("click");
+    await flushPromises();
+
+    expect(mockedUpdateAgentLlmConfig).toHaveBeenCalledWith({
+      provider: "deepseek",
+      base_url: "https://example.invalid/v1",
+      model: "planner-model",
+      api_key: "temporary-secret",
+      clear_api_key: false,
+      timeout_seconds: 60,
+    });
+    expect(wrapper.find<HTMLInputElement>('input[type="password"]').element.value).toBe("");
+    expect(wrapper.text()).not.toContain("temporary-secret");
+    expect(ElMessage.success).toHaveBeenCalledWith("Agent 模型配置已生效");
   });
 });

@@ -1,9 +1,11 @@
 from typing import Annotated, Any, TypeVar
 from uuid import UUID
 
+from algorithms.agent.llm import LlmUnavailableError
 from fastapi import APIRouter, Depends, File, Form, Path, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import get_settings
 from app.core.db import database_is_ready, get_session, redis_is_ready
@@ -57,7 +59,14 @@ from app.schemas.reporting import (
     ReportRequest,
 )
 from app.schemas.simulation import SimulationGenerateData, SimulationGenerateRequest
-from app.schemas.system import LivenessData, ReadinessData, SystemInfoData
+from app.schemas.system import (
+    AgentLlmConfigData,
+    AgentLlmConfigUpdate,
+    AgentLlmConnectionData,
+    LivenessData,
+    ReadinessData,
+    SystemInfoData,
+)
 from app.schemas.tasks import CancelTaskData
 from app.services.agent_service import AgentDomainError, run_copilot
 from app.services.benchmark_service import BenchmarkDomainError, run_benchmark
@@ -81,6 +90,12 @@ from app.services.dataset_service import (
     get_dataset_versions as get_dataset_versions_service,
 )
 from app.services.generalization_diagnostics_service import get_generalization_diagnostics
+from app.services.llm_runtime_config_service import (
+    get_agent_llm_config_data,
+    reset_agent_llm_config,
+    test_agent_llm_connection,
+    update_agent_llm_config,
+)
 from app.services.modeling_service import ModelingDomainError, fit_arx_on_version
 from app.services.optimization_service import (
     OptimizationDomainError,
@@ -169,6 +184,64 @@ async def system_info(request: Request) -> SuccessEnvelope[SystemInfoData]:
         request,
         SystemInfoData(version=settings.app_version, environment=settings.app_env),
     )
+
+
+@router.get(
+    "/system/agent-config",
+    tags=["System"],
+    summary="Get the effective Agent LLM configuration without exposing its API key",
+    response_model=SuccessEnvelope[AgentLlmConfigData],
+    responses=ERROR_RESPONSES,
+)
+async def get_agent_config(request: Request) -> SuccessEnvelope[AgentLlmConfigData]:
+    return success(request, get_agent_llm_config_data())
+
+
+@router.put(
+    "/system/agent-config",
+    tags=["System"],
+    summary="Apply a process-local Agent LLM configuration",
+    response_model=SuccessEnvelope[AgentLlmConfigData],
+    responses=ERROR_RESPONSES,
+)
+async def update_agent_config(
+    request: Request, payload: AgentLlmConfigUpdate
+) -> SuccessEnvelope[AgentLlmConfigData]:
+    return success(request, update_agent_llm_config(payload))
+
+
+@router.delete(
+    "/system/agent-config",
+    tags=["System"],
+    summary="Discard the process-local Agent LLM configuration",
+    response_model=SuccessEnvelope[AgentLlmConfigData],
+    responses=ERROR_RESPONSES,
+)
+async def reset_agent_config(request: Request) -> SuccessEnvelope[AgentLlmConfigData]:
+    return success(request, reset_agent_llm_config())
+
+
+@router.post(
+    "/system/agent-config/test",
+    tags=["System"],
+    summary="Send a minimal completion to the effective Agent model service",
+    response_model=SuccessEnvelope[AgentLlmConnectionData],
+    responses={
+        **ERROR_RESPONSES,
+        502: {"model": ErrorEnvelope, "description": "模型服务不可用或配置无效。"},
+    },
+)
+async def test_agent_config(request: Request) -> SuccessEnvelope[AgentLlmConnectionData]:
+    try:
+        result = await run_in_threadpool(test_agent_llm_connection)
+    except LlmUnavailableError as error:
+        raise AppError(
+            "LLM_CONNECTION_FAILED",
+            "模型服务连接失败",
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            details={"reason": str(error)},
+        ) from error
+    return success(request, result)
 
 
 @router.get(
