@@ -19,10 +19,38 @@ from app.core.middleware import RequestContextMiddleware
 from app.schemas.common import ErrorDetail, ErrorEnvelope
 
 logger = logging.getLogger(__name__)
+_SENSITIVE_FIELD_PARTS = ("api_key", "password", "secret", "access_token")
 
 
 def _request_id(request: Request) -> str:
     return getattr(request.state, "request_id", str(uuid4()))
+
+
+def _redact_sensitive_validation_input(value: object, *, field_name: str = "") -> object:
+    """Keep validation diagnostics useful without reflecting submitted credentials."""
+
+    lowered = field_name.lower()
+    if any(part in lowered for part in _SENSITIVE_FIELD_PARTS):
+        return "[REDACTED]"
+    if isinstance(value, dict):
+        location = value.get("loc")
+        sensitive_location = isinstance(location, (list, tuple)) and any(
+            any(part in str(segment).lower() for part in _SENSITIVE_FIELD_PARTS)
+            for segment in location
+        )
+        return {
+            key: (
+                "[REDACTED]"
+                if sensitive_location and key == "input"
+                else _redact_sensitive_validation_input(item, field_name=str(key))
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_sensitive_validation_input(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_sensitive_validation_input(item) for item in value)
+    return value
 
 
 def _error_response(
@@ -92,7 +120,9 @@ def create_app() -> FastAPI:
             status_code=422,
             code="REQUEST_VALIDATION_FAILED",
             message="请求参数校验失败",
-            details={"issues": jsonable_encoder(exc.errors())},
+            details={
+                "issues": jsonable_encoder(_redact_sensitive_validation_input(exc.errors()))
+            },
         )
 
     @app.exception_handler(StarletteHTTPException)

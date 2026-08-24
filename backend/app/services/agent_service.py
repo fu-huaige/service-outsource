@@ -25,7 +25,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from algorithms.agent.compliance import ComplianceProof, verify_plan
-from algorithms.agent.llm import LlmProvider, build_provider
+from algorithms.agent.llm import LlmProvider
 from algorithms.agent.llm_planner import LlmPlanner, PlanOutcome
 from algorithms.agent.planner import PlannedStep, parse_intent
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -456,18 +456,11 @@ def _conclusion(
 
 
 def _resolve_provider() -> LlmProvider:
-    """Build the configured provider. Import is local so algorithms/ stays app-agnostic."""
+    """Build the environment or process-local runtime provider."""
 
-    from app.core.config import get_settings
+    from app.services.llm_runtime_config_service import build_effective_llm_provider
 
-    settings = get_settings()
-    return build_provider(
-        provider=settings.llm_provider,
-        base_url=settings.llm_base_url,
-        model=settings.llm_model,
-        api_key=settings.llm_api_key,
-        timeout_seconds=settings.llm_timeout_seconds,
-    )
+    return build_effective_llm_provider()
 
 
 async def _persist(

@@ -55,6 +55,35 @@ export interface SystemInfoData {
   openapi_url: string;
 }
 
+export interface AgentLlmConfigData {
+  source: "environment" | "runtime";
+  persistence: "process_memory";
+  enabled: boolean;
+  provider: string;
+  base_url: string;
+  model: string;
+  has_api_key: boolean;
+  timeout_seconds: number;
+  updated_at: string | null;
+}
+
+export interface AgentLlmConfigUpdate {
+  provider: string;
+  base_url: string;
+  model: string;
+  api_key?: string | null;
+  clear_api_key?: boolean;
+  timeout_seconds: number;
+}
+
+export interface AgentLlmConnectionData {
+  connected: true;
+  provider: string;
+  model: string;
+  latency_ms: number;
+  message: string;
+}
+
 // Simulation API Types
 export interface SimulationGenerateRequest {
   scenario: "S1" | "S2" | "S3" | "S4" | "S5" | "S6";

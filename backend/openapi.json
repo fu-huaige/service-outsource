@@ -199,12 +199,333 @@
         }
       }
     },
+    "/api/v1/system/agent-config": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Get the effective Agent LLM configuration without exposing its API key",
+        "operationId": "get_agent_config_api_v1_system_agent_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_AgentLlmConfigData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或领域规则无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求体或路径参数未通过 Pydantic 校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Apply a process-local Agent LLM configuration",
+        "operationId": "update_agent_config_api_v1_system_agent_config_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentLlmConfigUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_AgentLlmConfigData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或领域规则无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求体或路径参数未通过 Pydantic 校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Discard the process-local Agent LLM configuration",
+        "operationId": "reset_agent_config_api_v1_system_agent_config_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_AgentLlmConfigData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或领域规则无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求体或路径参数未通过 Pydantic 校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/agent-config/test": {
+      "post": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Send a minimal completion to the effective Agent model service",
+        "operationId": "test_agent_config_api_v1_system_agent_config_test_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_AgentLlmConnectionData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或领域规则无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求体或路径参数未通过 Pydantic 校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "模型服务不可用或配置无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dashboard/leaderboard": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "summary": "List real completed optimisation studies ranked by validation free-run FIT",
+        "operationId": "dashboard_leaderboard_api_v1_dashboard_leaderboard_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_DashboardLeaderboardData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或领域规则无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求体或路径参数未通过 Pydantic 校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/simulation/generate": {
       "post": {
         "tags": [
           "Simulation"
         ],
-        "summary": "Generate an S1-S5 benchmark dataset",
+        "summary": "Generate and register an S1-S6 benchmark dataset",
         "operationId": "generate_simulation_api_v1_simulation_generate_post",
         "requestBody": {
           "content": {
@@ -671,6 +992,78 @@
         }
       }
     },
+    "/api/v1/datasets/{dataset_id}/download": {
+      "get": {
+        "tags": [
+          "Datasets"
+        ],
+        "summary": "Download the active or explicitly requested immutable CSV version",
+        "operationId": "download_dataset_api_v1_datasets__dataset_id__download_get",
+        "parameters": [
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "数据集 UUID。",
+              "title": "Dataset Id"
+            },
+            "description": "数据集 UUID。"
+          },
+          {
+            "name": "version_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "可选的 DatasetVersion UUID。",
+              "title": "Version Id"
+            },
+            "description": "可选的 DatasetVersion UUID。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "数据集或 CSV 产物不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/datasets/{dataset_id}/profile": {
       "get": {
         "tags": [
@@ -690,6 +1083,25 @@
               "title": "Dataset Id"
             },
             "description": "数据集 UUID。"
+          },
+          {
+            "name": "version_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "可选的 DatasetVersion UUID。",
+              "title": "Version Id"
+            },
+            "description": "可选的 DatasetVersion UUID。"
           }
         ],
         "responses": {
@@ -1037,6 +1449,77 @@
         }
       }
     },
+    "/api/v1/preprocessing/delay/apply": {
+      "post": {
+        "tags": [
+          "Preprocessing"
+        ],
+        "summary": "Apply confirmed lag compensation and create an immutable DatasetVersion",
+        "operationId": "apply_delay_compensation_api_v1_preprocessing_delay_apply_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LagCompensationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_VersionApplyData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或领域规则无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求体或路径参数未通过 Pydantic 校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/preprocessing/collinearity": {
       "post": {
         "tags": [
@@ -1062,6 +1545,77 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SuccessEnvelope_CollinearityData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或领域规则无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求体或路径参数未通过 Pydantic 校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/preprocessing/features/apply": {
+      "post": {
+        "tags": [
+          "Preprocessing"
+        ],
+        "summary": "Drop confirmed redundant inputs and create an immutable DatasetVersion",
+        "operationId": "apply_features_api_v1_preprocessing_features_apply_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeatureSelectionApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_VersionApplyData_"
                 }
               }
             }
@@ -1281,6 +1835,82 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SuccessEnvelope_OptimizationStatusData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或领域规则无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求体或路径参数未通过 Pydantic 校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/optimization/optuna/{study_id}/diagnostics": {
+      "get": {
+        "tags": [
+          "Optimization"
+        ],
+        "summary": "Replay the validation-selected winner for read-only generalization diagnostics",
+        "description": "Inspect the fixed winner without running a new Optuna trial or changing the study.",
+        "operationId": "optimization_diagnostics_api_v1_optimization_optuna__study_id__diagnostics_get",
+        "parameters": [
+          {
+            "name": "study_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Optuna study UUID。",
+              "title": "Study Id"
+            },
+            "description": "Optuna study UUID。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_GeneralizationDiagnosticsData_"
                 }
               }
             }
@@ -1764,6 +2394,160 @@
   },
   "components": {
     "schemas": {
+      "AgentLlmConfigData": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "environment",
+              "runtime"
+            ],
+            "title": "Source"
+          },
+          "persistence": {
+            "type": "string",
+            "const": "process_memory",
+            "title": "Persistence",
+            "default": "process_memory"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "base_url": {
+            "type": "string",
+            "title": "Base Url"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "has_api_key": {
+            "type": "boolean",
+            "title": "Has Api Key"
+          },
+          "timeout_seconds": {
+            "type": "number",
+            "title": "Timeout Seconds"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "enabled",
+          "provider",
+          "base_url",
+          "model",
+          "has_api_key",
+          "timeout_seconds"
+        ],
+        "title": "AgentLlmConfigData"
+      },
+      "AgentLlmConfigUpdate": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "pattern": "^[\\w.-]+$",
+            "title": "Provider",
+            "default": "none"
+          },
+          "base_url": {
+            "type": "string",
+            "maxLength": 2048,
+            "title": "Base Url",
+            "default": ""
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Model",
+            "default": ""
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 8192,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "clear_api_key": {
+            "type": "boolean",
+            "title": "Clear Api Key",
+            "default": false
+          },
+          "timeout_seconds": {
+            "type": "number",
+            "maximum": 600.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Timeout Seconds",
+            "default": 60.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AgentLlmConfigUpdate",
+        "description": "A process-local LLM override; secrets are accepted but never returned."
+      },
+      "AgentLlmConnectionData": {
+        "properties": {
+          "connected": {
+            "type": "boolean",
+            "const": true,
+            "title": "Connected",
+            "default": true
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "latency_ms": {
+            "type": "number",
+            "title": "Latency Ms"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": "模型服务连接成功。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "provider",
+          "model",
+          "latency_ms"
+        ],
+        "title": "AgentLlmConnectionData"
+      },
       "AgentStepRun": {
         "properties": {
           "step_id": {
@@ -2081,6 +2865,11 @@
             "title": "Validation Ratio",
             "default": 0.2
           },
+          "evaluate_test": {
+            "type": "boolean",
+            "title": "Evaluate Test",
+            "default": true
+          },
           "training_sample_indices": {
             "items": {
               "type": "integer"
@@ -2134,6 +2923,20 @@
       },
       "ArxMetrics": {
         "properties": {
+          "one_step": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PredictionMetrics"
+            },
+            "type": "object",
+            "title": "One Step"
+          },
+          "free_run": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PredictionMetrics"
+            },
+            "type": "object",
+            "title": "Free Run"
+          },
           "train_r2": {
             "anyOf": [
               {
@@ -2324,7 +3127,8 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "title": "ArxMetrics"
+        "title": "ArxMetrics",
+        "description": "Compatibility metrics plus prediction-mode-explicit partition metrics.\n\n``test_r2`` / ``test_rmse`` / ``mae`` historically mean one-step values. New code\nmust use ``one_step`` or ``free_run`` below so a value is never detached from the\nprediction mode that produced it."
       },
       "ArxPlotData": {
         "properties": {
@@ -2408,6 +3212,230 @@
           "acf_values"
         ],
         "title": "ArxResidualDiagnostics"
+      },
+      "BaselineEvaluation": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Parameters"
+          },
+          "validation_free_run_fit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validation Free Run Fit"
+          },
+          "test_free_run_fit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Free Run Fit"
+          },
+          "test_mae": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Mae"
+          },
+          "test_rmse": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Rmse"
+          },
+          "test_r2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test R2"
+          },
+          "test_one_step_fit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test One Step Fit"
+          },
+          "test_one_step_mae": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test One Step Mae"
+          },
+          "test_one_step_rmse": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test One Step Rmse"
+          },
+          "test_one_step_r2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test One Step R2"
+          },
+          "test_free_run_mae": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Free Run Mae"
+          },
+          "test_free_run_rmse": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Free Run Rmse"
+          },
+          "test_free_run_r2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Free Run R2"
+          },
+          "generalization_gap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generalization Gap"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "processing_run_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processing Run Id"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "BaselineEvaluation"
       },
       "BenchmarkData": {
         "properties": {
@@ -2642,6 +3670,18 @@
             "format": "uuid",
             "title": "Derived Version Id"
           },
+          "processing_run_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processing Run Id"
+          },
           "task": {
             "$ref": "#/components/schemas/TaskResource"
           },
@@ -2729,6 +3769,11 @@
             "minimum": 1.0,
             "title": "Recommended Downsample Factor",
             "default": 1
+          },
+          "summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Summary"
           }
         },
         "additionalProperties": false,
@@ -3498,6 +4543,20 @@
         ],
         "title": "CopilotConfirmRequest"
       },
+      "DashboardLeaderboardData": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LeaderboardEntry"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "DashboardLeaderboardData"
+      },
       "DatasetColumn": {
         "properties": {
           "name": {
@@ -4039,20 +5098,27 @@
           },
           "frozen_segments": {
             "items": {
-              "additionalProperties": {
-                "anyOf": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "string"
-                  }
-                ]
-              },
-              "type": "object"
+              "$ref": "#/components/schemas/FrozenSegment"
             },
             "type": "array",
             "title": "Frozen Segments"
+          },
+          "candidate_frozen_segments": {
+            "items": {
+              "$ref": "#/components/schemas/FrozenSegment"
+            },
+            "type": "array",
+            "title": "Candidate Frozen Segments"
+          },
+          "freeze_detection_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FreezeDetectionSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "recommended_downsample_factor": {
             "type": "integer",
@@ -4475,6 +5541,48 @@
         ],
         "title": "DelayData"
       },
+      "DelayPartitionDiagnostics": {
+        "properties": {
+          "peak_lag": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peak Lag"
+          },
+          "peak_correlation": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peak Correlation"
+          },
+          "prewhitening_order": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prewhitening Order"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "DelayPartitionDiagnostics"
+      },
       "DelayPeak": {
         "properties": {
           "lag": {
@@ -4758,6 +5866,60 @@
         ],
         "title": "ErrorEnvelope"
       },
+      "ExcitationDiagnostics": {
+        "properties": {
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "n_parameters": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Parameters"
+          },
+          "condition_number": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Number"
+          },
+          "persistent_excitation_order": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Persistent Excitation Order"
+          },
+          "required_excitation_order": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Required Excitation Order"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ExcitationDiagnostics"
+      },
       "ExecutionPlan": {
         "properties": {
           "goal": {
@@ -4992,6 +6154,363 @@
         ],
         "title": "ExportDatasetRequest"
       },
+      "FeatureSelectionApplyRequest": {
+        "properties": {
+          "version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Version Id"
+          },
+          "dataset_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Id"
+          },
+          "drop_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Drop Columns"
+          },
+          "user_confirmed": {
+            "type": "boolean",
+            "title": "User Confirmed",
+            "default": false
+          },
+          "recommendation_source": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "collinearity_analysis"
+            ],
+            "title": "Recommendation Source",
+            "default": "manual"
+          },
+          "evidence": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Evidence"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version_id",
+          "drop_columns"
+        ],
+        "title": "FeatureSelectionApplyRequest",
+        "description": "Drop only explicitly confirmed redundant input columns."
+      },
+      "FinalTestEvaluation": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "best_trial_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best Trial Number"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Parameters"
+          },
+          "validation_free_run_fit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validation Free Run Fit"
+          },
+          "test_free_run_fit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Free Run Fit"
+          },
+          "test_mae": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Mae"
+          },
+          "test_rmse": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Rmse"
+          },
+          "test_r2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test R2"
+          },
+          "test_one_step_fit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test One Step Fit"
+          },
+          "test_one_step_mae": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test One Step Mae"
+          },
+          "test_one_step_rmse": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test One Step Rmse"
+          },
+          "test_one_step_r2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test One Step R2"
+          },
+          "test_free_run_mae": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Free Run Mae"
+          },
+          "test_free_run_rmse": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Free Run Rmse"
+          },
+          "test_free_run_r2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Free Run R2"
+          },
+          "generalization_gap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generalization Gap"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "processing_run_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processing Run Id"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "FinalTestEvaluation"
+      },
+      "FreezeDetectionSummary": {
+        "properties": {
+          "candidate_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Candidate Count"
+          },
+          "affected_column_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Affected Column Count"
+          },
+          "longest_segment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FrozenSegment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "candidate_count",
+          "affected_column_count"
+        ],
+        "title": "FreezeDetectionSummary"
+      },
+      "FrozenSegment": {
+        "properties": {
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "start_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Start Index"
+          },
+          "end_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "End Index"
+          },
+          "length": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Length"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "column",
+          "start_index",
+          "end_index",
+          "length"
+        ],
+        "title": "FrozenSegment"
+      },
       "GatedWindow": {
         "properties": {
           "window_index": {
@@ -5057,6 +6576,90 @@
         "title": "GatedWindow",
         "description": "A candidate window the quality gate scored, accepted or not."
       },
+      "GeneralizationDiagnosticsData": {
+        "properties": {
+          "study_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Study Id"
+          },
+          "dataset_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Id"
+          },
+          "version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Version Id"
+          },
+          "metric_semantics": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Metric Semantics"
+          },
+          "partitions": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PartitionDiagnostics"
+            },
+            "type": "object",
+            "title": "Partitions"
+          },
+          "delay_peaks": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/DelayPartitionDiagnostics"
+              },
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Delay Peaks"
+          },
+          "selection_coverage": {
+            "$ref": "#/components/schemas/SelectionCoverageDiagnostics"
+          },
+          "stability": {
+            "$ref": "#/components/schemas/StabilityDiagnostics"
+          },
+          "generalization_risk": {
+            "type": "string",
+            "enum": [
+              "unavailable",
+              "normal",
+              "attention",
+              "high"
+            ],
+            "title": "Generalization Risk"
+          },
+          "diagnostic_messages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Diagnostic Messages"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "study_id",
+          "version_id",
+          "selection_coverage",
+          "stability",
+          "generalization_risk"
+        ],
+        "title": "GeneralizationDiagnosticsData",
+        "description": "A replay of the fixed winner; it never creates trials or changes a study."
+      },
       "GroundTruthSegment": {
         "properties": {
           "start_index": {
@@ -5106,6 +6709,19 @@
         ],
         "title": "GroundTruthSegment"
       },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
       "IntervalHistogramBin": {
         "properties": {
           "bin": {
@@ -5125,6 +6741,223 @@
           "count"
         ],
         "title": "IntervalHistogramBin"
+      },
+      "LagCompensationRequest": {
+        "properties": {
+          "version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Version Id"
+          },
+          "dataset_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Id"
+          },
+          "lag_map": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "minProperties": 1,
+            "title": "Lag Map"
+          },
+          "user_confirmed": {
+            "type": "boolean",
+            "title": "User Confirmed",
+            "default": false
+          },
+          "recommendation_source": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "delay_analysis"
+            ],
+            "title": "Recommendation Source",
+            "default": "manual"
+          },
+          "evidence_summary": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Evidence Summary"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version_id",
+          "lag_map"
+        ],
+        "title": "LagCompensationRequest",
+        "description": "Apply an explicitly confirmed ARX ``nk`` alignment to input columns.\n\nFor this project ``y(k)`` depends on ``u(k-nk)``.  Applying ``nk=d`` therefore\nwrites source ``u(t-d)`` alongside unchanged ``y(t)`` and drops the leading boundary\nrows that cannot be aligned.  The API never infers or applies a lag by itself."
+      },
+      "LeaderboardEntry": {
+        "properties": {
+          "dataset_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Dataset Id"
+          },
+          "dataset_name": {
+            "type": "string",
+            "title": "Dataset Name"
+          },
+          "version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Version Id"
+          },
+          "study_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Study Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "baseline_validation_fit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Validation Fit",
+            "description": "正式确定性 Baseline 的验证自由仿真 FIT。"
+          },
+          "optimized_validation_fit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Optimized Validation Fit",
+            "description": "Best Trial 的验证自由仿真 FIT。"
+          },
+          "optimized_test_fit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Optimized Test Fit",
+            "description": "Best Trial 固定后仅执行一次的 held-out Test 自由仿真 FIT。"
+          },
+          "optimized_test_one_step_fit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Optimized Test One Step Fit"
+          },
+          "optimized_test_one_step_r2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Optimized Test One Step R2"
+          },
+          "optimized_test_free_run_r2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Optimized Test Free Run R2"
+          },
+          "improvement": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Improvement"
+          },
+          "generalization_gap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generalization Gap"
+          },
+          "baseline_available": {
+            "type": "boolean",
+            "title": "Baseline Available",
+            "default": false
+          },
+          "test_available": {
+            "type": "boolean",
+            "title": "Test Available",
+            "default": false
+          },
+          "generalization_risk": {
+            "type": "string",
+            "title": "Generalization Risk",
+            "default": "unavailable"
+          },
+          "risk_message": {
+            "type": "string",
+            "title": "Risk Message",
+            "default": "暂无测试集评价"
+          },
+          "contribution_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contribution Summary"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "dataset_id",
+          "dataset_name",
+          "version_id",
+          "study_id",
+          "status"
+        ],
+        "title": "LeaderboardEntry"
       },
       "LivenessData": {
         "properties": {
@@ -5322,6 +7155,20 @@
             "minimum": 0.0,
             "title": "Random Seed",
             "default": 42
+          },
+          "train_ratio": {
+            "type": "number",
+            "exclusiveMaximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Train Ratio",
+            "default": 0.6
+          },
+          "validation_ratio": {
+            "type": "number",
+            "exclusiveMaximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Validation Ratio",
+            "default": 0.2
           }
         },
         "additionalProperties": false,
@@ -5414,6 +7261,26 @@
               }
             ],
             "title": "Warm Started From"
+          },
+          "baseline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BaselineEvaluation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "final_test_evaluation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FinalTestEvaluation"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -5525,6 +7392,169 @@
         "additionalProperties": false,
         "type": "object",
         "title": "PageInfo"
+      },
+      "PartitionDiagnostics": {
+        "properties": {
+          "start_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Start Index"
+          },
+          "end_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "End Index"
+          },
+          "sample_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Sample Count"
+          },
+          "signals": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SignalSummary"
+            },
+            "type": "object",
+            "title": "Signals"
+          },
+          "input_activity": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Input Activity"
+          },
+          "output_activity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Activity"
+          },
+          "excitation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExcitationDiagnostics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "one_step": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PredictionMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "free_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PredictionMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "residual_whiteness_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residual Whiteness Ratio"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "start_index",
+          "end_index",
+          "sample_count"
+        ],
+        "title": "PartitionDiagnostics"
+      },
+      "PredictionMetrics": {
+        "properties": {
+          "mae": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mae"
+          },
+          "rmse": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rmse"
+          },
+          "r2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "R2"
+          },
+          "fit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fit"
+          },
+          "nrmse": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nrmse"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PredictionMetrics",
+        "description": "Metrics calculated from one aligned actual/predicted sequence."
       },
       "PriorViolation": {
         "properties": {
@@ -6125,6 +8155,62 @@
         ],
         "title": "SegmentRequest"
       },
+      "SelectionCoverageDiagnostics": {
+        "properties": {
+          "train_end_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Train End Index"
+          },
+          "selected_sample_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Selected Sample Count"
+          },
+          "first_selected_index": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Selected Index"
+          },
+          "last_selected_index": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Selected Index"
+          },
+          "selected_span_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Span Ratio"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "train_end_index",
+          "selected_sample_count"
+        ],
+        "title": "SelectionCoverageDiagnostics"
+      },
       "SelectionSummary": {
         "properties": {
           "candidate_count": {
@@ -6261,6 +8347,57 @@
         "title": "SelectionSummary",
         "description": "Information-theoretic outcome of the D-optimal stage."
       },
+      "SignalSummary": {
+        "properties": {
+          "mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "std": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Std"
+          },
+          "minimum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum"
+          },
+          "maximum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SignalSummary"
+      },
       "SimulationGenerateData": {
         "properties": {
           "dataset_id": {
@@ -6299,6 +8436,16 @@
             "title": "Ground Truth Path",
             "description": "受控的相对真值产物标识，不是服务器绝对路径。"
           },
+          "manifest_path": {
+            "type": "string",
+            "title": "Manifest Path",
+            "description": "受控的仿真 manifest 相对路径。"
+          },
+          "download_url": {
+            "type": "string",
+            "title": "Download Url",
+            "description": "通过数据资产接口下载真实 CSV 的 URL。"
+          },
           "num_rows": {
             "type": "integer",
             "minimum": 0.0,
@@ -6329,6 +8476,8 @@
           "scenario",
           "file_path",
           "ground_truth_path",
+          "manifest_path",
+          "download_url",
           "num_rows",
           "num_cols",
           "columns",
@@ -6680,6 +8829,89 @@
         ],
         "title": "SplitIndices"
       },
+      "StabilityDiagnostics": {
+        "properties": {
+          "stable": {
+            "type": "boolean",
+            "title": "Stable"
+          },
+          "max_pole_modulus": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Pole Modulus"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "stable"
+        ],
+        "title": "StabilityDiagnostics"
+      },
+      "SuccessEnvelope_AgentLlmConfigData_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true,
+            "title": "Success",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/AgentLlmConfigData"
+          },
+          "error": {
+            "type": "null",
+            "title": "Error"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "SuccessEnvelope[AgentLlmConfigData]"
+      },
+      "SuccessEnvelope_AgentLlmConnectionData_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true,
+            "title": "Success",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/AgentLlmConnectionData"
+          },
+          "error": {
+            "type": "null",
+            "title": "Error"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "SuccessEnvelope[AgentLlmConnectionData]"
+      },
       "SuccessEnvelope_ArxFitData_": {
         "properties": {
           "success": {
@@ -6882,6 +9114,35 @@
           "request_id"
         ],
         "title": "SuccessEnvelope[CopilotConfirmData]"
+      },
+      "SuccessEnvelope_DashboardLeaderboardData_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true,
+            "title": "Success",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/DashboardLeaderboardData"
+          },
+          "error": {
+            "type": "null",
+            "title": "Error"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "SuccessEnvelope[DashboardLeaderboardData]"
       },
       "SuccessEnvelope_DatasetConfigData_": {
         "properties": {
@@ -7144,6 +9405,35 @@
         ],
         "title": "SuccessEnvelope[ExportDatasetData]"
       },
+      "SuccessEnvelope_GeneralizationDiagnosticsData_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true,
+            "title": "Success",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/GeneralizationDiagnosticsData"
+          },
+          "error": {
+            "type": "null",
+            "title": "Error"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "SuccessEnvelope[GeneralizationDiagnosticsData]"
+      },
       "SuccessEnvelope_LivenessData_": {
         "properties": {
           "success": {
@@ -7376,6 +9666,35 @@
         ],
         "title": "SuccessEnvelope[SystemInfoData]"
       },
+      "SuccessEnvelope_VersionApplyData_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true,
+            "title": "Success",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/VersionApplyData"
+          },
+          "error": {
+            "type": "null",
+            "title": "Error"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "SuccessEnvelope[VersionApplyData]"
+      },
       "SystemInfoData": {
         "properties": {
           "service": {
@@ -7546,6 +9865,46 @@
         ],
         "title": "TaskResource"
       },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
       "VariableRecommendation": {
         "properties": {
           "variable": {
@@ -7582,6 +9941,53 @@
           "reason"
         ],
         "title": "VariableRecommendation"
+      },
+      "VersionApplyData": {
+        "properties": {
+          "source_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Version Id"
+          },
+          "result_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Result Version Id"
+          },
+          "dataset_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Dataset Id"
+          },
+          "processing_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Processing Run Id"
+          },
+          "operation": {
+            "type": "string",
+            "title": "Operation"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Summary"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskResource"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_version_id",
+          "result_version_id",
+          "dataset_id",
+          "processing_run_id",
+          "operation",
+          "task"
+        ],
+        "title": "VersionApplyData"
       },
       "VersionEdge": {
         "properties": {
@@ -7645,6 +10051,42 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Parameters"
+          },
+          "row_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Row Count"
+          },
+          "column_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Column Count"
+          },
+          "artifact_path": {
+            "type": "string",
+            "title": "Artifact Path"
+          },
+          "processing_run_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processing Run Id"
+          },
+          "audit_summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Audit Summary"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Provenance"
           }
         },
         "additionalProperties": false,
@@ -7653,7 +10095,10 @@
           "id",
           "name",
           "tool",
-          "created_at"
+          "created_at",
+          "row_count",
+          "column_count",
+          "artifact_path"
         ],
         "title": "VersionNode"
       }

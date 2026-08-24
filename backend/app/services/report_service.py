@@ -23,7 +23,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import numpy as np
-from algorithms.agent.llm import LlmProvider, build_provider
+from algorithms.agent.llm import LlmProvider
 from algorithms.agent.llm_planner import LlmNarrator, NarrationOutcome
 from algorithms.report.provenance import RenderResult, render_template, validate_draft
 from sqlalchemy import select
@@ -197,16 +197,9 @@ async def generate_report(
 
 
 def _resolve_provider() -> LlmProvider:
-    from app.core.config import get_settings
+    from app.services.llm_runtime_config_service import build_effective_llm_provider
 
-    settings = get_settings()
-    return build_provider(
-        provider=settings.llm_provider,
-        base_url=settings.llm_base_url,
-        model=settings.llm_model,
-        api_key=settings.llm_api_key,
-        timeout_seconds=settings.llm_timeout_seconds,
-    )
+    return build_effective_llm_provider()
 
 
 def _narrate(
