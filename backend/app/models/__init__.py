@@ -1,4 +1,5 @@
 from app.models.base import Base
+from app.models.agent_execution import AgentExecutionSession, AgentStepRun
 from app.models.dataset import (
     Dataset,
     DatasetColumn,
@@ -15,6 +16,8 @@ from app.models.optimization import (
 
 __all__ = [
     "Base",
+    "AgentExecutionSession",
+    "AgentStepRun",
     "Dataset",
     "DatasetColumn",
     "DatasetProfileRecord",
