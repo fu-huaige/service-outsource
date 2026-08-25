@@ -242,7 +242,7 @@ def _execute(
                     summary="高影响操作，等待人工确认后执行。",
                 )
             )
-            continue
+            return executions
 
         started = time.perf_counter()
         try:
@@ -463,6 +463,18 @@ def _resolve_provider() -> LlmProvider:
     return build_effective_llm_provider()
 
 
+def _processing_run_status(proof: ComplianceProof, executions: list[StepExecution]) -> str:
+    """Summarise the actual executor state without calling an incomplete run successful."""
+
+    if not proof.passed:
+        return "rejected"
+    if any(execution.status == "failed" for execution in executions):
+        return "failed"
+    if any(execution.status == "waiting_confirmation" for execution in executions):
+        return "waiting_confirmation"
+    return "succeeded"
+
+
 async def _persist(
     session: AsyncSession,
     *,
@@ -477,13 +489,15 @@ async def _persist(
     """Persist the full audit trail: request, proof, every step's input and output."""
 
     now = datetime.now(UTC)
+    run_status = _processing_run_status(proof, executions)
+    finished_at = None if run_status == "waiting_confirmation" else now
     session.add(
         ProcessingRun(
             id=run_id,
             dataset_id=series.dataset_id if series and series.origin == "dataset" else None,
             source_version_id=series.version_id if series and series.origin == "dataset" else None,
             run_type="agent.copilot",
-            status="succeeded" if proof.passed else "rejected",
+            status=run_status,
             parameters=payload.model_dump(mode="json"),
             result={
                 "plan_source": plan_source,
@@ -504,19 +518,20 @@ async def _persist(
                 ],
             },
             created_at=now,
-            finished_at=now,
+            finished_at=finished_at,
         )
     )
     session.add(
         OperationLog(
             id=uuid4(),
-            event_type="agent.copilot.completed",
+            event_type=f"agent.copilot.{run_status}",
             subject_id=str(payload.dataset_id) if payload.dataset_id else str(run_id),
             payload_json=json.dumps(
                 {
                     "copilot_run_id": str(run_id),
                     "message": payload.message,
                     "compliance_passed": proof.passed,
+                    "run_status": run_status,
                     "proof_id": proof.proof_id,
                     "executed_steps": len(executions),
                     "plan_source": plan_source,

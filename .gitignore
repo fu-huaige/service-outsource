@@ -8,6 +8,7 @@ __pycache__/
 .ruff_cache/
 .venv/
 backend/.venv/
+backend/.venv-win/
 backend/.coverage
 backend/htmlcov/
 backend/data/
@@ -26,6 +27,7 @@ frontend/pnpm-debug.log*
 
 # Local scratch and generated inspection artifacts
 /tmp/
+/.pytest-tmp-agent/
 *.orig
 *.rej
 

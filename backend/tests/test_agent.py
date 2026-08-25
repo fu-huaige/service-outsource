@@ -243,8 +243,10 @@ class TestAgentApi:
         assert data["executed"] is False
         assert data["step_runs"] == []
 
-    def test_end_to_end_natural_language_run_executes_real_tools(self, client: TestClient) -> None:
-        """The headline use case: one sentence drives the whole pipeline."""
+    def test_natural_language_run_executes_real_tools_until_confirmation_gate(
+        self, client: TestClient
+    ) -> None:
+        """A confirmation gate stops the natural-language workflow immediately."""
 
         version_id = benchmark_version(client)
         response = client.post(
@@ -263,14 +265,38 @@ class TestAgentApi:
         by_tool = {run["tool"]: run for run in data["step_runs"]}
         assert by_tool["detect_dynamic_segments"]["status"] == "completed"
         assert by_tool["estimate_delays"]["status"] == "completed"
-        assert by_tool["fit_arx"]["status"] == "completed"
+        assert by_tool["analyze_collinearity"]["status"] == "completed"
+        assert by_tool["select_variables"]["status"] == "waiting_confirmation"
+        assert "fit_arx" not in by_tool
+
+        planned_steps = {step["tool"]: step["status"] for step in data["plan"]["steps"]}
+        assert planned_steps["fit_arx"] == "pending"
+        assert "等待人工确认" in data["conclusion"]
 
         # Every number in the summary must come from a tool, not from the agent.
+        assert by_tool["estimate_delays"]["result"]["delays"]
+
+    def test_natural_language_run_dispatches_arx_without_confirmation_gate(
+        self, client: TestClient
+    ) -> None:
+        """ARX remains covered by a real-tool flow that has no confirmation gate."""
+
+        version_id = benchmark_version(client)
+        response = client.post(
+            "/api/v1/copilot/chat",
+            json={
+                "message": "提取高信噪比的动态数据，估计时滞，然后做 ARX 辨识",
+                "active_version_id": version_id,
+            },
+        )
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+
+        by_tool = {run["tool"]: run for run in data["step_runs"]}
+        assert by_tool["fit_arx"]["status"] == "completed"
         fit = by_tool["fit_arx"]["result"]
         assert fit["val_free_run_fit"] is not None
         assert fit["stable"] is True
-        assert by_tool["estimate_delays"]["result"]["delays"]
-
     def test_high_impact_step_waits_for_confirmation_instead_of_running(
         self, client: TestClient
     ) -> None:
