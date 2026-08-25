@@ -68,6 +68,11 @@ from app.schemas.system import (
     SystemInfoData,
 )
 from app.schemas.tasks import CancelTaskData
+from app.services.agent_execution_service import (
+    ExecutionStateError,
+    approve_step,
+    reject_step,
+)
 from app.services.agent_service import AgentDomainError, run_copilot
 from app.services.benchmark_service import BenchmarkDomainError, run_benchmark
 from app.services.cleaning_service import CleaningDomainError, clean_dataset_version
@@ -832,25 +837,55 @@ async def copilot_chat(
 @router.post(
     "/copilot/confirm",
     tags=["Copilot"],
-    summary="Record a human-in-the-loop approval or rejection",
+    summary="Persist a human confirmation decision for an Agent execution step",
     response_model=SuccessEnvelope[CopilotConfirmData],
-    responses=ERROR_RESPONSES,
+    responses={
+        **ERROR_RESPONSES,
+        409: {"model": ErrorEnvelope, "description": "执行状态不允许该确认操作。"},
+    },
 )
 async def copilot_confirm(
-    request: Request, payload: CopilotConfirmRequest
+    request: Request,
+    payload: CopilotConfirmRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SuccessEnvelope[CopilotConfirmData]:
+    if payload.execution_id is None or payload.step_id is None:
+        raise AppError(
+            "AGENT_EXECUTION_REFERENCE_REQUIRED",
+            "持久确认需要 execution_id 和 step_id。",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+    try:
+        execution = (
+            await approve_step(session, execution_id=payload.execution_id, step_id=payload.step_id)
+            if payload.approved
+            else await reject_step(session, execution_id=payload.execution_id, step_id=payload.step_id)
+        )
+    except ExecutionStateError as error:
+        raise AppError(
+            "AGENT_EXECUTION_STATE_CONFLICT",
+            "当前执行状态不允许该确认操作。",
+            status_code=status.HTTP_409_CONFLICT,
+            details={"reason": str(error)},
+        ) from error
+
+    step = next(item for item in execution.step_runs if item.step_id == payload.step_id)
     return success(
         request,
         CopilotConfirmData(
             copilot_run_id=payload.copilot_run_id,
             confirmation_id=payload.confirmation_id,
             decision="approved" if payload.approved else "rejected",
-            task=(
-                queued_task(status="queued", stage="await_execution") if payload.approved else None
-            ),
+            execution_id=execution.id,
+            workflow_status=execution.workflow_status,
+            current_step_id=execution.current_step_id,
+            pending_confirmation_step_id=execution.pending_confirmation_step_id,
+            step_id=step.step_id,
+            step_status=step.status,
+            confirmation_status=step.confirmation_status,
         ),
     )
-
 
 @router.post(
     "/reports/generate",

@@ -101,6 +101,8 @@ class CopilotConfirmRequest(Schema):
     copilot_run_id: UUID
     confirmation_id: str = Field(min_length=1)
     approved: bool
+    execution_id: UUID | None = None
+    step_id: str | None = Field(default=None, min_length=1)
     parameter_overrides: dict[str, Any] = Field(default_factory=dict)
     comment: str | None = Field(default=None, max_length=2_000)
 
@@ -109,4 +111,11 @@ class CopilotConfirmData(Schema):
     copilot_run_id: UUID
     confirmation_id: str
     decision: Literal["approved", "rejected"]
+    execution_id: UUID
+    workflow_status: str
+    current_step_id: str | None
+    pending_confirmation_step_id: str | None
+    step_id: str
+    step_status: str
+    confirmation_status: str
     task: TaskResource | None = None

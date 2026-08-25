@@ -184,6 +184,46 @@ async def mark_step_failed(
     return execution
 
 
+async def approve_step(
+    session: AsyncSession, *, execution_id: UUID, step_id: str
+) -> AgentExecutionSession:
+    """Approve the current confirmation gate and make its step runnable."""
+
+    execution = await _load_execution(session, execution_id)
+    step = _step(execution, step_id)
+    if _is_approved_step_replay(execution, step):
+        return execution
+    if (
+        execution.workflow_status != "WAITING_CONFIRMATION"
+        or execution.pending_confirmation_step_id != step.step_id
+        or step.status != "WAITING_CONFIRMATION"
+        or step.confirmation_status != "PENDING"
+    ):
+        raise _transition_error("approve_step", execution, step)
+
+    if step.started_at is None:
+        step.started_at = datetime.now(UTC)
+    step.status = "RUNNING"
+    step.confirmation_status = "APPROVED"
+    execution.workflow_status = "RUNNING"
+    execution.current_step_id = step.step_id
+    execution.pending_confirmation_step_id = None
+    execution.finished_at = None
+
+    await _commit(session)
+    return execution
+
+
+def _is_approved_step_replay(
+    execution: AgentExecutionSession, step: AgentStepRun
+) -> bool:
+    return (
+        execution.workflow_status == "RUNNING"
+        and execution.current_step_id == step.step_id
+        and step.status == "RUNNING"
+        and step.confirmation_status == "APPROVED"
+    )
+
 async def reject_step(
     session: AsyncSession, *, execution_id: UUID, step_id: str
 ) -> AgentExecutionSession:

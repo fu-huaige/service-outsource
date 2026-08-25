@@ -199,6 +199,15 @@ async def _succeed_step(
         await service.mark_step_succeeded(session, execution_id=execution_id, step_id=step_id)
 
 
+async def _wait_for_confirmation(
+    service: ModuleType, factory: async_sessionmaker[AsyncSession]
+) -> UUID:
+    execution_id, _, _ = await _create_execution(service, factory, include_confirmation=True)
+    await _start_step(service, factory, execution_id, "s1")
+    await _succeed_step(service, factory, execution_id, "s1")
+    await _start_step(service, factory, execution_id, "s2")
+    return execution_id
+
 def test_create_execution_snapshots_plan_and_initializes_version_pointer(
     execution_service: ModuleType, session_factory: async_sessionmaker[AsyncSession]
 ) -> None:
@@ -446,3 +455,155 @@ def test_succeeded_step_cannot_reenter_running(
                 await execution_service.start_step(session, execution_id=execution_id, step_id="s1")
 
     asyncio.run(exercise())
+
+
+def test_approving_waiting_step_resumes_it_as_running(
+    execution_service: ModuleType, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    async def exercise() -> AgentExecutionSession:
+        execution_id = await _wait_for_confirmation(execution_service, session_factory)
+        async with session_factory() as session:
+            await execution_service.approve_step(session, execution_id=execution_id, step_id="s2")
+        return await _load_execution(session_factory, execution_id)
+
+    execution = asyncio.run(exercise())
+    approved = next(step for step in execution.step_runs if step.step_id == "s2")
+    assert approved.status == "RUNNING"
+    assert approved.confirmation_status == "APPROVED"
+    assert approved.started_at is not None
+    assert execution.workflow_status == "RUNNING"
+    assert execution.pending_confirmation_step_id is None
+    assert execution.current_step_id == "s2"
+    assert execution.finished_at is None
+
+
+def test_approving_wrong_step_leaves_waiting_execution_unchanged(
+    execution_service: ModuleType, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    async def exercise() -> AgentExecutionSession:
+        execution_id = await _wait_for_confirmation(execution_service, session_factory)
+        async with session_factory() as session:
+            with pytest.raises(execution_service.ExecutionStateError):
+                await execution_service.approve_step(session, execution_id=execution_id, step_id="s3")
+        return await _load_execution(session_factory, execution_id)
+
+    execution = asyncio.run(exercise())
+    by_step = {step.step_id: step for step in execution.step_runs}
+    assert execution.workflow_status == "WAITING_CONFIRMATION"
+    assert execution.pending_confirmation_step_id == "s2"
+    assert execution.current_step_id == "s2"
+    assert by_step["s2"].status == "WAITING_CONFIRMATION"
+    assert by_step["s2"].confirmation_status == "PENDING"
+    assert by_step["s3"].status == "PENDING"
+
+
+def test_approving_nonwaiting_execution_is_rejected_without_mutation(
+    execution_service: ModuleType, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    async def exercise() -> AgentExecutionSession:
+        execution_id, _, _ = await _create_execution(
+            execution_service, session_factory, include_confirmation=True
+        )
+        await _start_step(execution_service, session_factory, execution_id, "s1")
+        await _succeed_step(execution_service, session_factory, execution_id, "s1")
+        async with session_factory() as session:
+            with pytest.raises(execution_service.ExecutionStateError):
+                await execution_service.approve_step(session, execution_id=execution_id, step_id="s2")
+        return await _load_execution(session_factory, execution_id)
+
+    execution = asyncio.run(exercise())
+    by_step = {step.step_id: step for step in execution.step_runs}
+    assert execution.workflow_status == "RUNNING"
+    assert execution.current_step_id is None
+    assert execution.pending_confirmation_step_id is None
+    assert by_step["s2"].status == "PENDING"
+    assert by_step["s2"].confirmation_status == "PENDING"
+
+
+def test_approving_requires_waiting_step_state_not_only_pending_pointer(
+    execution_service: ModuleType, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    async def exercise() -> AgentExecutionSession:
+        execution_id = await _wait_for_confirmation(execution_service, session_factory)
+        async with session_factory() as session:
+            execution = await session.scalar(
+                select(AgentExecutionSession)
+                .where(AgentExecutionSession.id == execution_id)
+                .options(selectinload(AgentExecutionSession.step_runs))
+            )
+            assert execution is not None
+            step = next(item for item in execution.step_runs if item.step_id == "s2")
+            step.status = "PENDING"
+            await session.commit()
+
+        async with session_factory() as session:
+            with pytest.raises(execution_service.ExecutionStateError):
+                await execution_service.approve_step(session, execution_id=execution_id, step_id="s2")
+        return await _load_execution(session_factory, execution_id)
+
+    execution = asyncio.run(exercise())
+    step = next(item for item in execution.step_runs if item.step_id == "s2")
+    assert execution.workflow_status == "WAITING_CONFIRMATION"
+    assert execution.pending_confirmation_step_id == "s2"
+    assert step.status == "PENDING"
+    assert step.confirmation_status == "PENDING"
+
+
+def test_duplicate_approve_is_idempotent_after_the_first_approval(
+    execution_service: ModuleType, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    async def exercise() -> tuple[AgentExecutionSession, AgentExecutionSession]:
+        execution_id = await _wait_for_confirmation(execution_service, session_factory)
+        async with session_factory() as session:
+            await execution_service.approve_step(session, execution_id=execution_id, step_id="s2")
+        first = await _load_execution(session_factory, execution_id)
+        async with session_factory() as session:
+            await execution_service.approve_step(session, execution_id=execution_id, step_id="s2")
+        second = await _load_execution(session_factory, execution_id)
+        return first, second
+
+    first, second = asyncio.run(exercise())
+    first_step = next(item for item in first.step_runs if item.step_id == "s2")
+    second_step = next(item for item in second.step_runs if item.step_id == "s2")
+    assert second.workflow_status == "RUNNING"
+    assert second.current_step_id == "s2"
+    assert second.pending_confirmation_step_id is None
+    assert second_step.status == "RUNNING"
+    assert second_step.confirmation_status == "APPROVED"
+    assert second_step.attempt_count == first_step.attempt_count == 0
+    assert second_step.started_at == first_step.started_at
+
+
+def test_rejected_confirmation_cannot_be_approved_later(
+    execution_service: ModuleType, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    async def exercise() -> AgentExecutionSession:
+        execution_id = await _wait_for_confirmation(execution_service, session_factory)
+        async with session_factory() as session:
+            await execution_service.reject_step(session, execution_id=execution_id, step_id="s2")
+        async with session_factory() as session:
+            with pytest.raises(execution_service.ExecutionStateError):
+                await execution_service.approve_step(session, execution_id=execution_id, step_id="s2")
+        return await _load_execution(session_factory, execution_id)
+
+    execution = asyncio.run(exercise())
+    step = next(item for item in execution.step_runs if item.step_id == "s2")
+    assert execution.workflow_status == "CANCELLED"
+    assert step.status == "CANCELLED"
+    assert step.confirmation_status == "REJECTED"
+
+
+def test_approve_only_allows_execution_and_keeps_downstream_pending(
+    execution_service: ModuleType, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    async def exercise() -> AgentExecutionSession:
+        execution_id = await _wait_for_confirmation(execution_service, session_factory)
+        async with session_factory() as session:
+            await execution_service.approve_step(session, execution_id=execution_id, step_id="s2")
+        return await _load_execution(session_factory, execution_id)
+
+    execution = asyncio.run(exercise())
+    by_step = {step.step_id: step for step in execution.step_runs}
+    assert by_step["s2"].status == "RUNNING"
+    assert by_step["s2"].status != "SUCCEEDED"
+    assert by_step["s3"].status == "PENDING"
