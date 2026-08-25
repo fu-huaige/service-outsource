@@ -41,7 +41,7 @@
 - 禁止直接修改的分支：`main`
 - 本文无损修订来源分支：`docs/lossless-handoff-update`
 - 本文无损修订基线：`2ca32ee`
-- 本文无损修订 PR：创建后回填
+- 本文无损修订 PR：[GitHub #7](https://github.com/fu-huaige/service-outsource/pull/7)
 
 ### 3.2 Pull Request 状态
 
@@ -53,6 +53,7 @@
 | [#4](https://github.com/fu-huaige/service-outsource/pull/4) | `test/sidebar-toggle-alignment` | `feat/versioned-preprocessing-pipeline` | Merged | merge `1bdca1f` | 折叠侧边栏顶部图标对齐 |
 | [#5](https://github.com/fu-huaige/service-outsource/pull/5) | `test/agent-runtime-settings` | `feat/versioned-preprocessing-pipeline` | Merged | merge `d26903f` | Agent 运行时 LLM 配置、真实连接测试和超时修复 |
 | [#6](https://github.com/fu-huaige/service-outsource/pull/6) | `docs/project-handoff-2026-08-25` | `feat/versioned-preprocessing-pipeline` | Merged | merge `2ca32ee` | 第一版增量交接文档 |
+| [#7](https://github.com/fu-huaige/service-outsource/pull/7) | `docs/lossless-handoff-update` | `feat/versioned-preprocessing-pipeline` | 本次修订，最终状态见 GitHub | `00df8c5` 起 | 无损开发交接扩写与证据对账 |
 
 ### 3.3 开发提交顺序
 
@@ -207,7 +208,7 @@
 
 | 文件 | 状态 |
 | --- | --- |
-| `A14_PROJECT_HANDOFF_2026-08-25.md` | PR #6 新建；后续由独立文档 PR 完成无损扩写 |
+| `A14_PROJECT_HANDOFF_2026-08-25.md` | PR #6 新建；PR #7 完成无损扩写 |
 
 ## 7. Agent / LLM 改动
 
