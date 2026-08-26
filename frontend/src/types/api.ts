@@ -798,6 +798,32 @@ export interface LagOverrideValidationResponse {
   overall_status: LagOverrideStatus;
   issues: string[];
 }
+export type FeatureSelectionAction = "keep" | "drop" | "merge" | "review";
+
+export interface FeatureSelectionDecision {
+  variable: string;
+  recommended_action: FeatureSelectionAction;
+  final_action: "keep" | "drop";
+  source: "collinearity_analysis" | "manual_override";
+}
+
+export interface FeatureSelectionValidationRequest {
+  execution_id: string;
+  step_id: string;
+  drop_columns?: string[] | null;
+}
+
+export interface FeatureSelectionValidationResponse {
+  recommended_selection: Record<string, FeatureSelectionAction>;
+  recommended_drop_columns: string[];
+  manual_drop_columns: string[] | null;
+  final_drop_columns: string[];
+  kept_input_columns: string[];
+  selection_sources: Record<string, "collinearity_analysis" | "manual_override">;
+  decisions: FeatureSelectionDecision[];
+  overall_status: "VALID" | "INVALID";
+  issues: string[];
+}
 export interface CopilotConfirmRequest {
   copilot_run_id: string;
   confirmation_id: string;
@@ -807,6 +833,7 @@ export interface CopilotConfirmRequest {
   parameter_overrides?: Record<string, any>;
   manual_overrides?: LagManualOverride[];
   warning_acknowledged?: boolean;
+  feature_drop_columns?: string[] | null;
   comment?: string | null;
 }
 
@@ -825,6 +852,7 @@ export interface CopilotConfirmResponse {
   result_version_id?: string | null;
   result_payload?: Record<string, any>;
   lag_override_validation?: LagOverrideValidationResponse | null;
+  feature_selection_validation?: FeatureSelectionValidationResponse | null;
   task: TaskResource | null;
 }
 

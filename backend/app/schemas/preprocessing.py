@@ -232,6 +232,7 @@ class VariableRecommendation(Schema):
 
 class CollinearityData(Schema):
     source_version_id: UUID
+    processing_run_id: UUID
     task: TaskResource
     variables: list[str]
     matrix: list[list[float]]

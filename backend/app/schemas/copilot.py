@@ -134,6 +134,30 @@ class LagOverrideValidationData(Schema):
     issues: list[str] = Field(default_factory=list)
 
 
+class FeatureSelectionValidationRequest(Schema):
+    execution_id: UUID
+    step_id: str = Field(min_length=1)
+    drop_columns: list[str] | None = None
+
+
+class FeatureSelectionDecision(Schema):
+    variable: str
+    recommended_action: Literal["keep", "drop", "merge", "review"]
+    final_action: Literal["keep", "drop"]
+    source: Literal["collinearity_analysis", "manual_override"]
+
+
+class FeatureSelectionValidationData(Schema):
+    recommended_selection: dict[str, Literal["keep", "drop", "merge", "review"]]
+    recommended_drop_columns: list[str]
+    manual_drop_columns: list[str] | None = None
+    final_drop_columns: list[str]
+    kept_input_columns: list[str]
+    selection_sources: dict[str, Literal["collinearity_analysis", "manual_override"]]
+    decisions: list[FeatureSelectionDecision] = Field(default_factory=list)
+    overall_status: Literal["VALID", "INVALID"]
+    issues: list[str] = Field(default_factory=list)
+
 class CopilotConfirmRequest(Schema):
     copilot_run_id: UUID
     confirmation_id: str = Field(min_length=1)
@@ -143,6 +167,7 @@ class CopilotConfirmRequest(Schema):
     parameter_overrides: dict[str, Any] = Field(default_factory=dict)
     manual_overrides: list[LagOverrideEntry] = Field(default_factory=list)
     warning_acknowledged: bool = False
+    feature_drop_columns: list[str] | None = None
     comment: str | None = Field(default=None, max_length=2_000)
 
 
@@ -161,4 +186,5 @@ class CopilotConfirmData(Schema):
     result_version_id: UUID | None = None
     result_payload: dict[str, Any] = Field(default_factory=dict)
     lag_override_validation: LagOverrideValidationData | None = None
+    feature_selection_validation: FeatureSelectionValidationData | None = None
     task: TaskResource | None = None

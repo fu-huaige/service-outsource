@@ -238,6 +238,58 @@
                         确认警告并执行
                       </el-button>
                     </template>
+                    <template v-else-if="isFeatureApplyStep(step.step_id)">
+                      <p class="feature-recommendation" :data-test="'feature-recommendation-' + step.step_id">
+                        系统 Feature selection recommendation
+                      </p>
+                      <div class="feature-recommendation-list">
+                        <p
+                          v-for="item in featureRecommendationRows(step.step_id)"
+                          :key="item.variable"
+                          :data-test="'feature-variable-' + item.variable"
+                        >
+                          {{ item.variable }} · {{ item.action }} · {{ item.reason }}
+                        </p>
+                      </div>
+                      <el-button
+                        size="small"
+                        :data-test="'edit-feature-' + step.step_id"
+                        @click="openFeatureSelection(step.step_id)"
+                      >
+                        调整变量
+                      </el-button>
+                      <div
+                        v-if="editingFeatureStepId === step.step_id"
+                        class="feature-selection-options"
+                        :data-test="'feature-selection-' + step.step_id"
+                      >
+                        <label
+                          v-for="item in featureRecommendationRows(step.step_id)"
+                          :key="item.variable"
+                        >
+                          <input
+                            v-model="featureDropColumns"
+                            type="checkbox"
+                            :value="item.variable"
+                            :data-test="'feature-drop-' + item.variable"
+                          />
+                          删除 {{ item.variable }}
+                        </label>
+                        <p v-if="featureValidation" class="feature-validation">
+                          校验：{{ featureValidation.overall_status }}
+                          {{ featureValidation.issues.join("；") }}
+                        </p>
+                      </div>
+                      <el-button
+                        type="primary"
+                        size="small"
+                        :loading="confirmingStepId === step.step_id"
+                        :data-test="'approve-' + step.step_id"
+                        @click="handleFeatureApproval(step.step_id)"
+                      >
+                        {{ editingFeatureStepId === step.step_id ? "应用调整" : "批准建议" }}
+                      </el-button>
+                    </template>
                     <el-button
                       v-else
                       type="primary"
@@ -317,12 +369,19 @@ import {
   Promotion,
   Share,
 } from "@element-plus/icons-vue";
-import { chatWithCopilot, confirmCopilotStep, validateLagOverrides } from "../api/copilot";
+import {
+  chatWithCopilot,
+  confirmCopilotStep,
+  validateFeatureSelection,
+  validateLagOverrides,
+} from "../api/copilot";
 import type {
   AgentConfirmationStatus,
   AgentStepStatus,
   CopilotChatRequest,
   CopilotChatResponse,
+  FeatureSelectionAction,
+  FeatureSelectionValidationResponse,
   LagManualOverride,
   LagOverrideValidationResponse,
 } from "../types/api";
@@ -365,6 +424,9 @@ const validatingLagStepId = ref<string | null>(null);
 const editingLagStepId = ref<string | null>(null);
 const lagOverrideRows = ref<LagManualOverride[]>([]);
 const lagValidation = ref<LagOverrideValidationResponse | null>(null);
+const editingFeatureStepId = ref<string | null>(null);
+const featureDropColumns = ref<string[]>([]);
+const featureValidation = ref<FeatureSelectionValidationResponse | null>(null);
 const errorMessage = ref("");
 const result = ref<CopilotChatResponse | null>(null);
 const confirmationStatuses = reactive<Record<string, AgentConfirmationStatus>>({});
@@ -393,6 +455,9 @@ const handleSend = async () => {
     editingLagStepId.value = null;
     lagOverrideRows.value = [];
     lagValidation.value = null;
+    editingFeatureStepId.value = null;
+    featureDropColumns.value = [];
+    featureValidation.value = null;
     result.value = response;
     ElMessage.success(response.conclusion);
   } catch (err) {
@@ -435,6 +500,41 @@ const confirmationMessage = (stepId: string) => {
 
 const isLagApplyStep = (stepId: string) =>
   result.value?.plan.steps.find((step) => step.step_id === stepId)?.tool === "apply_lag_compensation";
+
+const isFeatureApplyStep = (stepId: string) =>
+  result.value?.plan.steps.find((step) => step.step_id === stepId)?.tool === "select_variables";
+
+const featureRecommendation = (stepId: string): Record<string, FeatureSelectionAction> => {
+  const recommended = runFor(stepId)?.result?.recommended_selection;
+  return recommended && typeof recommended === "object"
+    ? recommended as Record<string, FeatureSelectionAction>
+    : {};
+};
+
+const featureRecommendationEvidence = (stepId: string): Record<string, Record<string, unknown>> => {
+  const evidence = runFor(stepId)?.result?.recommendation_evidence;
+  return evidence && typeof evidence === "object"
+    ? evidence as Record<string, Record<string, unknown>>
+    : {};
+};
+
+const featureRecommendationRows = (stepId: string) =>
+  Object.entries(featureRecommendation(stepId)).map(([variable, action]) => ({
+    variable,
+    action,
+    reason: String(featureRecommendationEvidence(stepId)[variable]?.reason ?? ""),
+  }));
+
+const recommendedFeatureDrops = (stepId: string) =>
+  Object.entries(featureRecommendation(stepId))
+    .filter(([, action]) => action === "drop")
+    .map(([variable]) => variable);
+
+const openFeatureSelection = (stepId: string) => {
+  editingFeatureStepId.value = stepId;
+  featureDropColumns.value = recommendedFeatureDrops(stepId);
+  featureValidation.value = null;
+};
 
 const recommendedLagMap = (stepId: string): Record<string, number> => {
   const suggested = runFor(stepId)?.result?.recommended_lag_map;
@@ -492,6 +592,7 @@ const submitConfirmation = async (
   approved: boolean,
   manualOverrides: LagManualOverride[] = [],
   warningAcknowledged = false,
+  selectedFeatureDrops?: string[],
 ) => {
   const current = result.value;
   if (!current?.execution_id || !canConfirm(stepId) || confirmingStepId.value) return;
@@ -507,6 +608,7 @@ const submitConfirmation = async (
       approved,
       manual_overrides: manualOverrides,
       warning_acknowledged: warningAcknowledged,
+      feature_drop_columns: selectedFeatureDrops,
     });
 
     current.workflow_status = confirmed.workflow_status;
@@ -522,7 +624,10 @@ const submitConfirmation = async (
       stepRun.status = status;
       if (confirmed.result_payload) stepRun.result = confirmed.result_payload;
     }
-    if (confirmed.lag_override_validation) lagValidation.value = confirmed.lag_override_validation;
+if (confirmed.lag_override_validation) lagValidation.value = confirmed.lag_override_validation;
+    if (confirmed.feature_selection_validation) {
+      featureValidation.value = confirmed.feature_selection_validation;
+    }
     if (approved && status === "completed") {
       ElMessage.success("已批准并执行完成");
     } else {
@@ -547,9 +652,32 @@ const handleLagApproval = async (stepId: string, warningAcknowledged = false) =>
   );
 };
 
+const handleFeatureApproval = async (stepId: string) => {
+  const current = result.value;
+  if (!current?.execution_id || !canConfirm(stepId)) return;
+  const adjusted = editingFeatureStepId.value === stepId;
+  const dropColumns = adjusted ? [...featureDropColumns.value] : undefined;
+  try {
+    const validation = await validateFeatureSelection({
+      execution_id: current.execution_id,
+      step_id: stepId,
+      drop_columns: dropColumns,
+    });
+    featureValidation.value = validation;
+    if (validation.overall_status === "INVALID") return;
+    await submitConfirmation(stepId, true, [], false, dropColumns);
+  } catch (err) {
+    errorMessage.value = err instanceof ApiError ? err.message : String(err);
+  }
+};
+
 const handleConfirmation = async (stepId: string, approved: boolean) => {
   if (approved && isLagApplyStep(stepId)) {
     await handleLagApproval(stepId);
+    return;
+  }
+  if (approved && isFeatureApplyStep(stepId)) {
+    await handleFeatureApproval(stepId);
     return;
   }
   await submitConfirmation(stepId, approved);

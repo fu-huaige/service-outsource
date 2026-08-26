@@ -17,6 +17,8 @@ from app.schemas.copilot import (
     CopilotChatRequest,
     CopilotConfirmData,
     CopilotConfirmRequest,
+    FeatureSelectionValidationData,
+    FeatureSelectionValidationRequest,
     LagOverrideValidationData,
     LagOverrideValidationRequest,
 )
@@ -74,6 +76,12 @@ from app.services.agent_execution_service import (
     ExecutionStateError,
     approve_step,
     reject_step,
+)
+from app.services.agent_feature_selection_service import (
+    FeatureSelectionError,
+    approve_and_execute_feature_step,
+    is_feature_apply_step,
+    validate_feature_selection,
 )
 from app.services.agent_lag_apply_service import (
     LagOverrideError,
@@ -845,6 +853,42 @@ async def copilot_chat(
 
 
 @router.post(
+    "/copilot/feature-selection/validate",
+    tags=["Copilot"],
+    summary="Validate a controlled Feature Selection without executing a tool",
+    response_model=SuccessEnvelope[FeatureSelectionValidationData],
+    responses={**ERROR_RESPONSES, 409: {"model": ErrorEnvelope}},
+)
+async def validate_copilot_feature_selection(
+    request: Request,
+    payload: FeatureSelectionValidationRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessEnvelope[FeatureSelectionValidationData]:
+    try:
+        data = await validate_feature_selection(
+            session,
+            execution_id=payload.execution_id,
+            step_id=payload.step_id,
+            drop_columns=payload.drop_columns,
+        )
+    except ExecutionStateError as error:
+        raise AppError(
+            "AGENT_EXECUTION_STATE_CONFLICT",
+            "当前执行步骤不可校验变量选择。",
+            status_code=status.HTTP_409_CONFLICT,
+            details={"reason": str(error)},
+        ) from error
+    except FeatureSelectionError as error:
+        raise AppError(
+            error.code,
+            error.message,
+            status_code=error.status_code,
+            details=error.details,
+        ) from error
+    return success(request, data)
+
+
+@router.post(
     "/copilot/lag-overrides/validate",
     tags=["Copilot"],
     summary="Validate controlled manual lag overrides without executing a tool",
@@ -898,6 +942,7 @@ async def copilot_confirm(
         )
 
     validation: LagOverrideValidationData | None = None
+    feature_validation: FeatureSelectionValidationData | None = None
     try:
         if not payload.approved:
             execution = await reject_step(
@@ -915,6 +960,18 @@ async def copilot_confirm(
                 artifact_root=get_settings().artifact_root,
             )
             execution, validation = outcome.execution, outcome.validation
+        elif await is_feature_apply_step(
+            session, execution_id=payload.execution_id, step_id=payload.step_id
+        ):
+            feature_outcome = await approve_and_execute_feature_step(
+                session,
+                execution_id=payload.execution_id,
+                step_id=payload.step_id,
+                drop_columns=payload.feature_drop_columns,
+                artifact_root=get_settings().artifact_root,
+            )
+            execution = feature_outcome.execution
+            feature_validation = feature_outcome.validation
         else:
             execution = await approve_step(
                 session, execution_id=payload.execution_id, step_id=payload.step_id
@@ -926,7 +983,7 @@ async def copilot_confirm(
             status_code=status.HTTP_409_CONFLICT,
             details={"reason": str(error)},
         ) from error
-    except LagOverrideError as error:
+    except (LagOverrideError, FeatureSelectionError) as error:
         raise AppError(
             error.code,
             error.message,
@@ -935,7 +992,7 @@ async def copilot_confirm(
         ) from error
     except (AgentToolAdapterError, VersionDataError, VersionedPreprocessingError) as error:
         raise AppError(
-            getattr(error, "code", "AGENT_LAG_APPLY_FAILED"),
+            getattr(error, "code", "AGENT_CONFIRMED_TOOL_FAILED"),
             getattr(error, "message", str(error)),
             status_code=getattr(error, "status_code", status.HTTP_400_BAD_REQUEST),
             details=getattr(error, "details", {}),
@@ -959,6 +1016,7 @@ async def copilot_confirm(
             result_version_id=step.result_version_id,
             result_payload=step.result_payload,
             lag_override_validation=validation,
+            feature_selection_validation=feature_validation,
         ),
     )
 @router.post(

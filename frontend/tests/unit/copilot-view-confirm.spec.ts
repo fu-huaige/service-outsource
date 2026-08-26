@@ -2,12 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia } from "pinia";
 import CopilotView from "../../src/views/CopilotView.vue";
-import { chatWithCopilot, confirmCopilotStep, validateLagOverrides } from "../../src/api/copilot";
+import {
+  chatWithCopilot,
+  confirmCopilotStep,
+  validateFeatureSelection,
+  validateLagOverrides,
+} from "../../src/api/copilot";
 import type { CopilotChatResponse } from "../../src/types/api";
 
 vi.mock("../../src/api/copilot", () => ({
   chatWithCopilot: vi.fn(),
   confirmCopilotStep: vi.fn(),
+  validateFeatureSelection: vi.fn(),
   validateLagOverrides: vi.fn(),
 }));
 vi.mock("element-plus", () => ({ ElMessage: { success: vi.fn(), error: vi.fn() } }));
@@ -19,6 +25,7 @@ const versionId = "33333333-3333-4333-8333-333333333333";
 const mockedChat = vi.mocked(chatWithCopilot);
 const mockedConfirm = vi.mocked(confirmCopilotStep);
 const mockedValidateLag = vi.mocked(validateLagOverrides);
+const mockedValidateFeature = vi.mocked(validateFeatureSelection);
 
 const stubs = {
   "el-form": { template: "<form><slot /></form>" },
@@ -72,7 +79,7 @@ const waitingResponse = (): CopilotChatResponse => ({
       },
       {
         step_id: "s2",
-        tool: "select_variables",
+        tool: "export_dataset",
         depends_on: ["s1"],
         parameters: { selected: ["u", "y"] },
         requires_confirmation: true,
@@ -112,7 +119,7 @@ const waitingResponse = (): CopilotChatResponse => ({
     },
     {
       step_id: "s2",
-      tool: "select_variables",
+      tool: "export_dataset",
       status: "waiting_confirmation",
       parameters: { selected: ["u", "y"] },
       summary: "等待确认",
@@ -343,4 +350,66 @@ describe("CopilotView persistent confirmation", () => {
     expect(mockedConfirm).toHaveBeenCalledWith(expect.objectContaining({
       warning_acknowledged: true,
     }));
-  });});
+  });
+
+  it("approves or adjusts a controlled Feature recommendation and displays V3", async () => {
+    const featureResponse = waitingResponse();
+    featureResponse.plan.steps[1] = { ...featureResponse.plan.steps[1], tool: "select_variables" };
+    featureResponse.step_runs[1] = {
+      ...featureResponse.step_runs[1],
+      tool: "select_variables",
+      result: {
+        recommended_selection: { u1: "keep", u2: "drop", u3: "keep" },
+        recommended_drop_columns: ["u2"],
+        recommendation_evidence: {
+          u1: { action: "keep", reason: "representative", related_variables: ["u2"] },
+          u2: { action: "drop", reason: "redundant", related_variables: ["u1"] },
+          u3: { action: "keep", reason: "independent", related_variables: [] },
+        },
+      },
+    };
+    mockedChat.mockResolvedValue(featureResponse);
+    mockedValidateFeature.mockResolvedValue({
+      recommended_selection: { u1: "keep", u2: "drop", u3: "keep" },
+      recommended_drop_columns: ["u2"],
+      manual_drop_columns: ["u1"],
+      final_drop_columns: ["u1"],
+      kept_input_columns: ["u2", "u3"],
+      selection_sources: { u1: "manual_override", u2: "manual_override", u3: "collinearity_analysis" },
+      decisions: [],
+      overall_status: "VALID",
+      issues: [],
+    });
+    mockedConfirm.mockResolvedValue({
+      copilot_run_id: copilotRunId,
+      confirmation_id: "s2",
+      decision: "approved",
+      execution_id: executionId,
+      workflow_status: "RUNNING",
+      current_version_id: "55555555-5555-4555-8555-555555555555",
+      current_step_id: null,
+      pending_confirmation_step_id: null,
+      step_id: "s2",
+      step_status: "SUCCEEDED",
+      confirmation_status: "APPROVED",
+      result_version_id: "55555555-5555-4555-8555-555555555555",
+      feature_selection_validation: null,
+      task: null,
+    });
+    const wrapper = mountView();
+    await submitChat(wrapper);
+
+    expect(wrapper.get('[data-test="feature-recommendation-s2"]').text()).toContain("recommendation");
+    expect(wrapper.get('[data-test="feature-variable-u2"]').text()).toContain("drop");
+    await wrapper.get('[data-test="edit-feature-s2"]').trigger("click");
+    await wrapper.get('[data-test="feature-drop-u2"]').setValue(false);
+    await wrapper.get('[data-test="feature-drop-u1"]').setValue(true);
+    await wrapper.get('[data-test="approve-s2"]').trigger("click");
+    await flushPromises();
+
+    expect(mockedValidateFeature).toHaveBeenCalledWith({ execution_id: executionId, step_id: "s2", drop_columns: ["u1"] });
+    expect(mockedConfirm).toHaveBeenCalledWith(expect.objectContaining({ execution_id: executionId, step_id: "s2", approved: true, feature_drop_columns: ["u1"] }));
+    expect(wrapper.get('[data-test="current-version-id"]').text()).toContain("55555555");
+    expect(wrapper.text()).toContain("已批准并执行完成");
+  });
+});

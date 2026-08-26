@@ -4,6 +4,8 @@ import type {
   CopilotChatResponse,
   CopilotConfirmRequest,
   CopilotConfirmResponse,
+  FeatureSelectionValidationRequest,
+  FeatureSelectionValidationResponse,
   LagOverrideValidationRequest,
   LagOverrideValidationResponse,
 } from "../types/api";
@@ -21,3 +23,7 @@ export const confirmCopilotStep = (
 export const validateLagOverrides = (
   req: LagOverrideValidationRequest
 ): Promise<LagOverrideValidationResponse> => apiClient.post("/copilot/lag-overrides/validate", req);
+export const validateFeatureSelection = (
+  req: FeatureSelectionValidationRequest
+): Promise<FeatureSelectionValidationResponse> =>
+  apiClient.post("/copilot/feature-selection/validate", req);

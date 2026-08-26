@@ -50,6 +50,7 @@ from app.services.agent_execution_service import (
     mark_step_succeeded,
     start_step,
 )
+from app.services.agent_feature_selection_service import prepare_feature_confirmation
 from app.services.agent_lag_apply_service import prepare_lag_confirmation
 from app.services.agent_tool_adapter import AgentToolAdapterError, execute_agent_tool
 from app.services.cleaning_service import CleaningDomainError
@@ -249,9 +250,15 @@ async def run_copilot(
         llm_fallback_reason=outcome.fallback_reason,
     )
 
-_FORMAL_ADAPTER_TOOLS = frozenset({
-    "clean_data", "estimate_delays", "apply_lag_compensation"
-})
+_FORMAL_ADAPTER_TOOLS = frozenset(
+    {
+        "clean_data",
+        "estimate_delays",
+        "apply_lag_compensation",
+        "analyze_collinearity",
+        "select_variables",
+    }
+)
 _DEFERRED_TOOLS = frozenset({"generate_report", "export_dataset"})
 
 
@@ -325,6 +332,10 @@ async def _execute_with_formal_tools(
         confirmation_input: dict[str, Any] | None = None
         if step.tool == "apply_lag_compensation":
             confirmation_input = await prepare_lag_confirmation(current, step_id=step.step_id)
+        elif step.tool == "select_variables":
+            confirmation_input = await prepare_feature_confirmation(
+                current, step_id=step.step_id
+            )
         current = await start_step(
             session,
             execution_id=current.id,

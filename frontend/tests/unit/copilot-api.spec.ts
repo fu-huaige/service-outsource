@@ -6,7 +6,12 @@ vi.mock("../../src/api/client", () => ({
   default: { post },
 }));
 
-import { chatWithCopilot, confirmCopilotStep, validateLagOverrides } from "../../src/api/copilot";
+import {
+  chatWithCopilot,
+  confirmCopilotStep,
+  validateFeatureSelection,
+  validateLagOverrides,
+} from "../../src/api/copilot";
 
 describe("Copilot API", () => {
   beforeEach(() => {
@@ -39,6 +44,17 @@ describe("Copilot API", () => {
     expect(post).toHaveBeenCalledWith("/copilot/confirm", request);
   });
 
+  it("validates controlled Feature Selection without using the confirm endpoint", async () => {
+    const request = {
+      execution_id: "22222222-2222-4222-8222-222222222222",
+      step_id: "s2",
+      drop_columns: ["u2"],
+    };
+
+    await validateFeatureSelection(request);
+
+    expect(post).toHaveBeenCalledWith("/copilot/feature-selection/validate", request);
+  });
   it("validates controlled Lag overrides without using the confirm endpoint", async () => {
     const request = {
       execution_id: "22222222-2222-4222-8222-222222222222",
