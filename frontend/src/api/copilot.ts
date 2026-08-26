@@ -1,5 +1,10 @@
 import apiClient from "./client";
-import type { CopilotChatRequest, CopilotChatResponse, CopilotConfirmRequest } from "../types/api";
+import type {
+  CopilotChatRequest,
+  CopilotChatResponse,
+  CopilotConfirmRequest,
+  CopilotConfirmResponse,
+} from "../types/api";
 
 const COPILOT_PLAN_TIMEOUT_MS = 120_000;
 
@@ -8,5 +13,5 @@ export const chatWithCopilot = (req: CopilotChatRequest): Promise<CopilotChatRes
 
 export const confirmCopilotStep = (
   req: CopilotConfirmRequest
-): Promise<{ success: boolean; next_step_id?: string }> =>
+): Promise<CopilotConfirmResponse> =>
   apiClient.post("/copilot/confirm", req);

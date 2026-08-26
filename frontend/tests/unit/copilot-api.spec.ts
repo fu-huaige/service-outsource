@@ -6,7 +6,7 @@ vi.mock("../../src/api/client", () => ({
   default: { post },
 }));
 
-import { chatWithCopilot } from "../../src/api/copilot";
+import { chatWithCopilot, confirmCopilotStep } from "../../src/api/copilot";
 
 describe("Copilot API", () => {
   beforeEach(() => {
@@ -23,5 +23,19 @@ describe("Copilot API", () => {
     await chatWithCopilot(request);
 
     expect(post).toHaveBeenCalledWith("/copilot/chat", request, { timeout: 120_000 });
+  });
+
+  it("sends persistent execution and step identifiers when confirming a step", async () => {
+    const request = {
+      copilot_run_id: "11111111-1111-4111-8111-111111111111",
+      confirmation_id: "s2",
+      execution_id: "22222222-2222-4222-8222-222222222222",
+      step_id: "s2",
+      approved: true,
+    };
+
+    await confirmCopilotStep(request);
+
+    expect(post).toHaveBeenCalledWith("/copilot/confirm", request);
   });
 });

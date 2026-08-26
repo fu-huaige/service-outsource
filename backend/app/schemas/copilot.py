@@ -82,6 +82,10 @@ class AgentStepRun(Schema):
 
 class CopilotChatData(Schema):
     copilot_run_id: UUID
+    execution_id: UUID | None = None
+    workflow_status: str | None = None
+    current_version_id: UUID | None = None
+    pending_confirmation_step_id: str | None = None
     plan: ExecutionPlan
     task: TaskResource | None = None
     compliance: ComplianceProofData | None = None

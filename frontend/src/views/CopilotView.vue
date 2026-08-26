@@ -117,6 +117,12 @@
             </div>
           </div>
 
+          <div v-if="result.execution_id" class="execution-state">
+            <span data-test="execution-id">Execution {{ result.execution_id }}</span>
+            <span data-test="workflow-status">Workflow {{ result.workflow_status }}</span>
+            <span data-test="current-version-id">Version {{ result.current_version_id }}</span>
+          </div>
+
           <el-alert
             v-if="result.llm_fallback_reason"
             type="info"
@@ -159,6 +165,36 @@
                   <p v-if="runFor(step.step_id)" class="step-timing">
                     耗时 {{ (runFor(step.step_id)?.duration_ms ?? 0).toFixed(1) }} ms
                   </p>
+                  <p
+                    v-if="confirmationMessage(step.step_id)"
+                    class="confirmation-message"
+                    :data-test="'confirmation-status-' + step.step_id"
+                  >
+                    {{ confirmationMessage(step.step_id) }}
+                  </p>
+                  <div
+                    v-if="canConfirm(step.step_id)"
+                    class="confirmation-actions"
+                    :data-test="'confirm-actions-' + step.step_id"
+                  >
+                    <el-button
+                      type="primary"
+                      size="small"
+                      :loading="confirmingStepId === step.step_id"
+                      :data-test="'approve-' + step.step_id"
+                      @click="handleConfirmation(step.step_id, true)"
+                    >
+                      Approve
+                    </el-button>
+                    <el-button
+                      size="small"
+                      :disabled="confirmingStepId === step.step_id"
+                      :data-test="'reject-' + step.step_id"
+                      @click="handleConfirmation(step.step_id, false)"
+                    >
+                      Reject
+                    </el-button>
+                  </div>
                 </div>
               </template>
             </el-step>
@@ -219,8 +255,13 @@ import {
   Promotion,
   Share,
 } from "@element-plus/icons-vue";
-import { chatWithCopilot } from "../api/copilot";
-import type { AgentStepStatus, CopilotChatRequest, CopilotChatResponse } from "../types/api";
+import { chatWithCopilot, confirmCopilotStep } from "../api/copilot";
+import type {
+  AgentConfirmationStatus,
+  AgentStepStatus,
+  CopilotChatRequest,
+  CopilotChatResponse,
+} from "../types/api";
 import { ApiError } from "../api/client";
 import { ElMessage } from "element-plus";
 
@@ -250,12 +291,15 @@ const STATUS_LABELS: Record<string, string> = {
   waiting_confirmation: "待确认",
   completed: "已完成",
   failed: "失败",
+  cancelled: "已取消",
 };
 
 const prompt = ref("");
 const sending = ref(false);
+const confirmingStepId = ref<string | null>(null);
 const errorMessage = ref("");
 const result = ref<CopilotChatResponse | null>(null);
+const confirmationStatuses = reactive<Record<string, AgentConfirmationStatus>>({});
 
 const form = reactive<CopilotChatRequest>({
   message: "",
@@ -271,16 +315,79 @@ const handleSend = async () => {
   sending.value = true;
   try {
     // No mock plan: a fabricated workflow would misrepresent what the agent decided.
-    result.value = await chatWithCopilot({
+    const response = await chatWithCopilot({
       message: prompt.value.trim(),
       active_version_id: form.active_version_id || null,
     });
-    ElMessage.success(result.value.conclusion);
+    for (const stepId of Object.keys(confirmationStatuses)) {
+      delete confirmationStatuses[stepId];
+    }
+    result.value = response;
+    ElMessage.success(response.conclusion);
   } catch (err) {
     result.value = null;
     errorMessage.value = err instanceof ApiError ? err.message : String(err);
   } finally {
     sending.value = false;
+  }
+};
+
+const persistentStepStatus = (status: string): AgentStepStatus => {
+  const statuses: Record<string, AgentStepStatus> = {
+    PENDING: "pending",
+    RUNNING: "running",
+    WAITING_CONFIRMATION: "waiting_confirmation",
+    SUCCEEDED: "completed",
+    FAILED: "failed",
+    CANCELLED: "cancelled",
+  };
+  return statuses[status] ?? "pending";
+};
+
+const canConfirm = (stepId: string) =>
+  Boolean(
+    result.value?.execution_id &&
+      result.value.workflow_status === "WAITING_CONFIRMATION" &&
+      result.value.pending_confirmation_step_id === stepId
+  );
+
+const confirmationMessage = (stepId: string) => {
+  const status = confirmationStatuses[stepId];
+  if (status === "APPROVED") return "已批准，等待执行";
+  if (status === "REJECTED") return "已拒绝";
+  return "";
+};
+
+const handleConfirmation = async (stepId: string, approved: boolean) => {
+  const current = result.value;
+  if (!current?.execution_id || !canConfirm(stepId) || confirmingStepId.value) return;
+
+  errorMessage.value = "";
+  confirmingStepId.value = stepId;
+  try {
+    const confirmed = await confirmCopilotStep({
+      copilot_run_id: current.copilot_run_id,
+      confirmation_id: stepId,
+      execution_id: current.execution_id,
+      step_id: stepId,
+      approved,
+    });
+
+    current.workflow_status = confirmed.workflow_status;
+    current.pending_confirmation_step_id = confirmed.pending_confirmation_step_id;
+    confirmationStatuses[stepId] = confirmed.confirmation_status;
+
+    const status = persistentStepStatus(confirmed.step_status);
+    const plannedStep = current.plan.steps.find((step) => step.step_id === stepId);
+    if (plannedStep) plannedStep.status = status;
+    const stepRun = current.step_runs.find((run) => run.step_id === stepId);
+    if (stepRun) stepRun.status = status;
+
+    ElMessage.success(approved ? "已批准，等待执行" : "已拒绝该步骤");
+  } catch (err) {
+    errorMessage.value = err instanceof ApiError ? err.message : String(err);
+  } finally {
+    confirmingStepId.value = null;
   }
 };
 
@@ -299,7 +406,7 @@ const statusLabel = (status: string) => STATUS_LABELS[status] ?? status;
 const statusType = (status: AgentStepStatus) =>
   status === "completed"
     ? "success"
-    : status === "failed"
+    : status === "failed" || status === "cancelled"
       ? "danger"
       : status === "waiting_confirmation"
         ? "warning"
@@ -308,7 +415,7 @@ const statusType = (status: AgentStepStatus) =>
 const stepStatus = (status: AgentStepStatus) =>
   status === "completed"
     ? "success"
-    : status === "failed"
+    : status === "failed" || status === "cancelled"
       ? "error"
       : status === "waiting_confirmation"
         ? "warning"
@@ -469,10 +576,19 @@ const stepStatus = (status: AgentStepStatus) =>
   margin-top: 12px;
 }
 
-.header-tags {
+.header-tags,
+.execution-state,
+.confirmation-actions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.execution-state {
+  margin: 8px 0 12px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
 }
 
 .proof-id {
@@ -550,6 +666,15 @@ const stepStatus = (status: AgentStepStatus) =>
 .step-error {
   color: #e63946;
   margin: 2px 0;
+}
+
+.confirmation-message {
+  color: var(--text-secondary);
+  margin: 6px 0;
+}
+
+.confirmation-actions {
+  margin-top: 8px;
 }
 
 .result-cell {

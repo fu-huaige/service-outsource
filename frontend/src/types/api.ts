@@ -681,7 +681,19 @@ export type AgentStepStatus =
   | "running"
   | "waiting_confirmation"
   | "completed"
-  | "failed";
+  | "failed"
+  | "cancelled";
+
+export type AgentWorkflowStatus =
+  | "PLANNED"
+  | "RUNNING"
+  | "WAITING_CONFIRMATION"
+  | "WAITING_ASYNC_TASK"
+  | "SUCCEEDED"
+  | "FAILED"
+  | "CANCELLED";
+
+export type AgentConfirmationStatus = "NOT_REQUIRED" | "PENDING" | "APPROVED" | "REJECTED";
 
 export interface ExecutionPlanStep {
   step_id: string;
@@ -737,6 +749,10 @@ export interface CopilotChatRequest {
 
 export interface CopilotChatResponse {
   copilot_run_id: string;
+  execution_id: string | null;
+  workflow_status: AgentWorkflowStatus | null;
+  current_version_id: string | null;
+  pending_confirmation_step_id: string | null;
   plan: ExecutionPlan;
   task: TaskResource | null;
   compliance: ComplianceProofData | null;
@@ -755,8 +771,24 @@ export interface CopilotConfirmRequest {
   copilot_run_id: string;
   confirmation_id: string;
   approved: boolean;
+  execution_id?: string | null;
+  step_id?: string | null;
   parameter_overrides?: Record<string, any>;
   comment?: string | null;
+}
+
+export interface CopilotConfirmResponse {
+  copilot_run_id: string;
+  confirmation_id: string;
+  decision: "approved" | "rejected";
+  execution_id: string;
+  workflow_status: AgentWorkflowStatus;
+  current_step_id: string | null;
+  pending_confirmation_step_id: string | null;
+  step_id: string;
+  step_status: string;
+  confirmation_status: AgentConfirmationStatus;
+  task: TaskResource | null;
 }
 
 // Delivery API Types (Phase 10)

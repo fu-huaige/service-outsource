@@ -31,6 +31,7 @@ from algorithms.agent.planner import PlannedStep, parse_intent
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dataset import ProcessingRun
+from app.models.agent_execution import AgentExecutionSession
 from app.models.operation_log import OperationLog
 from app.schemas.copilot import (
     AgentStepRun,
@@ -43,6 +44,12 @@ from app.schemas.copilot import (
 from app.schemas.modeling import ArxFitRequest
 from app.schemas.optimization import OptimizationStartRequest
 from app.schemas.preprocessing import SegmentRequest
+from app.services.agent_execution_service import (
+    create_execution,
+    mark_step_failed,
+    mark_step_succeeded,
+    start_step,
+)
 from app.services.contract_stubs import completed_task
 from app.services.modeling_service import ModelingDomainError, fit_arx_core
 from app.services.optimization_service import run_study
@@ -92,12 +99,7 @@ async def run_copilot(
     artifact_root: Path,
     provider: LlmProvider | None = None,
 ) -> CopilotChatData:
-    """Parse, plan, verify and (when the proof passes) execute.
-
-    The LLM proposes the plan when one is configured; the rule-based planner is the floor.
-    Either way the plan is validated identically, so an unreachable model degrades the
-    wording of the answer, never its safety.
-    """
+    """Plan, verify, execute once, and mirror real outcomes into durable workflow state."""
 
     intent = parse_intent(payload.message)
     planner = LlmPlanner(provider or _resolve_provider(), code_version=CODE_VERSION)
@@ -124,10 +126,27 @@ async def run_copilot(
         for step in steps
     ]
     proof = verify_plan(raw_steps, code_version=CODE_VERSION, confirmed_steps=confirmed)
+    execution_plan = ExecutionPlan(
+        goal=payload.message,
+        dataset_id=payload.dataset_id,
+        steps=[
+            ExecutionPlanStep(
+                step_id=step.step_id,
+                tool=step.tool,
+                depends_on=list(step.depends_on),
+                parameters=dict(step.parameters),
+                requires_confirmation=step.requires_confirmation,
+            )
+            for step in steps
+        ],
+        stop_conditions=stop_conditions,
+        assumptions=assumptions,
+    )
 
     run_id = uuid4()
     executions: list[StepExecution] = []
     series: VersionSeries | None = None
+    persistent_execution: AgentExecutionSession | None = None
 
     if proof.passed and payload.active_version_id is not None:
         try:
@@ -141,7 +160,21 @@ async def run_copilot(
             raise AgentDomainError(
                 error.code, error.message, status_code=error.status_code, details=error.details
             ) from error
+
+        persistent_execution = await create_execution(
+            session,
+            dataset_id=series.dataset_id,
+            initial_version_id=series.version_id,
+            planner_source=outcome.source,
+            plan=execution_plan,
+            compliance_proof=proof,
+        )
         executions = _execute(series, steps, intent.parameters)
+        persistent_execution = await _sync_execution_state(
+            session,
+            execution=persistent_execution,
+            executions=executions,
+        )
 
     conclusion = _conclusion(proof, executions, intent.goals)
     await _persist(
@@ -157,9 +190,15 @@ async def run_copilot(
 
     return CopilotChatData(
         copilot_run_id=run_id,
+        execution_id=persistent_execution.id if persistent_execution else None,
+        workflow_status=persistent_execution.workflow_status if persistent_execution else None,
+        current_version_id=persistent_execution.current_version_id if persistent_execution else None,
+        pending_confirmation_step_id=(
+            persistent_execution.pending_confirmation_step_id if persistent_execution else None
+        ),
         plan=ExecutionPlan(
-            goal=payload.message,
-            dataset_id=payload.dataset_id,
+            goal=execution_plan.goal,
+            dataset_id=execution_plan.dataset_id,
             steps=[
                 ExecutionPlanStep(
                     step_id=step.step_id,
@@ -171,8 +210,8 @@ async def run_copilot(
                 )
                 for step in steps
             ],
-            stop_conditions=stop_conditions,
-            assumptions=assumptions,
+            stop_conditions=execution_plan.stop_conditions,
+            assumptions=execution_plan.assumptions,
         ),
         task=completed_task(stage="copilot_plan", message=conclusion),
         compliance=ComplianceProofData(**proof.to_payload()),
@@ -190,13 +229,12 @@ async def run_copilot(
             for execution in executions
         ],
         conclusion=conclusion,
-        executed=bool(executions),
+        executed=any(execution.status != "pending" for execution in executions),
         plan_source=outcome.source,
         llm_provider=outcome.provider,
         llm_model=outcome.model,
         llm_fallback_reason=outcome.fallback_reason,
     )
-
 
 def _execute(
     series: VersionSeries,
@@ -247,7 +285,7 @@ def _execute(
         started = time.perf_counter()
         try:
             summary, result = _dispatch(step, series, context, hints)
-            status = "completed"
+            status = "pending" if result.get("deferred") else "completed"
             error_code = None
         except (SegmentDomainError, ModelingDomainError, AnalysisDomainError) as error:
             summary, result, status, error_code = error.message, {}, "failed", error.code
@@ -266,10 +304,62 @@ def _execute(
                 error_code=error_code,
             )
         )
-        if status == "failed":
+        if status in {"failed", "pending"}:
             break
     return executions
 
+
+async def _sync_execution_state(
+    session: AsyncSession,
+    *,
+    execution: AgentExecutionSession,
+    executions: list[StepExecution],
+) -> AgentExecutionSession:
+    """Mirror executor outcomes without dispatching a tool a second time."""
+
+    current = execution
+    for executed in executions:
+        if executed.status == "pending":
+            break
+
+        current = await start_step(
+            session,
+            execution_id=current.id,
+            step_id=executed.step_id,
+        )
+        if executed.status == "waiting_confirmation":
+            break
+
+        result_payload = {
+            "summary": executed.summary,
+            "result": dict(executed.result),
+            "duration_ms": executed.duration_ms,
+            "error_code": executed.error_code,
+        }
+        if executed.status == "completed":
+            current = await mark_step_succeeded(
+                session,
+                execution_id=current.id,
+                step_id=executed.step_id,
+                result_payload=result_payload,
+            )
+        elif executed.status == "failed":
+            current = await mark_step_failed(
+                session,
+                execution_id=current.id,
+                step_id=executed.step_id,
+                error_code=executed.error_code or "AGENT_STEP_FAILED",
+                error_message=executed.summary,
+                result_payload=result_payload,
+            )
+            break
+        else:
+            raise AgentDomainError(
+                "INVALID_AGENT_STEP_STATUS",
+                f"Agent 执行器返回了无法持久化的步骤状态：{executed.status}",
+                status_code=500,
+            )
+    return current
 
 def _dispatch(
     step: PlannedStep,
@@ -472,6 +562,8 @@ def _processing_run_status(proof: ComplianceProof, executions: list[StepExecutio
         return "failed"
     if any(execution.status == "waiting_confirmation" for execution in executions):
         return "waiting_confirmation"
+    if any(execution.status == "pending" for execution in executions):
+        return "running"
     return "succeeded"
 
 
@@ -490,7 +582,7 @@ async def _persist(
 
     now = datetime.now(UTC)
     run_status = _processing_run_status(proof, executions)
-    finished_at = None if run_status == "waiting_confirmation" else now
+    finished_at = None if run_status in {"waiting_confirmation", "running"} else now
     session.add(
         ProcessingRun(
             id=run_id,

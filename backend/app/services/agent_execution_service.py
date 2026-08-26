@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from algorithms.agent.compliance import ComplianceProof
@@ -128,7 +129,11 @@ async def start_step(
 
 
 async def mark_step_succeeded(
-    session: AsyncSession, *, execution_id: UUID, step_id: str
+    session: AsyncSession,
+    *,
+    execution_id: UUID,
+    step_id: str,
+    result_payload: dict[str, Any] | None = None,
 ) -> AgentExecutionSession:
     """Mark a running step successful and complete the workflow only at its true terminal state."""
 
@@ -139,6 +144,8 @@ async def mark_step_succeeded(
 
     now = datetime.now(UTC)
     step.status = "SUCCEEDED"
+    if result_payload is not None:
+        step.result_payload = dict(result_payload)
     step.finished_at = now
     execution.current_step_id = None
     execution.pending_confirmation_step_id = None
@@ -160,6 +167,7 @@ async def mark_step_failed(
     step_id: str,
     error_code: str,
     error_message: str,
+    result_payload: dict[str, Any] | None = None,
 ) -> AgentExecutionSession:
     """Record an unrecoverable running-step failure and stop the workflow."""
 
@@ -172,6 +180,8 @@ async def mark_step_failed(
     step.status = "FAILED"
     step.error_code = error_code
     step.error_message = error_message
+    if result_payload is not None:
+        step.result_payload = dict(result_payload)
     step.finished_at = now
     execution.workflow_status = "FAILED"
     execution.error_code = error_code
@@ -223,6 +233,7 @@ def _is_approved_step_replay(
         and step.status == "RUNNING"
         and step.confirmation_status == "APPROVED"
     )
+
 
 async def reject_step(
     session: AsyncSession, *, execution_id: UUID, step_id: str
