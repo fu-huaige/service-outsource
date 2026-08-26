@@ -2,12 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia } from "pinia";
 import CopilotView from "../../src/views/CopilotView.vue";
-import { chatWithCopilot, confirmCopilotStep } from "../../src/api/copilot";
+import { chatWithCopilot, confirmCopilotStep, validateLagOverrides } from "../../src/api/copilot";
 import type { CopilotChatResponse } from "../../src/types/api";
 
 vi.mock("../../src/api/copilot", () => ({
   chatWithCopilot: vi.fn(),
   confirmCopilotStep: vi.fn(),
+  validateLagOverrides: vi.fn(),
 }));
 vi.mock("element-plus", () => ({ ElMessage: { success: vi.fn(), error: vi.fn() } }));
 
@@ -17,6 +18,7 @@ const versionId = "33333333-3333-4333-8333-333333333333";
 
 const mockedChat = vi.mocked(chatWithCopilot);
 const mockedConfirm = vi.mocked(confirmCopilotStep);
+const mockedValidateLag = vi.mocked(validateLagOverrides);
 
 const stubs = {
   "el-form": { template: "<form><slot /></form>" },
@@ -232,4 +234,113 @@ describe("CopilotView persistent confirmation", () => {
     expect(wrapper.find('[data-test^="confirm-actions-"]').exists()).toBe(false);
     expect(mockedConfirm).not.toHaveBeenCalled();
   });
-});
+
+  it("validates and executes a confirmed Lag Apply, then displays V2 completion", async () => {
+    const lagResponse = waitingResponse();
+    lagResponse.plan.steps[1] = {
+      ...lagResponse.plan.steps[1],
+      tool: "apply_lag_compensation",
+    };
+    lagResponse.step_runs[1] = {
+      ...lagResponse.step_runs[1],
+      tool: "apply_lag_compensation",
+      result: { recommended_lag_map: { u1: 3, u2: 8 } },
+    };
+    mockedChat.mockResolvedValue(lagResponse);
+    mockedValidateLag.mockResolvedValue({
+      recommended_lag_map: { u1: 3, u2: 8 },
+      manual_overrides: {},
+      final_lag_map: { u1: 3, u2: 8 },
+      parameter_sources: { u1: "delay_recommendation", u2: "delay_recommendation" },
+      per_parameter_validation: [],
+      overall_status: "VALID",
+      issues: [],
+    });
+    mockedConfirm.mockResolvedValue({
+      copilot_run_id: copilotRunId,
+      confirmation_id: "s2",
+      decision: "approved",
+      execution_id: executionId,
+      workflow_status: "RUNNING",
+      current_version_id: "44444444-4444-4444-8444-444444444444",
+      current_step_id: null,
+      pending_confirmation_step_id: null,
+      step_id: "s2",
+      step_status: "SUCCEEDED",
+      confirmation_status: "APPROVED",
+      result_version_id: "44444444-4444-4444-8444-444444444444",
+      result_payload: { result_version_id: "44444444-4444-4444-8444-444444444444" },
+      lag_override_validation: null,
+      task: null,
+    });
+    const wrapper = mountView();
+    await submitChat(wrapper);
+
+    expect(wrapper.get('[data-test="lag-recommendation-s2"]').text()).toContain("u1");
+    await wrapper.get('[data-test="approve-s2"]').trigger("click");
+    await flushPromises();
+
+    expect(mockedValidateLag).toHaveBeenCalledWith({
+      execution_id: executionId,
+      step_id: "s2",
+      manual_overrides: [],
+    });
+    expect(mockedConfirm).toHaveBeenCalledWith(expect.objectContaining({
+      execution_id: executionId,
+      step_id: "s2",
+      approved: true,
+      warning_acknowledged: false,
+    }));
+    expect(wrapper.get('[data-test="current-version-id"]').text()).toContain("44444444");
+    expect(wrapper.text()).toContain("已批准并执行完成");
+  });
+
+  it("requires an explicit warning acknowledgement before submitting Lag Apply", async () => {
+    const lagResponse = waitingResponse();
+    lagResponse.plan.steps[1] = {
+      ...lagResponse.plan.steps[1],
+      tool: "apply_lag_compensation",
+    };
+    lagResponse.step_runs[1] = {
+      ...lagResponse.step_runs[1],
+      tool: "apply_lag_compensation",
+      result: { recommended_lag_map: { u1: 3 } },
+    };
+    mockedChat.mockResolvedValue(lagResponse);
+    mockedValidateLag.mockResolvedValue({
+      recommended_lag_map: { u1: 3 },
+      manual_overrides: {},
+      final_lag_map: { u1: 3 },
+      parameter_sources: { u1: "delay_recommendation" },
+      per_parameter_validation: [],
+      overall_status: "WARNING",
+      issues: ["outside analyzed range"],
+    });
+    mockedConfirm.mockResolvedValue({
+      copilot_run_id: copilotRunId,
+      confirmation_id: "s2",
+      decision: "approved",
+      execution_id: executionId,
+      workflow_status: "RUNNING",
+      current_version_id: versionId,
+      current_step_id: null,
+      pending_confirmation_step_id: null,
+      step_id: "s2",
+      step_status: "SUCCEEDED",
+      confirmation_status: "APPROVED",
+      task: null,
+    });
+    const wrapper = mountView();
+    await submitChat(wrapper);
+
+    await wrapper.get('[data-test="approve-s2"]').trigger("click");
+    await flushPromises();
+    expect(mockedConfirm).not.toHaveBeenCalled();
+    expect(wrapper.get('[data-test="ack-lag-warning-s2"]').exists()).toBe(true);
+
+    await wrapper.get('[data-test="ack-lag-warning-s2"]').trigger("click");
+    await flushPromises();
+    expect(mockedConfirm).toHaveBeenCalledWith(expect.objectContaining({
+      warning_acknowledged: true,
+    }));
+  });});

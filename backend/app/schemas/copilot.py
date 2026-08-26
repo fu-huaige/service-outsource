@@ -22,6 +22,7 @@ class ExecutionPlanStep(Schema):
         "clean_data",
         "detect_dynamic_segments",
         "estimate_delays",
+        "apply_lag_compensation",
         "analyze_collinearity",
         "select_variables",
         "fit_arx",
@@ -101,6 +102,38 @@ class CopilotChatData(Schema):
     llm_fallback_reason: str | None = None
 
 
+class LagOverrideEntry(Schema):
+    """One explicit human override row, kept as input rather than inferred by the Agent."""
+
+    variable: str = Field(min_length=1, max_length=255)
+    value: Any
+
+
+class LagOverrideParameterValidation(Schema):
+    variable: str
+    recommended_value: int | None = None
+    manual_value: Any | None = None
+    final_value: int | None = None
+    status: Literal["VALID", "WARNING", "INVALID"]
+    issues: list[str] = Field(default_factory=list)
+
+
+class LagOverrideValidationRequest(Schema):
+    execution_id: UUID
+    step_id: str = Field(min_length=1)
+    manual_overrides: list[LagOverrideEntry] = Field(default_factory=list)
+
+
+class LagOverrideValidationData(Schema):
+    recommended_lag_map: dict[str, int]
+    manual_overrides: dict[str, Any]
+    final_lag_map: dict[str, int]
+    parameter_sources: dict[str, Literal["delay_recommendation", "manual_override"]]
+    per_parameter_validation: list[LagOverrideParameterValidation] = Field(default_factory=list)
+    overall_status: Literal["VALID", "WARNING", "INVALID"]
+    issues: list[str] = Field(default_factory=list)
+
+
 class CopilotConfirmRequest(Schema):
     copilot_run_id: UUID
     confirmation_id: str = Field(min_length=1)
@@ -108,6 +141,8 @@ class CopilotConfirmRequest(Schema):
     execution_id: UUID | None = None
     step_id: str | None = Field(default=None, min_length=1)
     parameter_overrides: dict[str, Any] = Field(default_factory=dict)
+    manual_overrides: list[LagOverrideEntry] = Field(default_factory=list)
+    warning_acknowledged: bool = False
     comment: str | None = Field(default=None, max_length=2_000)
 
 
@@ -117,9 +152,13 @@ class CopilotConfirmData(Schema):
     decision: Literal["approved", "rejected"]
     execution_id: UUID
     workflow_status: str
+    current_version_id: UUID | None = None
     current_step_id: str | None
     pending_confirmation_step_id: str | None
     step_id: str
     step_status: str
     confirmation_status: str
+    result_version_id: UUID | None = None
+    result_payload: dict[str, Any] = Field(default_factory=dict)
+    lag_override_validation: LagOverrideValidationData | None = None
     task: TaskResource | None = None

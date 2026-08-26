@@ -7,11 +7,12 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from algorithms.agent.compliance import ComplianceProof
-from app.models.agent_execution import AgentExecutionSession, AgentStepRun
-from app.schemas.copilot import ExecutionPlan
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
+from app.models.agent_execution import AgentExecutionSession, AgentStepRun
+from app.schemas.copilot import ExecutionPlan
 
 _TERMINAL_EXECUTION_STATUSES = frozenset({"SUCCEEDED", "FAILED", "CANCELLED"})
 _TERMINAL_STEP_STATUSES = frozenset({"SUCCEEDED", "SKIPPED"})
@@ -101,7 +102,11 @@ async def create_execution(
 
 
 async def start_step(
-    session: AsyncSession, *, execution_id: UUID, step_id: str
+    session: AsyncSession,
+    *,
+    execution_id: UUID,
+    step_id: str,
+    input_payload_update: dict[str, Any] | None = None,
 ) -> AgentExecutionSession:
     """Start one pending step or persist its confirmation gate without executing a tool."""
 
@@ -113,6 +118,8 @@ async def start_step(
     now = datetime.now(UTC)
     execution.current_step_id = step.step_id
     execution.finished_at = None
+    if input_payload_update is not None:
+        step.input_payload = {**step.input_payload, **input_payload_update}
     if step.requires_confirmation:
         step.status = "WAITING_CONFIRMATION"
         step.confirmation_status = "PENDING"
@@ -134,6 +141,7 @@ async def mark_step_succeeded(
     execution_id: UUID,
     step_id: str,
     result_payload: dict[str, Any] | None = None,
+    input_payload: dict[str, Any] | None = None,
     source_version_id: UUID | None = None,
     result_version_id: UUID | None = None,
     processing_run_ids: list[str] | None = None,
@@ -149,6 +157,8 @@ async def mark_step_succeeded(
     step.status = "SUCCEEDED"
     if result_payload is not None:
         step.result_payload = dict(result_payload)
+    if input_payload is not None:
+        step.input_payload = dict(input_payload)
     if source_version_id is not None:
         step.source_version_id = source_version_id
     if result_version_id is not None:

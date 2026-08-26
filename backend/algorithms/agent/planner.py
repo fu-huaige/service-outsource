@@ -30,6 +30,7 @@ TOOL_WHITELIST: tuple[str, ...] = (
     "clean_data",
     "detect_dynamic_segments",
     "estimate_delays",
+    "apply_lag_compensation",
     "analyze_collinearity",
     "select_variables",
     "fit_arx",
@@ -41,7 +42,7 @@ TOOL_WHITELIST: tuple[str, ...] = (
 
 # Tools whose effect is expensive or destructive enough to need a human decision first.
 CONFIRMATION_REQUIRED: frozenset[str] = frozenset(
-    {"select_variables", "optimize_pipeline", "export_dataset"}
+    {"apply_lag_compensation", "select_variables", "optimize_pipeline", "export_dataset"}
 )
 
 # Ordering constraints. A tool may only run after everything it depends on.
@@ -52,6 +53,7 @@ TOOL_PREREQUISITES: dict[str, tuple[str, ...]] = {
     "clean_data": ("detect_anomalies",),
     "detect_dynamic_segments": ("profile_dataset",),
     "estimate_delays": ("profile_dataset",),
+    "apply_lag_compensation": ("estimate_delays",),
     "analyze_collinearity": ("profile_dataset",),
     "select_variables": ("analyze_collinearity",),
     "fit_arx": ("profile_dataset",),
@@ -195,6 +197,7 @@ class RuleBasedPlanner:
             )
         if intent.wants("delay"):
             emit("estimate_delays", _subset(intent.parameters, ("max_lag",)))
+            emit("apply_lag_compensation")
         if intent.wants("collinearity"):
             emit("analyze_collinearity")
             emit("select_variables")

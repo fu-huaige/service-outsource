@@ -767,6 +767,37 @@ export interface CopilotChatResponse {
   llm_fallback_reason: string | null;
 }
 
+export interface LagManualOverride {
+  variable: string;
+  value: number | string;
+}
+
+export type LagOverrideStatus = "VALID" | "WARNING" | "INVALID";
+
+export interface LagOverrideParameterValidation {
+  variable: string;
+  recommended_value: number | null;
+  manual_value: number | string | null;
+  final_value: number | null;
+  status: LagOverrideStatus;
+  issues: string[];
+}
+
+export interface LagOverrideValidationRequest {
+  execution_id: string;
+  step_id: string;
+  manual_overrides: LagManualOverride[];
+}
+
+export interface LagOverrideValidationResponse {
+  recommended_lag_map: Record<string, number>;
+  manual_overrides: Record<string, number | string>;
+  final_lag_map: Record<string, number>;
+  parameter_sources: Record<string, "delay_recommendation" | "manual_override">;
+  per_parameter_validation: LagOverrideParameterValidation[];
+  overall_status: LagOverrideStatus;
+  issues: string[];
+}
 export interface CopilotConfirmRequest {
   copilot_run_id: string;
   confirmation_id: string;
@@ -774,6 +805,8 @@ export interface CopilotConfirmRequest {
   execution_id?: string | null;
   step_id?: string | null;
   parameter_overrides?: Record<string, any>;
+  manual_overrides?: LagManualOverride[];
+  warning_acknowledged?: boolean;
   comment?: string | null;
 }
 
@@ -783,11 +816,15 @@ export interface CopilotConfirmResponse {
   decision: "approved" | "rejected";
   execution_id: string;
   workflow_status: AgentWorkflowStatus;
+  current_version_id?: string | null;
   current_step_id: string | null;
   pending_confirmation_step_id: string | null;
   step_id: string;
   step_status: string;
   confirmation_status: AgentConfirmationStatus;
+  result_version_id?: string | null;
+  result_payload?: Record<string, any>;
+  lag_override_validation?: LagOverrideValidationResponse | null;
   task: TaskResource | null;
 }
 

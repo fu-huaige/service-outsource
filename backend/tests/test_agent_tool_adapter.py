@@ -12,10 +12,11 @@ from uuid import UUID
 import pytest
 from algorithms.agent.compliance import verify_plan
 from algorithms.agent.llm import NullProvider
+from algorithms.agent.planner import RuleBasedPlanner, parse_intent
 from app.core.config import Settings
 from app.core.db import get_session
 from app.main import create_app
-from app.models import Base, DatasetVersion
+from app.models import Base, DatasetVersion, ProcessingRun
 from app.models.agent_execution import AgentExecutionSession
 from app.schemas.copilot import ExecutionPlan, ExecutionPlanStep
 from app.services import agent_service, agent_tool_adapter
@@ -28,7 +29,7 @@ from app.services.agent_execution_service import (
 from app.services.agent_tool_adapter import execute_agent_tool
 from app.services.cleaning_service import CleaningDomainError
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import selectinload
 
@@ -399,3 +400,335 @@ def test_chat_cleaning_then_delay_persists_v1_as_delay_source(
     assert formal_clean_calls == 1
     assert "clean_data" not in legacy_tools
     assert "estimate_delays" not in legacy_tools
+
+def _benchmark_dataset_version(harness: AdapterHarness) -> tuple[UUID, UUID]:
+    response = harness.client.post(
+        "/api/v1/simulation/generate",
+        json={"scenario": "S2", "n_steps": 900, "seed": 81, "input_count": 2},
+    )
+    assert response.status_code == 201, response.text
+    data = response.json()["data"]
+    return UUID(data["dataset_id"]), UUID(data["version_id"])
+
+
+def _chat_to_lag_confirmation(
+    harness: AdapterHarness,
+) -> tuple[dict[str, object], AgentExecutionSession, dict[str, int]]:
+    dataset_id, v0 = _benchmark_dataset_version(harness)
+    response = harness.client.post(
+        "/api/v1/copilot/chat",
+        json={
+            "message": "清洗数据、估计时滞，然后做 ARX 辨识",
+            "dataset_id": str(dataset_id),
+            "active_version_id": str(v0),
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    execution = asyncio.run(_load_execution(harness, UUID(data["execution_id"])))
+    delay = next(step for step in execution.step_runs if step.tool_name == "estimate_delays")
+    lag = next(step for step in execution.step_runs if step.tool_name == "apply_lag_compensation")
+    recommended = {key: int(value) for key, value in delay.result_payload["best_delays"].items()}
+    assert lag.status == "WAITING_CONFIRMATION"
+    assert lag.confirmation_status == "PENDING"
+    assert lag.input_payload["recommended_lag_map"] == recommended
+    return data, execution, recommended
+
+
+def _lag_validation(
+    harness: AdapterHarness,
+    *,
+    execution_id: UUID,
+    step_id: str,
+    overrides: list[dict[str, object]],
+):
+    return harness.client.post(
+        "/api/v1/copilot/lag-overrides/validate",
+        json={
+            "execution_id": str(execution_id),
+            "step_id": step_id,
+            "manual_overrides": overrides,
+        },
+    )
+
+
+def _lag_confirm(
+    harness: AdapterHarness,
+    *,
+    execution_id: UUID,
+    step_id: str,
+    approved: bool = True,
+    overrides: list[dict[str, object]] | None = None,
+    warning_acknowledged: bool = False,
+):
+    return harness.client.post(
+        "/api/v1/copilot/confirm",
+        json={
+            "copilot_run_id": str(execution_id),
+            "confirmation_id": step_id,
+            "execution_id": str(execution_id),
+            "step_id": step_id,
+            "approved": approved,
+            "manual_overrides": overrides or [],
+            "warning_acknowledged": warning_acknowledged,
+        },
+    )
+
+
+async def _counts(harness: AdapterHarness, dataset_id: UUID) -> tuple[int, int]:
+    async with harness.session_factory() as session:
+        versions = int(
+            await session.scalar(
+                select(func.count())
+                .select_from(DatasetVersion)
+                .where(DatasetVersion.dataset_id == dataset_id)
+            )
+            or 0
+        )
+        lag_runs = int(
+            await session.scalar(
+                select(func.count())
+                .select_from(ProcessingRun)
+                .where(
+                    ProcessingRun.dataset_id == dataset_id,
+                    ProcessingRun.run_type == "preprocessing.lag_compensation",
+                )
+            )
+            or 0
+        )
+        return versions, lag_runs
+
+
+def _different_valid_lag(recommended: int, analyzed_max: int) -> int:
+    return next(value for value in range(analyzed_max + 1) if value != recommended)
+
+
+def test_planner_emits_confirmed_lag_apply_after_delay() -> None:
+    steps, _, _ = RuleBasedPlanner().plan(parse_intent("估计时滞并应用补偿"))
+    by_tool = {step.tool: step for step in steps}
+    assert "apply_lag_compensation" in by_tool
+    apply = by_tool["apply_lag_compensation"]
+    assert apply.requires_confirmation is True
+    assert apply.depends_on == (by_tool["estimate_delays"].step_id,)
+
+
+def test_lag_override_validation_is_deterministic_and_aggregated(
+    adapter_harness: AdapterHarness,
+) -> None:
+    _, execution, recommended = _chat_to_lag_confirmation(adapter_harness)
+    lag = next(step for step in execution.step_runs if step.tool_name == "apply_lag_compensation")
+    delay = next(step for step in execution.step_runs if step.tool_name == "estimate_delays")
+    first, second = list(recommended)[:2]
+    first_max = len(delay.result_payload["correlations"][first]) - 1
+    second_max = len(delay.result_payload["correlations"][second]) - 1
+    valid_value = _different_valid_lag(recommended[first], first_max)
+    warning_value = second_max + 1
+
+    valid = _lag_validation(
+        adapter_harness,
+        execution_id=execution.id,
+        step_id=lag.step_id,
+        overrides=[{"variable": first, "value": valid_value}],
+    )
+    assert valid.status_code == 200, valid.text
+    assert valid.json()["data"]["overall_status"] == "VALID"
+    assert valid.json()["data"]["final_lag_map"][second] == recommended[second]
+
+    warning = _lag_validation(
+        adapter_harness,
+        execution_id=execution.id,
+        step_id=lag.step_id,
+        overrides=[
+            {"variable": first, "value": valid_value},
+            {"variable": second, "value": warning_value},
+        ],
+    )
+    assert warning.status_code == 200, warning.text
+    warning_data = warning.json()["data"]
+    assert warning_data["overall_status"] == "WARNING"
+    assert {item["status"] for item in warning_data["per_parameter_validation"]} == {
+        "VALID",
+        "WARNING",
+    }
+
+    duplicate = _lag_validation(
+        adapter_harness,
+        execution_id=execution.id,
+        step_id=lag.step_id,
+        overrides=[
+            {"variable": first, "value": valid_value},
+            {"variable": first, "value": valid_value + 1},
+        ],
+    )
+    assert duplicate.status_code == 200, duplicate.text
+    assert duplicate.json()["data"]["overall_status"] == "INVALID"
+
+    unknown = _lag_validation(
+        adapter_harness,
+        execution_id=execution.id,
+        step_id=lag.step_id,
+        overrides=[{"variable": "u99", "value": 1}],
+    )
+    assert unknown.status_code == 200, unknown.text
+    assert unknown.json()["data"]["overall_status"] == "INVALID"
+
+    invalid = _lag_validation(
+        adapter_harness,
+        execution_id=execution.id,
+        step_id=lag.step_id,
+        overrides=[
+            {"variable": first, "value": "not-an-integer"},
+            {"variable": second, "value": 900},
+        ],
+    )
+    assert invalid.status_code == 200, invalid.text
+    invalid_data = invalid.json()["data"]
+    assert invalid_data["overall_status"] == "INVALID"
+    assert any(item["status"] == "INVALID" for item in invalid_data["per_parameter_validation"])
+
+
+def test_direct_lag_approve_creates_v2_once_and_duplicate_is_idempotent(
+    adapter_harness: AdapterHarness,
+) -> None:
+    _, execution, _ = _chat_to_lag_confirmation(adapter_harness)
+    lag = next(step for step in execution.step_runs if step.tool_name == "apply_lag_compensation")
+    v1 = execution.current_version_id
+    _, v1_bytes_before = asyncio.run(_version_artifact(adapter_harness, v1))
+    before = asyncio.run(_counts(adapter_harness, execution.dataset_id))
+
+    first = _lag_confirm(adapter_harness, execution_id=execution.id, step_id=lag.step_id)
+    assert first.status_code == 200, first.text
+    first_data = first.json()["data"]
+    assert first_data["step_status"] == "SUCCEEDED"
+    assert first_data["confirmation_status"] == "APPROVED"
+    v2 = UUID(first_data["result_version_id"])
+    assert UUID(first_data["current_version_id"]) == v2
+
+    persisted = asyncio.run(_load_execution(adapter_harness, execution.id))
+    persisted_lag = next(
+        step for step in persisted.step_runs if step.tool_name == "apply_lag_compensation"
+    )
+    assert persisted_lag.source_version_id == v1
+    assert persisted_lag.result_version_id == v2
+    assert persisted_lag.processing_run_ids
+    assert persisted.current_version_id == v2
+    assert next(
+        step for step in persisted.step_runs if step.sequence > persisted_lag.sequence
+    ).status == "PENDING"
+    v2_node, _ = asyncio.run(_version_artifact(adapter_harness, v2))
+    _, v1_bytes_after = asyncio.run(_version_artifact(adapter_harness, v1))
+    assert v2_node.parent_version_id == v1
+    assert v1_bytes_after == v1_bytes_before
+
+    after_first = asyncio.run(_counts(adapter_harness, execution.dataset_id))
+    assert after_first == (before[0] + 1, before[1] + 1)
+    replay = _lag_confirm(adapter_harness, execution_id=execution.id, step_id=lag.step_id)
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["data"]["result_version_id"] == str(v2)
+    assert asyncio.run(_counts(adapter_harness, execution.dataset_id)) == after_first
+
+    changed = _lag_confirm(
+        adapter_harness,
+        execution_id=execution.id,
+        step_id=lag.step_id,
+        overrides=[
+            {
+                "variable": next(iter(persisted_lag.input_payload["final_lag_map"])),
+                "value": 0,
+            }
+        ],
+    )
+    assert changed.status_code == 409, changed.text
+    assert asyncio.run(_counts(adapter_harness, execution.dataset_id)) == after_first
+
+
+def test_valid_partial_override_merges_with_recommendation(
+    adapter_harness: AdapterHarness,
+) -> None:
+    _, execution, recommended = _chat_to_lag_confirmation(adapter_harness)
+    lag = next(step for step in execution.step_runs if step.tool_name == "apply_lag_compensation")
+    delay = next(step for step in execution.step_runs if step.tool_name == "estimate_delays")
+    variable = next(iter(recommended))
+    analyzed_max = len(delay.result_payload["correlations"][variable]) - 1
+    manual_value = _different_valid_lag(recommended[variable], analyzed_max)
+
+    response = _lag_confirm(
+        adapter_harness,
+        execution_id=execution.id,
+        step_id=lag.step_id,
+        overrides=[{"variable": variable, "value": manual_value}],
+    )
+
+    assert response.status_code == 200, response.text
+    persisted = asyncio.run(_load_execution(adapter_harness, execution.id))
+    applied = next(
+        step for step in persisted.step_runs if step.tool_name == "apply_lag_compensation"
+    )
+    assert applied.input_payload["manual_overrides"] == {variable: manual_value}
+    assert applied.input_payload["final_lag_map"][variable] == manual_value
+    assert all(
+        applied.input_payload["final_lag_map"][name] == value
+        for name, value in recommended.items()
+        if name != variable
+    )
+    assert applied.input_payload["parameter_sources"][variable] == "manual_override"
+
+
+def test_warning_requires_acknowledgement_before_lag_apply(
+    adapter_harness: AdapterHarness,
+) -> None:
+    _, execution, recommended = _chat_to_lag_confirmation(adapter_harness)
+    lag = next(step for step in execution.step_runs if step.tool_name == "apply_lag_compensation")
+    delay = next(step for step in execution.step_runs if step.tool_name == "estimate_delays")
+    variable = next(iter(recommended))
+    warning_value = len(delay.result_payload["correlations"][variable])
+    before = asyncio.run(_counts(adapter_harness, execution.dataset_id))
+    overrides = [{"variable": variable, "value": warning_value}]
+
+    blocked = _lag_confirm(
+        adapter_harness,
+        execution_id=execution.id,
+        step_id=lag.step_id,
+        overrides=overrides,
+    )
+    assert blocked.status_code == 409, blocked.text
+    assert blocked.json()["error"]["code"] == "LAG_OVERRIDE_WARNING_ACK_REQUIRED"
+    assert asyncio.run(_counts(adapter_harness, execution.dataset_id)) == before
+
+    confirmed = _lag_confirm(
+        adapter_harness,
+        execution_id=execution.id,
+        step_id=lag.step_id,
+        overrides=overrides,
+        warning_acknowledged=True,
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["data"]["step_status"] == "SUCCEEDED"
+    after = asyncio.run(_load_execution(adapter_harness, execution.id))
+    applied = next(step for step in after.step_runs if step.tool_name == "apply_lag_compensation")
+    assert applied.input_payload["warning_acknowledged"] is True
+
+
+def test_reject_does_not_apply_lag_or_create_v2(adapter_harness: AdapterHarness) -> None:
+    _, execution, _ = _chat_to_lag_confirmation(adapter_harness)
+    lag = next(step for step in execution.step_runs if step.tool_name == "apply_lag_compensation")
+    before = asyncio.run(_counts(adapter_harness, execution.dataset_id))
+    v1 = execution.current_version_id
+
+    response = _lag_confirm(
+        adapter_harness,
+        execution_id=execution.id,
+        step_id=lag.step_id,
+        approved=False,
+    )
+
+    assert response.status_code == 200, response.text
+    persisted = asyncio.run(_load_execution(adapter_harness, execution.id))
+    rejected = next(
+        step for step in persisted.step_runs if step.tool_name == "apply_lag_compensation"
+    )
+    assert persisted.workflow_status == "CANCELLED"
+    assert persisted.current_version_id == v1
+    assert rejected.status == "CANCELLED"
+    assert rejected.confirmation_status == "REJECTED"
+    assert asyncio.run(_counts(adapter_harness, execution.dataset_id)) == before

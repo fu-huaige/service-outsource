@@ -177,7 +177,69 @@
                     class="confirmation-actions"
                     :data-test="'confirm-actions-' + step.step_id"
                   >
+                    <template v-if="isLagApplyStep(step.step_id)">
+                      <p class="lag-recommendation" :data-test="'lag-recommendation-' + step.step_id">
+                        Delay Analyze 建议：{{ JSON.stringify(recommendedLagMap(step.step_id)) }}
+                      </p>
+                      <el-button
+                        size="small"
+                        :data-test="'edit-lag-' + step.step_id"
+                        @click="openLagOverrides(step.step_id)"
+                      >
+                        修改参数
+                      </el-button>
+                      <div v-if="editingLagStepId === step.step_id" class="lag-overrides">
+                        <div v-for="(override, index) in lagOverrideRows" :key="index" class="lag-override-row">
+                          <select v-model="override.variable" :data-test="'lag-variable-' + index">
+                            <option v-for="variable in lagVariables(step.step_id)" :key="variable" :value="variable">
+                              {{ variable }}
+                            </option>
+                          </select>
+                          <input v-model.number="override.value" type="number" min="0" :data-test="'lag-value-' + index" />
+                          <el-button size="small" @click="removeLagOverride(index)">删除</el-button>
+                        </div>
+                        <el-button
+                          size="small"
+                          :disabled="lagOverrideRows.length >= lagVariables(step.step_id).length"
+                          :data-test="'add-lag-override-' + step.step_id"
+                          @click="addLagOverride(step.step_id)"
+                        >
+                          添加参数
+                        </el-button>
+                        <el-button
+                          size="small"
+                          :loading="validatingLagStepId === step.step_id"
+                          :data-test="'validate-lag-' + step.step_id"
+                          @click="validateLagOverrideRows(step.step_id)"
+                        >
+                          验证参数
+                        </el-button>
+                        <p v-if="lagValidation" class="lag-validation" :data-test="'lag-validation-' + step.step_id">
+                          校验：{{ lagValidation.overall_status }} {{ lagValidation.issues.join("；") }}
+                        </p>
+                      </div>
+                      <el-button
+                        type="primary"
+                        size="small"
+                        :loading="confirmingStepId === step.step_id"
+                        :data-test="'approve-' + step.step_id"
+                        @click="handleLagApproval(step.step_id)"
+                      >
+                        Approve
+                      </el-button>
+                      <el-button
+                        v-if="lagValidation?.overall_status === 'WARNING'"
+                        type="warning"
+                        size="small"
+                        :loading="confirmingStepId === step.step_id"
+                        :data-test="'ack-lag-warning-' + step.step_id"
+                        @click="handleLagApproval(step.step_id, true)"
+                      >
+                        确认警告并执行
+                      </el-button>
+                    </template>
                     <el-button
+                      v-else
                       type="primary"
                       size="small"
                       :loading="confirmingStepId === step.step_id"
@@ -255,12 +317,14 @@ import {
   Promotion,
   Share,
 } from "@element-plus/icons-vue";
-import { chatWithCopilot, confirmCopilotStep } from "../api/copilot";
+import { chatWithCopilot, confirmCopilotStep, validateLagOverrides } from "../api/copilot";
 import type {
   AgentConfirmationStatus,
   AgentStepStatus,
   CopilotChatRequest,
   CopilotChatResponse,
+  LagManualOverride,
+  LagOverrideValidationResponse,
 } from "../types/api";
 import { ApiError } from "../api/client";
 import { ElMessage } from "element-plus";
@@ -297,6 +361,10 @@ const STATUS_LABELS: Record<string, string> = {
 const prompt = ref("");
 const sending = ref(false);
 const confirmingStepId = ref<string | null>(null);
+const validatingLagStepId = ref<string | null>(null);
+const editingLagStepId = ref<string | null>(null);
+const lagOverrideRows = ref<LagManualOverride[]>([]);
+const lagValidation = ref<LagOverrideValidationResponse | null>(null);
 const errorMessage = ref("");
 const result = ref<CopilotChatResponse | null>(null);
 const confirmationStatuses = reactive<Record<string, AgentConfirmationStatus>>({});
@@ -322,6 +390,9 @@ const handleSend = async () => {
     for (const stepId of Object.keys(confirmationStatuses)) {
       delete confirmationStatuses[stepId];
     }
+    editingLagStepId.value = null;
+    lagOverrideRows.value = [];
+    lagValidation.value = null;
     result.value = response;
     ElMessage.success(response.conclusion);
   } catch (err) {
@@ -353,12 +424,75 @@ const canConfirm = (stepId: string) =>
 
 const confirmationMessage = (stepId: string) => {
   const status = confirmationStatuses[stepId];
-  if (status === "APPROVED") return "已批准，等待执行";
+  if (status === "APPROVED") {
+    return result.value?.plan.steps.find((step) => step.step_id === stepId)?.status === "completed"
+      ? "已批准并执行完成"
+      : "已批准，等待执行";
+  }
   if (status === "REJECTED") return "已拒绝";
   return "";
 };
 
-const handleConfirmation = async (stepId: string, approved: boolean) => {
+const isLagApplyStep = (stepId: string) =>
+  result.value?.plan.steps.find((step) => step.step_id === stepId)?.tool === "apply_lag_compensation";
+
+const recommendedLagMap = (stepId: string): Record<string, number> => {
+  const suggested = runFor(stepId)?.result?.recommended_lag_map;
+  return suggested && typeof suggested === "object" ? suggested as Record<string, number> : {};
+};
+
+const lagVariables = (stepId: string) => Object.keys(recommendedLagMap(stepId));
+
+const openLagOverrides = (stepId: string) => {
+  editingLagStepId.value = stepId;
+  lagValidation.value = null;
+  if (!lagOverrideRows.value.length) addLagOverride(stepId);
+};
+
+const addLagOverride = (stepId: string) => {
+  const selected = new Set(lagOverrideRows.value.map((row) => row.variable));
+  const variable = lagVariables(stepId).find((candidate) => !selected.has(candidate));
+  if (!variable) return;
+  lagOverrideRows.value.push({ variable, value: recommendedLagMap(stepId)[variable] });
+  lagValidation.value = null;
+};
+
+const removeLagOverride = (index: number) => {
+  lagOverrideRows.value.splice(index, 1);
+  lagValidation.value = null;
+};
+
+const selectedLagOverrides = (): LagManualOverride[] =>
+  lagOverrideRows.value.map((row) => ({ ...row }));
+
+const validateLagOverrideRows = async (stepId: string) => {
+  const current = result.value;
+  if (!current?.execution_id || !canConfirm(stepId) || validatingLagStepId.value) return null;
+
+  errorMessage.value = "";
+  validatingLagStepId.value = stepId;
+  try {
+    const validation = await validateLagOverrides({
+      execution_id: current.execution_id,
+      step_id: stepId,
+      manual_overrides: selectedLagOverrides(),
+    });
+    lagValidation.value = validation;
+    return validation;
+  } catch (err) {
+    errorMessage.value = err instanceof ApiError ? err.message : String(err);
+    return null;
+  } finally {
+    validatingLagStepId.value = null;
+  }
+};
+
+const submitConfirmation = async (
+  stepId: string,
+  approved: boolean,
+  manualOverrides: LagManualOverride[] = [],
+  warningAcknowledged = false,
+) => {
   const current = result.value;
   if (!current?.execution_id || !canConfirm(stepId) || confirmingStepId.value) return;
 
@@ -371,9 +505,12 @@ const handleConfirmation = async (stepId: string, approved: boolean) => {
       execution_id: current.execution_id,
       step_id: stepId,
       approved,
+      manual_overrides: manualOverrides,
+      warning_acknowledged: warningAcknowledged,
     });
 
     current.workflow_status = confirmed.workflow_status;
+    current.current_version_id = confirmed.current_version_id ?? current.current_version_id;
     current.pending_confirmation_step_id = confirmed.pending_confirmation_step_id;
     confirmationStatuses[stepId] = confirmed.confirmation_status;
 
@@ -381,9 +518,16 @@ const handleConfirmation = async (stepId: string, approved: boolean) => {
     const plannedStep = current.plan.steps.find((step) => step.step_id === stepId);
     if (plannedStep) plannedStep.status = status;
     const stepRun = current.step_runs.find((run) => run.step_id === stepId);
-    if (stepRun) stepRun.status = status;
-
-    ElMessage.success(approved ? "已批准，等待执行" : "已拒绝该步骤");
+    if (stepRun) {
+      stepRun.status = status;
+      if (confirmed.result_payload) stepRun.result = confirmed.result_payload;
+    }
+    if (confirmed.lag_override_validation) lagValidation.value = confirmed.lag_override_validation;
+    if (approved && status === "completed") {
+      ElMessage.success("已批准并执行完成");
+    } else {
+      ElMessage.success(approved ? "已批准，等待执行" : "已拒绝该步骤");
+    }
   } catch (err) {
     errorMessage.value = err instanceof ApiError ? err.message : String(err);
   } finally {
@@ -391,6 +535,25 @@ const handleConfirmation = async (stepId: string, approved: boolean) => {
   }
 };
 
+const handleLagApproval = async (stepId: string, warningAcknowledged = false) => {
+  const validation = await validateLagOverrideRows(stepId);
+  if (!validation || validation.overall_status === "INVALID") return;
+  if (validation.overall_status === "WARNING" && !warningAcknowledged) return;
+  await submitConfirmation(
+    stepId,
+    true,
+    selectedLagOverrides(),
+    warningAcknowledged,
+  );
+};
+
+const handleConfirmation = async (stepId: string, approved: boolean) => {
+  if (approved && isLagApplyStep(stepId)) {
+    await handleLagApproval(stepId);
+    return;
+  }
+  await submitConfirmation(stepId, approved);
+};
 const runFor = (stepId: string) =>
   result.value?.step_runs.find((run) => run.step_id === stepId) ?? null;
 

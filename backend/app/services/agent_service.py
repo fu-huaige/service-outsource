@@ -30,8 +30,8 @@ from algorithms.agent.llm_planner import LlmPlanner, PlanOutcome
 from algorithms.agent.planner import PlannedStep, parse_intent
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.dataset import ProcessingRun
 from app.models.agent_execution import AgentExecutionSession
+from app.models.dataset import ProcessingRun
 from app.models.operation_log import OperationLog
 from app.schemas.copilot import (
     AgentStepRun,
@@ -50,6 +50,7 @@ from app.services.agent_execution_service import (
     mark_step_succeeded,
     start_step,
 )
+from app.services.agent_lag_apply_service import prepare_lag_confirmation
 from app.services.agent_tool_adapter import AgentToolAdapterError, execute_agent_tool
 from app.services.cleaning_service import CleaningDomainError
 from app.services.contract_stubs import completed_task
@@ -248,7 +249,9 @@ async def run_copilot(
         llm_fallback_reason=outcome.fallback_reason,
     )
 
-_FORMAL_ADAPTER_TOOLS = frozenset({"clean_data", "estimate_delays"})
+_FORMAL_ADAPTER_TOOLS = frozenset({
+    "clean_data", "estimate_delays", "apply_lag_compensation"
+})
 _DEFERRED_TOOLS = frozenset({"generate_report", "export_dataset"})
 
 
@@ -319,7 +322,15 @@ async def _execute_with_formal_tools(
             )
             break
 
-        current = await start_step(session, execution_id=current.id, step_id=step.step_id)
+        confirmation_input: dict[str, Any] | None = None
+        if step.tool == "apply_lag_compensation":
+            confirmation_input = await prepare_lag_confirmation(current, step_id=step.step_id)
+        current = await start_step(
+            session,
+            execution_id=current.id,
+            step_id=step.step_id,
+            input_payload_update=confirmation_input,
+        )
         persisted_step = next(item for item in current.step_runs if item.step_id == step.step_id)
         if step.requires_confirmation:
             executions.append(
@@ -329,6 +340,7 @@ async def _execute_with_formal_tools(
                     status="waiting_confirmation",
                     parameters=dict(step.parameters),
                     summary="高影响操作，等待人工确认后执行。",
+                    result=confirmation_input or {},
                 )
             )
             break

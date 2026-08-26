@@ -265,12 +265,13 @@ class TestAgentApi:
         by_tool = {run["tool"]: run for run in data["step_runs"]}
         assert by_tool["detect_dynamic_segments"]["status"] == "completed"
         assert by_tool["estimate_delays"]["status"] == "completed"
-        assert by_tool["analyze_collinearity"]["status"] == "completed"
-        assert by_tool["select_variables"]["status"] == "waiting_confirmation"
+        assert by_tool["apply_lag_compensation"]["status"] == "waiting_confirmation"
+        assert "analyze_collinearity" not in by_tool
         assert "fit_arx" not in by_tool
 
         planned_steps = {step["tool"]: step["status"] for step in data["plan"]["steps"]}
         assert planned_steps["fit_arx"] == "pending"
+        assert planned_steps["apply_lag_compensation"] == "waiting_confirmation"
         assert "等待人工确认" in data["conclusion"]
 
         # Every number in the summary must come from a tool, not from the agent.
@@ -285,7 +286,7 @@ class TestAgentApi:
         response = client.post(
             "/api/v1/copilot/chat",
             json={
-                "message": "提取高信噪比的动态数据，估计时滞，然后做 ARX 辨识",
+                "message": "提取高信噪比的动态数据，然后做 ARX 辨识",
                 "active_version_id": version_id,
             },
         )

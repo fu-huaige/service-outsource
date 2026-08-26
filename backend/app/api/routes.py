@@ -17,6 +17,8 @@ from app.schemas.copilot import (
     CopilotChatRequest,
     CopilotConfirmData,
     CopilotConfirmRequest,
+    LagOverrideValidationData,
+    LagOverrideValidationRequest,
 )
 from app.schemas.dashboard import DashboardLeaderboardData
 from app.schemas.datasets import (
@@ -73,7 +75,14 @@ from app.services.agent_execution_service import (
     approve_step,
     reject_step,
 )
+from app.services.agent_lag_apply_service import (
+    LagOverrideError,
+    approve_and_execute_lag_step,
+    is_lag_apply_step,
+    validate_lag_overrides,
+)
 from app.services.agent_service import AgentDomainError, run_copilot
+from app.services.agent_tool_adapter import AgentToolAdapterError
 from app.services.benchmark_service import BenchmarkDomainError, run_benchmark
 from app.services.cleaning_service import CleaningDomainError, clean_dataset_version
 from app.services.contract_stubs import completed_task, queued_task
@@ -119,6 +128,7 @@ from app.services.report_service import (
 )
 from app.services.segment_service import SegmentDomainError, select_dynamic_segments
 from app.services.simulation_service import generate_simulation as generate_simulation_service
+from app.services.version_data import VersionDataError
 from app.services.versioned_preprocessing_service import (
     VersionedPreprocessingError,
     apply_feature_selection,
@@ -835,6 +845,37 @@ async def copilot_chat(
 
 
 @router.post(
+    "/copilot/lag-overrides/validate",
+    tags=["Copilot"],
+    summary="Validate controlled manual lag overrides without executing a tool",
+    response_model=SuccessEnvelope[LagOverrideValidationData],
+    responses={**ERROR_RESPONSES, 409: {"model": ErrorEnvelope}},
+)
+async def validate_copilot_lag_overrides(
+    request: Request,
+    payload: LagOverrideValidationRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessEnvelope[LagOverrideValidationData]:
+    try:
+        data = await validate_lag_overrides(
+            session,
+            execution_id=payload.execution_id,
+            step_id=payload.step_id,
+            manual_overrides=payload.manual_overrides,
+        )
+    except ExecutionStateError as error:
+        raise AppError(
+            "AGENT_EXECUTION_STATE_CONFLICT",
+            "当前执行步骤不可校验时滞覆盖。",
+            status_code=status.HTTP_409_CONFLICT,
+            details={"reason": str(error)},
+        ) from error
+    except LagOverrideError as error:
+        raise AppError(error.code, error.message, status_code=error.status_code, details=error.details) from error
+    return success(request, data)
+
+
+@router.post(
     "/copilot/confirm",
     tags=["Copilot"],
     summary="Persist a human confirmation decision for an Agent execution step",
@@ -856,18 +897,48 @@ async def copilot_confirm(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
 
+    validation: LagOverrideValidationData | None = None
     try:
-        execution = (
-            await approve_step(session, execution_id=payload.execution_id, step_id=payload.step_id)
-            if payload.approved
-            else await reject_step(session, execution_id=payload.execution_id, step_id=payload.step_id)
-        )
+        if not payload.approved:
+            execution = await reject_step(
+                session, execution_id=payload.execution_id, step_id=payload.step_id
+            )
+        elif await is_lag_apply_step(
+            session, execution_id=payload.execution_id, step_id=payload.step_id
+        ):
+            outcome = await approve_and_execute_lag_step(
+                session,
+                execution_id=payload.execution_id,
+                step_id=payload.step_id,
+                manual_overrides=payload.manual_overrides,
+                warning_acknowledged=payload.warning_acknowledged,
+                artifact_root=get_settings().artifact_root,
+            )
+            execution, validation = outcome.execution, outcome.validation
+        else:
+            execution = await approve_step(
+                session, execution_id=payload.execution_id, step_id=payload.step_id
+            )
     except ExecutionStateError as error:
         raise AppError(
             "AGENT_EXECUTION_STATE_CONFLICT",
             "当前执行状态不允许该确认操作。",
             status_code=status.HTTP_409_CONFLICT,
             details={"reason": str(error)},
+        ) from error
+    except LagOverrideError as error:
+        raise AppError(
+            error.code,
+            error.message,
+            status_code=error.status_code,
+            details=error.details,
+        ) from error
+    except (AgentToolAdapterError, VersionDataError, VersionedPreprocessingError) as error:
+        raise AppError(
+            getattr(error, "code", "AGENT_LAG_APPLY_FAILED"),
+            getattr(error, "message", str(error)),
+            status_code=getattr(error, "status_code", status.HTTP_400_BAD_REQUEST),
+            details=getattr(error, "details", {}),
         ) from error
 
     step = next(item for item in execution.step_runs if item.step_id == payload.step_id)
@@ -879,14 +950,17 @@ async def copilot_confirm(
             decision="approved" if payload.approved else "rejected",
             execution_id=execution.id,
             workflow_status=execution.workflow_status,
+            current_version_id=execution.current_version_id,
             current_step_id=execution.current_step_id,
             pending_confirmation_step_id=execution.pending_confirmation_step_id,
             step_id=step.step_id,
             step_status=step.status,
             confirmation_status=step.confirmation_status,
+            result_version_id=step.result_version_id,
+            result_payload=step.result_payload,
+            lag_override_validation=validation,
         ),
     )
-
 @router.post(
     "/reports/generate",
     tags=["Delivery"],
