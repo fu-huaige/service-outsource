@@ -1,5 +1,7 @@
 import apiClient from "./client";
 import type {
+  ArxStructureValidationRequest,
+  ArxStructureValidationResponse,
   CopilotChatRequest,
   CopilotChatResponse,
   CopilotConfirmRequest,
@@ -27,3 +29,7 @@ export const validateFeatureSelection = (
   req: FeatureSelectionValidationRequest
 ): Promise<FeatureSelectionValidationResponse> =>
   apiClient.post("/copilot/feature-selection/validate", req);
+export const validateArxStructure = (
+  req: ArxStructureValidationRequest
+): Promise<ArxStructureValidationResponse> =>
+  apiClient.post("/copilot/arx-structure/validate", req);

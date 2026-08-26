@@ -162,6 +162,9 @@
                   <p v-if="runFor(step.step_id)?.error_code" class="step-error">
                     错误码：{{ runFor(step.step_id)?.error_code }}
                   </p>
+                  <p v-if="isArxFitStep(step.step_id) && arxModelId(step.step_id)" :data-test="'arx-model-id-' + step.step_id">
+                    ARX 建模完成 · Model {{ arxModelId(step.step_id) }}
+                  </p>
                   <p v-if="runFor(step.step_id)" class="step-timing">
                     耗时 {{ (runFor(step.step_id)?.duration_ms ?? 0).toFixed(1) }} ms
                   </p>
@@ -237,6 +240,62 @@
                       >
                         确认警告并执行
                       </el-button>
+                    </template>
+                    <template v-else-if="isArxFitStep(step.step_id)">
+                      <div class="arx-recommendation" :data-test="'arx-recommendation-' + step.step_id">
+                        <p>ARX 结构推荐</p>
+                        <p :data-test="'arx-na-' + step.step_id">na：{{ arxRecommendation(step.step_id).recommended_na }}</p>
+                        <p v-for="(value, variable) in arxRecommendedNb(step.step_id)" :key="variable" :data-test="'arx-nb-' + variable">
+                          nb · {{ variable }}：{{ value }}
+                        </p>
+                        <p v-for="(value, variable) in arxRecommendedDelays(step.step_id)" :key="'delay-' + variable" :data-test="'arx-delay-' + variable">
+                          delay · {{ variable }}：{{ value }}（只读）
+                        </p>
+                        <p :data-test="'arx-delay-provenance-' + step.step_id">
+                          delay 来源：{{ arxRecommendation(step.step_id).delay_source }}
+                        </p>
+                        <p :data-test="'arx-evidence-' + step.step_id">
+                          推荐依据：{{ JSON.stringify(arxRecommendation(step.step_id).selection_evidence) }}
+                        </p>
+                      </div>
+                      <el-button
+                        type="primary"
+                        size="small"
+                        :loading="confirmingStepId === step.step_id"
+                        :data-test="'adopt-arx-' + step.step_id"
+                        @click="adoptArxRecommendation(step.step_id)"
+                      >
+                        采用推荐参数
+                      </el-button>
+                      <el-button size="small" :data-test="'edit-arx-' + step.step_id" @click="openArxOverrides(step.step_id)">
+                        修改参数
+                      </el-button>
+                      <el-dialog v-if="editingArxStepId === step.step_id" v-model="arxDialogVisible" title="修改 ARX 参数" :data-test="'arx-overrides-' + step.step_id">
+                        <label>
+                          na
+                          <input v-model.number="arxNa" type="number" min="1" step="1" :data-test="'arx-na-input-' + step.step_id" />
+                        </label>
+                        <label v-for="variable in arxInputColumns(step.step_id)" :key="variable">
+                          nb · {{ variable }}
+                          <input v-model.number="arxNb[variable]" type="number" min="1" step="1" :data-test="'arx-nb-input-' + variable" />
+                        </label>
+                        <el-button size="small" :loading="validatingArxStepId === step.step_id" :data-test="'validate-arx-' + step.step_id" @click="validateArxOverrides(step.step_id)">
+                          验证参数
+                        </el-button>
+                        <p v-if="arxValidation" :data-test="'arx-validation-' + step.step_id">
+                          校验：{{ arxValidation.overall_status }} {{ arxValidation.issues.join("；") }}
+                        </p>
+                        <el-button
+                          v-if="arxValidation?.overall_status === 'VALID'"
+                          type="primary"
+                          size="small"
+                          :loading="confirmingStepId === step.step_id"
+                          :data-test="'confirm-arx-' + step.step_id"
+                          @click="confirmArxOverrides(step.step_id)"
+                        >
+                          确认并建模
+                        </el-button>
+                      </el-dialog>
                     </template>
                     <template v-else-if="isFeatureApplyStep(step.step_id)">
                       <p class="feature-recommendation" :data-test="'feature-recommendation-' + step.step_id">
@@ -372,10 +431,13 @@ import {
 import {
   chatWithCopilot,
   confirmCopilotStep,
+  validateArxStructure,
   validateFeatureSelection,
   validateLagOverrides,
 } from "../api/copilot";
 import type {
+  ArxStructureManualOverrides,
+  ArxStructureValidationResponse,
   AgentConfirmationStatus,
   AgentStepStatus,
   CopilotChatRequest,
@@ -427,6 +489,12 @@ const lagValidation = ref<LagOverrideValidationResponse | null>(null);
 const editingFeatureStepId = ref<string | null>(null);
 const featureDropColumns = ref<string[]>([]);
 const featureValidation = ref<FeatureSelectionValidationResponse | null>(null);
+const validatingArxStepId = ref<string | null>(null);
+const editingArxStepId = ref<string | null>(null);
+const arxDialogVisible = ref(false);
+const arxNa = ref<number | null>(null);
+const arxNb = ref<Record<string, number>>({});
+const arxValidation = ref<ArxStructureValidationResponse | null>(null);
 const errorMessage = ref("");
 const result = ref<CopilotChatResponse | null>(null);
 const confirmationStatuses = reactive<Record<string, AgentConfirmationStatus>>({});
@@ -458,6 +526,12 @@ const handleSend = async () => {
     editingFeatureStepId.value = null;
     featureDropColumns.value = [];
     featureValidation.value = null;
+    validatingArxStepId.value = null;
+    editingArxStepId.value = null;
+    arxDialogVisible.value = false;
+    arxNa.value = null;
+    arxNb.value = {};
+    arxValidation.value = null;
     result.value = response;
     ElMessage.success(response.conclusion);
   } catch (err) {
@@ -503,6 +577,91 @@ const isLagApplyStep = (stepId: string) =>
 
 const isFeatureApplyStep = (stepId: string) =>
   result.value?.plan.steps.find((step) => step.step_id === stepId)?.tool === "select_variables";
+
+const isArxFitStep = (stepId: string) =>
+  result.value?.plan.steps.find((step) => step.step_id === stepId)?.tool === "fit_arx";
+
+const arxRecommendation = (stepId: string): Record<string, any> => {
+  const recommendation = runFor(stepId)?.result?.arx_structure_recommendation;
+  return recommendation && typeof recommendation === "object" && !Array.isArray(recommendation)
+    ? recommendation as Record<string, any>
+    : {};
+};
+
+const arxRecommendedNb = (stepId: string): Record<string, number> => {
+  const values = arxRecommendation(stepId).recommended_nb;
+  return values && typeof values === "object" && !Array.isArray(values)
+    ? values as Record<string, number>
+    : {};
+};
+
+const arxRecommendedDelays = (stepId: string): Record<string, number> => {
+  const values = arxRecommendation(stepId).recommended_delays;
+  return values && typeof values === "object" && !Array.isArray(values)
+    ? values as Record<string, number>
+    : {};
+};
+
+const arxInputColumns = (stepId: string) => Object.keys(arxRecommendedNb(stepId));
+
+const arxModelId = (stepId: string) => {
+  const modelId = runFor(stepId)?.result?.model_id;
+  return typeof modelId === "string" ? modelId : null;
+};
+
+const openArxOverrides = (stepId: string) => {
+  const recommendation = arxRecommendation(stepId);
+  editingArxStepId.value = stepId;
+  arxDialogVisible.value = true;
+  arxNa.value = Number(recommendation.recommended_na);
+  arxNb.value = { ...arxRecommendedNb(stepId) };
+  arxValidation.value = null;
+};
+
+const selectedArxOverrides = (stepId: string): ArxStructureManualOverrides => {
+  const recommendation = arxRecommendation(stepId);
+  const recommendedNb = arxRecommendedNb(stepId);
+  const overrides: ArxStructureManualOverrides = {};
+  if (arxNa.value !== null && arxNa.value !== Number(recommendation.recommended_na)) {
+    overrides.na = arxNa.value;
+  }
+  const changedNb = Object.fromEntries(
+    Object.entries(arxNb.value).filter(([column, value]) => value !== recommendedNb[column])
+  );
+  if (Object.keys(changedNb).length) overrides.nb = changedNb;
+  return overrides;
+};
+
+const validateArxOverrides = async (stepId: string) => {
+  const current = result.value;
+  if (!current?.execution_id || !canConfirm(stepId) || validatingArxStepId.value) return null;
+
+  errorMessage.value = "";
+  validatingArxStepId.value = stepId;
+  try {
+    const validation = await validateArxStructure({
+      execution_id: current.execution_id,
+      step_id: stepId,
+      manual_overrides: selectedArxOverrides(stepId),
+    });
+    arxValidation.value = validation;
+    return validation;
+  } catch (err) {
+    errorMessage.value = err instanceof ApiError ? err.message : String(err);
+    return null;
+  } finally {
+    validatingArxStepId.value = null;
+  }
+};
+
+const adoptArxRecommendation = async (stepId: string) => {
+  await submitConfirmation(stepId, true, [], false, undefined, {});
+};
+
+const confirmArxOverrides = async (stepId: string) => {
+  if (arxValidation.value?.overall_status !== "VALID") return;
+  await submitConfirmation(stepId, true, [], false, undefined, selectedArxOverrides(stepId));
+};
 
 const featureRecommendation = (stepId: string): Record<string, FeatureSelectionAction> => {
   const recommended = runFor(stepId)?.result?.recommended_selection;
@@ -593,6 +752,7 @@ const submitConfirmation = async (
   manualOverrides: LagManualOverride[] = [],
   warningAcknowledged = false,
   selectedFeatureDrops?: string[],
+  arxStructureOverrides?: ArxStructureManualOverrides,
 ) => {
   const current = result.value;
   if (!current?.execution_id || !canConfirm(stepId) || confirmingStepId.value) return;
@@ -609,6 +769,7 @@ const submitConfirmation = async (
       manual_overrides: manualOverrides,
       warning_acknowledged: warningAcknowledged,
       feature_drop_columns: selectedFeatureDrops,
+      arx_structure_overrides: arxStructureOverrides,
     });
 
     current.workflow_status = confirmed.workflow_status;
@@ -627,6 +788,9 @@ const submitConfirmation = async (
 if (confirmed.lag_override_validation) lagValidation.value = confirmed.lag_override_validation;
     if (confirmed.feature_selection_validation) {
       featureValidation.value = confirmed.feature_selection_validation;
+    }
+    if (confirmed.arx_structure_validation) {
+      arxValidation.value = confirmed.arx_structure_validation;
     }
     if (approved && status === "completed") {
       ElMessage.success("已批准并执行完成");
@@ -672,6 +836,10 @@ const handleFeatureApproval = async (stepId: string) => {
 };
 
 const handleConfirmation = async (stepId: string, approved: boolean) => {
+  if (approved && isArxFitStep(stepId)) {
+    await adoptArxRecommendation(stepId);
+    return;
+  }
   if (approved && isLagApplyStep(stepId)) {
     await handleLagApproval(stepId);
     return;

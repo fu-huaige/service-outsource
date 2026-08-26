@@ -9,6 +9,7 @@ vi.mock("../../src/api/client", () => ({
 import {
   chatWithCopilot,
   confirmCopilotStep,
+  validateArxStructure,
   validateFeatureSelection,
   validateLagOverrides,
 } from "../../src/api/copilot";
@@ -44,6 +45,17 @@ describe("Copilot API", () => {
     expect(post).toHaveBeenCalledWith("/copilot/confirm", request);
   });
 
+  it("validates controlled ARX structure overrides without confirming a model", async () => {
+    const request = {
+      execution_id: "22222222-2222-4222-8222-222222222222",
+      step_id: "s2",
+      manual_overrides: { na: 3, nb: { u1: 4 } },
+    };
+
+    await validateArxStructure(request);
+
+    expect(post).toHaveBeenCalledWith("/copilot/arx-structure/validate", request);
+  });
   it("validates controlled Feature Selection without using the confirm endpoint", async () => {
     const request = {
       execution_id: "22222222-2222-4222-8222-222222222222",

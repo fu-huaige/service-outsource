@@ -824,6 +824,26 @@ export interface FeatureSelectionValidationResponse {
   overall_status: "VALID" | "INVALID";
   issues: string[];
 }
+export interface ArxStructureManualOverrides {
+  na?: number | null;
+  nb?: Record<string, number>;
+}
+
+export interface ArxStructureValidationRequest {
+  execution_id: string;
+  step_id: string;
+  manual_overrides: ArxStructureManualOverrides;
+}
+
+export interface ArxStructureValidationResponse {
+  recommended_structure: Record<string, any>;
+  manual_overrides: Record<string, any>;
+  final_structure: Record<string, any>;
+  structure_sources: Record<string, "structure_recommendation" | "manual_override">;
+  selection_evidence: Record<string, any>;
+  overall_status: "VALID" | "INVALID";
+  issues: string[];
+}
 export interface CopilotConfirmRequest {
   copilot_run_id: string;
   confirmation_id: string;
@@ -834,6 +854,7 @@ export interface CopilotConfirmRequest {
   manual_overrides?: LagManualOverride[];
   warning_acknowledged?: boolean;
   feature_drop_columns?: string[] | null;
+  arx_structure_overrides?: ArxStructureManualOverrides;
   comment?: string | null;
 }
 
@@ -853,6 +874,7 @@ export interface CopilotConfirmResponse {
   result_payload?: Record<string, any>;
   lag_override_validation?: LagOverrideValidationResponse | null;
   feature_selection_validation?: FeatureSelectionValidationResponse | null;
+  arx_structure_validation?: ArxStructureValidationResponse | null;
   task: TaskResource | null;
 }
 
