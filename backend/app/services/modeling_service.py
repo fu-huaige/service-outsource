@@ -311,10 +311,13 @@ async def fit_arx_on_version(
     artifact_uri = _persist_artifact(
         artifact_root, model_id=model_id, series=series, payload=resolved, result=result
     )
-    await _persist_run(session, model_id=model_id, series=series, payload=resolved, result=result)
+    processing_run_id = await _persist_run(
+        session, model_id=model_id, series=series, payload=resolved, result=result
+    )
 
     return ArxFitData(
         model_id=model_id,
+        processing_run_id=processing_run_id,
         task=completed_task(
             stage="fit_arx",
             message="ARX 辨识、自由仿真评价与先验校验已完成。",
@@ -632,11 +635,12 @@ async def _persist_run(
     series: VersionSeries,
     payload: ArxFitRequest,
     result: ArxCoreResult,
-) -> None:
+) -> UUID:
     now = datetime.now(UTC)
+    processing_run_id = uuid4()
     session.add(
         ProcessingRun(
-            id=uuid4(),
+            id=processing_run_id,
             dataset_id=series.dataset_id if series.origin == "dataset" else None,
             source_version_id=series.version_id if series.origin == "dataset" else None,
             run_type="modeling.arx",
@@ -673,6 +677,7 @@ async def _persist_run(
         )
     )
     await session.commit()
+    return processing_run_id
 
 
 def _finite(value: float | None) -> float | None:

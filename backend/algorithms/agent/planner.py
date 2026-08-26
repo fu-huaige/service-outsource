@@ -42,7 +42,13 @@ TOOL_WHITELIST: tuple[str, ...] = (
 
 # Tools whose effect is expensive or destructive enough to need a human decision first.
 CONFIRMATION_REQUIRED: frozenset[str] = frozenset(
-    {"apply_lag_compensation", "select_variables", "optimize_pipeline", "export_dataset"}
+    {
+        "apply_lag_compensation",
+        "select_variables",
+        "fit_arx",
+        "optimize_pipeline",
+        "export_dataset",
+    }
 )
 
 # Ordering constraints. A tool may only run after everything it depends on.

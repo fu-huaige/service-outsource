@@ -158,6 +158,28 @@ class FeatureSelectionValidationData(Schema):
     overall_status: Literal["VALID", "INVALID"]
     issues: list[str] = Field(default_factory=list)
 
+class ArxStructureManualOverrides(Schema):
+    na: Any | None = None
+    nb: dict[str, Any] = Field(default_factory=dict)
+
+
+class ArxStructureValidationRequest(Schema):
+    execution_id: UUID
+    step_id: str = Field(min_length=1)
+    manual_overrides: ArxStructureManualOverrides = Field(
+        default_factory=ArxStructureManualOverrides
+    )
+
+
+class ArxStructureValidationData(Schema):
+    recommended_structure: dict[str, Any]
+    manual_overrides: dict[str, Any]
+    final_structure: dict[str, Any]
+    structure_sources: dict[str, Literal["structure_recommendation", "manual_override"]]
+    selection_evidence: dict[str, Any]
+    overall_status: Literal["VALID", "INVALID"]
+    issues: list[str] = Field(default_factory=list)
+
 class CopilotConfirmRequest(Schema):
     copilot_run_id: UUID
     confirmation_id: str = Field(min_length=1)
@@ -168,6 +190,9 @@ class CopilotConfirmRequest(Schema):
     manual_overrides: list[LagOverrideEntry] = Field(default_factory=list)
     warning_acknowledged: bool = False
     feature_drop_columns: list[str] | None = None
+    arx_structure_overrides: ArxStructureManualOverrides = Field(
+        default_factory=ArxStructureManualOverrides
+    )
     comment: str | None = Field(default=None, max_length=2_000)
 
 
@@ -187,4 +212,5 @@ class CopilotConfirmData(Schema):
     result_payload: dict[str, Any] = Field(default_factory=dict)
     lag_override_validation: LagOverrideValidationData | None = None
     feature_selection_validation: FeatureSelectionValidationData | None = None
+    arx_structure_validation: ArxStructureValidationData | None = None
     task: TaskResource | None = None

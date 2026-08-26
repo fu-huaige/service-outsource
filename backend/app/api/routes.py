@@ -13,6 +13,8 @@ from app.core.errors import AppError
 from app.schemas.benchmark import BenchmarkData, BenchmarkRequest
 from app.schemas.common import ErrorEnvelope, SuccessEnvelope
 from app.schemas.copilot import (
+    ArxStructureValidationData,
+    ArxStructureValidationRequest,
     CopilotChatData,
     CopilotChatRequest,
     CopilotConfirmData,
@@ -72,6 +74,12 @@ from app.schemas.system import (
     SystemInfoData,
 )
 from app.schemas.tasks import CancelTaskData
+from app.services.agent_arx_modeling_service import (
+    ArxStructureError,
+    approve_and_execute_arx_step,
+    is_arx_fit_step,
+    validate_arx_structure,
+)
 from app.services.agent_execution_service import (
     ExecutionStateError,
     approve_step,
@@ -853,6 +861,42 @@ async def copilot_chat(
 
 
 @router.post(
+    "/copilot/arx-structure/validate",
+    tags=["Copilot"],
+    summary="Validate controlled ARX na/nb overrides without persisting a model",
+    response_model=SuccessEnvelope[ArxStructureValidationData],
+    responses={**ERROR_RESPONSES, 409: {"model": ErrorEnvelope}},
+)
+async def validate_copilot_arx_structure(
+    request: Request,
+    payload: ArxStructureValidationRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessEnvelope[ArxStructureValidationData]:
+    try:
+        data = await validate_arx_structure(
+            session,
+            execution_id=payload.execution_id,
+            step_id=payload.step_id,
+            manual_overrides=payload.manual_overrides,
+            artifact_root=get_settings().artifact_root,
+        )
+    except ExecutionStateError as error:
+        raise AppError(
+            "AGENT_EXECUTION_STATE_CONFLICT",
+            "当前执行步骤不可校验 ARX 结构。",
+            status_code=status.HTTP_409_CONFLICT,
+            details={"reason": str(error)},
+        ) from error
+    except ArxStructureError as error:
+        raise AppError(
+            error.code,
+            error.message,
+            status_code=error.status_code,
+            details=error.details,
+        ) from error
+    return success(request, data)
+
+@router.post(
     "/copilot/feature-selection/validate",
     tags=["Copilot"],
     summary="Validate a controlled Feature Selection without executing a tool",
@@ -943,6 +987,7 @@ async def copilot_confirm(
 
     validation: LagOverrideValidationData | None = None
     feature_validation: FeatureSelectionValidationData | None = None
+    arx_validation: ArxStructureValidationData | None = None
     try:
         if not payload.approved:
             execution = await reject_step(
@@ -972,6 +1017,18 @@ async def copilot_confirm(
             )
             execution = feature_outcome.execution
             feature_validation = feature_outcome.validation
+        elif await is_arx_fit_step(
+            session, execution_id=payload.execution_id, step_id=payload.step_id
+        ):
+            arx_outcome = await approve_and_execute_arx_step(
+                session,
+                execution_id=payload.execution_id,
+                step_id=payload.step_id,
+                manual_overrides=payload.arx_structure_overrides,
+                artifact_root=get_settings().artifact_root,
+            )
+            execution = arx_outcome.execution
+            arx_validation = arx_outcome.validation
         else:
             execution = await approve_step(
                 session, execution_id=payload.execution_id, step_id=payload.step_id
@@ -983,7 +1040,7 @@ async def copilot_confirm(
             status_code=status.HTTP_409_CONFLICT,
             details={"reason": str(error)},
         ) from error
-    except (LagOverrideError, FeatureSelectionError) as error:
+    except (LagOverrideError, FeatureSelectionError, ArxStructureError) as error:
         raise AppError(
             error.code,
             error.message,
@@ -1017,6 +1074,7 @@ async def copilot_confirm(
             result_payload=step.result_payload,
             lag_override_validation=validation,
             feature_selection_validation=feature_validation,
+            arx_structure_validation=arx_validation,
         ),
     )
 @router.post(

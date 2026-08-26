@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_execution import AgentExecutionSession, AgentStepRun
+from app.schemas.modeling import ArxFitRequest
 from app.schemas.preprocessing import (
     CleanRequest,
     CollinearityRequest,
@@ -19,6 +20,7 @@ from app.schemas.preprocessing import (
     LagCompensationRequest,
 )
 from app.services.cleaning_service import clean_dataset_version
+from app.services.modeling_service import fit_arx_on_version
 from app.services.preprocessing_analysis_service import (
     run_collinearity_analysis,
     run_delay_estimation,
@@ -56,6 +58,11 @@ _LAG_PARAMETER_NAMES = frozenset({"lag_map", "user_confirmed", "recommendation_s
 _COLLINEARITY_PARAMETER_NAMES = frozenset({"correlation_threshold", "vif_threshold"})
 _FEATURE_PARAMETER_NAMES = frozenset(
     {"drop_columns", "user_confirmed", "recommendation_source", "evidence"}
+)
+
+
+_ARX_PARAMETER_NAMES = frozenset(
+    {"input_columns", "output_column", "na", "nb", "delays", "estimator", "ridge_alpha"}
 )
 
 
@@ -99,6 +106,13 @@ async def execute_agent_tool(
         )
     if step.tool_name == "select_variables":
         return await _apply_feature_selection(
+            session,
+            execution=execution,
+            parameters=parameters,
+            artifact_root=artifact_root,
+        )
+    if step.tool_name == "fit_arx":
+        return await _fit_arx(
             session,
             execution=execution,
             parameters=parameters,
@@ -302,6 +316,43 @@ async def _apply_feature_selection(
         summary=f"正式变量筛选服务已生成不可变版本 {data.result_version_id}。",
         source_version_id=data.source_version_id,
         result_version_id=data.result_version_id,
+        processing_run_ids=[str(data.processing_run_id)],
+        result_payload=data.model_dump(mode="json"),
+    )
+
+async def _fit_arx(
+    session: AsyncSession,
+    *,
+    execution: AgentExecutionSession,
+    parameters: dict[str, Any],
+    artifact_root: Path,
+) -> AgentToolResult:
+    """Fit the validated structure once through the formal Modeling Service."""
+
+    try:
+        payload = ArxFitRequest(
+            version_id=execution.current_version_id,
+            dataset_id=execution.dataset_id,
+            evaluate_test=False,
+            **_validated_parameters(
+                parameters,
+                allowed=_ARX_PARAMETER_NAMES,
+                tool_name="fit_arx",
+            ),
+        )
+    except ValidationError as error:
+        raise AgentToolAdapterError("INVALID_AGENT_TOOL_PARAMETERS", str(error)) from error
+
+    data = await fit_arx_on_version(session, payload=payload, artifact_root=artifact_root)
+    if data.version_id is None:
+        raise AgentToolAdapterError(
+            "ARX_MODEL_SOURCE_VERSION_MISSING",
+            "正式 ARX Service 未返回模型来源版本。",
+        )
+    return AgentToolResult(
+        summary=f"正式 ARX Service 已生成模型 {data.model_id}。",
+        source_version_id=data.version_id,
+        result_version_id=None,
         processing_run_ids=[str(data.processing_run_id)],
         result_payload=data.model_dump(mode="json"),
     )

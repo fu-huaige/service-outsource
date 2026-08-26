@@ -44,6 +44,7 @@ from app.schemas.copilot import (
 from app.schemas.modeling import ArxFitRequest
 from app.schemas.optimization import OptimizationStartRequest
 from app.schemas.preprocessing import SegmentRequest
+from app.services.agent_arx_modeling_service import prepare_arx_confirmation
 from app.services.agent_execution_service import (
     create_execution,
     mark_step_failed,
@@ -257,9 +258,10 @@ _FORMAL_ADAPTER_TOOLS = frozenset(
         "apply_lag_compensation",
         "analyze_collinearity",
         "select_variables",
+        "fit_arx",
     }
 )
-_DEFERRED_TOOLS = frozenset({"generate_report", "export_dataset"})
+_DEFERRED_TOOLS = frozenset({"evaluate_model", "generate_report", "export_dataset"})
 
 
 def _uses_formal_tool_adapter(steps: list[PlannedStep]) -> bool:
@@ -336,6 +338,14 @@ async def _execute_with_formal_tools(
             confirmation_input = await prepare_feature_confirmation(
                 current, step_id=step.step_id
             )
+        elif step.tool == "fit_arx":
+            confirmation_input = await prepare_arx_confirmation(
+                session,
+                current,
+                step_id=step.step_id,
+                artifact_root=artifact_root,
+            )
+
         current = await start_step(
             session,
             execution_id=current.id,

@@ -140,6 +140,7 @@ class ArxResidualDiagnostics(Schema):
 
 class ArxFitData(Schema):
     model_id: UUID
+    processing_run_id: UUID
     task: TaskResource
     estimator: Literal["ols", "ridge"]
     dataset_id: UUID | None = None
