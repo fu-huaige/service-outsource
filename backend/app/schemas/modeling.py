@@ -89,6 +89,21 @@ class PredictionMetrics(Schema):
     nrmse: float | None = None
 
 
+class ArxTestEvaluationData(Schema):
+    """Held-out Test metrics for one immutable, already-trained ARX model."""
+
+    one_step: PredictionMetrics
+    free_run: PredictionMetrics
+
+
+class ArxSavedModelEvaluationData(Schema):
+    """Final Test evaluation of a saved ARX model without parameter estimation."""
+
+    model_id: UUID
+    source_version_id: UUID
+    test: ArxTestEvaluationData
+    processing_run_id: UUID
+
 class ArxMetrics(Schema):
     """Compatibility metrics plus prediction-mode-explicit partition metrics.
 
