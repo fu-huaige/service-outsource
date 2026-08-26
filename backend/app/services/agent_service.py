@@ -50,6 +50,8 @@ from app.services.agent_execution_service import (
     mark_step_succeeded,
     start_step,
 )
+from app.services.agent_tool_adapter import AgentToolAdapterError, execute_agent_tool
+from app.services.cleaning_service import CleaningDomainError
 from app.services.contract_stubs import completed_task
 from app.services.modeling_service import ModelingDomainError, fit_arx_core
 from app.services.optimization_service import run_study
@@ -169,12 +171,22 @@ async def run_copilot(
             plan=execution_plan,
             compliance_proof=proof,
         )
-        executions = _execute(series, steps, intent.parameters)
-        persistent_execution = await _sync_execution_state(
-            session,
-            execution=persistent_execution,
-            executions=executions,
-        )
+        if _uses_formal_tool_adapter(steps):
+            persistent_execution, executions = await _execute_with_formal_tools(
+                session,
+                execution=persistent_execution,
+                series=series,
+                steps=steps,
+                hints=intent.parameters,
+                artifact_root=artifact_root,
+            )
+        else:
+            executions = _execute(series, steps, intent.parameters)
+            persistent_execution = await _sync_execution_state(
+                session,
+                execution=persistent_execution,
+                executions=executions,
+            )
 
     conclusion = _conclusion(proof, executions, intent.goals)
     await _persist(
@@ -235,6 +247,171 @@ async def run_copilot(
         llm_model=outcome.model,
         llm_fallback_reason=outcome.fallback_reason,
     )
+
+_FORMAL_ADAPTER_TOOLS = frozenset({"clean_data", "estimate_delays"})
+_DEFERRED_TOOLS = frozenset({"generate_report", "export_dataset"})
+
+
+def _uses_formal_tool_adapter(steps: list[PlannedStep]) -> bool:
+    return any(step.tool in _FORMAL_ADAPTER_TOOLS for step in steps)
+
+
+async def _execute_with_formal_tools(
+    session: AsyncSession,
+    *,
+    execution: AgentExecutionSession,
+    series: VersionSeries,
+    steps: list[PlannedStep],
+    hints: dict[str, Any],
+    artifact_root: Path,
+) -> tuple[AgentExecutionSession, list[StepExecution]]:
+    """Run a mixed plan once while formal tools resolve the latest persisted Version."""
+
+    try:
+        input_columns, output_column = series.resolve_columns(
+            input_columns=None, output_column=None
+        )
+    except VersionDataError as error:
+        first = steps[0] if steps else None
+        if first is None:
+            return execution, []
+        current = await start_step(session, execution_id=execution.id, step_id=first.step_id)
+        current = await mark_step_failed(
+            session,
+            execution_id=current.id,
+            step_id=first.step_id,
+            error_code=error.code,
+            error_message=error.message,
+        )
+        return current, [
+            StepExecution(
+                step_id=first.step_id,
+                tool=first.tool,
+                status="failed",
+                parameters=dict(first.parameters),
+                summary=error.message,
+                error_code=error.code,
+            )
+        ]
+
+    context: dict[str, Any] = {
+        "input_columns": input_columns,
+        "output_column": output_column,
+        "selected_indices": [],
+        "delays": {column: 0 for column in input_columns},
+        "na": 2,
+        "nb": 2,
+    }
+    current = execution
+    executions: list[StepExecution] = []
+
+    for step in steps:
+        if step.tool in _DEFERRED_TOOLS:
+            executions.append(
+                StepExecution(
+                    step_id=step.step_id,
+                    tool=step.tool,
+                    status="pending",
+                    parameters=dict(step.parameters),
+                    summary="该步骤将在后续专用工作流中执行。",
+                    result={"deferred": True},
+                )
+            )
+            break
+
+        current = await start_step(session, execution_id=current.id, step_id=step.step_id)
+        persisted_step = next(item for item in current.step_runs if item.step_id == step.step_id)
+        if step.requires_confirmation:
+            executions.append(
+                StepExecution(
+                    step_id=step.step_id,
+                    tool=step.tool,
+                    status="waiting_confirmation",
+                    parameters=dict(step.parameters),
+                    summary="高影响操作，等待人工确认后执行。",
+                )
+            )
+            break
+
+        started = time.perf_counter()
+        try:
+            if step.tool in _FORMAL_ADAPTER_TOOLS:
+                tool_result = await execute_agent_tool(
+                    session,
+                    execution=current,
+                    step=persisted_step,
+                    parameters=dict(step.parameters),
+                    artifact_root=artifact_root,
+                )
+                result = dict(tool_result.result_payload)
+                summary = tool_result.summary
+                current = await mark_step_succeeded(
+                    session,
+                    execution_id=current.id,
+                    step_id=step.step_id,
+                    result_payload=result,
+                    source_version_id=tool_result.source_version_id,
+                    result_version_id=tool_result.result_version_id,
+                    processing_run_ids=tool_result.processing_run_ids,
+                )
+            else:
+                summary, result = _dispatch(step, series, context, hints)
+                if result.get("deferred"):
+                    raise AgentDomainError(
+                        "UNEXPECTED_DEFERRED_AGENT_TOOL",
+                        f"持久 Agent 执行器遇到未声明的 deferred 工具：{step.tool}",
+                        status_code=500,
+                    )
+                current = await mark_step_succeeded(
+                    session,
+                    execution_id=current.id,
+                    step_id=step.step_id,
+                    result_payload={
+                        "summary": summary,
+                        "result": dict(result),
+                    },
+                )
+            executions.append(
+                StepExecution(
+                    step_id=step.step_id,
+                    tool=step.tool,
+                    status="completed",
+                    parameters=dict(step.parameters),
+                    summary=summary,
+                    result=result,
+                    duration_ms=(time.perf_counter() - started) * 1000.0,
+                )
+            )
+        except (
+            AgentToolAdapterError,
+            CleaningDomainError,
+            SegmentDomainError,
+            ModelingDomainError,
+            AnalysisDomainError,
+            VersionDataError,
+        ) as error:
+            error_code = getattr(error, "code", "AGENT_STEP_FAILED")
+            error_message = getattr(error, "message", str(error))
+            current = await mark_step_failed(
+                session,
+                execution_id=current.id,
+                step_id=step.step_id,
+                error_code=error_code,
+                error_message=error_message,
+            )
+            executions.append(
+                StepExecution(
+                    step_id=step.step_id,
+                    tool=step.tool,
+                    status="failed",
+                    parameters=dict(step.parameters),
+                    summary=error_message,
+                    duration_ms=(time.perf_counter() - started) * 1000.0,
+                    error_code=error_code,
+                )
+            )
+            break
+    return current, executions
 
 def _execute(
     series: VersionSeries,

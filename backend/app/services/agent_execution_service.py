@@ -134,6 +134,9 @@ async def mark_step_succeeded(
     execution_id: UUID,
     step_id: str,
     result_payload: dict[str, Any] | None = None,
+    source_version_id: UUID | None = None,
+    result_version_id: UUID | None = None,
+    processing_run_ids: list[str] | None = None,
 ) -> AgentExecutionSession:
     """Mark a running step successful and complete the workflow only at its true terminal state."""
 
@@ -146,6 +149,13 @@ async def mark_step_succeeded(
     step.status = "SUCCEEDED"
     if result_payload is not None:
         step.result_payload = dict(result_payload)
+    if source_version_id is not None:
+        step.source_version_id = source_version_id
+    if result_version_id is not None:
+        step.result_version_id = result_version_id
+        execution.current_version_id = result_version_id
+    if processing_run_ids is not None:
+        step.processing_run_ids = list(processing_run_ids)
     step.finished_at = now
     execution.current_step_id = None
     execution.pending_confirmation_step_id = None
