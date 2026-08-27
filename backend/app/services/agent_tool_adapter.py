@@ -20,7 +20,7 @@ from app.schemas.preprocessing import (
     LagCompensationRequest,
 )
 from app.services.cleaning_service import clean_dataset_version
-from app.services.modeling_service import fit_arx_on_version
+from app.services.modeling_service import evaluate_saved_arx_model, fit_arx_on_version
 from app.services.preprocessing_analysis_service import (
     run_collinearity_analysis,
     run_delay_estimation,
@@ -115,6 +115,14 @@ async def execute_agent_tool(
         return await _fit_arx(
             session,
             execution=execution,
+            parameters=parameters,
+            artifact_root=artifact_root,
+        )
+    if step.tool_name == "evaluate_model":
+        return await _evaluate_model(
+            session,
+            execution=execution,
+            step=step,
             parameters=parameters,
             artifact_root=artifact_root,
         )
@@ -316,6 +324,80 @@ async def _apply_feature_selection(
         summary=f"正式变量筛选服务已生成不可变版本 {data.result_version_id}。",
         source_version_id=data.source_version_id,
         result_version_id=data.result_version_id,
+        processing_run_ids=[str(data.processing_run_id)],
+        result_payload=data.model_dump(mode="json"),
+    )
+
+def _fit_arx_predecessor(
+    execution: AgentExecutionSession, step: AgentStepRun
+) -> tuple[UUID, UUID]:
+    """Resolve the one declared, successful fit_arx predecessor for evaluation."""
+
+    dependency_ids = step.input_payload.get("depends_on")
+    if not isinstance(dependency_ids, list):
+        raise AgentToolAdapterError(
+            "EVALUATION_FIT_DEPENDENCY_REQUIRED",
+            "模型评价步骤缺少已声明的 ARX 拟合依赖。",
+        )
+    candidates = [
+        item
+        for item in execution.step_runs
+        if item.step_id in dependency_ids and item.tool_name == "fit_arx"
+    ]
+    if len(candidates) != 1:
+        raise AgentToolAdapterError(
+            "EVALUATION_FIT_DEPENDENCY_REQUIRED",
+            "模型评价必须且只能依赖当前工作流中的一个 ARX 拟合步骤。",
+        )
+    predecessor = candidates[0]
+    if predecessor.status != "SUCCEEDED":
+        raise AgentToolAdapterError(
+            "EVALUATION_FIT_NOT_SUCCEEDED",
+            "模型评价依赖的 ARX 拟合步骤尚未成功完成。",
+        )
+    if predecessor.source_version_id is None:
+        raise AgentToolAdapterError(
+            "EVALUATION_FIT_SOURCE_VERSION_MISSING",
+            "已完成的 ARX 拟合步骤缺少来源数据版本。",
+        )
+    raw_model_id = predecessor.result_payload.get("model_id")
+    if not isinstance(raw_model_id, str):
+        raise AgentToolAdapterError(
+            "EVALUATION_FIT_MODEL_ID_MISSING",
+            "已完成的 ARX 拟合步骤缺少真实 model_id。",
+        )
+    try:
+        model_id = UUID(raw_model_id)
+    except ValueError as error:
+        raise AgentToolAdapterError(
+            "EVALUATION_FIT_MODEL_ID_INVALID",
+            "已完成的 ARX 拟合步骤含有无效 model_id。",
+        ) from error
+    return model_id, predecessor.source_version_id
+
+
+async def _evaluate_model(
+    session: AsyncSession,
+    *,
+    execution: AgentExecutionSession,
+    step: AgentStepRun,
+    parameters: dict[str, Any],
+    artifact_root: Path,
+) -> AgentToolResult:
+    """Evaluate exactly the saved model produced by this step's fit_arx dependency."""
+
+    _validated_parameters(parameters, allowed=frozenset(), tool_name="evaluate_model")
+    model_id, source_version_id = _fit_arx_predecessor(execution, step)
+    data = await evaluate_saved_arx_model(
+        session,
+        model_id=model_id,
+        artifact_root=artifact_root,
+        expected_source_version_id=source_version_id,
+    )
+    return AgentToolResult(
+        summary=f"已完成模型 {data.model_id} 的 held-out Test 评价。",
+        source_version_id=data.source_version_id,
+        result_version_id=None,
         processing_run_ids=[str(data.processing_run_id)],
         result_payload=data.model_dump(mode="json"),
     )

@@ -259,9 +259,10 @@ _FORMAL_ADAPTER_TOOLS = frozenset(
         "analyze_collinearity",
         "select_variables",
         "fit_arx",
+        "evaluate_model",
     }
 )
-_DEFERRED_TOOLS = frozenset({"evaluate_model", "generate_report", "export_dataset"})
+_DEFERRED_TOOLS = frozenset({"generate_report", "export_dataset"})
 
 
 def _uses_formal_tool_adapter(steps: list[PlannedStep]) -> bool:

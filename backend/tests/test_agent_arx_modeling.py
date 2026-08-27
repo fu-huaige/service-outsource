@@ -19,6 +19,15 @@ from app.main import create_app
 from app.models import Base, DatasetVersion, ProcessingRun
 from app.models.agent_execution import AgentExecutionSession
 from app.services import agent_service
+from app.services.agent_execution_service import (
+    ExecutionStateError,
+    approve_step,
+    mark_step_failed,
+    mark_step_succeeded,
+    start_step,
+)
+from app.services.agent_tool_adapter import AgentToolAdapterError, execute_agent_tool
+from app.services.modeling_service import ModelingDomainError
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -260,11 +269,86 @@ def _confirm(
     )
 
 
+async def _execute_evaluation_step(
+    harness: ArxHarness, execution_id: UUID
+) -> tuple[AgentExecutionSession, Exception | None]:
+    async with harness.session_factory() as session:
+        execution = await session.scalar(
+            select(AgentExecutionSession)
+            .where(AgentExecutionSession.id == execution_id)
+            .options(selectinload(AgentExecutionSession.step_runs))
+        )
+        assert execution is not None
+        evaluation = next(step for step in execution.step_runs if step.tool_name == "evaluate_model")
+        execution = await start_step(session, execution_id=execution.id, step_id=evaluation.step_id)
+        evaluation = next(step for step in execution.step_runs if step.step_id == evaluation.step_id)
+        try:
+            result = await execute_agent_tool(
+                session,
+                execution=execution,
+                step=evaluation,
+                parameters=dict(evaluation.input_payload["parameters"]),
+                artifact_root=harness.artifact_root,
+            )
+        except Exception as error:
+            failed = await mark_step_failed(
+                session,
+                execution_id=execution.id,
+                step_id=evaluation.step_id,
+                error_code=getattr(error, "code", "AGENT_STEP_FAILED"),
+                error_message=getattr(error, "message", str(error)),
+            )
+            return failed, error
+        succeeded = await mark_step_succeeded(
+            session,
+            execution_id=execution.id,
+            step_id=evaluation.step_id,
+            result_payload=result.result_payload,
+            source_version_id=result.source_version_id,
+            result_version_id=result.result_version_id,
+            processing_run_ids=result.processing_run_ids,
+        )
+        return succeeded, None
+
+
+async def _evaluation_run_count(harness: ArxHarness, dataset_id: UUID) -> int:
+    async with harness.session_factory() as session:
+        runs = list(
+            (
+                await session.scalars(
+                    select(ProcessingRun).where(
+                        ProcessingRun.dataset_id == dataset_id,
+                        ProcessingRun.run_type == "modeling.arx_evaluation",
+                    )
+                )
+            ).all()
+        )
+        return len(runs)
+
+async def _dataset_version_count(harness: ArxHarness, dataset_id: UUID) -> int:
+    async with harness.session_factory() as session:
+        versions = list(
+            (
+                await session.scalars(
+                    select(DatasetVersion).where(DatasetVersion.dataset_id == dataset_id)
+                )
+            ).all()
+        )
+        return len(versions)
+
+async def _load_processing_run(harness: ArxHarness, run_id: UUID) -> ProcessingRun:
+    async with harness.session_factory() as session:
+        run = await session.get(ProcessingRun, run_id)
+        assert run is not None
+        return run
+
 def test_planner_requires_confirmation_for_arx_modeling() -> None:
     steps, _, _ = RuleBasedPlanner().plan(parse_intent("进行 ARX 建模"))
     by_tool = {step.tool: step for step in steps}
     assert by_tool["fit_arx"].requires_confirmation is True
     assert by_tool["evaluate_model"].depends_on == (by_tool["fit_arx"].step_id,)
+    assert "evaluate_model" in agent_service._FORMAL_ADAPTER_TOOLS
+    assert "evaluate_model" not in agent_service._DEFERRED_TOOLS
 
 
 def test_recommendation_is_validation_only_and_derived_from_lagged_v3(
@@ -435,3 +519,147 @@ def test_reject_does_not_train_arx(arx_harness: ArxHarness) -> None:
     assert rejected_step.status == "CANCELLED"
     assert rejected_step.confirmation_status == "REJECTED"
     assert asyncio.run(_model_counts(arx_harness, execution.dataset_id)) == before
+
+def test_agent_evaluation_consumes_confirmed_model_without_refit(
+    arx_harness: ArxHarness,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execution = _chat_to_arx_confirmation(arx_harness)
+    fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
+    confirmed = _confirm(arx_harness, execution_id=execution.id, step_id=fit.step_id)
+    assert confirmed.status_code == 200, confirmed.text
+    source_version_id = execution.current_version_id
+    before_bytes = asyncio.run(_version_bytes(arx_harness, source_version_id))
+    before_runs = asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id))
+    before_versions = asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id))
+
+    def fail_if_refit(*args: object, **kwargs: object) -> None:
+        raise AssertionError("evaluate_model must not enter an ARX fitting path")
+
+    monkeypatch.setattr("app.services.agent_tool_adapter.fit_arx_on_version", fail_if_refit)
+    monkeypatch.setattr("app.services.modeling_service.fit_arx_core", fail_if_refit)
+    persisted, error = asyncio.run(_execute_evaluation_step(arx_harness, execution.id))
+
+    assert error is None
+    fitted = next(step for step in persisted.step_runs if step.tool_name == "fit_arx")
+    evaluated = next(step for step in persisted.step_runs if step.tool_name == "evaluate_model")
+    assert evaluated.status == "SUCCEEDED"
+    assert evaluated.source_version_id == fitted.source_version_id == source_version_id
+    assert evaluated.result_version_id is None
+    assert len(evaluated.processing_run_ids) == 1
+    processing_run_id = UUID(evaluated.processing_run_ids[0])
+    processing_run = asyncio.run(_load_processing_run(arx_harness, processing_run_id))
+    assert processing_run.run_type == "modeling.arx_evaluation"
+    assert processing_run.status == "succeeded"
+    assert evaluated.result_payload["model_id"] == fitted.result_payload["model_id"]
+    assert evaluated.result_payload["processing_run_id"] == str(processing_run_id)
+    assert evaluated.result_payload["source_version_id"] == str(source_version_id)
+    assert evaluated.result_payload["test"]["one_step"]["rmse"] is not None
+    assert evaluated.result_payload["test"]["free_run"]["rmse"] is not None
+    assert persisted.current_version_id == source_version_id
+    assert asyncio.run(_version_bytes(arx_harness, source_version_id)) == before_bytes
+    assert asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id)) == before_runs + 1
+    assert asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id)) == before_versions
+
+    async def replay() -> None:
+        async with arx_harness.session_factory() as session:
+            with pytest.raises(ExecutionStateError):
+                await start_step(session, execution_id=execution.id, step_id=evaluated.step_id)
+
+    asyncio.run(replay())
+    assert asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id)) == before_runs + 1
+    assert asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id)) == before_versions
+
+
+def test_agent_evaluation_fails_when_fit_model_id_is_missing(arx_harness: ArxHarness) -> None:
+    execution = _chat_to_arx_confirmation(arx_harness)
+    fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
+    confirmed = _confirm(arx_harness, execution_id=execution.id, step_id=fit.step_id)
+    assert confirmed.status_code == 200, confirmed.text
+
+    async def remove_model_id() -> None:
+        async with arx_harness.session_factory() as session:
+            current = await session.scalar(
+                select(AgentExecutionSession)
+                .where(AgentExecutionSession.id == execution.id)
+                .options(selectinload(AgentExecutionSession.step_runs))
+            )
+            assert current is not None
+            fitted = next(step for step in current.step_runs if step.tool_name == "fit_arx")
+            fitted.result_payload = {}
+            await session.commit()
+
+    asyncio.run(remove_model_id())
+    persisted, error = asyncio.run(_execute_evaluation_step(arx_harness, execution.id))
+
+    assert isinstance(error, AgentToolAdapterError)
+    assert error.code == "EVALUATION_FIT_MODEL_ID_MISSING"
+    evaluated = next(step for step in persisted.step_runs if step.tool_name == "evaluate_model")
+    assert evaluated.status == "FAILED"
+    assert evaluated.processing_run_ids == []
+
+def test_agent_evaluation_blocks_downstream_when_fit_fails_formally(
+    arx_harness: ArxHarness,
+) -> None:
+    execution = _chat_to_arx_confirmation(arx_harness)
+    fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
+    evaluation = next(step for step in execution.step_runs if step.tool_name == "evaluate_model")
+    before_runs = asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id))
+
+    async def fail_fit_through_lifecycle() -> AgentExecutionSession:
+        async with arx_harness.session_factory() as session:
+            await approve_step(session, execution_id=execution.id, step_id=fit.step_id)
+            return await mark_step_failed(
+                session,
+                execution_id=execution.id,
+                step_id=fit.step_id,
+                error_code="FIT_TEST_FAILURE",
+                error_message="deterministic formal fit failure",
+            )
+
+    failed = asyncio.run(fail_fit_through_lifecycle())
+    fitted = next(step for step in failed.step_runs if step.tool_name == "fit_arx")
+    assert failed.workflow_status == "FAILED"
+    assert fitted.status == "FAILED"
+    assert evaluation.status == "PENDING"
+
+    async def start_downstream() -> None:
+        async with arx_harness.session_factory() as session:
+            with pytest.raises(ExecutionStateError, match="execution_status=FAILED"):
+                await start_step(session, execution_id=execution.id, step_id=evaluation.step_id)
+
+    asyncio.run(start_downstream())
+    persisted = asyncio.run(_load_execution(arx_harness, execution.id))
+    evaluated = next(step for step in persisted.step_runs if step.tool_name == "evaluate_model")
+    assert evaluated.status == "PENDING"
+    assert evaluated.processing_run_ids == []
+    assert asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id)) == before_runs
+
+def test_agent_evaluation_fails_on_saved_model_source_version_mismatch(
+    arx_harness: ArxHarness,
+) -> None:
+    execution = _chat_to_arx_confirmation(arx_harness)
+    fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
+    confirmed = _confirm(arx_harness, execution_id=execution.id, step_id=fit.step_id)
+    assert confirmed.status_code == 200, confirmed.text
+
+    async def change_source_version() -> None:
+        async with arx_harness.session_factory() as session:
+            current = await session.scalar(
+                select(AgentExecutionSession)
+                .where(AgentExecutionSession.id == execution.id)
+                .options(selectinload(AgentExecutionSession.step_runs))
+            )
+            assert current is not None
+            fitted = next(step for step in current.step_runs if step.tool_name == "fit_arx")
+            fitted.source_version_id = UUID("00000000-0000-4000-8000-000000000001")
+            await session.commit()
+
+    asyncio.run(change_source_version())
+    persisted, error = asyncio.run(_execute_evaluation_step(arx_harness, execution.id))
+
+    assert isinstance(error, ModelingDomainError)
+    assert error.code == "MODEL_SOURCE_VERSION_MISMATCH"
+    evaluated = next(step for step in persisted.step_runs if step.tool_name == "evaluate_model")
+    assert evaluated.status == "FAILED"
+    assert evaluated.processing_run_ids == []
