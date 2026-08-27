@@ -214,3 +214,18 @@ class CopilotConfirmData(Schema):
     feature_selection_validation: FeatureSelectionValidationData | None = None
     arx_structure_validation: ArxStructureValidationData | None = None
     task: TaskResource | None = None
+
+class CopilotEvaluateModelExecuteRequest(Schema):
+    execution_id: UUID
+
+
+class CopilotEvaluateModelExecuteData(Schema):
+    execution_id: UUID
+    workflow_status: str
+    current_version_id: UUID | None = None
+    step_id: str
+    step_status: str
+    result_payload: dict[str, Any] = Field(default_factory=dict)
+    error_code: str | None = None
+    error_message: str | None = None
+    processing_run_ids: list[str] = Field(default_factory=list)

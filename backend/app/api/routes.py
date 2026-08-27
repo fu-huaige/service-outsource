@@ -19,6 +19,8 @@ from app.schemas.copilot import (
     CopilotChatRequest,
     CopilotConfirmData,
     CopilotConfirmRequest,
+    CopilotEvaluateModelExecuteData,
+    CopilotEvaluateModelExecuteRequest,
     FeatureSelectionValidationData,
     FeatureSelectionValidationRequest,
     LagOverrideValidationData,
@@ -97,7 +99,11 @@ from app.services.agent_lag_apply_service import (
     is_lag_apply_step,
     validate_lag_overrides,
 )
-from app.services.agent_service import AgentDomainError, run_copilot
+from app.services.agent_service import (
+    AgentDomainError,
+    execute_pending_evaluation_step,
+    run_copilot,
+)
 from app.services.agent_tool_adapter import AgentToolAdapterError
 from app.services.benchmark_service import BenchmarkDomainError, run_benchmark
 from app.services.cleaning_service import CleaningDomainError, clean_dataset_version
@@ -1077,6 +1083,41 @@ async def copilot_confirm(
             arx_structure_validation=arx_validation,
         ),
     )
+@router.post(
+    "/copilot/evaluate-model/execute",
+    tags=["Copilot"],
+    summary="Execute the pending saved-model evaluation step",
+    response_model=SuccessEnvelope[CopilotEvaluateModelExecuteData],
+    responses={
+        **ERROR_RESPONSES,
+        409: {"model": ErrorEnvelope, "description": "执行状态不允许模型评价。"},
+    },
+)
+async def execute_copilot_evaluate_model(
+    request: Request,
+    payload: CopilotEvaluateModelExecuteRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessEnvelope[CopilotEvaluateModelExecuteData]:
+    try:
+        execution = await execute_pending_evaluation_step(session, execution_id=payload.execution_id, artifact_root=get_settings().artifact_root)
+    except ExecutionStateError as error:
+        raise AppError("AGENT_EXECUTION_STATE_CONFLICT", "当前执行状态不允许模型评价。", status_code=status.HTTP_409_CONFLICT, details={"reason": str(error)}) from error
+    except AgentDomainError as error:
+        raise AppError(error.code, error.message, status_code=error.status_code, details=error.details) from error
+
+    step = next(item for item in execution.step_runs if item.tool_name == "evaluate_model")
+    return success(request, CopilotEvaluateModelExecuteData(
+        execution_id=execution.id,
+        workflow_status=execution.workflow_status,
+        current_version_id=execution.current_version_id,
+        step_id=step.step_id,
+        step_status=step.status,
+        result_payload=step.result_payload,
+        error_code=step.error_code,
+        error_message=step.error_message,
+        processing_run_ids=step.processing_run_ids,
+    ))
+
 @router.post(
     "/reports/generate",
     tags=["Delivery"],

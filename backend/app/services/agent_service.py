@@ -47,6 +47,7 @@ from app.schemas.preprocessing import SegmentRequest
 from app.services.agent_arx_modeling_service import prepare_arx_confirmation
 from app.services.agent_execution_service import (
     create_execution,
+    get_execution,
     mark_step_failed,
     mark_step_succeeded,
     start_step,
@@ -96,6 +97,62 @@ class StepExecution:
     duration_ms: float = 0.0
     error_code: str | None = None
 
+
+async def execute_pending_evaluation_step(
+    session: AsyncSession,
+    *,
+    execution_id: UUID,
+    artifact_root: Path,
+) -> AgentExecutionSession:
+    """Execute only the persisted pending evaluate_model step for one execution."""
+
+    execution = await get_execution(session, execution_id=execution_id)
+    evaluation_steps = [step for step in execution.step_runs if step.tool_name == "evaluate_model"]
+    if len(evaluation_steps) != 1:
+        raise AgentDomainError(
+            "EVALUATION_STEP_REQUIRED",
+            "当前执行必须恰好包含一个 evaluate_model 步骤。",
+            status_code=409,
+            details={"execution_id": str(execution_id), "count": len(evaluation_steps)},
+        )
+
+    evaluation = evaluation_steps[0]
+    execution = await start_step(session, execution_id=execution.id, step_id=evaluation.step_id)
+    evaluation = next(step for step in execution.step_runs if step.step_id == evaluation.step_id)
+    if evaluation.status != "RUNNING":
+        raise AgentDomainError(
+            "EVALUATION_STEP_NOT_RUNNING",
+            "模型评价步骤未进入可执行状态。",
+            status_code=409,
+            details={"execution_id": str(execution.id), "step_id": evaluation.step_id},
+        )
+
+    try:
+        result = await execute_agent_tool(
+            session,
+            execution=execution,
+            step=evaluation,
+            parameters=dict(evaluation.input_payload["parameters"]),
+            artifact_root=artifact_root,
+        )
+    except Exception as error:
+        return await mark_step_failed(
+            session,
+            execution_id=execution.id,
+            step_id=evaluation.step_id,
+            error_code=getattr(error, "code", "AGENT_EVALUATION_FAILED"),
+            error_message=getattr(error, "message", str(error)),
+        )
+
+    return await mark_step_succeeded(
+        session,
+        execution_id=execution.id,
+        step_id=evaluation.step_id,
+        result_payload=result.result_payload,
+        source_version_id=result.source_version_id,
+        result_version_id=result.result_version_id,
+        processing_run_ids=result.processing_run_ids,
+    )
 
 async def run_copilot(
     session: AsyncSession,

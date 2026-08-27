@@ -101,6 +101,11 @@ async def create_execution(
     return execution
 
 
+async def get_execution(session: AsyncSession, *, execution_id: UUID) -> AgentExecutionSession:
+    """Load one persisted execution together with its ordered step runs."""
+
+    return await _load_execution(session, execution_id)
+
 async def start_step(
     session: AsyncSession,
     *,

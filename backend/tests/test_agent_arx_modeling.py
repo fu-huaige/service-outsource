@@ -663,3 +663,157 @@ def test_agent_evaluation_fails_on_saved_model_source_version_mismatch(
     evaluated = next(step for step in persisted.step_runs if step.tool_name == "evaluate_model")
     assert evaluated.status == "FAILED"
     assert evaluated.processing_run_ids == []
+
+def test_explicit_evaluation_trigger_executes_saved_model_once(
+    arx_harness: ArxHarness,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execution = _chat_to_arx_confirmation(arx_harness)
+    fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
+    confirmed = _confirm(arx_harness, execution_id=execution.id, step_id=fit.step_id)
+    assert confirmed.status_code == 200, confirmed.text
+    source_version_id = execution.current_version_id
+    before_bytes = asyncio.run(_version_bytes(arx_harness, source_version_id))
+    before_runs = asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id))
+    before_versions = asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id))
+
+    def fail_if_refit(*args: object, **kwargs: object) -> None:
+        raise AssertionError("evaluate_model trigger must not enter an ARX fitting path")
+
+    monkeypatch.setattr("app.services.agent_tool_adapter.fit_arx_on_version", fail_if_refit)
+    monkeypatch.setattr("app.services.modeling_service.fit_arx_core", fail_if_refit)
+    response = arx_harness.client.post(
+        "/api/v1/copilot/evaluate-model/execute",
+        json={"execution_id": str(execution.id)},
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    persisted = asyncio.run(_load_execution(arx_harness, execution.id))
+    fitted = next(step for step in persisted.step_runs if step.tool_name == "fit_arx")
+    evaluated = next(step for step in persisted.step_runs if step.tool_name == "evaluate_model")
+    assert data["execution_id"] == str(execution.id)
+    assert data["workflow_status"] == "SUCCEEDED"
+    assert data["step_id"] == evaluated.step_id
+    assert data["step_status"] == "SUCCEEDED"
+    assert data["result_payload"] == evaluated.result_payload
+    assert data["processing_run_ids"] == evaluated.processing_run_ids
+    assert evaluated.source_version_id == fitted.source_version_id == source_version_id
+    assert evaluated.result_version_id is None
+    assert evaluated.result_payload["model_id"] == fitted.result_payload["model_id"]
+    assert evaluated.result_payload["test"]["one_step"]["rmse"] is not None
+    assert evaluated.result_payload["test"]["free_run"]["rmse"] is not None
+    assert len(evaluated.processing_run_ids) == 1
+    processing_run = asyncio.run(_load_processing_run(arx_harness, UUID(evaluated.processing_run_ids[0])))
+    assert processing_run.run_type == "modeling.arx_evaluation"
+    assert persisted.current_version_id == source_version_id
+    assert asyncio.run(_version_bytes(arx_harness, source_version_id)) == before_bytes
+    assert asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id)) == before_runs + 1
+    assert asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id)) == before_versions
+
+    replay = arx_harness.client.post(
+        "/api/v1/copilot/evaluate-model/execute",
+        json={"execution_id": str(execution.id)},
+    )
+    assert replay.status_code == 409, replay.text
+    assert asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id)) == before_runs + 1
+    assert asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id)) == before_versions
+
+
+def test_explicit_evaluation_trigger_rejects_waiting_confirmation(
+    arx_harness: ArxHarness,
+) -> None:
+    execution = _chat_to_arx_confirmation(arx_harness)
+    before_runs = asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id))
+    before_versions = asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id))
+
+    response = arx_harness.client.post(
+        "/api/v1/copilot/evaluate-model/execute",
+        json={"execution_id": str(execution.id)},
+    )
+
+    assert response.status_code == 409, response.text
+    persisted = asyncio.run(_load_execution(arx_harness, execution.id))
+    evaluated = next(step for step in persisted.step_runs if step.tool_name == "evaluate_model")
+    assert persisted.workflow_status == "WAITING_CONFIRMATION"
+    assert evaluated.status == "PENDING"
+    assert persisted.current_version_id == execution.current_version_id
+    assert asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id)) == before_runs
+    assert asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id)) == before_versions
+
+
+def test_explicit_evaluation_trigger_rejects_failed_execution(
+    arx_harness: ArxHarness,
+) -> None:
+    execution = _chat_to_arx_confirmation(arx_harness)
+    fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
+    before_runs = asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id))
+    before_versions = asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id))
+
+    async def fail_fit_through_lifecycle() -> None:
+        async with arx_harness.session_factory() as session:
+            await approve_step(session, execution_id=execution.id, step_id=fit.step_id)
+            await mark_step_failed(
+                session,
+                execution_id=execution.id,
+                step_id=fit.step_id,
+                error_code="FIT_TEST_FAILURE",
+                error_message="deterministic formal fit failure",
+            )
+
+    asyncio.run(fail_fit_through_lifecycle())
+    response = arx_harness.client.post(
+        "/api/v1/copilot/evaluate-model/execute",
+        json={"execution_id": str(execution.id)},
+    )
+
+    assert response.status_code == 409, response.text
+    persisted = asyncio.run(_load_execution(arx_harness, execution.id))
+    evaluated = next(step for step in persisted.step_runs if step.tool_name == "evaluate_model")
+    assert persisted.workflow_status == "FAILED"
+    assert evaluated.status == "PENDING"
+    assert persisted.current_version_id == execution.current_version_id
+    assert asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id)) == before_runs
+    assert asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id)) == before_versions
+
+
+def test_explicit_evaluation_trigger_returns_failed_snapshot_for_business_error(
+    arx_harness: ArxHarness,
+) -> None:
+    execution = _chat_to_arx_confirmation(arx_harness)
+    fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
+    confirmed = _confirm(arx_harness, execution_id=execution.id, step_id=fit.step_id)
+    assert confirmed.status_code == 200, confirmed.text
+    source_version_id = execution.current_version_id
+    before_versions = asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id))
+
+    async def change_source_version() -> None:
+        async with arx_harness.session_factory() as session:
+            current = await session.scalar(
+                select(AgentExecutionSession)
+                .where(AgentExecutionSession.id == execution.id)
+                .options(selectinload(AgentExecutionSession.step_runs))
+            )
+            assert current is not None
+            fitted = next(step for step in current.step_runs if step.tool_name == "fit_arx")
+            fitted.source_version_id = UUID("00000000-0000-4000-8000-000000000001")
+            await session.commit()
+
+    asyncio.run(change_source_version())
+    response = arx_harness.client.post(
+        "/api/v1/copilot/evaluate-model/execute",
+        json={"execution_id": str(execution.id)},
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    persisted = asyncio.run(_load_execution(arx_harness, execution.id))
+    evaluated = next(step for step in persisted.step_runs if step.tool_name == "evaluate_model")
+    assert data["workflow_status"] == "FAILED"
+    assert data["step_status"] == "FAILED"
+    assert data["error_code"] == "MODEL_SOURCE_VERSION_MISMATCH"
+    assert data["error_message"]
+    assert evaluated.status == "FAILED"
+    assert evaluated.processing_run_ids == []
+    assert persisted.current_version_id == source_version_id
+    assert asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id)) == before_versions
