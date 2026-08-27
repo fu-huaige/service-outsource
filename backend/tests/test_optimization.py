@@ -437,6 +437,177 @@ async def _optimization_snapshot(
         await engine.dispose()
 
 
+async def _agent_optimization_snapshot(
+    database_path: Path, *, study_id: UUID, processing_run_ids: list[str]
+) -> dict[str, object]:
+    from app.models.dataset import ProcessingRun
+    from app.models.optimization import OptimizationStudy, OptimizationTrialRecord
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}")
+    try:
+        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+            study = await session.get(OptimizationStudy, study_id)
+            assert study is not None
+            runs = [await session.get(ProcessingRun, UUID(run_id)) for run_id in processing_run_ids]
+            final_test_runs = await session.scalar(
+                select(func.count())
+                .select_from(ProcessingRun)
+                .where(
+                    ProcessingRun.source_version_id == study.version_id,
+                    ProcessingRun.run_type == "optimization.final_test",
+                )
+            )
+            completed_params = list(
+                (
+                    await session.scalars(
+                        select(OptimizationTrialRecord.params)
+                        .where(
+                            OptimizationTrialRecord.study_id == study_id,
+                            OptimizationTrialRecord.state == "complete",
+                        )
+                        .order_by(OptimizationTrialRecord.trial_number)
+                    )
+                ).all()
+            )
+            return {
+                "study_status": study.status,
+                "baseline_model_id": study.baseline_model_id,
+                "optimized_model_id": study.optimized_model_id,
+                "processing_run_types": [run.run_type for run in runs if run is not None],
+                "completed_trial_nks": [params.get("nk") for params in completed_params],
+                "final_test_run_count": int(final_test_runs or 0),
+            }
+    finally:
+        await engine.dispose()
+
+
+class TestAgentSafeOptimizationEntry:
+    def test_forces_inline_without_warm_start_and_returns_real_provenance(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from app.services import optimization_service
+        from app.services.optimization_service import execute_agent_optimization_study
+
+        def fail_if_enqueued(*args: object, **kwargs: object) -> None:
+            raise AssertionError("Agent-safe optimization must not submit an RQ job")
+
+        async def fail_if_warm_started(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+            raise AssertionError("Agent-safe optimization must not read StrategyMemory")
+
+        monkeypatch.setattr(optimization_service, "submit_optimization", fail_if_enqueued)
+        monkeypatch.setattr(optimization_service, "_retrieve_warm_start", fail_if_warm_started)
+        assert "baseline_model_id" not in optimization_service.OptimizationStartRequest.model_fields
+        version_id = UUID(generate(client, seed=151))
+        baseline_model_id = uuid4()
+        before_versions = asyncio.run(_dataset_version_count(tmp_path / "optimize.db", version_id))
+
+        async def execute() -> object:
+            engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'optimize.db'}")
+            try:
+                async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+                    return await execute_agent_optimization_study(
+                        session,
+                        payload=optimization_service.OptimizationStartRequest(
+                            version_id=version_id,
+                            input_columns=["u1", "u2"],
+                            output_column="y",
+                            max_trials=3,
+                            random_seed=151,
+                            search_space={"nk": [0, 0]},
+                        ),
+                        baseline_model_id=baseline_model_id,
+                        artifact_root=tmp_path,
+                    )
+            finally:
+                await engine.dispose()
+
+        result = asyncio.run(execute())
+        assert result.status == "succeeded"
+        assert result.source_version_id == version_id
+        assert result.baseline_model_id == baseline_model_id
+        assert result.optimized_model_id
+        assert len(result.processing_run_ids) == 2
+        assert (tmp_path / "models" / f"{result.optimized_model_id}.json").is_file()
+
+        snapshot = asyncio.run(
+            _agent_optimization_snapshot(
+                tmp_path / "optimize.db",
+                study_id=result.study_id,
+                processing_run_ids=result.processing_run_ids,
+            )
+        )
+        assert snapshot["study_status"] == "succeeded"
+        assert snapshot["baseline_model_id"] == baseline_model_id
+        assert snapshot["optimized_model_id"] == result.optimized_model_id
+        assert snapshot["processing_run_types"] == ["optimization.baseline", "modeling.arx"]
+        completed_nks = snapshot["completed_trial_nks"]
+        assert completed_nks and all(value == 0 for value in completed_nks)
+        assert snapshot["final_test_run_count"] == 0
+        assert asyncio.run(_dataset_version_count(tmp_path / "optimize.db", version_id)) == before_versions
+
+    def test_rejects_succeeded_study_without_persisted_optimized_model(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from app.services import optimization_service
+        from app.services.optimization_service import (
+            OptimizationDomainError,
+            execute_agent_optimization_study,
+        )
+
+        reserved_study_ids: list[UUID] = []
+        reserve = optimization_service._reserve_study
+        persist_study = optimization_service._persist_study
+
+        async def spy_reserve_study(*args: object, **kwargs: object) -> None:
+            reserved_study_ids.append(kwargs["study_id"])  # type: ignore[index]
+            await reserve(*args, **kwargs)  # type: ignore[arg-type]
+
+        async def erase_optimized_model(*args: object, **kwargs: object) -> None:
+            await persist_study(*args, **kwargs)  # type: ignore[arg-type]
+            if kwargs["optimized_model_id"] is not None:  # type: ignore[index]
+                study = await args[0].get(  # type: ignore[index]
+                    optimization_service.OptimizationStudy, kwargs["outcome"].study_id  # type: ignore[index]
+                )
+                assert study is not None
+                study.optimized_model_id = None
+                study.status = "succeeded"
+                await args[0].commit()  # type: ignore[index]
+
+        monkeypatch.setattr(optimization_service, "_reserve_study", spy_reserve_study)
+        monkeypatch.setattr(optimization_service, "_persist_study", erase_optimized_model)
+        version_id = UUID(generate(client, seed=152))
+
+        async def execute() -> None:
+            engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'optimize.db'}")
+            try:
+                async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+                    await execute_agent_optimization_study(
+                        session,
+                        payload=optimization_service.OptimizationStartRequest(
+                            version_id=version_id,
+                            input_columns=["u1", "u2"],
+                            output_column="y",
+                            max_trials=2,
+                            random_seed=152,
+                            search_space={"nk": [0, 0]},
+                        ),
+                        baseline_model_id=uuid4(),
+                        artifact_root=tmp_path,
+                    )
+            finally:
+                await engine.dispose()
+
+        with pytest.raises(OptimizationDomainError) as raised:
+            asyncio.run(execute())
+        assert raised.value.code == "OPTIMIZED_MODEL_REQUIRED"
+        assert len(reserved_study_ids) == 1
+        snapshot = asyncio.run(
+            _optimization_snapshot(tmp_path / "optimize.db", study_id=reserved_study_ids[0])
+        )
+        assert snapshot["study_status"] == "succeeded"
+        assert snapshot["optimized_model_id"] is None
+        assert snapshot["final_test_run_count"] == 0
+
 class TestOptimizationApi:
     def test_persists_optimized_model_without_opening_test(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
