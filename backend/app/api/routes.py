@@ -21,10 +21,12 @@ from app.schemas.copilot import (
     CopilotConfirmRequest,
     CopilotEvaluateModelExecuteData,
     CopilotEvaluateModelExecuteRequest,
+    CopilotOptimizePipelineExecuteData,
     FeatureSelectionValidationData,
     FeatureSelectionValidationRequest,
     LagOverrideValidationData,
     LagOverrideValidationRequest,
+    OptimizePipelineExecuteRequest,
 )
 from app.schemas.dashboard import DashboardLeaderboardData
 from app.schemas.datasets import (
@@ -101,6 +103,7 @@ from app.services.agent_lag_apply_service import (
 )
 from app.services.agent_service import (
     AgentDomainError,
+    execute_approved_optimization_step,
     execute_pending_evaluation_step,
     run_copilot,
 )
@@ -1083,6 +1086,60 @@ async def copilot_confirm(
             arx_structure_validation=arx_validation,
         ),
     )
+@router.post(
+    "/copilot/optimize-pipeline/execute",
+    tags=["Copilot"],
+    summary="Execute the approved agent optimization step",
+    response_model=SuccessEnvelope[CopilotOptimizePipelineExecuteData],
+    responses={
+        **ERROR_RESPONSES,
+        409: {"model": ErrorEnvelope, "description": "执行状态不允许模型寻优。"},
+    },
+)
+async def execute_copilot_optimize_pipeline(
+    request: Request,
+    payload: OptimizePipelineExecuteRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessEnvelope[CopilotOptimizePipelineExecuteData]:
+    """Execute exactly one already-approved optimize_pipeline step synchronously."""
+
+    try:
+        execution = await execute_approved_optimization_step(
+            session,
+            execution_id=payload.execution_id,
+            artifact_root=get_settings().artifact_root,
+        )
+    except ExecutionStateError as error:
+        raise AppError(
+            "AGENT_EXECUTION_STATE_CONFLICT",
+            "当前执行状态不允许模型寻优。",
+            status_code=status.HTTP_409_CONFLICT,
+            details={"reason": str(error)},
+        ) from error
+    except AgentDomainError as error:
+        raise AppError(
+            error.code,
+            error.message,
+            status_code=error.status_code,
+            details=error.details,
+        ) from error
+
+    step = next(item for item in execution.step_runs if item.tool_name == "optimize_pipeline")
+    return success(
+        request,
+        CopilotOptimizePipelineExecuteData(
+            execution_id=execution.id,
+            workflow_status=execution.workflow_status,
+            current_version_id=execution.current_version_id,
+            step_id=step.step_id,
+            step_status=step.status,
+            result_payload=step.result_payload,
+            error_code=step.error_code,
+            error_message=step.error_message,
+            processing_run_ids=step.processing_run_ids,
+        ),
+    )
+
 @router.post(
     "/copilot/evaluate-model/execute",
     tags=["Copilot"],

@@ -46,6 +46,7 @@ from app.schemas.optimization import OptimizationStartRequest
 from app.schemas.preprocessing import SegmentRequest
 from app.services.agent_arx_modeling_service import prepare_arx_confirmation
 from app.services.agent_execution_service import (
+    claim_approved_optimization_step,
     create_execution,
     get_execution,
     mark_step_failed,
@@ -97,6 +98,58 @@ class StepExecution:
     duration_ms: float = 0.0
     error_code: str | None = None
 
+
+async def execute_approved_optimization_step(
+    session: AsyncSession,
+    *,
+    execution_id: UUID,
+    artifact_root: Path,
+) -> AgentExecutionSession:
+    """Execute one confirmed optimization step once; terminal replays return its snapshot."""
+
+    execution = await get_execution(session, execution_id=execution_id)
+    steps = [step for step in execution.step_runs if step.tool_name == "optimize_pipeline"]
+    if len(steps) != 1:
+        raise AgentDomainError(
+            "OPTIMIZATION_STEP_REQUIRED",
+            "当前执行必须恰好包含一个 optimize_pipeline 步骤。",
+            status_code=409,
+            details={"execution_id": str(execution_id), "count": len(steps)},
+        )
+    optimization = steps[0]
+    if optimization.status in {"SUCCEEDED", "FAILED"}:
+        return execution
+
+    execution, _ = await claim_approved_optimization_step(
+        session, execution_id=execution.id, step_id=optimization.step_id
+    )
+    optimization = next(step for step in execution.step_runs if step.step_id == optimization.step_id)
+    try:
+        result = await execute_agent_tool(
+            session,
+            execution=execution,
+            step=optimization,
+            parameters=dict(optimization.input_payload["parameters"]),
+            artifact_root=artifact_root,
+        )
+    except Exception as error:
+        return await mark_step_failed(
+            session,
+            execution_id=execution.id,
+            step_id=optimization.step_id,
+            error_code=getattr(error, "code", "AGENT_OPTIMIZATION_FAILED"),
+            error_message=getattr(error, "message", str(error)),
+        )
+
+    return await mark_step_succeeded(
+        session,
+        execution_id=execution.id,
+        step_id=optimization.step_id,
+        result_payload=result.result_payload,
+        source_version_id=result.source_version_id,
+        result_version_id=None,
+        processing_run_ids=result.processing_run_ids,
+    )
 
 async def execute_pending_evaluation_step(
     session: AsyncSession,

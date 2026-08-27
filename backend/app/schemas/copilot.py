@@ -215,11 +215,7 @@ class CopilotConfirmData(Schema):
     arx_structure_validation: ArxStructureValidationData | None = None
     task: TaskResource | None = None
 
-class CopilotEvaluateModelExecuteRequest(Schema):
-    execution_id: UUID
-
-
-class CopilotEvaluateModelExecuteData(Schema):
+class CopilotStepExecutionData(Schema):
     execution_id: UUID
     workflow_status: str
     current_version_id: UUID | None = None
@@ -229,3 +225,18 @@ class CopilotEvaluateModelExecuteData(Schema):
     error_code: str | None = None
     error_message: str | None = None
     processing_run_ids: list[str] = Field(default_factory=list)
+
+
+class OptimizePipelineExecuteRequest(Schema):
+    execution_id: UUID
+
+
+class CopilotOptimizePipelineExecuteData(CopilotStepExecutionData):
+    pass
+
+class CopilotEvaluateModelExecuteRequest(Schema):
+    execution_id: UUID
+
+
+class CopilotEvaluateModelExecuteData(CopilotStepExecutionData):
+    pass

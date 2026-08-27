@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import numpy as np
 import pytest
@@ -17,7 +17,7 @@ from app.core.config import Settings
 from app.core.db import get_session
 from app.main import create_app
 from app.models import Base, DatasetVersion, ProcessingRun
-from app.models.agent_execution import AgentExecutionSession
+from app.models.agent_execution import AgentExecutionSession, AgentStepRun
 from app.services import agent_service
 from app.services.agent_execution_service import (
     ExecutionStateError,
@@ -310,6 +310,93 @@ async def _execute_evaluation_step(
         )
         return succeeded, None
 
+
+async def _prepare_confirmable_optimization_step(
+    harness: ArxHarness,
+    execution_id: UUID,
+    *,
+    parameters: dict[str, object] | None = None,
+    start: bool = True,
+) -> AgentExecutionSession:
+    """Turn the deferred evaluation slot into a C2 optimization step for focused tests."""
+
+    async with harness.session_factory() as session:
+        execution = await session.scalar(
+            select(AgentExecutionSession)
+            .where(AgentExecutionSession.id == execution_id)
+            .options(selectinload(AgentExecutionSession.step_runs))
+        )
+        assert execution is not None
+        fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
+        optimization = next(step for step in execution.step_runs if step.tool_name == "evaluate_model")
+        assert fit.status == "SUCCEEDED"
+        assert optimization.status == "PENDING"
+
+        optimization.tool_name = "optimize_pipeline"
+        optimization.requires_confirmation = True
+        optimization.confirmation_status = "PENDING"
+        optimization.input_payload = {
+            "depends_on": [fit.step_id],
+            "parameters": parameters
+            or {
+                "max_trials": 1,
+                "random_seed": 20260827,
+                "search_space": {"na": [1, 1], "nb": [1, 1], "nk": [3, 3]},
+            },
+        }
+        downstream_step_id = "evaluate_optimized_model"
+        execution.step_runs.append(
+            AgentStepRun(
+                id=uuid4(),
+                execution_id=execution.id,
+                step_id=downstream_step_id,
+                sequence=optimization.sequence + 1,
+                tool_name="evaluate_model",
+                status="PENDING",
+                requires_confirmation=False,
+                confirmation_status="NOT_REQUIRED",
+                attempt_count=0,
+                input_payload={
+                    "depends_on": [optimization.step_id],
+                    "parameters": {},
+                },
+                result_payload={},
+                processing_run_ids=[],
+            )
+        )
+        plan_steps = []
+        for item in execution.plan_json["steps"]:
+            if item["step_id"] == optimization.step_id:
+                plan_steps.append(
+                    {
+                        **item,
+                        "tool": "optimize_pipeline",
+                        "depends_on": [fit.step_id],
+                        "parameters": dict(optimization.input_payload["parameters"]),
+                        "requires_confirmation": True,
+                    }
+                )
+            else:
+                plan_steps.append(item)
+        plan_steps.append(
+            {
+                "step_id": downstream_step_id,
+                "tool": "evaluate_model",
+                "depends_on": [optimization.step_id],
+                "parameters": {},
+                "requires_confirmation": False,
+                "status": "pending",
+            }
+        )
+        execution.plan_json = {**execution.plan_json, "steps": plan_steps}
+        await session.commit()
+        if not start:
+            return execution
+        return await start_step(
+            session,
+            execution_id=execution.id,
+            step_id=optimization.step_id,
+        )
 
 async def _evaluation_run_count(harness: ArxHarness, dataset_id: UUID) -> int:
     async with harness.session_factory() as session:
@@ -817,3 +904,221 @@ def test_explicit_evaluation_trigger_returns_failed_snapshot_for_business_error(
     assert evaluated.processing_run_ids == []
     assert persisted.current_version_id == source_version_id
     assert asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id)) == before_versions
+
+
+def test_explicit_optimization_trigger_requires_confirmation_and_persists_real_result(
+    arx_harness: ArxHarness,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execution = _chat_to_arx_confirmation(arx_harness)
+    fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
+    confirmed_fit = _confirm(arx_harness, execution_id=execution.id, step_id=fit.step_id)
+    assert confirmed_fit.status_code == 200, confirmed_fit.text
+    source_version_id = execution.current_version_id
+    before_versions = asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id))
+    calls: list[dict[str, object]] = []
+
+    from app.services import agent_tool_adapter
+
+    formal_entry = agent_tool_adapter.execute_agent_optimization_study
+
+    async def spy_safe_entry(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+        calls.append(dict(kwargs))
+        return await formal_entry(*args, **kwargs)  # type: ignore[arg-type]
+
+    def fail_if_evaluated(*args: object, **kwargs: object) -> None:
+        raise AssertionError("C2 optimization trigger must not open held-out model evaluation")
+
+    monkeypatch.setattr(agent_tool_adapter, "execute_agent_optimization_study", spy_safe_entry)
+    monkeypatch.setattr(agent_tool_adapter, "evaluate_saved_arx_model", fail_if_evaluated)
+
+    pending_execution = asyncio.run(
+        _prepare_confirmable_optimization_step(arx_harness, execution.id, start=False)
+    )
+    optimization = next(
+        step for step in pending_execution.step_runs if step.tool_name == "optimize_pipeline"
+    )
+    assert optimization.status == "PENDING"
+    pending = arx_harness.client.post(
+        "/api/v1/copilot/optimize-pipeline/execute",
+        json={"execution_id": str(execution.id)},
+    )
+    assert pending.status_code == 409, pending.text
+
+    async def start_optimization() -> AgentExecutionSession:
+        async with arx_harness.session_factory() as session:
+            return await start_step(
+                session,
+                execution_id=execution.id,
+                step_id=optimization.step_id,
+            )
+
+    waiting = asyncio.run(start_optimization())
+    optimization = next(step for step in waiting.step_runs if step.tool_name == "optimize_pipeline")
+    assert waiting.workflow_status == "WAITING_CONFIRMATION"
+    assert optimization.status == "WAITING_CONFIRMATION"
+    forbidden = arx_harness.client.post(
+        "/api/v1/copilot/optimize-pipeline/execute",
+        json={"execution_id": str(execution.id)},
+    )
+    assert forbidden.status_code == 409, forbidden.text
+
+    approved = _confirm(arx_harness, execution_id=execution.id, step_id=optimization.step_id)
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["data"]["step_status"] == "RUNNING"
+    assert approved.json()["data"]["confirmation_status"] == "APPROVED"
+
+    response = arx_harness.client.post(
+        "/api/v1/copilot/optimize-pipeline/execute",
+        json={"execution_id": str(execution.id)},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    persisted = asyncio.run(_load_execution(arx_harness, execution.id))
+    fitted = next(step for step in persisted.step_runs if step.tool_name == "fit_arx")
+    optimized = next(step for step in persisted.step_runs if step.tool_name == "optimize_pipeline")
+    downstream = next(
+        step for step in persisted.step_runs if step.step_id == "evaluate_optimized_model"
+    )
+
+    assert data["execution_id"] == str(execution.id)
+    assert data["step_id"] == optimized.step_id
+    assert data["step_status"] == "SUCCEEDED"
+    assert data["result_payload"] == optimized.result_payload
+    assert data["processing_run_ids"] == optimized.processing_run_ids
+    assert optimized.source_version_id == fitted.source_version_id == source_version_id
+    assert optimized.result_version_id is None
+    assert optimized.result_payload["baseline_model_id"] == fitted.result_payload["model_id"]
+    assert optimized.result_payload["model_id"] == optimized.result_payload["optimized_model_id"]
+    assert len(optimized.processing_run_ids) == 2
+    processing_runs = [
+        asyncio.run(_load_processing_run(arx_harness, UUID(run_id)))
+        for run_id in optimized.processing_run_ids
+    ]
+    assert [run.run_type for run in processing_runs] == [
+        "optimization.baseline",
+        "modeling.arx",
+    ]
+    assert downstream.status == "PENDING"
+    assert persisted.current_version_id == source_version_id
+    assert asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id)) == before_versions
+    assert len(calls) == 1
+    payload = calls[0]["payload"]
+    assert payload.version_id == source_version_id
+    assert payload.search_space["nk"] == [0, 0]
+    assert calls[0]["baseline_model_id"] == UUID(fitted.result_payload["model_id"])
+
+    replay = arx_harness.client.post(
+        "/api/v1/copilot/optimize-pipeline/execute",
+        json={"execution_id": str(execution.id)},
+    )
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["data"] == data
+    assert len(calls) == 1
+
+
+def test_explicit_optimization_trigger_persists_business_failure_without_replay(
+    arx_harness: ArxHarness,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execution = _chat_to_arx_confirmation(arx_harness)
+    fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
+    confirmed_fit = _confirm(arx_harness, execution_id=execution.id, step_id=fit.step_id)
+    assert confirmed_fit.status_code == 200, confirmed_fit.text
+    source_version_id = execution.current_version_id
+    before_versions = asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id))
+    waiting = asyncio.run(_prepare_confirmable_optimization_step(arx_harness, execution.id))
+    optimization = next(step for step in waiting.step_runs if step.tool_name == "optimize_pipeline")
+    approved = _confirm(arx_harness, execution_id=execution.id, step_id=optimization.step_id)
+    assert approved.status_code == 200, approved.text
+    calls = 0
+
+    from app.services.optimization_service import OptimizationDomainError
+
+    async def fail_safe_entry(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+        nonlocal calls
+        calls += 1
+        raise OptimizationDomainError("OPTIMIZATION_TEST_FAILURE", "deterministic study failure")
+
+    monkeypatch.setattr(
+        "app.services.agent_tool_adapter.execute_agent_optimization_study", fail_safe_entry
+    )
+    response = arx_harness.client.post(
+        "/api/v1/copilot/optimize-pipeline/execute",
+        json={"execution_id": str(execution.id)},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["workflow_status"] == "FAILED"
+    assert data["step_status"] == "FAILED"
+    assert data["error_code"] == "OPTIMIZATION_TEST_FAILURE"
+    assert data["error_message"] == "deterministic study failure"
+    assert data["processing_run_ids"] == []
+    assert calls == 1
+
+    persisted = asyncio.run(_load_execution(arx_harness, execution.id))
+    optimized = next(step for step in persisted.step_runs if step.tool_name == "optimize_pipeline")
+    assert optimized.status == "FAILED"
+    assert persisted.current_version_id == source_version_id
+    assert asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id)) == before_versions
+
+    replay = arx_harness.client.post(
+        "/api/v1/copilot/optimize-pipeline/execute",
+        json={"execution_id": str(execution.id)},
+    )
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["data"] == data
+    assert calls == 1
+
+def test_optimization_adapter_rejects_missing_declared_fit_predecessor(
+    arx_harness: ArxHarness,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execution = _chat_to_arx_confirmation(arx_harness)
+    fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
+    confirmed_fit = _confirm(arx_harness, execution_id=execution.id, step_id=fit.step_id)
+    assert confirmed_fit.status_code == 200, confirmed_fit.text
+    waiting = asyncio.run(_prepare_confirmable_optimization_step(arx_harness, execution.id))
+    optimization = next(step for step in waiting.step_runs if step.tool_name == "optimize_pipeline")
+    approved = _confirm(arx_harness, execution_id=execution.id, step_id=optimization.step_id)
+    assert approved.status_code == 200, approved.text
+    calls = 0
+
+    async def fail_if_safe_entry_called(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+        nonlocal calls
+        calls += 1
+        raise AssertionError("missing declared fit predecessor must stop before C1")
+
+    monkeypatch.setattr(
+        "app.services.agent_tool_adapter.execute_agent_optimization_study",
+        fail_if_safe_entry_called,
+    )
+
+    async def remove_declared_dependency() -> None:
+        async with arx_harness.session_factory() as session:
+            current = await session.scalar(
+                select(AgentExecutionSession)
+                .where(AgentExecutionSession.id == execution.id)
+                .options(selectinload(AgentExecutionSession.step_runs))
+            )
+            assert current is not None
+            current_optimization = next(
+                step for step in current.step_runs if step.tool_name == "optimize_pipeline"
+            )
+            current_optimization.input_payload = {
+                **current_optimization.input_payload,
+                "depends_on": [],
+            }
+            await session.commit()
+
+    asyncio.run(remove_declared_dependency())
+    response = arx_harness.client.post(
+        "/api/v1/copilot/optimize-pipeline/execute",
+        json={"execution_id": str(execution.id)},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["workflow_status"] == "FAILED"
+    assert data["step_status"] == "FAILED"
+    assert data["error_code"] == "OPTIMIZATION_FIT_DEPENDENCY_REQUIRED"
+    assert calls == 0

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_execution import AgentExecutionSession, AgentStepRun
 from app.schemas.modeling import ArxFitRequest
+from app.schemas.optimization import OptimizationStartRequest
 from app.schemas.preprocessing import (
     CleanRequest,
     CollinearityRequest,
@@ -20,7 +21,12 @@ from app.schemas.preprocessing import (
     LagCompensationRequest,
 )
 from app.services.cleaning_service import clean_dataset_version
-from app.services.modeling_service import evaluate_saved_arx_model, fit_arx_on_version
+from app.services.modeling_service import (
+    evaluate_saved_arx_model,
+    fit_arx_on_version,
+    load_saved_arx_model,
+)
+from app.services.optimization_service import execute_agent_optimization_study
 from app.services.preprocessing_analysis_service import (
     run_collinearity_analysis,
     run_delay_estimation,
@@ -115,6 +121,14 @@ async def execute_agent_tool(
         return await _fit_arx(
             session,
             execution=execution,
+            parameters=parameters,
+            artifact_root=artifact_root,
+        )
+    if step.tool_name == "optimize_pipeline":
+        return await _optimize_pipeline(
+            session,
+            execution=execution,
+            step=step,
             parameters=parameters,
             artifact_root=artifact_root,
         )
@@ -375,6 +389,124 @@ def _fit_arx_predecessor(
         ) from error
     return model_id, predecessor.source_version_id
 
+
+_OPTIMIZATION_PARAMETER_NAMES = frozenset(
+    {"max_trials", "timeout_seconds", "random_seed", "search_space"}
+)
+
+
+def _optimization_fit_predecessor(
+    execution: AgentExecutionSession, step: AgentStepRun
+) -> tuple[UUID, UUID]:
+    """Resolve the declared completed fit step used as optimization baseline lineage."""
+
+    dependency_ids = step.input_payload.get("depends_on")
+    candidates = [
+        item
+        for item in execution.step_runs
+        if isinstance(dependency_ids, list)
+        and item.step_id in dependency_ids
+        and item.tool_name == "fit_arx"
+    ]
+    if len(candidates) != 1:
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_FIT_DEPENDENCY_REQUIRED",
+            "模型寻优必须且只能直接依赖当前工作流中的一个 ARX 拟合步骤。",
+        )
+    predecessor = candidates[0]
+    if predecessor.status != "SUCCEEDED":
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_FIT_NOT_SUCCEEDED", "模型寻优依赖的 ARX 拟合步骤尚未成功完成。"
+        )
+    if predecessor.source_version_id is None:
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_FIT_SOURCE_VERSION_MISSING", "ARX 拟合步骤缺少来源数据版本。"
+        )
+    raw_model_id = predecessor.result_payload.get("model_id")
+    if not isinstance(raw_model_id, str):
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_FIT_MODEL_ID_MISSING", "ARX 拟合步骤缺少真实 model_id。"
+        )
+    try:
+        return UUID(raw_model_id), predecessor.source_version_id
+    except ValueError as error:
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_FIT_MODEL_ID_INVALID", "ARX 拟合步骤含有无效 model_id。"
+        ) from error
+
+
+async def _optimize_pipeline(
+    session: AsyncSession,
+    *,
+    execution: AgentExecutionSession,
+    step: AgentStepRun,
+    parameters: dict[str, Any],
+    artifact_root: Path,
+) -> AgentToolResult:
+    """Optimize exactly the saved baseline model's immutable source version."""
+
+    baseline_model_id, source_version_id = _optimization_fit_predecessor(execution, step)
+    saved = load_saved_arx_model(model_id=baseline_model_id, artifact_root=artifact_root)
+    if saved.source_version_id != source_version_id:
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_FIT_SOURCE_VERSION_MISMATCH", "ARX 模型 artifact 与声明来源版本不一致。"
+        )
+    if saved.dataset_id != execution.dataset_id:
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_FIT_DATASET_MISMATCH", "ARX 模型 artifact 与当前执行数据集不一致。"
+        )
+    requested = _validated_parameters(
+        parameters, allowed=_OPTIMIZATION_PARAMETER_NAMES, tool_name="optimize_pipeline"
+    )
+    search_space = dict(requested.pop("search_space", {}))
+    search_space["nk"] = [0, 0]
+    try:
+        payload = OptimizationStartRequest(
+            version_id=source_version_id,
+            input_columns=list(saved.payload.input_columns),
+            output_column=saved.payload.output_column,
+            search_space=search_space,
+            **requested,
+        )
+    except ValidationError as error:
+        raise AgentToolAdapterError("INVALID_AGENT_TOOL_PARAMETERS", str(error)) from error
+
+    result = await execute_agent_optimization_study(
+        session,
+        payload=payload,
+        baseline_model_id=baseline_model_id,
+        artifact_root=artifact_root,
+        study_id=_optimization_study_id(step),
+    )
+    return AgentToolResult(
+        summary=f"正式模型寻优已生成优化模型 {result.optimized_model_id}。",
+        source_version_id=result.source_version_id,
+        result_version_id=None,
+        processing_run_ids=result.processing_run_ids,
+        result_payload={
+            "study_id": str(result.study_id),
+            "baseline_model_id": str(result.baseline_model_id),
+            "model_id": str(result.optimized_model_id),
+            "optimized_model_id": str(result.optimized_model_id),
+            "source_version_id": str(result.source_version_id),
+            "best_params": result.best_params,
+            "best_value": result.best_value,
+        },
+    )
+
+
+def _optimization_study_id(step: AgentStepRun) -> UUID:
+    raw_study_id = step.input_payload.get("optimization_study_id")
+    if not isinstance(raw_study_id, str):
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_STUDY_CLAIM_REQUIRED", "模型寻优步骤缺少已持久化的执行 claim。"
+        )
+    try:
+        return UUID(raw_study_id)
+    except ValueError as error:
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_STUDY_CLAIM_INVALID", "模型寻优步骤含有无效的 Study claim。"
+        ) from error
 
 async def _evaluate_model(
     session: AsyncSession,

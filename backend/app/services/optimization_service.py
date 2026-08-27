@@ -780,10 +780,11 @@ async def execute_agent_optimization_study(
     payload: OptimizationStartRequest,
     baseline_model_id: UUID,
     artifact_root: Path,
+    study_id: UUID | None = None,
 ) -> AgentOptimizationStudyResult:
     """Run one Agent-authorized study inline, without historical warm starts or RQ."""
 
-    study_id = uuid4()
+    study_id = study_id or uuid4()
     try:
         await _reserve_study(
             session,

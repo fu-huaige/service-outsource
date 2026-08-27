@@ -106,6 +106,35 @@ async def get_execution(session: AsyncSession, *, execution_id: UUID) -> AgentEx
 
     return await _load_execution(session, execution_id)
 
+async def claim_approved_optimization_step(
+    session: AsyncSession, *, execution_id: UUID, step_id: str
+) -> tuple[AgentExecutionSession, UUID]:
+    """Atomically bind one approved optimization step to exactly one Study UUID."""
+
+    execution = await _load_execution(session, execution_id, for_update=True)
+    step = _step(execution, step_id)
+    if (
+        execution.workflow_status != "RUNNING"
+        or execution.current_step_id != step.step_id
+        or step.tool_name != "optimize_pipeline"
+        or step.status != "RUNNING"
+        or step.confirmation_status != "APPROVED"
+    ):
+        raise _transition_error("claim_approved_optimization_step", execution, step)
+
+    raw_study_id = step.input_payload.get("optimization_study_id")
+    if raw_study_id is not None:
+        raise _transition_error("claim_approved_optimization_step_replay", execution, step)
+
+    study_id = uuid4()
+    step.input_payload = {
+        **step.input_payload,
+        "optimization_study_id": str(study_id),
+        "optimization_execution_claimed_at": datetime.now(UTC).isoformat(),
+    }
+    await _commit(session)
+    return execution, study_id
+
 async def start_step(
     session: AsyncSession,
     *,
@@ -286,12 +315,17 @@ async def reject_step(
     return execution
 
 
-async def _load_execution(session: AsyncSession, execution_id: UUID) -> AgentExecutionSession:
-    execution = await session.scalar(
+async def _load_execution(
+    session: AsyncSession, execution_id: UUID, *, for_update: bool = False
+) -> AgentExecutionSession:
+    statement = (
         select(AgentExecutionSession)
         .where(AgentExecutionSession.id == execution_id)
         .options(selectinload(AgentExecutionSession.step_runs))
     )
+    if for_update:
+        statement = statement.with_for_update()
+    execution = await session.scalar(statement)
     if execution is None:
         raise ExecutionStateError("load_execution", execution_id=execution_id)
     return execution
