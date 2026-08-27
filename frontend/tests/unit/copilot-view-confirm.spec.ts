@@ -5,6 +5,7 @@ import CopilotView from "../../src/views/CopilotView.vue";
 import {
   chatWithCopilot,
   confirmCopilotStep,
+  executeModelEvaluation,
   validateArxStructure,
   validateFeatureSelection,
   validateLagOverrides,
@@ -14,6 +15,7 @@ import type { CopilotChatResponse } from "../../src/types/api";
 vi.mock("../../src/api/copilot", () => ({
   chatWithCopilot: vi.fn(),
   confirmCopilotStep: vi.fn(),
+  executeModelEvaluation: vi.fn(),
   validateArxStructure: vi.fn(),
   validateFeatureSelection: vi.fn(),
   validateLagOverrides: vi.fn(),
@@ -26,6 +28,7 @@ const versionId = "33333333-3333-4333-8333-333333333333";
 
 const mockedChat = vi.mocked(chatWithCopilot);
 const mockedConfirm = vi.mocked(confirmCopilotStep);
+const mockedExecuteEvaluation = vi.mocked(executeModelEvaluation);
 const mockedValidateLag = vi.mocked(validateLagOverrides);
 const mockedValidateArx = vi.mocked(validateArxStructure);
 const mockedValidateFeature = vi.mocked(validateFeatureSelection);
@@ -170,6 +173,51 @@ const arxWaitingResponse = (): CopilotChatResponse => {
   return response;
 };
 
+const evaluationPendingResponse = (): CopilotChatResponse => {
+  const response = arxWaitingResponse();
+  response.workflow_status = "RUNNING";
+  response.pending_confirmation_step_id = null;
+  response.plan.steps[1] = {
+    ...response.plan.steps[1],
+    status: "completed",
+  };
+  response.step_runs[1] = {
+    ...response.step_runs[1],
+    status: "completed",
+    result: { model_id: "model-arx-1", source_version_id: versionId },
+  };
+  response.step_runs.push({
+    step_id: "s3",
+    tool: "evaluate_model",
+    status: "pending",
+    parameters: {},
+    summary: "等待执行模型评价",
+    result: {},
+    duration_ms: 0,
+    error_code: null,
+  });
+  return response;
+};
+
+const evaluationSuccessResponse = () => ({
+  execution_id: executionId,
+  workflow_status: "SUCCEEDED" as const,
+  current_version_id: versionId,
+  step_id: "s3",
+  step_status: "SUCCEEDED",
+  result_payload: {
+    model_id: "model-arx-1",
+    source_version_id: versionId,
+    processing_run_id: "44444444-4444-4444-8444-444444444444",
+    test: {
+      one_step: { fit: 88.35, r2: 0.9123, rmse: 0.1234, mae: null, nrmse: 0.0567 },
+      free_run: { fit: 82.1, r2: 0.8456, rmse: 0.2345, mae: 0.1111, nrmse: 0.0789 },
+    },
+  },
+  error_code: null,
+  error_message: null,
+  processing_run_ids: ["44444444-4444-4444-8444-444444444444"],
+});
 const arxValidation = (overall_status: "VALID" | "INVALID", issues: string[] = []) => ({
   recommended_structure: { na: 2, nb: { u1: 2, u2: 3 }, delays: { u1: 0, u2: 0 } },
   manual_overrides: {},
@@ -590,5 +638,98 @@ describe("CopilotView persistent confirmation", () => {
     }));
     expect(mockedValidateArx).not.toHaveBeenCalled();
     expect(wrapper.text()).toContain("已拒绝");
+  });
+});
+describe("CopilotView explicit model evaluation", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockedChat.mockResolvedValue(evaluationPendingResponse());
+  });
+
+  it("shows the evaluation trigger only after fit_arx succeeds", async () => {
+    const wrapper = mountView();
+    await submitChat(wrapper);
+
+    expect(wrapper.get("[data-test='execute-evaluation-s3']").text()).toContain("执行模型评价");
+  });
+
+  it("does not expose the evaluation trigger before fit succeeds or for plan-only results", async () => {
+    const notReady = evaluationPendingResponse();
+    notReady.plan.steps[1].status = "pending";
+    mockedChat.mockResolvedValue(notReady);
+    const notReadyWrapper = mountView();
+    await submitChat(notReadyWrapper);
+    expect(notReadyWrapper.find("[data-test='execute-evaluation-s3']").exists()).toBe(false);
+
+    const planOnly = evaluationPendingResponse();
+    planOnly.execution_id = null;
+    planOnly.executed = false;
+    mockedChat.mockResolvedValue(planOnly);
+    const planOnlyWrapper = mountView();
+    await submitChat(planOnlyWrapper);
+    expect(planOnlyWrapper.find("[data-test='execute-evaluation-s3']").exists()).toBe(false);
+  });
+
+  it("executes once, updates the step, and renders real test metrics", async () => {
+    let resolveResponse: (value: ReturnType<typeof evaluationSuccessResponse>) => void;
+    mockedExecuteEvaluation.mockReturnValue(new Promise((resolve) => { resolveResponse = resolve; }));
+    const wrapper = mountView();
+    await submitChat(wrapper);
+
+    const button = wrapper.get("[data-test='execute-evaluation-s3']");
+    await button.trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(mockedExecuteEvaluation).toHaveBeenCalledWith(executionId);
+    expect(button.attributes("disabled")).toBeDefined();
+    await button.trigger("click");
+    expect(mockedExecuteEvaluation).toHaveBeenCalledTimes(1);
+
+    resolveResponse!(evaluationSuccessResponse());
+    await flushPromises();
+
+    expect(wrapper.find("[data-test='execute-evaluation-s3']").exists()).toBe(false);
+    expect(wrapper.get("[data-test='evaluation-results-s3']").text()).toContain("模型评价结果");
+    expect(wrapper.get("[data-test='evaluation-one-step-s3']").text()).toContain("一步预测");
+    expect(wrapper.get("[data-test='evaluation-free-run-s3']").text()).toContain("自由仿真");
+    expect(wrapper.text()).toContain("88.35%");
+    expect(wrapper.text()).not.toContain("8835%");
+    expect(wrapper.get("[data-test='evaluation-one-step-s3']").text()).toContain("—");
+    expect(wrapper.text()).toContain("R²");
+    expect(wrapper.text()).toContain("RMSE");
+    expect(wrapper.text()).toContain("MAE");
+    expect(wrapper.text()).toContain("NRMSE");
+  });
+
+  it("renders a persisted FAILED evaluation response without metrics", async () => {
+    mockedExecuteEvaluation.mockResolvedValue({
+      ...evaluationSuccessResponse(),
+      workflow_status: "FAILED",
+      step_status: "FAILED",
+      result_payload: {},
+      error_code: "MODEL_SOURCE_VERSION_MISMATCH",
+      error_message: "已保存模型的数据版本不匹配。",
+      processing_run_ids: [],
+    });
+    const wrapper = mountView();
+    await submitChat(wrapper);
+
+    await wrapper.get("[data-test='execute-evaluation-s3']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get("[data-test='evaluation-error-s3']").text()).toContain("已保存模型的数据版本不匹配。");
+    expect(wrapper.find("[data-test='evaluation-results-s3']").exists()).toBe(false);
+    expect(wrapper.find("[data-test='execute-evaluation-s3']").exists()).toBe(false);
+  });
+
+  it("surfaces trigger conflicts without fabricating evaluation data", async () => {
+    mockedExecuteEvaluation.mockRejectedValue(new Error("当前执行状态不允许模型评价。"));
+    const wrapper = mountView();
+    await submitChat(wrapper);
+
+    await wrapper.get("[data-test='execute-evaluation-s3']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("当前执行状态不允许模型评价。");
+    expect(wrapper.find("[data-test='evaluation-results-s3']").exists()).toBe(false);
   });
 });

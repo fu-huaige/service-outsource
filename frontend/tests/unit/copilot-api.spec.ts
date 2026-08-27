@@ -9,6 +9,7 @@ vi.mock("../../src/api/client", () => ({
 import {
   chatWithCopilot,
   confirmCopilotStep,
+  executeModelEvaluation,
   validateArxStructure,
   validateFeatureSelection,
   validateLagOverrides,
@@ -31,6 +32,15 @@ describe("Copilot API", () => {
     expect(post).toHaveBeenCalledWith("/copilot/chat", request, { timeout: 120_000 });
   });
 
+  it("executes model evaluation with only execution_id", async () => {
+    const executionId = "22222222-2222-4222-8222-222222222222";
+
+    await executeModelEvaluation(executionId);
+
+    expect(post).toHaveBeenCalledWith("/copilot/evaluate-model/execute", {
+      execution_id: executionId,
+    });
+  });
   it("sends persistent execution and step identifiers when confirming a step", async () => {
     const request = {
       copilot_run_id: "11111111-1111-4111-8111-111111111111",

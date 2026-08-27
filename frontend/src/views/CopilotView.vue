@@ -369,7 +369,54 @@
                     </el-button>
                   </div>
                 </div>
-              </template>
+                <div v-if="canExecuteModelEvaluation(step.step_id)" class="evaluation-actions">
+                  <el-button
+                    type="primary"
+                    size="small"
+                    :loading="executingEvaluationStepId === step.step_id"
+                    :disabled="executingEvaluationStepId !== null"
+                    :data-test="'execute-evaluation-' + step.step_id"
+                    @click="executeModelEvaluationStep(step.step_id)"
+                  >
+                    执行模型评价
+                  </el-button>
+                </div>
+                <p
+                  v-if="isEvaluationStep(step.step_id) && step.status === 'failed' && evaluationFailure(step.step_id)"
+                  class="step-error"
+                  :data-test="'evaluation-error-' + step.step_id"
+                >
+                  模型评价失败：{{ evaluationFailure(step.step_id) }}
+                </p>
+                <div
+                  v-if="isEvaluationStep(step.step_id) && step.status === 'completed' && evaluationResult(step.step_id)"
+                  class="evaluation-results"
+                  :data-test="'evaluation-results-' + step.step_id"
+                >
+                  <p class="evaluation-title">模型评价结果</p>
+                  <div class="evaluation-groups">
+                    <section class="evaluation-group" :data-test="'evaluation-one-step-' + step.step_id">
+                      <h4>Test 一步预测</h4>
+                      <div class="evaluation-metrics-grid">
+                        <div class="evaluation-metric"><span>FIT</span><strong>{{ pct(evaluationResult(step.step_id)?.test.one_step.fit) }}</strong></div>
+                        <div class="evaluation-metric"><span>R²</span><strong>{{ num(evaluationResult(step.step_id)?.test.one_step.r2) }}</strong></div>
+                        <div class="evaluation-metric"><span>RMSE</span><strong>{{ num(evaluationResult(step.step_id)?.test.one_step.rmse) }}</strong></div>
+                        <div class="evaluation-metric"><span>MAE</span><strong>{{ num(evaluationResult(step.step_id)?.test.one_step.mae) }}</strong></div>
+                        <div class="evaluation-metric"><span>NRMSE</span><strong>{{ num(evaluationResult(step.step_id)?.test.one_step.nrmse) }}</strong></div>
+                      </div>
+                    </section>
+                    <section class="evaluation-group" :data-test="'evaluation-free-run-' + step.step_id">
+                      <h4>Test 自由仿真</h4>
+                      <div class="evaluation-metrics-grid">
+                        <div class="evaluation-metric"><span>FIT</span><strong>{{ pct(evaluationResult(step.step_id)?.test.free_run.fit) }}</strong></div>
+                        <div class="evaluation-metric"><span>R²</span><strong>{{ num(evaluationResult(step.step_id)?.test.free_run.r2) }}</strong></div>
+                        <div class="evaluation-metric"><span>RMSE</span><strong>{{ num(evaluationResult(step.step_id)?.test.free_run.rmse) }}</strong></div>
+                        <div class="evaluation-metric"><span>MAE</span><strong>{{ num(evaluationResult(step.step_id)?.test.free_run.mae) }}</strong></div>
+                        <div class="evaluation-metric"><span>NRMSE</span><strong>{{ num(evaluationResult(step.step_id)?.test.free_run.nrmse) }}</strong></div>
+                      </div>
+                    </section>
+                  </div>
+                </div>              </template>
             </el-step>
           </el-steps>
         </div>
@@ -431,6 +478,7 @@ import {
 import {
   chatWithCopilot,
   confirmCopilotStep,
+  executeModelEvaluation,
   validateArxStructure,
   validateFeatureSelection,
   validateLagOverrides,
@@ -442,6 +490,8 @@ import type {
   AgentStepStatus,
   CopilotChatRequest,
   CopilotChatResponse,
+  PredictionMetrics,
+  SavedArxEvaluationResult,
   FeatureSelectionAction,
   FeatureSelectionValidationResponse,
   LagManualOverride,
@@ -482,6 +532,7 @@ const STATUS_LABELS: Record<string, string> = {
 const prompt = ref("");
 const sending = ref(false);
 const confirmingStepId = ref<string | null>(null);
+const executingEvaluationStepId = ref<string | null>(null);
 const validatingLagStepId = ref<string | null>(null);
 const editingLagStepId = ref<string | null>(null);
 const lagOverrideRows = ref<LagManualOverride[]>([]);
@@ -853,6 +904,98 @@ const handleConfirmation = async (stepId: string, approved: boolean) => {
 const runFor = (stepId: string) =>
   result.value?.step_runs.find((run) => run.step_id === stepId) ?? null;
 
+const isEvaluationStep = (stepId: string) =>
+  result.value?.plan.steps.find((step) => step.step_id === stepId)?.tool === "evaluate_model";
+
+const canExecuteModelEvaluation = (stepId: string) => {
+  const current = result.value;
+  const evaluation = current?.plan.steps.find((step) => step.step_id === stepId);
+  if (!current?.execution_id || evaluation?.tool !== "evaluate_model" || evaluation.status !== "pending") {
+    return false;
+  }
+  const fit = current.plan.steps.find(
+    (step) => step.tool === "fit_arx" && evaluation.depends_on.includes(step.step_id)
+  );
+  return fit?.status === "completed";
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isMetricValue = (value: unknown): value is number | null =>
+  value === null || typeof value === "number";
+
+const isPredictionMetrics = (value: unknown): value is PredictionMetrics =>
+  isRecord(value) && ["mae", "rmse", "r2", "fit", "nrmse"].every((key) => isMetricValue(value[key]));
+
+const evaluationResult = (stepId: string): SavedArxEvaluationResult | null => {
+  const payload = runFor(stepId)?.result;
+  if (!isRecord(payload) || !isRecord(payload.test)) return null;
+  if (
+    typeof payload.model_id !== "string" ||
+    typeof payload.source_version_id !== "string" ||
+    typeof payload.processing_run_id !== "string" ||
+    !isPredictionMetrics(payload.test.one_step) ||
+    !isPredictionMetrics(payload.test.free_run)
+  ) {
+    return null;
+  }
+  return payload as SavedArxEvaluationResult;
+};
+
+const evaluationFailure = (stepId: string) => {
+  const stepRun = runFor(stepId);
+  return stepRun?.error_message || stepRun?.error_code || "";
+};
+
+const pct = (value: number | null | undefined) =>
+  value === null || value === undefined || !Number.isFinite(value)
+    ? "—"
+    : `${value.toFixed(2)}%`;
+
+const num = (value: number | null | undefined) =>
+  value === null || value === undefined || !Number.isFinite(value)
+    ? "—"
+    : Math.abs(value) >= 10000
+      ? value.toExponential(2)
+      : value.toFixed(4);
+
+const executeModelEvaluationStep = async (stepId: string) => {
+  const current = result.value;
+  if (!current?.execution_id || !canExecuteModelEvaluation(stepId) || executingEvaluationStepId.value) {
+    return;
+  }
+
+  errorMessage.value = "";
+  executingEvaluationStepId.value = stepId;
+  try {
+    const completed = await executeModelEvaluation(current.execution_id);
+    current.workflow_status = completed.workflow_status;
+    current.current_version_id = completed.current_version_id ?? current.current_version_id;
+
+    const status = persistentStepStatus(completed.step_status);
+    const plannedStep = current.plan.steps.find((step) => step.step_id === completed.step_id);
+    if (plannedStep) plannedStep.status = status;
+    const stepRun = current.step_runs.find((run) => run.step_id === completed.step_id);
+    if (stepRun) {
+      stepRun.status = status;
+      stepRun.result = completed.result_payload as Record<string, any>;
+      stepRun.error_code = completed.error_code;
+      stepRun.error_message = completed.error_message;
+      stepRun.processing_run_ids = completed.processing_run_ids;
+    }
+
+    if (status === "completed") {
+      ElMessage.success("模型评价完成");
+    } else {
+      ElMessage.error(completed.error_message || completed.error_code || "模型评价失败");
+    }
+  } catch (err) {
+    errorMessage.value = err instanceof ApiError ? err.message : String(err);
+  } finally {
+    executingEvaluationStepId.value = null;
+  }
+};
 const activeStep = computed(() => {
   if (!result.value) return 0;
   const steps = result.value.plan.steps;
@@ -1196,6 +1339,59 @@ const stepStatus = (status: AgentStepStatus) =>
 @media (max-width: 600px) {
   .copilot-view .industrial-card {
     padding: 16px;
+  }
+}
+.evaluation-actions {
+  margin-top: 10px;
+}
+
+.evaluation-results {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--surface-color);
+}
+
+.evaluation-title {
+  margin: 0 0 10px;
+  font-weight: 600;
+}
+
+.evaluation-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.evaluation-group h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.evaluation-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.evaluation-metric {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.evaluation-metric span {
+  color: var(--text-secondary);
+}
+
+@media (max-width: 720px) {
+  .evaluation-groups {
+    grid-template-columns: 1fr;
   }
 }
 </style>

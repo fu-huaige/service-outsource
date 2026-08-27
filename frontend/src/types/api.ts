@@ -738,6 +738,8 @@ export interface AgentStepRun {
   result: Record<string, any>;
   duration_ms: number;
   error_code: string | null;
+  error_message?: string | null;
+  processing_run_ids?: string[];
 }
 
 export interface CopilotChatRequest {
@@ -878,7 +880,38 @@ export interface CopilotConfirmResponse {
   task: TaskResource | null;
 }
 
-// Delivery API Types (Phase 10)
+
+export interface PredictionMetrics {
+  mae: number | null;
+  rmse: number | null;
+  r2: number | null;
+  fit: number | null;
+  nrmse: number | null;
+}
+
+export interface SavedArxEvaluationTest {
+  one_step: PredictionMetrics;
+  free_run: PredictionMetrics;
+}
+
+export interface SavedArxEvaluationResult {
+  model_id: string;
+  source_version_id: string;
+  processing_run_id: string;
+  test: SavedArxEvaluationTest;
+}
+
+export interface CopilotEvaluateModelExecuteResponse {
+  execution_id: string;
+  workflow_status: AgentWorkflowStatus;
+  current_version_id: string | null;
+  step_id: string;
+  step_status: string;
+  result_payload: Record<string, unknown>;
+  error_code: string | null;
+  error_message: string | null;
+  processing_run_ids: string[];
+}// Delivery API Types (Phase 10)
 export interface ReportRequest {
   dataset_id?: string | null;
   version_id?: string | null;

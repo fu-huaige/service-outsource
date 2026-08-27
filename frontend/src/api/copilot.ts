@@ -6,6 +6,7 @@ import type {
   CopilotChatResponse,
   CopilotConfirmRequest,
   CopilotConfirmResponse,
+  CopilotEvaluateModelExecuteResponse,
   FeatureSelectionValidationRequest,
   FeatureSelectionValidationResponse,
   LagOverrideValidationRequest,
@@ -33,3 +34,7 @@ export const validateArxStructure = (
   req: ArxStructureValidationRequest
 ): Promise<ArxStructureValidationResponse> =>
   apiClient.post("/copilot/arx-structure/validate", req);
+export const executeModelEvaluation = (
+  executionId: string
+): Promise<CopilotEvaluateModelExecuteResponse> =>
+  apiClient.post("/copilot/evaluate-model/execute", { execution_id: executionId });
