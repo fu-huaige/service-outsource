@@ -100,6 +100,8 @@ class OptimizationStatusData(Schema):
     # Cache-hit rate, trial counts and timings — the phase-8 acceptance evidence.
     statistics: dict[str, Any] = Field(default_factory=dict)
     best_params: dict[str, Any] = Field(default_factory=dict)
+    baseline_model_id: UUID | None = None
+    optimized_model_id: UUID | None = None
     # Set when this study reused parameters learned from a different dataset.
     warm_started_from: UUID | None = None
     baseline: BaselineEvaluation | None = None
