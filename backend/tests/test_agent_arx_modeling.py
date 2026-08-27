@@ -212,7 +212,10 @@ async def _version_bytes(harness: ArxHarness, version_id: UUID) -> bytes:
 
 
 def _chat_to_arx_confirmation(
-    harness: ArxHarness, *, alter_test_partition: bool = False
+    harness: ArxHarness,
+    *,
+    alter_test_partition: bool = False,
+    message: str = "使用当前变量进行 ARX 建模并评价模型",
 ) -> AgentExecutionSession:
     dataset_id, v3 = _upload_and_build_v3(
         harness, alter_test_partition=alter_test_partition
@@ -220,7 +223,7 @@ def _chat_to_arx_confirmation(
     response = harness.client.post(
         "/api/v1/copilot/chat",
         json={
-            "message": "使用当前变量进行 ARX 建模并评价模型",
+            "message": message,
             "dataset_id": str(dataset_id),
             "active_version_id": str(v3),
         },
@@ -1122,3 +1125,260 @@ def test_optimization_adapter_rejects_missing_declared_fit_predecessor(
     assert data["step_status"] == "FAILED"
     assert data["error_code"] == "OPTIMIZATION_FIT_DEPENDENCY_REQUIRED"
     assert calls == 0
+
+def test_optimized_model_is_the_only_new_dag_evaluation_predecessor(
+    arx_harness: ArxHarness,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execution = _chat_to_arx_confirmation(
+        arx_harness,
+        message="使用当前变量进行 ARX 建模并闭环寻优 1 次试验",
+    )
+    fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
+    optimization = next(
+        step for step in execution.step_runs if step.tool_name == "optimize_pipeline"
+    )
+    evaluation = next(step for step in execution.step_runs if step.tool_name == "evaluate_model")
+    assert optimization.input_payload["depends_on"] == [fit.step_id]
+    assert evaluation.input_payload["depends_on"] == [optimization.step_id]
+    assert optimization.status == "PENDING"
+    assert evaluation.status == "PENDING"
+
+    confirmed_fit = _confirm(arx_harness, execution_id=execution.id, step_id=fit.step_id)
+    assert confirmed_fit.status_code == 200, confirmed_fit.text
+    source_version_id = execution.current_version_id
+
+    async def start_optimization() -> AgentExecutionSession:
+        async with arx_harness.session_factory() as session:
+            return await start_step(
+                session,
+                execution_id=execution.id,
+                step_id=optimization.step_id,
+            )
+
+    waiting = asyncio.run(start_optimization())
+    pending_optimization = next(
+        step for step in waiting.step_runs if step.step_id == optimization.step_id
+    )
+    assert waiting.workflow_status == "WAITING_CONFIRMATION"
+    assert pending_optimization.status == "WAITING_CONFIRMATION"
+    assert next(step for step in waiting.step_runs if step.step_id == evaluation.step_id).status == "PENDING"
+
+    approved = _confirm(
+        arx_harness,
+        execution_id=execution.id,
+        step_id=optimization.step_id,
+    )
+    assert approved.status_code == 200, approved.text
+    optimization_response = arx_harness.client.post(
+        "/api/v1/copilot/optimize-pipeline/execute",
+        json={"execution_id": str(execution.id)},
+    )
+    assert optimization_response.status_code == 200, optimization_response.text
+    optimized_execution = asyncio.run(_load_execution(arx_harness, execution.id))
+    fitted = next(step for step in optimized_execution.step_runs if step.tool_name == "fit_arx")
+    optimized = next(
+        step for step in optimized_execution.step_runs if step.tool_name == "optimize_pipeline"
+    )
+    pending_evaluation = next(
+        step for step in optimized_execution.step_runs if step.tool_name == "evaluate_model"
+    )
+    assert optimized.status == "SUCCEEDED"
+    assert optimized.source_version_id == fitted.source_version_id == source_version_id
+    assert optimized.result_payload["model_id"] == optimized.result_payload["optimized_model_id"]
+    assert optimized.result_payload["model_id"] != fitted.result_payload["model_id"]
+    assert pending_evaluation.status == "PENDING"
+
+    from app.services import agent_tool_adapter
+
+    observed_model_ids: list[UUID] = []
+    formal_evaluation = agent_tool_adapter.evaluate_saved_arx_model
+
+    async def spy_saved_evaluation(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+        observed_model_ids.append(kwargs["model_id"])  # type: ignore[index]
+        return await formal_evaluation(*args, **kwargs)  # type: ignore[arg-type]
+
+    def fail_if_refit(*args: object, **kwargs: object) -> None:
+        raise AssertionError("evaluate_model must only evaluate the frozen optimized artifact")
+
+    monkeypatch.setattr(agent_tool_adapter, "evaluate_saved_arx_model", spy_saved_evaluation)
+    monkeypatch.setattr(agent_tool_adapter, "fit_arx_on_version", fail_if_refit)
+    monkeypatch.setattr("app.services.modeling_service.fit_arx_core", fail_if_refit)
+    before_versions = asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id))
+    before_runs = asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id))
+    evaluation_response = arx_harness.client.post(
+        "/api/v1/copilot/evaluate-model/execute",
+        json={"execution_id": str(execution.id)},
+    )
+    assert evaluation_response.status_code == 200, evaluation_response.text
+
+    persisted = asyncio.run(_load_execution(arx_harness, execution.id))
+    evaluated = next(step for step in persisted.step_runs if step.tool_name == "evaluate_model")
+    assert observed_model_ids == [UUID(optimized.result_payload["model_id"])]
+    assert evaluated.status == "SUCCEEDED"
+    assert evaluated.source_version_id == optimized.source_version_id == source_version_id
+    assert evaluated.result_version_id is None
+    assert evaluated.result_payload["model_id"] == optimized.result_payload["model_id"]
+    assert len(evaluated.processing_run_ids) == 1
+    run = asyncio.run(_load_processing_run(arx_harness, UUID(evaluated.processing_run_ids[0])))
+    assert run.run_type == "modeling.arx_evaluation"
+    assert persisted.current_version_id == source_version_id
+    assert asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id)) == before_runs + 1
+    assert asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id)) == before_versions
+
+def test_evaluation_resolver_requires_one_declared_model_producer() -> None:
+    source_version_id = uuid4()
+    dataset_id = uuid4()
+    execution = AgentExecutionSession(
+        id=uuid4(),
+        dataset_id=dataset_id,
+        initial_version_id=source_version_id,
+        current_version_id=source_version_id,
+        planner_source="test",
+        plan_json={"steps": []},
+        workflow_status="RUNNING",
+        artifacts={},
+    )
+    fit_model_id = uuid4()
+    optimized_model_id = uuid4()
+    fit = AgentStepRun(
+        id=uuid4(),
+        execution_id=execution.id,
+        step_id="fit",
+        sequence=1,
+        tool_name="fit_arx",
+        status="SUCCEEDED",
+        requires_confirmation=True,
+        confirmation_status="APPROVED",
+        attempt_count=1,
+        source_version_id=source_version_id,
+        input_payload={},
+        result_payload={"model_id": str(fit_model_id)},
+        processing_run_ids=[],
+    )
+    optimization = AgentStepRun(
+        id=uuid4(),
+        execution_id=execution.id,
+        step_id="optimize",
+        sequence=2,
+        tool_name="optimize_pipeline",
+        status="SUCCEEDED",
+        requires_confirmation=True,
+        confirmation_status="APPROVED",
+        attempt_count=1,
+        source_version_id=source_version_id,
+        input_payload={},
+        result_payload={
+            "model_id": str(optimized_model_id),
+            "optimized_model_id": str(optimized_model_id),
+            "source_version_id": str(source_version_id),
+        },
+        processing_run_ids=[],
+    )
+    execution.step_runs = [fit, optimization]
+    evaluation = AgentStepRun(
+        id=uuid4(),
+        execution_id=execution.id,
+        step_id="evaluate",
+        sequence=3,
+        tool_name="evaluate_model",
+        status="PENDING",
+        requires_confirmation=False,
+        confirmation_status="NOT_REQUIRED",
+        attempt_count=0,
+        input_payload={"depends_on": [optimization.step_id]},
+        result_payload={},
+        processing_run_ids=[],
+    )
+
+    from app.services import agent_tool_adapter
+
+    assert agent_tool_adapter._model_producing_predecessor(execution, evaluation) == (
+        optimized_model_id,
+        source_version_id,
+    )
+    evaluation.input_payload = {"depends_on": [fit.step_id, optimization.step_id]}
+    with pytest.raises(AgentToolAdapterError) as ambiguous:
+        agent_tool_adapter._model_producing_predecessor(execution, evaluation)
+    assert ambiguous.value.code == "EVALUATION_MODEL_PRODUCER_DEPENDENCY_REQUIRED"
+
+    evaluation.input_payload = {"depends_on": ["profile"]}
+    with pytest.raises(AgentToolAdapterError) as invalid:
+        agent_tool_adapter._model_producing_predecessor(execution, evaluation)
+    assert invalid.value.code == "EVALUATION_MODEL_PRODUCER_DEPENDENCY_REQUIRED"
+
+def test_optimized_artifact_source_mismatch_fails_evaluation_without_refit(
+    arx_harness: ArxHarness,
+) -> None:
+    execution = _chat_to_arx_confirmation(
+        arx_harness,
+        message="使用当前变量进行 ARX 建模并闭环寻优 1 次试验",
+    )
+    fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
+    optimization = next(
+        step for step in execution.step_runs if step.tool_name == "optimize_pipeline"
+    )
+    evaluation = next(step for step in execution.step_runs if step.tool_name == "evaluate_model")
+    confirmed_fit = _confirm(arx_harness, execution_id=execution.id, step_id=fit.step_id)
+    assert confirmed_fit.status_code == 200, confirmed_fit.text
+    source_version_id = execution.current_version_id
+
+    async def start_and_corrupt_optimization_source() -> None:
+        async with arx_harness.session_factory() as session:
+            await start_step(
+                session,
+                execution_id=execution.id,
+                step_id=optimization.step_id,
+            )
+
+    asyncio.run(start_and_corrupt_optimization_source())
+    approved = _confirm(
+        arx_harness,
+        execution_id=execution.id,
+        step_id=optimization.step_id,
+    )
+    assert approved.status_code == 200, approved.text
+    optimized = arx_harness.client.post(
+        "/api/v1/copilot/optimize-pipeline/execute",
+        json={"execution_id": str(execution.id)},
+    )
+    assert optimized.status_code == 200, optimized.text
+    assert optimized.json()["data"]["step_status"] == "SUCCEEDED"
+    before_versions = asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id))
+
+    mismatched_source_version_id = UUID("00000000-0000-4000-8000-000000000001")
+
+    async def corrupt_optimized_lineage() -> None:
+        async with arx_harness.session_factory() as session:
+            current = await session.scalar(
+                select(AgentExecutionSession)
+                .where(AgentExecutionSession.id == execution.id)
+                .options(selectinload(AgentExecutionSession.step_runs))
+            )
+            assert current is not None
+            current_optimization = next(
+                step for step in current.step_runs if step.tool_name == "optimize_pipeline"
+            )
+            current_optimization.source_version_id = mismatched_source_version_id
+            current_optimization.result_payload = {
+                **current_optimization.result_payload,
+                "source_version_id": str(mismatched_source_version_id),
+            }
+            await session.commit()
+
+    asyncio.run(corrupt_optimized_lineage())
+    response = arx_harness.client.post(
+        "/api/v1/copilot/evaluate-model/execute",
+        json={"execution_id": str(execution.id)},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["workflow_status"] == "FAILED"
+    assert data["step_status"] == "FAILED"
+    assert data["error_code"] == "MODEL_SOURCE_VERSION_MISMATCH"
+    persisted = asyncio.run(_load_execution(arx_harness, execution.id))
+    evaluated = next(step for step in persisted.step_runs if step.step_id == evaluation.step_id)
+    assert evaluated.status == "FAILED"
+    assert evaluated.processing_run_ids == []
+    assert persisted.current_version_id == source_version_id
+    assert asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id)) == before_versions

@@ -81,6 +81,20 @@ class TestPlanning:
         assert order.index("detect_anomalies") < order.index("clean_data")
         assert order.index("fit_arx") < order.index("evaluate_model")
 
+    def test_optimization_modelling_uses_the_saved_model_producer_chain(self) -> None:
+        steps, _, _ = plan_for("进行 ARX 建模并闭环寻优 2 次试验")
+        by_tool = {step.tool: step for step in steps}
+        ordered_tools = [step.tool for step in steps]
+
+        assert ordered_tools.index("fit_arx") < ordered_tools.index("optimize_pipeline")
+        assert ordered_tools.index("optimize_pipeline") < ordered_tools.index("evaluate_model")
+        assert by_tool["optimize_pipeline"].depends_on == (by_tool["fit_arx"].step_id,)
+        assert by_tool["evaluate_model"].depends_on == (
+            by_tool["optimize_pipeline"].step_id,
+        )
+        assert by_tool["fit_arx"].requires_confirmation is True
+        assert by_tool["optimize_pipeline"].requires_confirmation is True
+        assert by_tool["evaluate_model"].requires_confirmation is False
     def test_modelling_implies_segment_selection(self) -> None:
         steps, assumptions, _ = plan_for("直接做 ARX 辨识")
         assert "detect_dynamic_segments" in [step.tool for step in steps]
@@ -222,13 +236,36 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
     asyncio.run(engine.dispose())
 
 
-def benchmark_version(client: TestClient) -> str:
+def benchmark_dataset_version(client: TestClient) -> tuple[str, str]:
     response = client.post(
         "/api/v1/simulation/generate",
         json={"scenario": "S2", "n_steps": 2500, "seed": 8, "input_count": 2},
     )
     assert response.status_code == 201, response.text
-    return response.json()["data"]["version_id"]
+    data = response.json()["data"]
+    return data["dataset_id"], data["version_id"]
+
+
+def benchmark_version(client: TestClient) -> str:
+    _, version_id = benchmark_dataset_version(client)
+    return version_id
+
+
+def lag_compensated_benchmark_version(client: TestClient) -> str:
+    dataset_id, version_id = benchmark_dataset_version(client)
+    applied = client.post(
+        "/api/v1/preprocessing/delay/apply",
+        json={
+            "dataset_id": dataset_id,
+            "version_id": version_id,
+            "lag_map": {"u1": 3, "u2": 8},
+            "user_confirmed": True,
+            "recommendation_source": "manual",
+            "evidence_summary": {"fixture": "formal_lag_compensation"},
+        },
+    )
+    assert applied.status_code == 201, applied.text
+    return applied.json()["data"]["result_version_id"]
 
 
 class TestAgentApi:
@@ -277,12 +314,12 @@ class TestAgentApi:
         # Every number in the summary must come from a tool, not from the agent.
         assert by_tool["estimate_delays"]["result"]["delays"]
 
-    def test_natural_language_run_dispatches_arx_without_confirmation_gate(
+    def test_natural_language_run_prepares_arx_confirmation_from_lag_compensated_version(
         self, client: TestClient
     ) -> None:
-        """ARX remains covered by a real-tool flow that has no confirmation gate."""
+        """ARX planning requires formal lag lineage and stops at its confirmation gate."""
 
-        version_id = benchmark_version(client)
+        version_id = lag_compensated_benchmark_version(client)
         response = client.post(
             "/api/v1/copilot/chat",
             json={
@@ -294,10 +331,15 @@ class TestAgentApi:
         data = response.json()["data"]
 
         by_tool = {run["tool"]: run for run in data["step_runs"]}
-        assert by_tool["fit_arx"]["status"] == "completed"
-        fit = by_tool["fit_arx"]["result"]
-        assert fit["val_free_run_fit"] is not None
-        assert fit["stable"] is True
+        fit = by_tool["fit_arx"]
+        assert data["workflow_status"] == "WAITING_CONFIRMATION"
+        assert data["pending_confirmation_step_id"] == fit["step_id"]
+        assert fit["status"] == "waiting_confirmation"
+        recommendation = fit["result"]["arx_structure_recommendation"]
+        assert recommendation["lag_compensation_version_id"] == version_id
+        assert recommendation["recommended_delays"] == {"u1": 0, "u2": 0}
+        planned_steps = {step["tool"]: step["status"] for step in data["plan"]["steps"]}
+        assert planned_steps["evaluate_model"] == "pending"
     def test_high_impact_step_waits_for_confirmation_instead_of_running(
         self, client: TestClient
     ) -> None:

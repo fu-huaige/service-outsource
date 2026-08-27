@@ -63,8 +63,8 @@ TOOL_PREREQUISITES: dict[str, tuple[str, ...]] = {
     "analyze_collinearity": ("profile_dataset",),
     "select_variables": ("analyze_collinearity",),
     "fit_arx": ("profile_dataset",),
-    "evaluate_model": ("fit_arx",),
-    "optimize_pipeline": ("profile_dataset",),
+    "optimize_pipeline": ("fit_arx",),
+    "evaluate_model": ("optimize_pipeline",),
     "generate_report": (),
     "export_dataset": (),
 }
@@ -171,9 +171,12 @@ class RuleBasedPlanner:
         def emit(tool: str, parameters: dict[str, Any] | None = None) -> str:
             if tool in emitted:
                 return emitted[tool]
+            prerequisites = TOOL_PREREQUISITES.get(tool, ())
+            if tool == "evaluate_model" and "optimize_pipeline" not in emitted:
+                prerequisites = ("fit_arx",)
             depends = tuple(
                 emitted[prerequisite]
-                for prerequisite in TOOL_PREREQUISITES.get(tool, ())
+                for prerequisite in prerequisites
                 if prerequisite in emitted
             )
             step_id = f"s{len(steps) + 1}"
@@ -215,9 +218,9 @@ class RuleBasedPlanner:
                 )
                 assumptions.append("建模前默认执行质量门控与 D-最优区间优选。")
             emit("fit_arx")
+            if intent.wants("optimize"):
+                emit("optimize_pipeline", _subset(intent.parameters, ("max_trials",)))
             emit("evaluate_model")
-        if intent.wants("optimize"):
-            emit("optimize_pipeline", _subset(intent.parameters, ("max_trials",)))
         if intent.wants("report"):
             emit("generate_report")
         if intent.wants("export"):
