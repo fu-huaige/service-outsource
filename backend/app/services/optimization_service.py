@@ -243,7 +243,7 @@ def run_baseline(
                     train_ratio=payload.train_ratio,
                     validation_ratio=payload.validation_ratio,
                     training_sample_indices=selection.selected_sample_indices,
-                    evaluate_test=True,
+                    evaluate_test=False,
                 ),
                 input_columns=input_columns,
             )
@@ -267,12 +267,18 @@ def run_baseline(
                 }
             )
             result = fit(estimator="ridge", ridge_alpha=BASELINE_RIDGE_FALLBACK_ALPHA)
-        return _evaluation_from_result(
+        evaluation = _evaluation_from_result(
             result,
             parameters=parameters,
             started_at=started_at,
             started=started,
+            require_test=False,
         )
+        validation_objective, _ = objective_value(result)
+        if not np.isfinite(validation_objective):
+            evaluation.status = "failed"
+            evaluation.error_code = "BASELINE_VALIDATION_REJECTED"
+        return evaluation
     except (SegmentDomainError, ModelingDomainError) as error:
         return _failed_evaluation(
             parameters=parameters,
@@ -354,13 +360,14 @@ def _evaluation_from_result(
     started_at: datetime,
     started: float,
     best_trial_number: int | None = None,
+    require_test: bool = True,
 ) -> EvaluationOutcome:
-    one_step = result.metrics.one_step.get("test")
-    free_run = result.metrics.free_run.get("test")
+    one_step = result.metrics.one_step.get("test") if require_test else None
+    free_run = result.metrics.free_run.get("test") if require_test else None
     test_fit = free_run.fit if free_run is not None else None
     validation_fit = result.metrics.val_free_run_fit
     error_code = None
-    if validation_fit is None or test_fit is None:
+    if validation_fit is None or (require_test and test_fit is None):
         error_code = "EVALUATION_METRIC_UNAVAILABLE"
     finished_at = datetime.now(UTC)
     return EvaluationOutcome(
@@ -754,21 +761,6 @@ async def execute_study(
         raise
 
     await _persist_study(session, series=series, payload=payload, outcome=outcome)
-    if outcome.best_number is not None:
-        final_evaluation = evaluate_best_trial(
-            series,
-            payload,
-            outcome,
-            input_columns=input_columns,
-            output_column=output_column,
-        )
-        await _persist_evaluation(
-            session,
-            study_id=study_id,
-            series=series,
-            evaluation=final_evaluation,
-            kind="final_test",
-        )
     return dict(outcome.statistics)
 
 

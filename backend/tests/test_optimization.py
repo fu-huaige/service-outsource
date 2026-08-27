@@ -203,28 +203,50 @@ class TestObjective:
 
 
 class TestFormalEvaluation:
-    def test_baseline_is_deterministic_and_does_not_create_trials(self) -> None:
+    def test_baseline_is_test_free_and_ignores_the_held_out_tail(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from app.schemas.optimization import OptimizationStartRequest
-        from app.services.optimization_service import run_baseline
+        from app.services import optimization_service
 
-        series = make_series()
+        clean = make_series()
+        changed_test = make_series()
         payload = OptimizationStartRequest(
-            version_id=series.version_id,
+            version_id=clean.version_id,
             input_columns=["u1", "u2"],
             output_column="y",
             max_trials=2,
         )
-        first = run_baseline(
-            series, payload, input_columns=["u1", "u2"], output_column="y"
+        test_start = int(clean.n_samples * (payload.train_ratio + payload.validation_ratio))
+        changed_test.values["y"][test_start:] += 10_000.0
+
+        observed_evaluate_test: list[bool] = []
+        formal_fit = optimization_service.fit_arx_core
+
+        def spy_fit_arx_core(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+            observed_evaluate_test.append(kwargs["payload"].evaluate_test)  # type: ignore[index,union-attr]
+            return formal_fit(*args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(optimization_service, "fit_arx_core", spy_fit_arx_core)
+        first = optimization_service.run_baseline(
+            clean, payload, input_columns=["u1", "u2"], output_column="y"
         )
-        second = run_baseline(
-            series, payload, input_columns=["u1", "u2"], output_column="y"
+        second = optimization_service.run_baseline(
+            changed_test,
+            payload.model_copy(update={"version_id": changed_test.version_id}),
+            input_columns=["u1", "u2"],
+            output_column="y",
         )
 
         assert first.status == second.status == "succeeded"
         assert first.parameters == second.parameters
         assert first.validation_free_run_fit == pytest.approx(second.validation_free_run_fit)
-        assert first.test_free_run_fit == pytest.approx(second.test_free_run_fit)
+        assert observed_evaluate_test and all(value is False for value in observed_evaluate_test)
+        assert first.test_free_run_fit is None
+        assert first.test_mae is None
+        assert first.test_rmse is None
+        assert first.test_r2 is None
+        assert second.test_free_run_fit is None
         assert first.parameters["window_size"] == 60
         assert first.parameters["train_ratio"] == 0.6
         assert first.parameters["validation_ratio"] == 0.2
@@ -276,7 +298,7 @@ class TestFormalEvaluation:
         assert baseline.parameters["ridge_alpha"] == pytest.approx(0.1)
         assert baseline.parameters["fallback_reason"] == "DESIGN_MATRIX_RANK_DEFICIENT"
         assert baseline.validation_free_run_fit is not None
-        assert baseline.test_free_run_fit is not None
+        assert baseline.test_free_run_fit is None
 
     def test_optuna_trials_do_not_evaluate_the_test_partition(self) -> None:
         from app.schemas.optimization import OptimizationStartRequest
@@ -339,9 +361,15 @@ def generate(client: TestClient, *, seed: int = 4, scenario: str = "S2") -> str:
 
 
 class TestOptimizationApi:
-    def test_persists_strict_baseline_and_final_held_out_evaluation(
-        self, client: TestClient
+    def test_persists_validation_only_baseline_and_completes_without_final_test(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        from app.services import optimization_service
+
+        def fail_if_final_test_replayed(*args: object, **kwargs: object) -> None:
+            raise AssertionError("execute_study must not replay the held-out Test partition")
+
+        monkeypatch.setattr(optimization_service, "evaluate_best_trial", fail_if_final_test_replayed)
         version_id = generate(client, seed=52)
         started = client.post(
             "/api/v1/optimization/optuna/start",
@@ -359,30 +387,20 @@ class TestOptimizationApi:
         ).json()["data"]
 
         baseline = data["baseline"]
-        final = data["final_test_evaluation"]
         assert baseline["status"] == "succeeded"
         assert baseline["processing_run_id"]
         assert baseline["parameters"]["window_size"] == 60
         assert baseline["validation_free_run_fit"] is not None
-        assert baseline["test_free_run_fit"] is not None
+        assert baseline["test_free_run_fit"] is None
+        assert baseline["test_mae"] is None
+        assert baseline["test_rmse"] is None
+        assert baseline["test_r2"] is None
         assert len(data["trials"]) == 4, "Baseline must not become an Optuna trial."
 
         complete = [trial for trial in data["trials"] if trial["state"] == "complete"]
         selected = max(complete, key=lambda trial: trial["value"])
         assert data["best_trial_id"] == selected["trial_id"]
-        assert final["status"] == "succeeded"
-        assert final["best_trial_number"] == selected["trial_id"]
-        assert final["processing_run_id"]
-        assert final["test_free_run_fit"] is not None
-        assert final["test_mae"] is not None
-        assert final["test_rmse"] is not None
-        assert final["test_r2"] is not None
-        assert final["test_one_step_fit"] is not None
-        assert final["test_one_step_r2"] == final["test_r2"]
-        assert final["test_free_run_r2"] is not None
-        assert final["generalization_gap"] == pytest.approx(
-            final["validation_free_run_fit"] - final["test_free_run_fit"]
-        )
+        assert data["final_test_evaluation"] is None
 
     def test_diagnostics_replay_fixed_winner_without_changing_study(self, client: TestClient) -> None:
         version_id = generate(client, seed=73)
