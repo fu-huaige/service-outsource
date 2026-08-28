@@ -369,6 +369,53 @@
                     </el-button>
                   </div>
                 </div>
+                <div v-if="canExecutePipelineOptimization(step.step_id)" class="optimization-actions">
+                  <el-button
+                    type="primary"
+                    size="small"
+                    :loading="executingOptimizationStepId === step.step_id"
+                    :disabled="executingOptimizationStepId !== null"
+                    :data-test="'execute-optimization-' + step.step_id"
+                    @click="executePipelineOptimizationStep(step.step_id)"
+                  >
+                    执行模型优化
+                  </el-button>
+                </div>
+                <p
+                  v-if="isOptimizationStep(step.step_id) && step.status === 'failed' && optimizationFailure(step.step_id)"
+                  class="step-error"
+                  :data-test="'optimization-error-' + step.step_id"
+                >
+                  模型优化失败：{{ optimizationFailure(step.step_id) }}
+                </p>
+                <div
+                  v-if="isOptimizationStep(step.step_id) && step.status === 'completed' && optimizationResult(step.step_id)"
+                  class="optimization-results"
+                  :data-test="'optimization-results-' + step.step_id"
+                >
+                  <p class="optimization-title">模型优化结果</p>
+                  <div class="optimization-summary">
+                    <div class="optimization-item">
+                      <span>最佳综合目标值</span>
+                      <strong>{{ formatOptimizationObjective(optimizationResult(step.step_id)?.best_value) }}</strong>
+                    </div>
+                    <div class="optimization-item">
+                      <span>优化模型 ID</span>
+                      <strong class="code-inline">{{ optimizationResult(step.step_id)?.optimized_model_id }}</strong>
+                    </div>
+                  </div>
+                  <p class="optimization-params-title">最优参数</p>
+                  <div class="optimization-params-grid">
+                    <div
+                      v-for="(value, key) in optimizationResult(step.step_id)?.best_params"
+                      :key="String(key)"
+                      class="optimization-item"
+                    >
+                      <span>{{ String(key) }}</span>
+                      <strong class="code-inline">{{ formatOptimizationParameter(value) }}</strong>
+                    </div>
+                  </div>
+                </div>
                 <div v-if="canExecuteModelEvaluation(step.step_id)" class="evaluation-actions">
                   <el-button
                     type="primary"
@@ -478,6 +525,7 @@ import {
 import {
   chatWithCopilot,
   confirmCopilotStep,
+  executePipelineOptimization,
   executeModelEvaluation,
   validateArxStructure,
   validateFeatureSelection,
@@ -487,6 +535,7 @@ import type {
   ArxStructureManualOverrides,
   ArxStructureValidationResponse,
   AgentConfirmationStatus,
+  AgentOptimizationResult,
   AgentStepStatus,
   CopilotChatRequest,
   CopilotChatResponse,
@@ -532,6 +581,7 @@ const STATUS_LABELS: Record<string, string> = {
 const prompt = ref("");
 const sending = ref(false);
 const confirmingStepId = ref<string | null>(null);
+const executingOptimizationStepId = ref<string | null>(null);
 const executingEvaluationStepId = ref<string | null>(null);
 const validatingLagStepId = ref<string | null>(null);
 const editingLagStepId = ref<string | null>(null);
@@ -907,16 +957,44 @@ const runFor = (stepId: string) =>
 const isEvaluationStep = (stepId: string) =>
   result.value?.plan.steps.find((step) => step.step_id === stepId)?.tool === "evaluate_model";
 
+const isOptimizationStep = (stepId: string) =>
+  result.value?.plan.steps.find((step) => step.step_id === stepId)?.tool === "optimize_pipeline";
+
+const directModelProducer = (stepId: string) => {
+  const current = result.value;
+  const target = current?.plan.steps.find((step) => step.step_id === stepId);
+  if (!current || !target) return null;
+  const producers = current.plan.steps.filter(
+    (step) =>
+      target.depends_on.includes(step.step_id) &&
+      (step.tool === "fit_arx" || step.tool === "optimize_pipeline")
+  );
+  return producers.length === 1 ? producers[0] : null;
+};
+
+const canExecutePipelineOptimization = (stepId: string) => {
+  const current = result.value;
+  const optimization = current?.plan.steps.find((step) => step.step_id === stepId);
+  if (
+    !current?.execution_id ||
+    optimization?.tool !== "optimize_pipeline" ||
+    optimization.status !== "running"
+  ) {
+    return false;
+  }
+  const fits = current.plan.steps.filter(
+    (step) => optimization.depends_on.includes(step.step_id) && step.tool === "fit_arx"
+  );
+  return fits.length === 1 && fits[0].status === "completed";
+};
+
 const canExecuteModelEvaluation = (stepId: string) => {
   const current = result.value;
   const evaluation = current?.plan.steps.find((step) => step.step_id === stepId);
   if (!current?.execution_id || evaluation?.tool !== "evaluate_model" || evaluation.status !== "pending") {
     return false;
   }
-  const fit = current.plan.steps.find(
-    (step) => step.tool === "fit_arx" && evaluation.depends_on.includes(step.step_id)
-  );
-  return fit?.status === "completed";
+  return directModelProducer(stepId)?.status === "completed";
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -948,6 +1026,28 @@ const evaluationFailure = (stepId: string) => {
   return stepRun?.error_message || stepRun?.error_code || "";
 };
 
+const optimizationResult = (stepId: string): AgentOptimizationResult | null => {
+  const payload = runFor(stepId)?.result;
+  if (
+    !isRecord(payload) ||
+    typeof payload.study_id !== "string" ||
+    typeof payload.baseline_model_id !== "string" ||
+    typeof payload.model_id !== "string" ||
+    typeof payload.optimized_model_id !== "string" ||
+    typeof payload.source_version_id !== "string" ||
+    !isRecord(payload.best_params) ||
+    (payload.best_value !== null && typeof payload.best_value !== "number")
+  ) {
+    return null;
+  }
+  return payload as AgentOptimizationResult;
+};
+
+const optimizationFailure = (stepId: string) => {
+  const stepRun = runFor(stepId);
+  return stepRun?.error_message || stepRun?.error_code || "";
+};
+
 const pct = (value: number | null | undefined) =>
   value === null || value === undefined || !Number.isFinite(value)
     ? "—"
@@ -959,6 +1059,59 @@ const num = (value: number | null | undefined) =>
     : Math.abs(value) >= 10000
       ? value.toExponential(2)
       : value.toFixed(4);
+
+const formatOptimizationObjective = (value: number | null | undefined) =>
+  value === null || value === undefined || !Number.isFinite(value) ? "—" : value.toFixed(4);
+
+const formatOptimizationParameter = (value: unknown) => {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? (Number.isInteger(value) ? String(value) : value.toFixed(4)) : "—";
+  }
+  if (typeof value === "string" || typeof value === "boolean") return String(value);
+  try {
+    return JSON.stringify(value) ?? "—";
+  } catch {
+    return "—";
+  }
+};
+
+const executePipelineOptimizationStep = async (stepId: string) => {
+  const current = result.value;
+  if (!current?.execution_id || !canExecutePipelineOptimization(stepId) || executingOptimizationStepId.value) {
+    return;
+  }
+
+  errorMessage.value = "";
+  executingOptimizationStepId.value = stepId;
+  try {
+    const completed = await executePipelineOptimization(current.execution_id);
+    current.workflow_status = completed.workflow_status;
+    current.current_version_id = completed.current_version_id ?? current.current_version_id;
+
+    const status = persistentStepStatus(completed.step_status);
+    const plannedStep = current.plan.steps.find((step) => step.step_id === completed.step_id);
+    if (plannedStep) plannedStep.status = status;
+    const stepRun = current.step_runs.find((run) => run.step_id === completed.step_id);
+    if (stepRun) {
+      stepRun.status = status;
+      stepRun.result = completed.result_payload as Record<string, any>;
+      stepRun.error_code = completed.error_code;
+      stepRun.error_message = completed.error_message;
+      stepRun.processing_run_ids = completed.processing_run_ids;
+    }
+
+    if (status === "completed") {
+      ElMessage.success("模型优化完成");
+    } else {
+      ElMessage.error(completed.error_message || completed.error_code || "模型优化失败");
+    }
+  } catch (err) {
+    errorMessage.value = err instanceof ApiError ? err.message : String(err);
+  } finally {
+    executingOptimizationStepId.value = null;
+  }
+};
 
 const executeModelEvaluationStep = async (stepId: string) => {
   const current = result.value;
@@ -1341,8 +1494,48 @@ const stepStatus = (status: AgentStepStatus) =>
     padding: 16px;
   }
 }
-.evaluation-actions {
+.evaluation-actions,
+.optimization-actions {
   margin-top: 10px;
+}
+
+.optimization-results {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--surface-color);
+}
+
+.optimization-title,
+.optimization-params-title {
+  margin: 0 0 10px;
+  font-weight: 600;
+}
+
+.optimization-params-title {
+  margin-top: 12px;
+}
+
+.optimization-summary,
+.optimization-params-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.optimization-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--background-color);
+  font-size: 12px;
+}
+
+.optimization-item span {
+  color: var(--text-secondary);
 }
 
 .evaluation-results {

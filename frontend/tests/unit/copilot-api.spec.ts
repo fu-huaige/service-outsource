@@ -9,6 +9,7 @@ vi.mock("../../src/api/client", () => ({
 import {
   chatWithCopilot,
   confirmCopilotStep,
+  executePipelineOptimization,
   executeModelEvaluation,
   validateArxStructure,
   validateFeatureSelection,
@@ -41,6 +42,18 @@ describe("Copilot API", () => {
       execution_id: executionId,
     });
   });
+  it("executes pipeline optimization with only execution_id and its dedicated timeout", async () => {
+    const executionId = "22222222-2222-4222-8222-222222222222";
+
+    await executePipelineOptimization(executionId);
+
+    expect(post).toHaveBeenCalledWith(
+      "/copilot/optimize-pipeline/execute",
+      { execution_id: executionId },
+      { timeout: 600_000 }
+    );
+  });
+
   it("sends persistent execution and step identifiers when confirming a step", async () => {
     const request = {
       copilot_run_id: "11111111-1111-4111-8111-111111111111",

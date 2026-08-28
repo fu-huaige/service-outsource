@@ -901,7 +901,7 @@ export interface SavedArxEvaluationResult {
   test: SavedArxEvaluationTest;
 }
 
-export interface CopilotEvaluateModelExecuteResponse {
+export interface CopilotStepExecutionResponse {
   execution_id: string;
   workflow_status: AgentWorkflowStatus;
   current_version_id: string | null;
@@ -911,7 +911,23 @@ export interface CopilotEvaluateModelExecuteResponse {
   error_code: string | null;
   error_message: string | null;
   processing_run_ids: string[];
-}// Delivery API Types (Phase 10)
+}
+
+export interface CopilotEvaluateModelExecuteResponse extends CopilotStepExecutionResponse {}
+
+export interface AgentOptimizationResult {
+  study_id: string;
+  baseline_model_id: string;
+  model_id: string;
+  optimized_model_id: string;
+  source_version_id: string;
+  best_params: Record<string, unknown>;
+  best_value: number | null;
+}
+
+export interface CopilotOptimizePipelineExecuteResponse extends CopilotStepExecutionResponse {}
+
+// Delivery API Types (Phase 10)
 export interface ReportRequest {
   dataset_id?: string | null;
   version_id?: string | null;

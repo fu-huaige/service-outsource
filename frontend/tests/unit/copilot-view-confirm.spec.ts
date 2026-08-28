@@ -5,6 +5,7 @@ import CopilotView from "../../src/views/CopilotView.vue";
 import {
   chatWithCopilot,
   confirmCopilotStep,
+  executePipelineOptimization,
   executeModelEvaluation,
   validateArxStructure,
   validateFeatureSelection,
@@ -15,6 +16,7 @@ import type { CopilotChatResponse } from "../../src/types/api";
 vi.mock("../../src/api/copilot", () => ({
   chatWithCopilot: vi.fn(),
   confirmCopilotStep: vi.fn(),
+  executePipelineOptimization: vi.fn(),
   executeModelEvaluation: vi.fn(),
   validateArxStructure: vi.fn(),
   validateFeatureSelection: vi.fn(),
@@ -28,6 +30,7 @@ const versionId = "33333333-3333-4333-8333-333333333333";
 
 const mockedChat = vi.mocked(chatWithCopilot);
 const mockedConfirm = vi.mocked(confirmCopilotStep);
+const mockedExecuteOptimization = vi.mocked(executePipelineOptimization);
 const mockedExecuteEvaluation = vi.mocked(executeModelEvaluation);
 const mockedValidateLag = vi.mocked(validateLagOverrides);
 const mockedValidateArx = vi.mocked(validateArxStructure);
@@ -217,6 +220,72 @@ const evaluationSuccessResponse = () => ({
   error_code: null,
   error_message: null,
   processing_run_ids: ["44444444-4444-4444-8444-444444444444"],
+});
+const optimizationWaitingResponse = (): CopilotChatResponse => {
+  const response = evaluationPendingResponse();
+  response.workflow_status = "WAITING_CONFIRMATION";
+  response.pending_confirmation_step_id = "s3";
+  response.plan.steps[2] = {
+    ...response.plan.steps[2],
+    tool: "optimize_pipeline",
+    depends_on: ["s2"],
+    requires_confirmation: true,
+    status: "waiting_confirmation",
+  };
+  response.step_runs[2] = {
+    ...response.step_runs[2],
+    tool: "optimize_pipeline",
+    status: "waiting_confirmation",
+    summary: "等待确认模型优化",
+  };
+  response.plan.steps.push({
+    step_id: "s4",
+    tool: "evaluate_model",
+    depends_on: ["s3"],
+    parameters: {},
+    requires_confirmation: false,
+    status: "pending",
+  });
+  response.step_runs.push({
+    step_id: "s4",
+    tool: "evaluate_model",
+    status: "pending",
+    parameters: {},
+    summary: "等待执行模型评价",
+    result: {},
+    duration_ms: 0,
+    error_code: null,
+  });
+  return response;
+};
+
+const optimizationRunningResponse = (): CopilotChatResponse => {
+  const response = optimizationWaitingResponse();
+  response.workflow_status = "RUNNING";
+  response.pending_confirmation_step_id = null;
+  response.plan.steps[2] = { ...response.plan.steps[2], status: "running" };
+  response.step_runs[2] = { ...response.step_runs[2], status: "running" };
+  return response;
+};
+
+const optimizationSuccessResponse = () => ({
+  execution_id: executionId,
+  workflow_status: "RUNNING" as const,
+  current_version_id: versionId,
+  step_id: "s3",
+  step_status: "SUCCEEDED",
+  result_payload: {
+    study_id: "55555555-5555-4555-8555-555555555555",
+    baseline_model_id: "model-arx-1",
+    model_id: "model-optimized-1",
+    optimized_model_id: "model-optimized-1",
+    source_version_id: versionId,
+    best_params: { window_size: 90, nk: 0, estimator: "ridge", ridge_alpha: 0.125 },
+    best_value: 0.7314,
+  },
+  error_code: null,
+  error_message: null,
+  processing_run_ids: ["55555555-5555-4555-8555-555555555555"],
 });
 const arxValidation = (overall_status: "VALID" | "INVALID", issues: string[] = []) => ({
   recommended_structure: { na: 2, nb: { u1: 2, u2: 3 }, delays: { u1: 0, u2: 0 } },
@@ -731,5 +800,105 @@ describe("CopilotView explicit model evaluation", () => {
 
     expect(wrapper.text()).toContain("当前执行状态不允许模型评价。");
     expect(wrapper.find("[data-test='evaluation-results-s3']").exists()).toBe(false);
+  });
+});
+
+describe("CopilotView explicit pipeline optimization", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("uses the generic confirmation flow and never executes optimization automatically", async () => {
+    mockedChat.mockResolvedValue(optimizationWaitingResponse());
+    mockedConfirm.mockResolvedValue({
+      copilot_run_id: copilotRunId,
+      confirmation_id: "s3",
+      decision: "approved",
+      execution_id: executionId,
+      workflow_status: "RUNNING",
+      current_step_id: "s3",
+      pending_confirmation_step_id: null,
+      step_id: "s3",
+      step_status: "RUNNING",
+      confirmation_status: "APPROVED",
+      task: null,
+    });
+    const wrapper = mountView();
+    await submitChat(wrapper);
+
+    expect(wrapper.find("[data-test='confirm-actions-s3']").exists()).toBe(true);
+    expect(wrapper.find("[data-test='execute-optimization-s3']").exists()).toBe(false);
+
+    await wrapper.get("[data-test='approve-s3']").trigger("click");
+    await flushPromises();
+
+    expect(mockedExecuteOptimization).not.toHaveBeenCalled();
+    expect(wrapper.get("[data-test='execute-optimization-s3']").text()).toContain("执行模型优化");
+  });
+
+  it("shows the optimization trigger only for a running optimization with its declared completed fit predecessor", async () => {
+    mockedChat.mockResolvedValue(optimizationRunningResponse());
+    const wrapper = mountView();
+    await submitChat(wrapper);
+    expect(wrapper.find("[data-test='execute-optimization-s3']").exists()).toBe(true);
+
+    const notReady = optimizationRunningResponse();
+    notReady.plan.steps[1].status = "pending";
+    mockedChat.mockResolvedValue(notReady);
+    const notReadyWrapper = mountView();
+    await submitChat(notReadyWrapper);
+    expect(notReadyWrapper.find("[data-test='execute-optimization-s3']").exists()).toBe(false);
+  });
+
+  it("executes optimization once, renders its result, and then enables the optimization DAG evaluation step", async () => {
+    let resolveResponse: (value: ReturnType<typeof optimizationSuccessResponse>) => void;
+    mockedChat.mockResolvedValue(optimizationRunningResponse());
+    mockedExecuteOptimization.mockReturnValue(new Promise((resolve) => { resolveResponse = resolve; }));
+    const wrapper = mountView();
+    await submitChat(wrapper);
+
+    const button = wrapper.get("[data-test='execute-optimization-s3']");
+    await button.trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(mockedExecuteOptimization).toHaveBeenCalledWith(executionId);
+    expect(button.attributes("disabled")).toBeDefined();
+    await button.trigger("click");
+    expect(mockedExecuteOptimization).toHaveBeenCalledTimes(1);
+
+    resolveResponse!(optimizationSuccessResponse());
+    await flushPromises();
+
+    const result = wrapper.get("[data-test='optimization-results-s3']").text();
+    expect(result).toContain("模型优化结果");
+    expect(result).toContain("0.7314");
+    expect(result).not.toContain("73.14%");
+    expect(result).toContain("model-optimized-1");
+    expect(result).toContain("window_size");
+    expect(result).toContain("nk");
+    expect(wrapper.find("[data-test='execute-optimization-s3']").exists()).toBe(false);
+    expect(wrapper.find("[data-test='execute-evaluation-s4']").exists()).toBe(true);
+    expect(mockedExecuteEvaluation).not.toHaveBeenCalled();
+  });
+
+  it("renders a persisted HTTP 200 optimization failure without result data or evaluation", async () => {
+    mockedChat.mockResolvedValue(optimizationRunningResponse());
+    mockedExecuteOptimization.mockResolvedValue({
+      ...optimizationSuccessResponse(),
+      workflow_status: "FAILED",
+      step_status: "FAILED",
+      result_payload: {},
+      error_code: "OPTIMIZATION_STUDY_FAILED",
+      error_message: "正式模型寻优失败。",
+      processing_run_ids: [],
+    });
+    const wrapper = mountView();
+    await submitChat(wrapper);
+
+    await wrapper.get("[data-test='execute-optimization-s3']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get("[data-test='optimization-error-s3']").text()).toContain("正式模型寻优失败。");
+    expect(wrapper.find("[data-test='optimization-results-s3']").exists()).toBe(false);
+    expect(wrapper.find("[data-test='execute-evaluation-s4']").exists()).toBe(false);
   });
 });
