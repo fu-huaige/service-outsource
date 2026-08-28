@@ -3,6 +3,20 @@ import DefaultLayout from "../layouts/DefaultLayout.vue";
 
 const routes: RouteRecordRaw[] = [
   {
+    path: "/landing-preview/dark",
+    name: "LandingPreviewDark",
+    component: () => import("../views/LandingPreviewView.vue"),
+    props: { theme: "dark" },
+    meta: { title: "Landing Dark Preview" },
+  },
+  {
+    path: "/landing-preview/light",
+    name: "LandingPreviewLight",
+    component: () => import("../views/LandingPreviewView.vue"),
+    props: { theme: "light" },
+    meta: { title: "Landing Light Preview" },
+  },
+  {
     path: "/",
     component: DefaultLayout,
     redirect: "/dashboard",
