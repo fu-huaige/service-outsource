@@ -47,6 +47,23 @@ class TestIntentParsing:
         assert intent.wants("collinearity")
         assert intent.wants("optimize")
 
+    def test_recognises_optuna_optimization_model_workflow(self) -> None:
+        message = "完成 ARX 模型辨识，使用 Optuna 对模型进行优化，并评估优化后的模型"
+        intent = parse_intent(message)
+
+        assert intent.wants("model") is True
+        assert intent.wants("optimize") is True
+
+        steps, _, _ = RuleBasedPlanner().plan(intent)
+        by_tool = {step.tool: step for step in steps}
+        ordered_tools = [step.tool for step in steps]
+        assert ordered_tools.index("fit_arx") < ordered_tools.index("optimize_pipeline")
+        assert ordered_tools.index("optimize_pipeline") < ordered_tools.index("evaluate_model")
+        assert by_tool["optimize_pipeline"].depends_on == (by_tool["fit_arx"].step_id,)
+        assert by_tool["evaluate_model"].depends_on == (
+            by_tool["optimize_pipeline"].step_id,
+        )
+
     def test_extracts_explicit_numbers(self) -> None:
         intent = parse_intent("用窗口 90 做动态区间优选，最大滞后 45，跑 60 次试验")
         assert intent.parameters["window_size"] == 90

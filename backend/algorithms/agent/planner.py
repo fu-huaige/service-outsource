@@ -96,7 +96,7 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
     "delay": ("时滞", "滞后", "纯滞后", "延迟", "delay", "lag", "dead time"),
     "collinearity": ("共线", "相关性", "冗余", "降维", "collinear", "vif", "redundant"),
     "model": ("辨识", "建模", "模型", "arx", "identif", "model"),
-    "optimize": ("寻优", "闭环", "自动优化", "调参", "最佳", "optimi", "closed loop", "tune"),
+    "optimize": ("寻优", "闭环", "优化", "自动优化", "调参", "最佳", "optimi", "optuna", "closed loop", "tune"),
     "report": ("报告", "结论", "解释", "report", "explain"),
     "export": ("导出", "交付", "下载", "export", "deliver"),
 }
