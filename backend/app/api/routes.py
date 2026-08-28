@@ -21,6 +21,7 @@ from app.schemas.copilot import (
     CopilotConfirmRequest,
     CopilotEvaluateModelExecuteData,
     CopilotEvaluateModelExecuteRequest,
+    CopilotExecutionSnapshotData,
     CopilotOptimizePipelineExecuteData,
     FeatureSelectionValidationData,
     FeatureSelectionValidationRequest,
@@ -87,7 +88,9 @@ from app.services.agent_arx_modeling_service import (
 from app.services.agent_execution_service import (
     ExecutionStateError,
     approve_step,
+    get_execution,
     reject_step,
+    to_copilot_execution_snapshot,
 )
 from app.services.agent_feature_selection_service import (
     FeatureSelectionError,
@@ -868,6 +871,31 @@ async def copilot_chat(
         ) from error
     return success(request, data)
 
+
+@router.get(
+    "/copilot/executions/{execution_id}",
+    tags=["Copilot"],
+    summary="Read one persisted copilot execution snapshot",
+    response_model=SuccessEnvelope[CopilotExecutionSnapshotData],
+    responses=ERROR_RESPONSES,
+)
+async def get_copilot_execution(
+    request: Request,
+    execution_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessEnvelope[CopilotExecutionSnapshotData]:
+    """Return durable execution state without dispatching a tool or mutating workflow state."""
+
+    try:
+        execution = await get_execution(session, execution_id=execution_id)
+    except ExecutionStateError as error:
+        raise AppError(
+            "AGENT_EXECUTION_NOT_FOUND",
+            "未找到指定的 Agent 执行记录。",
+            status_code=status.HTTP_404_NOT_FOUND,
+            details={"execution_id": str(execution_id)},
+        ) from error
+    return success(request, to_copilot_execution_snapshot(execution))
 
 @router.post(
     "/copilot/arx-structure/validate",

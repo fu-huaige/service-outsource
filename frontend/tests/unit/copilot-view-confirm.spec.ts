@@ -1,26 +1,42 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
-import { createPinia } from "pinia";
+import { createPinia, setActivePinia } from "pinia";
 import CopilotView from "../../src/views/CopilotView.vue";
 import {
   chatWithCopilot,
   confirmCopilotStep,
   executePipelineOptimization,
   executeModelEvaluation,
+  getCopilotExecution,
   validateArxStructure,
   validateFeatureSelection,
   validateLagOverrides,
 } from "../../src/api/copilot";
-import type { CopilotChatResponse } from "../../src/types/api";
+import type { CopilotChatResponse, CopilotExecutionSnapshot } from "../../src/types/api";
+import { ApiError } from "../../src/api/client";
+import {
+  COPILOT_ACTIVE_EXECUTION_STORAGE_KEY,
+  useCopilotExecutionStore,
+} from "../../src/stores/copilotExecution";
 
 vi.mock("../../src/api/copilot", () => ({
   chatWithCopilot: vi.fn(),
   confirmCopilotStep: vi.fn(),
   executePipelineOptimization: vi.fn(),
   executeModelEvaluation: vi.fn(),
+  getCopilotExecution: vi.fn(),
   validateArxStructure: vi.fn(),
   validateFeatureSelection: vi.fn(),
   validateLagOverrides: vi.fn(),
+}));
+const { routeQuery, routerReplace } = vi.hoisted(() => ({
+  routeQuery: {} as Record<string, string | undefined>,
+  routerReplace: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("vue-router", () => ({
+  useRoute: () => ({ query: routeQuery }),
+  useRouter: () => ({ replace: routerReplace }),
 }));
 vi.mock("element-plus", () => ({ ElMessage: { success: vi.fn(), error: vi.fn() } }));
 
@@ -32,6 +48,7 @@ const mockedChat = vi.mocked(chatWithCopilot);
 const mockedConfirm = vi.mocked(confirmCopilotStep);
 const mockedExecuteOptimization = vi.mocked(executePipelineOptimization);
 const mockedExecuteEvaluation = vi.mocked(executeModelEvaluation);
+const mockedGetExecution = vi.mocked(getCopilotExecution);
 const mockedValidateLag = vi.mocked(validateLagOverrides);
 const mockedValidateArx = vi.mocked(validateArxStructure);
 const mockedValidateFeature = vi.mocked(validateFeatureSelection);
@@ -59,7 +76,24 @@ const stubs = {
   "el-step": { template: "<section><slot name='title' /><slot name='description' /></section>" },
   "el-table": true,
   "el-table-column": true,
-  "el-dialog": { props: ["modelValue"], template: "<div><slot /></div>" },
+  "el-dialog": {
+    props: ["modelValue"],
+    template: "<div><slot name='header' /><slot /><slot name='footer' /></div>",
+  },
+  "el-select": {
+    props: ["modelValue", "disabled"],
+    emits: ["update:modelValue", "change"],
+    template: `<select :disabled="disabled" :value="modelValue" @change="$emit('update:modelValue', $event.target.value); $emit('change', $event.target.value)"><slot /></select>`,
+  },
+  "el-option": {
+    props: ["label", "value", "disabled"],
+    template: "<option :value='value' :disabled='disabled'>{{ label }}</option>",
+  },
+  "el-input-number": {
+    props: ["modelValue", "disabled"],
+    emits: ["update:modelValue"],
+    template: `<input type="number" :disabled="disabled" :value="modelValue" @input="$emit('update:modelValue', Number($event.target.value))" />`,
+  },
   ChatDotRound: true,
   CircleCheck: true,
   CircleClose: true,
@@ -296,7 +330,11 @@ const arxValidation = (overall_status: "VALID" | "INVALID", issues: string[] = [
   overall_status,
   issues,
 });
-const mountView = () => mount(CopilotView, { global: { plugins: [createPinia()], stubs } });
+const mountView = () => {
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  return mount(CopilotView, { global: { plugins: [pinia], stubs } });
+};
 
 async function submitChat(wrapper: ReturnType<typeof mountView>) {
   await wrapper.get('[data-test="active-version"]').setValue(versionId);
@@ -307,6 +345,12 @@ async function submitChat(wrapper: ReturnType<typeof mountView>) {
   await flushPromises();
 }
 
+beforeEach(() => {
+  window.localStorage.clear();
+  for (const key of Object.keys(routeQuery)) delete routeQuery[key];
+  routerReplace.mockReset();
+  routerReplace.mockResolvedValue(undefined);
+});
 describe("CopilotView persistent confirmation", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -443,7 +487,7 @@ describe("CopilotView persistent confirmation", () => {
     const wrapper = mountView();
     await submitChat(wrapper);
 
-    expect(wrapper.get('[data-test="lag-recommendation-s2"]').text()).toContain("u1");
+    expect(wrapper.find('[data-test="lag-recommendation-s2"]').exists()).toBe(false);
     await wrapper.get('[data-test="approve-s2"]').trigger("click");
     await flushPromises();
 
@@ -512,6 +556,136 @@ describe("CopilotView persistent confirmation", () => {
     }));
   });
 
+  it("edits lag overrides in a dialog with dynamic recommendations and isolated drafts", async () => {
+    const lagResponse = waitingResponse();
+    lagResponse.plan.steps[1] = { ...lagResponse.plan.steps[1], tool: "apply_lag_compensation" };
+    lagResponse.step_runs[1] = {
+      ...lagResponse.step_runs[1],
+      tool: "apply_lag_compensation",
+      result: { recommended_lag_map: { u1: 4, u2: 9 } },
+    };
+    mockedChat.mockResolvedValue(lagResponse);
+    mockedValidateLag.mockResolvedValue({
+      recommended_lag_map: { u1: 4, u2: 9 },
+      manual_overrides: {},
+      final_lag_map: { u1: 4, u2: 9 },
+      parameter_sources: { u1: "delay_recommendation", u2: "delay_recommendation" },
+      per_parameter_validation: [],
+      overall_status: "VALID",
+      issues: [],
+    });
+    mockedConfirm.mockResolvedValue({
+      copilot_run_id: copilotRunId,
+      confirmation_id: "s2",
+      decision: "approved",
+      execution_id: executionId,
+      workflow_status: "RUNNING",
+      current_version_id: versionId,
+      current_step_id: null,
+      pending_confirmation_step_id: null,
+      step_id: "s2",
+      step_status: "SUCCEEDED",
+      confirmation_status: "APPROVED",
+      task: null,
+    });
+    const wrapper = mountView();
+    await submitChat(wrapper);
+
+    expect(wrapper.find('[data-test="lag-recommendation-s2"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="lag-variable-0"]').exists()).toBe(false);
+
+    await wrapper.get('[data-test="edit-lag-s2"]').trigger("click");
+    const dialog = wrapper.get('[data-test="lag-overrides-s2"]');
+    expect(dialog.text()).toContain("修改时滞补偿参数");
+    expect(dialog.get('[data-test="lag-recommendation-s2"]').text()).toContain(
+      "Delay Analyze 建议： u1:4; u2:9"
+    );
+    expect(dialog.get('[data-test="lag-recommendation-s2"]').text()).not.toContain('{"u1":4,"u2":9}');
+    expect((wrapper.get('[data-test="lag-variable-0"]').element as HTMLSelectElement).value).toBe("u1");
+    expect((wrapper.get('[data-test="lag-value-0"]').element as HTMLInputElement).value).toBe("4");
+
+    await wrapper.get('[data-test="lag-variable-0"]').setValue("u2");
+    await flushPromises();
+    expect((wrapper.get('[data-test="lag-value-0"]').element as HTMLInputElement).value).toBe("9");
+
+    await wrapper.get('[data-test="lag-variable-0"]').setValue("u1");
+    await flushPromises();
+    expect((wrapper.get('[data-test="lag-value-0"]').element as HTMLInputElement).value).toBe("4");
+
+    await wrapper.get('[data-test="add-lag-override-s2"]').trigger("click");
+    expect((wrapper.get('[data-test="lag-variable-1"]').element as HTMLSelectElement).value).toBe("u2");
+    expect((wrapper.get('[data-test="lag-value-1"]').element as HTMLInputElement).value).toBe("9");
+    expect(
+      wrapper.get('[data-test="lag-variable-0"]').get('option[value="u2"]').attributes("disabled")
+    ).toBeDefined();
+
+    await wrapper.get('[data-test="cancel-lag-s2"]').trigger("click");
+    expect(wrapper.find('[data-test="lag-overrides-s2"]').exists()).toBe(false);
+    expect(mockedValidateLag).not.toHaveBeenCalled();
+
+    await wrapper.get('[data-test="approve-s2"]').trigger("click");
+    await flushPromises();
+    expect(mockedValidateLag).toHaveBeenCalledWith({
+      execution_id: executionId,
+      step_id: "s2",
+      manual_overrides: [],
+    });
+  });
+
+  it("validates a lag override before, and separately from, approval", async () => {
+    const lagResponse = waitingResponse();
+    lagResponse.plan.steps[1] = { ...lagResponse.plan.steps[1], tool: "apply_lag_compensation" };
+    lagResponse.step_runs[1] = {
+      ...lagResponse.step_runs[1],
+      tool: "apply_lag_compensation",
+      result: { recommended_lag_map: { u1: 4, u2: 9 } },
+    };
+    mockedChat.mockResolvedValue(lagResponse);
+    mockedValidateLag.mockResolvedValue({
+      recommended_lag_map: { u1: 4, u2: 9 },
+      manual_overrides: { u2: 9 },
+      final_lag_map: { u1: 4, u2: 9 },
+      parameter_sources: { u1: "delay_recommendation", u2: "manual_override" },
+      per_parameter_validation: [],
+      overall_status: "VALID",
+      issues: [],
+    });
+    mockedConfirm.mockResolvedValue({
+      copilot_run_id: copilotRunId,
+      confirmation_id: "s2",
+      decision: "approved",
+      execution_id: executionId,
+      workflow_status: "RUNNING",
+      current_version_id: versionId,
+      current_step_id: null,
+      pending_confirmation_step_id: null,
+      step_id: "s2",
+      step_status: "SUCCEEDED",
+      confirmation_status: "APPROVED",
+      task: null,
+    });
+    const wrapper = mountView();
+    await submitChat(wrapper);
+
+    await wrapper.get('[data-test="edit-lag-s2"]').trigger("click");
+    await wrapper.get('[data-test="lag-variable-0"]').setValue("u2");
+    await wrapper.get('[data-test="validate-lag-s2"]').trigger("click");
+    await flushPromises();
+
+    expect(mockedValidateLag).toHaveBeenCalledWith({
+      execution_id: executionId,
+      step_id: "s2",
+      manual_overrides: [{ variable: "u2", value: 9 }],
+    });
+    expect(mockedConfirm).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-test="lag-overrides-s2"]').exists()).toBe(false);
+
+    await wrapper.get('[data-test="approve-s2"]').trigger("click");
+    await flushPromises();
+    expect(mockedConfirm).toHaveBeenCalledWith(expect.objectContaining({
+      manual_overrides: [{ variable: "u2", value: 9 }],
+    }));
+  });
   it("approves or adjusts a controlled Feature recommendation and displays V3", async () => {
     const featureResponse = waitingResponse();
     featureResponse.plan.steps[1] = { ...featureResponse.plan.steps[1], tool: "select_variables" };
@@ -755,6 +929,7 @@ describe("CopilotView explicit model evaluation", () => {
 
     resolveResponse!(evaluationSuccessResponse());
     await flushPromises();
+    expect(mockedGetExecution).toHaveBeenCalledWith(executionId);
 
     expect(wrapper.find("[data-test='execute-evaluation-s3']").exists()).toBe(false);
     expect(wrapper.get("[data-test='evaluation-results-s3']").text()).toContain("模型评价结果");
@@ -867,6 +1042,7 @@ describe("CopilotView explicit pipeline optimization", () => {
 
     resolveResponse!(optimizationSuccessResponse());
     await flushPromises();
+    expect(mockedGetExecution).toHaveBeenCalledWith(executionId);
 
     const result = wrapper.get("[data-test='optimization-results-s3']").text();
     expect(result).toContain("模型优化结果");
@@ -900,5 +1076,271 @@ describe("CopilotView explicit pipeline optimization", () => {
     expect(wrapper.get("[data-test='optimization-error-s3']").text()).toContain("正式模型寻优失败。");
     expect(wrapper.find("[data-test='optimization-results-s3']").exists()).toBe(false);
     expect(wrapper.find("[data-test='execute-evaluation-s4']").exists()).toBe(false);
+  });
+});
+const waitingSnapshot = (
+  runId: string | null = copilotRunId,
+  snapshotExecutionId = executionId
+): CopilotExecutionSnapshot => ({
+  execution_id: snapshotExecutionId,
+  copilot_run_id: runId,
+  dataset_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  initial_version_id: versionId,
+  current_version_id: versionId,
+  planner_source: "rule_based",
+  workflow_status: "WAITING_CONFIRMATION",
+  current_step_id: "s2",
+  pending_confirmation_step_id: "s2",
+  plan: {
+    goal: "恢复持久化 Agent Execution",
+    dataset_id: null,
+    steps: [
+      {
+        step_id: "s1",
+        tool: "fit_arx",
+        depends_on: [],
+        parameters: {},
+        requires_confirmation: false,
+        status: "pending",
+      },
+      {
+        step_id: "s2",
+        tool: "export_dataset",
+        depends_on: ["s1"],
+        parameters: { selected: ["u1", "y"] },
+        requires_confirmation: true,
+        status: "pending",
+      },
+    ],
+    stop_conditions: [],
+    assumptions: ["snapshot is authoritative"],
+  },
+  artifacts: {},
+  error_code: null,
+  error_message: null,
+  created_at: "2026-08-28T00:00:00Z",
+  updated_at: "2026-08-28T00:01:00Z",
+  finished_at: null,
+  step_runs: [
+    {
+      step_id: "s1",
+      sequence: 1,
+      tool: "fit_arx",
+      status: "SUCCEEDED",
+      requires_confirmation: false,
+      confirmation_status: "NOT_REQUIRED",
+      attempt_count: 1,
+      source_version_id: versionId,
+      result_version_id: null,
+      input_payload: { depends_on: [], parameters: {} },
+      result_payload: { model_id: "model-from-snapshot" },
+      processing_run_ids: ["run-fit"],
+      error_code: null,
+      error_message: null,
+      started_at: "2026-08-28T00:00:00Z",
+      finished_at: "2026-08-28T00:00:10Z",
+    },
+    {
+      step_id: "s2",
+      sequence: 2,
+      tool: "export_dataset",
+      status: "WAITING_CONFIRMATION",
+      requires_confirmation: true,
+      confirmation_status: "PENDING",
+      attempt_count: 0,
+      source_version_id: versionId,
+      result_version_id: null,
+      input_payload: {
+        depends_on: ["s1"],
+        parameters: { selected: ["u1", "y"] },
+        confirmation_payload: { source: "persisted-step-input" },
+      },
+      result_payload: {},
+      processing_run_ids: [],
+      error_code: null,
+      error_message: null,
+      started_at: null,
+      finished_at: null,
+    },
+  ],
+});
+
+const completedSnapshot = (): CopilotExecutionSnapshot => {
+  const snapshot = waitingSnapshot();
+  snapshot.workflow_status = "SUCCEEDED";
+  snapshot.current_step_id = null;
+  snapshot.pending_confirmation_step_id = null;
+  snapshot.finished_at = "2026-08-28T00:02:00Z";
+  snapshot.step_runs[1] = {
+    ...snapshot.step_runs[1],
+    status: "SUCCEEDED",
+    confirmation_status: "APPROVED",
+    result_payload: { export_id: "export-from-snapshot" },
+    processing_run_ids: ["run-export"],
+    finished_at: "2026-08-28T00:02:00Z",
+  };
+  return snapshot;
+};
+
+describe("CopilotView execution resume", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    window.localStorage.clear();
+    for (const key of Object.keys(routeQuery)) delete routeQuery[key];
+    routerReplace.mockResolvedValue(undefined);
+  });
+
+  it("persists only the execution UUID and replaces the URL after chat", async () => {
+    routeQuery.dataset_id = "preserved-dataset";
+    mockedChat.mockResolvedValue(waitingResponse());
+    const wrapper = mountView();
+
+    await submitChat(wrapper);
+
+    expect(useCopilotExecutionStore().activeExecutionId).toBe(executionId);
+    expect(window.localStorage.getItem(COPILOT_ACTIVE_EXECUTION_STORAGE_KEY)).toBe(executionId);
+    expect(window.localStorage.length).toBe(1);
+    expect(routerReplace).toHaveBeenCalledWith({
+      query: { dataset_id: "preserved-dataset", execution_id: executionId },
+    });
+  });
+
+  it("uses URL execution_id before a stored execution and hydrates persisted plan and steps", async () => {
+    const storedExecutionId = "99999999-9999-4999-8999-999999999999";
+    window.localStorage.setItem(COPILOT_ACTIVE_EXECUTION_STORAGE_KEY, storedExecutionId);
+    routeQuery.execution_id = executionId;
+    mockedGetExecution.mockResolvedValue(waitingSnapshot());
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    expect(mockedGetExecution).toHaveBeenCalledTimes(1);
+    expect(mockedGetExecution).toHaveBeenCalledWith(executionId);
+    expect(useCopilotExecutionStore().activeExecutionId).toBe(executionId);
+    expect(window.localStorage.getItem(COPILOT_ACTIVE_EXECUTION_STORAGE_KEY)).toBe(executionId);
+    expect(wrapper.get('[data-test="workflow-status"]').text()).toContain("WAITING_CONFIRMATION");
+    expect(wrapper.get('[data-test="arx-model-id-s1"]').text()).toContain("model-from-snapshot");
+    expect(wrapper.get('[data-test="confirm-actions-s2"]').exists()).toBe(true);
+  });
+
+  it("restores lag recommendations from a waiting confirmation snapshot", async () => {
+    routeQuery.execution_id = executionId;
+    const snapshot = waitingSnapshot();
+    snapshot.plan.steps[1] = {
+      ...snapshot.plan.steps[1],
+      tool: "apply_lag_compensation",
+      requires_confirmation: true,
+    };
+    snapshot.step_runs[1] = {
+      ...snapshot.step_runs[1],
+      tool: "apply_lag_compensation",
+      result_payload: { recommended_lag_map: { u1: 4, u2: 9 } },
+    };
+    mockedGetExecution.mockResolvedValue(snapshot);
+
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.get('[data-test="edit-lag-s2"]').trigger("click");
+
+    expect(wrapper.get('[data-test="lag-recommendation-s2"]').text()).toContain(
+      "Delay Analyze 建议： u1:4; u2:9"
+    );
+    expect((wrapper.get('[data-test="lag-variable-0"]').element as HTMLSelectElement).value).toBe("u1");
+    expect((wrapper.get('[data-test="lag-value-0"]').element as HTMLInputElement).value).toBe("4");
+  });
+  it("falls back to the UUID-only store when the URL has no execution_id", async () => {
+    window.localStorage.setItem(COPILOT_ACTIVE_EXECUTION_STORAGE_KEY, executionId);
+    mockedGetExecution.mockResolvedValue(waitingSnapshot());
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    expect(mockedGetExecution).toHaveBeenCalledWith(executionId);
+    expect(routerReplace).toHaveBeenCalledWith({ query: { execution_id: executionId } });
+    expect(wrapper.get('[data-test="execution-id"]').text()).toContain(executionId);
+  });
+
+  it("continues the existing confirmation contract after restoring a linked execution", async () => {
+    routeQuery.execution_id = executionId;
+    mockedGetExecution
+      .mockResolvedValueOnce(waitingSnapshot())
+      .mockResolvedValueOnce(completedSnapshot());
+    mockedConfirm.mockResolvedValue({
+      copilot_run_id: copilotRunId,
+      confirmation_id: "s2",
+      decision: "approved",
+      execution_id: executionId,
+      workflow_status: "SUCCEEDED",
+      current_version_id: versionId,
+      current_step_id: null,
+      pending_confirmation_step_id: null,
+      step_id: "s2",
+      step_status: "SUCCEEDED",
+      confirmation_status: "APPROVED",
+      task: null,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+
+    await wrapper.get('[data-test="approve-s2"]').trigger("click");
+    await flushPromises();
+
+    expect(mockedConfirm).toHaveBeenCalledWith(expect.objectContaining({
+      copilot_run_id: copilotRunId,
+      execution_id: executionId,
+      step_id: "s2",
+    }));
+    expect(mockedGetExecution).toHaveBeenCalledTimes(2);
+    expect(wrapper.get('[data-test="workflow-status"]').text()).toContain("SUCCEEDED");
+  });
+
+  it("shows historical waiting executions but disables confirmation when run linkage is null", async () => {
+    routeQuery.execution_id = executionId;
+    mockedGetExecution.mockResolvedValue(waitingSnapshot(null));
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    expect(wrapper.get('[data-test="historical-confirmation-unavailable"]').text()).toContain(
+      "缺少继续确认所需的 Copilot run 关联"
+    );
+    expect(wrapper.find('[data-test="confirm-actions-s2"]').exists()).toBe(false);
+    expect(wrapper.get('[data-test="historical-confirmation-disabled"]').attributes("disabled")).toBeDefined();
+    expect(mockedConfirm).not.toHaveBeenCalled();
+  });
+
+  it("clears a missing execution UUID and returns to a usable new-task state", async () => {
+    routeQuery.execution_id = executionId;
+    routeQuery.dataset_id = "preserved-dataset";
+    window.localStorage.setItem(COPILOT_ACTIVE_EXECUTION_STORAGE_KEY, executionId);
+    mockedGetExecution.mockRejectedValue(
+      new ApiError("AGENT_EXECUTION_NOT_FOUND", "未找到指定的 Agent 执行记录。", "request-1")
+    );
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    expect(wrapper.get('[data-test="resume-notice"]').text()).toContain("已清除失效的恢复标识");
+    expect(useCopilotExecutionStore().activeExecutionId).toBeNull();
+    expect(window.localStorage.getItem(COPILOT_ACTIVE_EXECUTION_STORAGE_KEY)).toBeNull();
+    expect(routerReplace).toHaveBeenCalledWith({ query: { dataset_id: "preserved-dataset" } });
+    expect(wrapper.find('[data-test="execution-id"]').exists()).toBe(false);
+    expect(wrapper.get('[data-test="copilot-prompt"]').exists()).toBe(true);
+  });
+
+  it("rehydrates after unmount without relying on the previous component instance", async () => {
+    routeQuery.execution_id = executionId;
+    mockedGetExecution.mockResolvedValue(waitingSnapshot());
+    const first = mountView();
+    await flushPromises();
+    first.unmount();
+
+    delete routeQuery.execution_id;
+    const second = mountView();
+    await flushPromises();
+
+    expect(mockedGetExecution).toHaveBeenCalledTimes(2);
+    expect(routerReplace).toHaveBeenCalledWith({ query: { execution_id: executionId } });
+    expect(second.get('[data-test="workflow-status"]').text()).toContain("WAITING_CONFIRMATION");
   });
 });

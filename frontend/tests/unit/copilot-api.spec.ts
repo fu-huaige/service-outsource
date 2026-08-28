@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { post } = vi.hoisted(() => ({ post: vi.fn() }));
+const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 
 vi.mock("../../src/api/client", () => ({
-  default: { post },
+  default: { get, post },
 }));
 
 import {
@@ -11,6 +11,7 @@ import {
   confirmCopilotStep,
   executePipelineOptimization,
   executeModelEvaluation,
+  getCopilotExecution,
   validateArxStructure,
   validateFeatureSelection,
   validateLagOverrides,
@@ -18,7 +19,9 @@ import {
 
 describe("Copilot API", () => {
   beforeEach(() => {
+    get.mockReset();
     post.mockReset();
+    get.mockResolvedValue({});
     post.mockResolvedValue({});
   });
 
@@ -33,6 +36,13 @@ describe("Copilot API", () => {
     expect(post).toHaveBeenCalledWith("/copilot/chat", request, { timeout: 120_000 });
   });
 
+  it("loads an execution snapshot by its exact execution_id", async () => {
+    const executionId = "22222222-2222-4222-8222-222222222222";
+
+    await getCopilotExecution(executionId);
+
+    expect(get).toHaveBeenCalledWith(`/copilot/executions/${executionId}`);
+  });
   it("executes model evaluation with only execution_id", async () => {
     const executionId = "22222222-2222-4222-8222-222222222222";
 

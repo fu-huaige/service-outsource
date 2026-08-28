@@ -1,6 +1,6 @@
 <template>
   <div class="default-layout">
-    <AppHeader @toggle-copilot="isCopilotOpen = !isCopilotOpen" />
+    <AppHeader />
 
     <div class="layout-body">
       <AppSidebar />
@@ -25,15 +25,6 @@
         </div>
       </main>
 
-      <el-drawer
-        v-model="isCopilotOpen"
-        title="Agent 工作台"
-        direction="rtl"
-        size="min(420px, 100vw)"
-        :with-header="true"
-      >
-        <CopilotView />
-      </el-drawer>
     </div>
   </div>
 </template>
@@ -42,9 +33,7 @@
 import { onBeforeUnmount, ref } from "vue";
 import AppHeader from "../components/AppHeader.vue";
 import AppSidebar from "../components/AppSidebar.vue";
-import CopilotView from "../views/CopilotView.vue";
 
-const isCopilotOpen = ref(false);
 const mainScroller = ref<HTMLElement | null>(null);
 const bounceOffset = ref(0);
 const isRebounding = ref(false);

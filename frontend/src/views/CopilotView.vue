@@ -63,13 +63,35 @@
           </div>
         </el-form>
 
+        <el-alert
+          v-if="hydratingExecution"
+          type="info"
+          :closable="false"
+          show-icon
+          class="alert-gap"
+          data-test="hydrating-execution"
+        >
+          <template #title>正在从 Backend 恢复 Agent Execution…</template>
+        </el-alert>
+
+        <el-alert
+          v-if="resumeNotice"
+          type="warning"
+          :closable="false"
+          show-icon
+          class="alert-gap"
+          data-test="resume-notice"
+        >
+          <template #title>{{ resumeNotice }}</template>
+        </el-alert>
+
         <el-alert v-if="errorMessage" type="error" :closable="false" show-icon class="alert-gap">
           <template #title>执行失败：{{ errorMessage }}</template>
         </el-alert>
       </div>
 
       <template v-if="result">
-        <div class="industrial-card">
+        <div v-if="result.compliance" class="industrial-card">
           <div class="industrial-card-header">
             <div class="industrial-card-title">
               <el-icon><CircleCheck /></el-icon> 合规证明
@@ -107,7 +129,9 @@
               <el-tag :type="result.plan_source === 'llm' ? 'success' : 'info'">
                 {{
                   result.plan_source === "llm"
-                    ? `大模型编排 · ${result.llm_provider}/${result.llm_model}`
+                    ? result.llm_provider && result.llm_model
+                      ? `大模型编排 · ${result.llm_provider}/${result.llm_model}`
+                      : "大模型编排"
                     : "确定性规则编排"
                 }}
               </el-tag>
@@ -122,6 +146,27 @@
             <span data-test="workflow-status">Workflow {{ result.workflow_status }}</span>
             <span data-test="current-version-id">Version {{ result.current_version_id }}</span>
           </div>
+
+          <el-alert
+            v-if="historicalConfirmationUnavailable"
+            type="warning"
+            :closable="false"
+            show-icon
+            class="alert-gap"
+            data-test="historical-confirmation-unavailable"
+          >
+            <template #title>
+              这是历史 Agent Execution，缺少继续确认所需的 Copilot run 关联；可以查看结果，但不能提交确认。
+            </template>
+            <button
+              type="button"
+              disabled
+              class="historical-confirmation-disabled"
+              data-test="historical-confirmation-disabled"
+            >
+              历史确认不可用
+            </button>
+          </el-alert>
 
           <el-alert
             v-if="result.llm_fallback_reason"
@@ -165,7 +210,7 @@
                   <p v-if="isArxFitStep(step.step_id) && arxModelId(step.step_id)" :data-test="'arx-model-id-' + step.step_id">
                     ARX 建模完成 · Model {{ arxModelId(step.step_id) }}
                   </p>
-                  <p v-if="runFor(step.step_id)" class="step-timing">
+                  <p v-if="runFor(step.step_id)?.duration_ms != null" class="step-timing">
                     耗时 {{ (runFor(step.step_id)?.duration_ms ?? 0).toFixed(1) }} ms
                   </p>
                   <p
@@ -181,9 +226,6 @@
                     :data-test="'confirm-actions-' + step.step_id"
                   >
                     <template v-if="isLagApplyStep(step.step_id)">
-                      <p class="lag-recommendation" :data-test="'lag-recommendation-' + step.step_id">
-                        Delay Analyze 建议：{{ JSON.stringify(recommendedLagMap(step.step_id)) }}
-                      </p>
                       <el-button
                         size="small"
                         :data-test="'edit-lag-' + step.step_id"
@@ -191,36 +233,96 @@
                       >
                         修改参数
                       </el-button>
-                      <div v-if="editingLagStepId === step.step_id" class="lag-overrides">
-                        <div v-for="(override, index) in lagOverrideRows" :key="index" class="lag-override-row">
-                          <select v-model="override.variable" :data-test="'lag-variable-' + index">
-                            <option v-for="variable in lagVariables(step.step_id)" :key="variable" :value="variable">
-                              {{ variable }}
-                            </option>
-                          </select>
-                          <input v-model.number="override.value" type="number" min="0" :data-test="'lag-value-' + index" />
-                          <el-button size="small" @click="removeLagOverride(index)">删除</el-button>
+                      <el-dialog
+                        v-if="editingLagStepId === step.step_id"
+                        v-model="lagDialogVisible"
+                        width="600px"
+                        :close-on-click-modal="false"
+                        :data-test="'lag-overrides-' + step.step_id"
+                        @closed="closeLagOverrides"
+                      >
+                        <template #header>
+                          <div class="lag-dialog-header">
+                            <h3>修改时滞补偿参数</h3>
+                            <p>调整 Agent 推荐的输入时滞，确认执行前可先验证参数。</p>
+                          </div>
+                        </template>
+                        <div class="lag-dialog-body">
+                          <el-alert type="info" :closable="false" show-icon class="lag-recommendation" :data-test="'lag-recommendation-' + step.step_id">
+                            <template #title>
+                              Delay Analyze 建议： {{ formattedLagRecommendation(step.step_id) }}
+                            </template>
+                          </el-alert>
+                          <div class="lag-override-heading">人工覆盖参数</div>
+                          <div class="lag-override-labels" aria-hidden="true">
+                            <span>参数</span>
+                            <span>时滞 nk</span>
+                            <span>操作</span>
+                          </div>
+                          <div
+                            v-for="(override, index) in lagOverrideDraftRows"
+                            :key="`${index}-${override.variable}`"
+                            class="lag-override-row"
+                          >
+                            <el-select
+                              v-model="override.variable"
+                              :data-test="'lag-variable-' + index"
+                              @change="syncLagOverrideValue(index, step.step_id)"
+                            >
+                              <el-option
+                                v-for="variable in lagVariables(step.step_id)"
+                                :key="variable"
+                                :label="variable"
+                                :value="variable"
+                                :disabled="isLagVariableDisabled(variable, index)"
+                              />
+                            </el-select>
+                            <el-input-number
+                              v-model="override.value"
+                              :min="0"
+                              :precision="0"
+                              :step="1"
+                              :data-test="'lag-value-' + index"
+                            />
+                            <el-button size="small" :data-test="'remove-lag-override-' + index" @click="removeLagOverride(index)">
+                              删除
+                            </el-button>
+                          </div>
+                          <el-button
+                            size="small"
+                            :disabled="lagOverrideDraftRows.length >= lagVariables(step.step_id).length"
+                            :data-test="'add-lag-override-' + step.step_id"
+                            @click="addLagOverride(step.step_id)"
+                          >
+                            添加参数
+                          </el-button>
+                          <el-alert
+                            v-if="lagDraftValidation"
+                            :type="lagDraftValidation.overall_status === 'INVALID' ? 'error' : lagDraftValidation.overall_status === 'WARNING' ? 'warning' : 'success'"
+                            :closable="false"
+                            show-icon
+                            class="lag-validation"
+                            :data-test="'lag-validation-' + step.step_id"
+                          >
+                            <template #title>
+                              校验：{{ lagDraftValidation.overall_status }} {{ lagDraftValidation.issues.join("；") }}
+                            </template>
+                          </el-alert>
                         </div>
-                        <el-button
-                          size="small"
-                          :disabled="lagOverrideRows.length >= lagVariables(step.step_id).length"
-                          :data-test="'add-lag-override-' + step.step_id"
-                          @click="addLagOverride(step.step_id)"
-                        >
-                          添加参数
-                        </el-button>
-                        <el-button
-                          size="small"
-                          :loading="validatingLagStepId === step.step_id"
-                          :data-test="'validate-lag-' + step.step_id"
-                          @click="validateLagOverrideRows(step.step_id)"
-                        >
-                          验证参数
-                        </el-button>
-                        <p v-if="lagValidation" class="lag-validation" :data-test="'lag-validation-' + step.step_id">
-                          校验：{{ lagValidation.overall_status }} {{ lagValidation.issues.join("；") }}
-                        </p>
-                      </div>
+                        <template #footer>
+                          <div class="lag-dialog-footer">
+                            <el-button :data-test="'cancel-lag-' + step.step_id" @click="closeLagOverrides">取消</el-button>
+                            <el-button
+                              type="primary"
+                              :loading="validatingLagStepId === step.step_id"
+                              :data-test="'validate-lag-' + step.step_id"
+                              @click="validateLagOverrideDraftRows(step.step_id)"
+                            >
+                              验证参数
+                            </el-button>
+                          </div>
+                        </template>
+                      </el-dialog>
                       <el-button
                         type="primary"
                         size="small"
@@ -512,7 +614,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import {
   ChatDotRound,
   CircleCheck,
@@ -527,6 +629,7 @@ import {
   confirmCopilotStep,
   executePipelineOptimization,
   executeModelEvaluation,
+  getCopilotExecution,
   validateArxStructure,
   validateFeatureSelection,
   validateLagOverrides,
@@ -539,6 +642,7 @@ import type {
   AgentStepStatus,
   CopilotChatRequest,
   CopilotChatResponse,
+  CopilotExecutionSnapshot,
   PredictionMetrics,
   SavedArxEvaluationResult,
   FeatureSelectionAction,
@@ -547,7 +651,13 @@ import type {
   LagOverrideValidationResponse,
 } from "../types/api";
 import { ApiError } from "../api/client";
+import { useRoute, useRouter, type LocationQueryRaw } from "vue-router";
+import { useCopilotExecutionStore } from "../stores/copilotExecution";
 import { ElMessage } from "element-plus";
+
+const route = useRoute();
+const router = useRouter();
+const executionStore = useCopilotExecutionStore();
 
 const FLOW_STEPS = ["自然语言", "意图解析", "白名单计划", "静态合规校验", "真实算法执行", "结论"];
 
@@ -585,8 +695,11 @@ const executingOptimizationStepId = ref<string | null>(null);
 const executingEvaluationStepId = ref<string | null>(null);
 const validatingLagStepId = ref<string | null>(null);
 const editingLagStepId = ref<string | null>(null);
+const lagDialogVisible = ref(false);
 const lagOverrideRows = ref<LagManualOverride[]>([]);
+const lagOverrideDraftRows = ref<LagManualOverride[]>([]);
 const lagValidation = ref<LagOverrideValidationResponse | null>(null);
+const lagDraftValidation = ref<LagOverrideValidationResponse | null>(null);
 const editingFeatureStepId = ref<string | null>(null);
 const featureDropColumns = ref<string[]>([]);
 const featureValidation = ref<FeatureSelectionValidationResponse | null>(null);
@@ -597,6 +710,8 @@ const arxNa = ref<number | null>(null);
 const arxNb = ref<Record<string, number>>({});
 const arxValidation = ref<ArxStructureValidationResponse | null>(null);
 const errorMessage = ref("");
+const resumeNotice = ref("");
+const hydratingExecution = ref(false);
 const result = ref<CopilotChatResponse | null>(null);
 const confirmationStatuses = reactive<Record<string, AgentConfirmationStatus>>({});
 
@@ -622,8 +737,11 @@ const handleSend = async () => {
       delete confirmationStatuses[stepId];
     }
     editingLagStepId.value = null;
+    lagDialogVisible.value = false;
     lagOverrideRows.value = [];
+    lagOverrideDraftRows.value = [];
     lagValidation.value = null;
+    lagDraftValidation.value = null;
     editingFeatureStepId.value = null;
     featureDropColumns.value = [];
     featureValidation.value = null;
@@ -634,6 +752,13 @@ const handleSend = async () => {
     arxNb.value = {};
     arxValidation.value = null;
     result.value = response;
+    resumeNotice.value = "";
+    if (response.execution_id) {
+      await activateExecution(response.execution_id);
+    } else {
+      executionStore.clearActiveExecutionId();
+      await replaceExecutionQuery(null);
+    }
     ElMessage.success(response.conclusion);
   } catch (err) {
     result.value = null;
@@ -655,9 +780,153 @@ const persistentStepStatus = (status: string): AgentStepStatus => {
   return statuses[status] ?? "pending";
 };
 
+
+const queryExecutionId = (): string | null => {
+  const value = route.query.execution_id;
+  const raw = Array.isArray(value) ? value[0] : value;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+};
+
+const replaceExecutionQuery = async (executionId: string | null) => {
+  const query: LocationQueryRaw = { ...route.query };
+  if (executionId) query.execution_id = executionId;
+  else delete query.execution_id;
+  await router.replace({ query });
+};
+
+const snapshotToChatResponse = (snapshot: CopilotExecutionSnapshot): CopilotChatResponse => {
+  const stepRuns = new Map(snapshot.step_runs.map((step) => [step.step_id, step]));
+  const plan = {
+    ...snapshot.plan,
+    steps: snapshot.plan.steps.map((step) => ({
+      ...step,
+      status: persistentStepStatus(stepRuns.get(step.step_id)?.status ?? step.status),
+    })),
+  };
+  return {
+    copilot_run_id: snapshot.copilot_run_id,
+    execution_id: snapshot.execution_id,
+    workflow_status: snapshot.workflow_status,
+    current_version_id: snapshot.current_version_id,
+    pending_confirmation_step_id: snapshot.pending_confirmation_step_id,
+    plan,
+    task: null,
+    compliance: null,
+    step_runs: snapshot.step_runs.map((step) => ({
+      step_id: step.step_id,
+      tool: step.tool,
+      status: persistentStepStatus(step.status),
+      parameters:
+        typeof step.input_payload.parameters === "object" && step.input_payload.parameters !== null
+          ? step.input_payload.parameters as Record<string, any>
+          : {},
+      summary: "",
+      result: step.result_payload,
+      duration_ms: null,
+      error_code: step.error_code,
+      error_message: step.error_message,
+      processing_run_ids: step.processing_run_ids,
+      input_payload: step.input_payload,
+      source_version_id: step.source_version_id,
+      result_version_id: step.result_version_id,
+      confirmation_status: step.confirmation_status as AgentConfirmationStatus,
+      attempt_count: step.attempt_count,
+      started_at: step.started_at,
+      finished_at: step.finished_at,
+    })),
+    conclusion: snapshot.error_message ?? "",
+    executed: snapshot.step_runs.some((step) => step.status !== "PENDING"),
+    plan_source: snapshot.planner_source === "llm" ? "llm" : "rule_based",
+    llm_provider: "",
+    llm_model: "",
+    llm_fallback_reason: null,
+  };
+};
+
+const syncConfirmationStatuses = (snapshot: CopilotExecutionSnapshot) => {
+  for (const stepId of Object.keys(confirmationStatuses)) delete confirmationStatuses[stepId];
+  for (const step of snapshot.step_runs) {
+    if (["NOT_REQUIRED", "PENDING", "APPROVED", "REJECTED"].includes(step.confirmation_status)) {
+      confirmationStatuses[step.step_id] = step.confirmation_status as AgentConfirmationStatus;
+    }
+  }
+};
+
+const isInvalidExecutionReference = (error: unknown) =>
+  error instanceof ApiError &&
+  ["AGENT_EXECUTION_NOT_FOUND", "HTTP_404", "HTTP_422"].includes(error.code);
+
+let hydrationRequest = 0;
+const hydrateExecution = async (executionId: string) => {
+  const request = ++hydrationRequest;
+  hydratingExecution.value = true;
+  errorMessage.value = "";
+  try {
+    const snapshot = await getCopilotExecution(executionId);
+    if (request !== hydrationRequest) return;
+    result.value = snapshotToChatResponse(snapshot);
+    syncConfirmationStatuses(snapshot);
+    form.active_version_id = snapshot.current_version_id;
+    executionStore.setActiveExecutionId(snapshot.execution_id);
+    resumeNotice.value = "";
+  } catch (error) {
+    if (request !== hydrationRequest) return;
+    if (isInvalidExecutionReference(error)) {
+      result.value = null;
+      executionStore.clearActiveExecutionId();
+      await replaceExecutionQuery(null);
+      resumeNotice.value = "未找到指定的 Agent Execution，已清除失效的恢复标识，可以创建新任务。";
+    } else {
+      errorMessage.value = error instanceof ApiError ? error.message : String(error);
+    }
+  } finally {
+    if (request === hydrationRequest) hydratingExecution.value = false;
+  }
+};
+
+const activateExecution = async (executionId: string) => {
+  executionStore.setActiveExecutionId(executionId);
+  await replaceExecutionQuery(executionId);
+};
+
+const refreshCurrentExecution = async () => {
+  const executionId = result.value?.execution_id ?? executionStore.activeExecutionId;
+  if (executionId) await hydrateExecution(executionId);
+};
+
+let mounted = false;
+onMounted(async () => {
+  const routeExecutionId = queryExecutionId();
+  const executionId = routeExecutionId ?? executionStore.activeExecutionId;
+  if (executionId) {
+    executionStore.setActiveExecutionId(executionId);
+    if (!routeExecutionId) await replaceExecutionQuery(executionId);
+    await hydrateExecution(executionId);
+  }
+  mounted = true;
+});
+
+watch(
+  () => route.query.execution_id,
+  async () => {
+    if (!mounted) return;
+    const routeExecutionId = queryExecutionId();
+    const executionId = routeExecutionId ?? executionStore.activeExecutionId;
+    if (!executionId) return;
+    executionStore.setActiveExecutionId(executionId);
+    if (!routeExecutionId) await replaceExecutionQuery(executionId);
+    await hydrateExecution(executionId);
+  }
+);
+
+const historicalConfirmationUnavailable = computed(
+  () => result.value?.workflow_status === "WAITING_CONFIRMATION" && !result.value.copilot_run_id
+);
+
 const canConfirm = (stepId: string) =>
   Boolean(
     result.value?.execution_id &&
+      result.value.copilot_run_id &&
       result.value.workflow_status === "WAITING_CONFIRMATION" &&
       result.value.pending_confirmation_step_id === stepId
   );
@@ -682,8 +951,12 @@ const isFeatureApplyStep = (stepId: string) =>
 const isArxFitStep = (stepId: string) =>
   result.value?.plan.steps.find((step) => step.step_id === stepId)?.tool === "fit_arx";
 
+const preparedStepValue = (stepId: string, key: string): unknown => {
+  const run = runFor(stepId);
+  return run?.result?.[key] ?? run?.input_payload?.[key];
+};
 const arxRecommendation = (stepId: string): Record<string, any> => {
-  const recommendation = runFor(stepId)?.result?.arx_structure_recommendation;
+  const recommendation = preparedStepValue(stepId, "arx_structure_recommendation");
   return recommendation && typeof recommendation === "object" && !Array.isArray(recommendation)
     ? recommendation as Record<string, any>
     : {};
@@ -765,14 +1038,14 @@ const confirmArxOverrides = async (stepId: string) => {
 };
 
 const featureRecommendation = (stepId: string): Record<string, FeatureSelectionAction> => {
-  const recommended = runFor(stepId)?.result?.recommended_selection;
+  const recommended = preparedStepValue(stepId, "recommended_selection");
   return recommended && typeof recommended === "object"
     ? recommended as Record<string, FeatureSelectionAction>
     : {};
 };
 
 const featureRecommendationEvidence = (stepId: string): Record<string, Record<string, unknown>> => {
-  const evidence = runFor(stepId)?.result?.recommendation_evidence;
+  const evidence = preparedStepValue(stepId, "recommendation_evidence");
   return evidence && typeof evidence === "object"
     ? evidence as Record<string, Record<string, unknown>>
     : {};
@@ -797,48 +1070,72 @@ const openFeatureSelection = (stepId: string) => {
 };
 
 const recommendedLagMap = (stepId: string): Record<string, number> => {
-  const suggested = runFor(stepId)?.result?.recommended_lag_map;
+  const suggested = preparedStepValue(stepId, "recommended_lag_map");
   return suggested && typeof suggested === "object" ? suggested as Record<string, number> : {};
 };
 
 const lagVariables = (stepId: string) => Object.keys(recommendedLagMap(stepId));
 
+const formattedLagRecommendation = (stepId: string) =>
+  Object.entries(recommendedLagMap(stepId))
+    .map(([variable, value]) => `${variable}:${value}`)
+    .join("; ");
+
+const selectedLagOverrides = (rows: LagManualOverride[] = lagOverrideRows.value): LagManualOverride[] =>
+  rows.map((row) => ({ ...row }));
+
+const closeLagOverrides = () => {
+  lagDialogVisible.value = false;
+  editingLagStepId.value = null;
+  lagOverrideDraftRows.value = [];
+  lagDraftValidation.value = null;
+};
+
 const openLagOverrides = (stepId: string) => {
   editingLagStepId.value = stepId;
-  lagValidation.value = null;
-  if (!lagOverrideRows.value.length) addLagOverride(stepId);
+  lagOverrideDraftRows.value = selectedLagOverrides();
+  lagDraftValidation.value = null;
+  if (!lagOverrideDraftRows.value.length) addLagOverride(stepId);
+  lagDialogVisible.value = true;
+};
+
+const isLagVariableDisabled = (variable: string, currentIndex: number) =>
+  lagOverrideDraftRows.value.some(
+    (row, index) => index !== currentIndex && row.variable === variable
+  );
+
+const syncLagOverrideValue = (index: number, stepId: string) => {
+  const row = lagOverrideDraftRows.value[index];
+  if (!row) return;
+  row.value = recommendedLagMap(stepId)[row.variable];
+  lagDraftValidation.value = null;
 };
 
 const addLagOverride = (stepId: string) => {
-  const selected = new Set(lagOverrideRows.value.map((row) => row.variable));
+  const selected = new Set(lagOverrideDraftRows.value.map((row) => row.variable));
   const variable = lagVariables(stepId).find((candidate) => !selected.has(candidate));
   if (!variable) return;
-  lagOverrideRows.value.push({ variable, value: recommendedLagMap(stepId)[variable] });
-  lagValidation.value = null;
+  lagOverrideDraftRows.value.push({ variable, value: recommendedLagMap(stepId)[variable] });
+  lagDraftValidation.value = null;
 };
 
 const removeLagOverride = (index: number) => {
-  lagOverrideRows.value.splice(index, 1);
-  lagValidation.value = null;
+  lagOverrideDraftRows.value.splice(index, 1);
+  lagDraftValidation.value = null;
 };
 
-const selectedLagOverrides = (): LagManualOverride[] =>
-  lagOverrideRows.value.map((row) => ({ ...row }));
-
-const validateLagOverrideRows = async (stepId: string) => {
+const validateLagOverridesForRows = async (stepId: string, rows: LagManualOverride[]) => {
   const current = result.value;
   if (!current?.execution_id || !canConfirm(stepId) || validatingLagStepId.value) return null;
 
   errorMessage.value = "";
   validatingLagStepId.value = stepId;
   try {
-    const validation = await validateLagOverrides({
+    return await validateLagOverrides({
       execution_id: current.execution_id,
       step_id: stepId,
-      manual_overrides: selectedLagOverrides(),
+      manual_overrides: selectedLagOverrides(rows),
     });
-    lagValidation.value = validation;
-    return validation;
   } catch (err) {
     errorMessage.value = err instanceof ApiError ? err.message : String(err);
     return null;
@@ -847,6 +1144,24 @@ const validateLagOverrideRows = async (stepId: string) => {
   }
 };
 
+const validateLagOverrideRows = async (stepId: string) => {
+  const validation = await validateLagOverridesForRows(stepId, lagOverrideRows.value);
+  if (validation) lagValidation.value = validation;
+  return validation;
+};
+
+const validateLagOverrideDraftRows = async (stepId: string) => {
+  const validation = await validateLagOverridesForRows(stepId, lagOverrideDraftRows.value);
+  if (!validation) return null;
+
+  lagDraftValidation.value = validation;
+  if (validation.overall_status !== "INVALID") {
+    lagOverrideRows.value = selectedLagOverrides(lagOverrideDraftRows.value);
+    lagValidation.value = validation;
+    closeLagOverrides();
+  }
+  return validation;
+};
 const submitConfirmation = async (
   stepId: string,
   approved: boolean,
@@ -856,7 +1171,7 @@ const submitConfirmation = async (
   arxStructureOverrides?: ArxStructureManualOverrides,
 ) => {
   const current = result.value;
-  if (!current?.execution_id || !canConfirm(stepId) || confirmingStepId.value) return;
+  if (!current?.execution_id || !current.copilot_run_id || !canConfirm(stepId) || confirmingStepId.value) return;
 
   errorMessage.value = "";
   confirmingStepId.value = stepId;
@@ -893,6 +1208,7 @@ if (confirmed.lag_override_validation) lagValidation.value = confirmed.lag_overr
     if (confirmed.arx_structure_validation) {
       arxValidation.value = confirmed.arx_structure_validation;
     }
+    await refreshCurrentExecution();
     if (approved && status === "completed") {
       ElMessage.success("已批准并执行完成");
     } else {
@@ -1101,6 +1417,7 @@ const executePipelineOptimizationStep = async (stepId: string) => {
       stepRun.processing_run_ids = completed.processing_run_ids;
     }
 
+    await refreshCurrentExecution();
     if (status === "completed") {
       ElMessage.success("模型优化完成");
     } else {
@@ -1138,6 +1455,7 @@ const executeModelEvaluationStep = async (stepId: string) => {
       stepRun.processing_run_ids = completed.processing_run_ids;
     }
 
+    await refreshCurrentExecution();
     if (status === "completed") {
       ElMessage.success("模型评价完成");
     } else {
@@ -1430,6 +1748,77 @@ const stepStatus = (status: AgentStepStatus) =>
 
 .confirmation-actions {
   margin-top: 8px;
+}
+
+.lag-dialog-header h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.lag-dialog-header p {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.lag-dialog-body {
+  display: grid;
+  gap: 16px;
+}
+
+.lag-recommendation,
+.lag-validation {
+  margin: 0;
+}
+
+.lag-override-heading {
+  margin-bottom: -6px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.lag-override-labels,
+.lag-override-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(132px, 0.72fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.lag-override-labels {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.lag-override-row + .lag-override-row {
+  margin-top: 10px;
+}
+
+.lag-override-row :deep(.el-select),
+.lag-override-row :deep(.el-input-number) {
+  width: 100%;
+}
+
+.lag-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 560px) {
+  .lag-override-labels {
+    display: none;
+  }
+
+  .lag-override-row {
+    grid-template-columns: minmax(0, 1fr) minmax(112px, 0.72fr) auto;
+    gap: 8px;
+  }
 }
 
 .result-cell {

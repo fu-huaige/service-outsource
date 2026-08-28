@@ -736,10 +736,17 @@ export interface AgentStepRun {
   parameters: Record<string, any>;
   summary: string;
   result: Record<string, any>;
-  duration_ms: number;
+  duration_ms: number | null;
   error_code: string | null;
   error_message?: string | null;
   processing_run_ids?: string[];
+  input_payload?: Record<string, any>;
+  source_version_id?: string | null;
+  result_version_id?: string | null;
+  confirmation_status?: AgentConfirmationStatus;
+  attempt_count?: number;
+  started_at?: string | null;
+  finished_at?: string | null;
 }
 
 export interface CopilotChatRequest {
@@ -750,7 +757,7 @@ export interface CopilotChatRequest {
 }
 
 export interface CopilotChatResponse {
-  copilot_run_id: string;
+  copilot_run_id: string | null;
   execution_id: string | null;
   workflow_status: AgentWorkflowStatus | null;
   current_version_id: string | null;
@@ -913,6 +920,44 @@ export interface CopilotStepExecutionResponse {
   processing_run_ids: string[];
 }
 
+export interface CopilotExecutionStepSnapshot {
+  step_id: string;
+  sequence: number;
+  tool: string;
+  status: string;
+  requires_confirmation: boolean;
+  confirmation_status: string;
+  attempt_count: number;
+  source_version_id: string | null;
+  result_version_id: string | null;
+  input_payload: Record<string, any>;
+  result_payload: Record<string, any>;
+  processing_run_ids: string[];
+  error_code: string | null;
+  error_message: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface CopilotExecutionSnapshot {
+  execution_id: string;
+  copilot_run_id: string | null;
+  dataset_id: string;
+  initial_version_id: string;
+  current_version_id: string;
+  planner_source: string;
+  workflow_status: AgentWorkflowStatus;
+  current_step_id: string | null;
+  pending_confirmation_step_id: string | null;
+  plan: ExecutionPlan;
+  artifacts: Record<string, any>;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+  finished_at: string | null;
+  step_runs: CopilotExecutionStepSnapshot[];
+}
 export interface CopilotEvaluateModelExecuteResponse extends CopilotStepExecutionResponse {}
 
 export interface AgentOptimizationResult {

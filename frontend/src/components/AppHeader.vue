@@ -27,21 +27,15 @@
         </div>
       </el-tooltip>
 
-      <el-button type="primary" size="default" class="copilot-btn" @click="$emit('toggle-copilot')">
-        <el-icon><ChatDotSquare /></el-icon>
-        <span>打开 Agent</span>
-      </el-button>
     </div>
   </header>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { DataAnalysis, ChatDotSquare } from "@element-plus/icons-vue";
+import { DataAnalysis } from "@element-plus/icons-vue";
 import { useDatasetStore } from "../stores/datasetStore";
 import { useSystemStore } from "../stores/systemStore";
-
-defineEmits(["toggle-copilot"]);
 
 const datasetStore = useDatasetStore();
 const systemStore = useSystemStore();
@@ -150,8 +144,5 @@ const statusLabel = computed(() => ({
     padding: 0 12px;
   }
 
-  .copilot-btn span {
-    display: none;
-  }
 }
 </style>

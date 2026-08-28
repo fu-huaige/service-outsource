@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -225,6 +226,45 @@ class CopilotStepExecutionData(Schema):
     error_code: str | None = None
     error_message: str | None = None
     processing_run_ids: list[str] = Field(default_factory=list)
+
+
+class CopilotExecutionStepSnapshot(Schema):
+    step_id: str
+    sequence: int
+    tool: str
+    status: str
+    requires_confirmation: bool
+    confirmation_status: str
+    attempt_count: int
+    source_version_id: UUID | None = None
+    result_version_id: UUID | None = None
+    input_payload: dict[str, Any] = Field(default_factory=dict)
+    result_payload: dict[str, Any] = Field(default_factory=dict)
+    processing_run_ids: list[str] = Field(default_factory=list)
+    error_code: str | None = None
+    error_message: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class CopilotExecutionSnapshotData(Schema):
+    execution_id: UUID
+    copilot_run_id: UUID | None = None
+    dataset_id: UUID
+    initial_version_id: UUID
+    current_version_id: UUID
+    planner_source: str
+    workflow_status: str
+    current_step_id: str | None = None
+    pending_confirmation_step_id: str | None = None
+    plan: ExecutionPlan
+    artifacts: dict[str, Any] = Field(default_factory=dict)
+    error_code: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    finished_at: datetime | None = None
+    step_runs: list[CopilotExecutionStepSnapshot] = Field(default_factory=list)
 
 
 class OptimizePipelineExecuteRequest(Schema):

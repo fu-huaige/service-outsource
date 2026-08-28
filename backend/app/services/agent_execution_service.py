@@ -12,7 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.agent_execution import AgentExecutionSession, AgentStepRun
-from app.schemas.copilot import ExecutionPlan
+from app.schemas.copilot import (
+    CopilotExecutionSnapshotData,
+    CopilotExecutionStepSnapshot,
+    ExecutionPlan,
+)
 
 _TERMINAL_EXECUTION_STATUSES = frozenset({"SUCCEEDED", "FAILED", "CANCELLED"})
 _TERMINAL_STEP_STATUSES = frozenset({"SUCCEEDED", "SKIPPED"})
@@ -50,6 +54,7 @@ async def create_execution(
     planner_source: str,
     plan: ExecutionPlan,
     compliance_proof: ComplianceProof,
+    copilot_run_id: UUID | None = None,
 ) -> AgentExecutionSession:
     """Persist one compliance-approved plan and its ordered pending step runs."""
 
@@ -58,6 +63,7 @@ async def create_execution(
 
     execution = AgentExecutionSession(
         id=uuid4(),
+        copilot_run_id=copilot_run_id,
         dataset_id=dataset_id,
         initial_version_id=initial_version_id,
         current_version_id=initial_version_id,
@@ -105,6 +111,52 @@ async def get_execution(session: AsyncSession, *, execution_id: UUID) -> AgentEx
     """Load one persisted execution together with its ordered step runs."""
 
     return await _load_execution(session, execution_id)
+
+def to_copilot_execution_snapshot(
+    execution: AgentExecutionSession,
+) -> CopilotExecutionSnapshotData:
+    """Serialize persisted execution control state without performing a transition."""
+
+    return CopilotExecutionSnapshotData(
+        execution_id=execution.id,
+        copilot_run_id=execution.copilot_run_id,
+        dataset_id=execution.dataset_id,
+        initial_version_id=execution.initial_version_id,
+        current_version_id=execution.current_version_id,
+        planner_source=execution.planner_source,
+        workflow_status=execution.workflow_status,
+        current_step_id=execution.current_step_id,
+        pending_confirmation_step_id=execution.pending_confirmation_step_id,
+        plan=ExecutionPlan.model_validate(execution.plan_json),
+        artifacts=dict(execution.artifacts),
+        error_code=execution.error_code,
+        error_message=execution.error_message,
+        created_at=execution.created_at,
+        updated_at=execution.updated_at,
+        finished_at=execution.finished_at,
+        step_runs=[
+            CopilotExecutionStepSnapshot(
+                step_id=step.step_id,
+                sequence=step.sequence,
+                tool=step.tool_name,
+                status=step.status,
+                requires_confirmation=step.requires_confirmation,
+                confirmation_status=step.confirmation_status,
+                attempt_count=step.attempt_count,
+                source_version_id=step.source_version_id,
+                result_version_id=step.result_version_id,
+                input_payload=dict(step.input_payload),
+                result_payload=dict(step.result_payload),
+                processing_run_ids=list(step.processing_run_ids),
+                error_code=step.error_code,
+                error_message=step.error_message,
+                started_at=step.started_at,
+                finished_at=step.finished_at,
+            )
+            for step in execution.step_runs
+        ],
+    )
+
 
 async def claim_approved_optimization_step(
     session: AsyncSession, *, execution_id: UUID, step_id: str

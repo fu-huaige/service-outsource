@@ -28,6 +28,7 @@ class AgentExecutionSession(Base):
     __tablename__ = "agent_execution_sessions"
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    copilot_run_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
     dataset_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False, index=True
     )

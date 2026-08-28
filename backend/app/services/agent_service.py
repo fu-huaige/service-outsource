@@ -283,6 +283,7 @@ async def run_copilot(
             planner_source=outcome.source,
             plan=execution_plan,
             compliance_proof=proof,
+            copilot_run_id=run_id,
         )
         if _uses_formal_tool_adapter(steps):
             persistent_execution, executions = await _execute_with_formal_tools(
