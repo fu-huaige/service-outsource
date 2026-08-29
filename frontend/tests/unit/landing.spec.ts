@@ -5,9 +5,9 @@ import { nextTick } from "vue";
 import DefaultLayout from "../../src/layouts/DefaultLayout.vue";
 import appRouter from "../../src/router";
 import { LANDING_SESSION_KEY } from "../../src/router/landingEntry";
-import LandingPreviewView from "../../src/views/LandingPreviewView.vue";
+import LandingView from "../../src/views/LandingView.vue";
 
-interface MountedPreview {
+interface MountedLanding {
   wrapper: VueWrapper;
   router: Router;
 }
@@ -126,27 +126,26 @@ function installMatchMedia(reducedMotion = false) {
   });
 }
 
-async function mountPreview(
-  theme: "dark" | "light",
+async function mountLanding(
   options: { reducedMotion?: boolean; attachTo?: HTMLElement } = {}
-): Promise<MountedPreview> {
+): Promise<MountedLanding> {
   installMatchMedia(options.reducedMotion);
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
       {
-        path: "/preview/:theme",
-        component: LandingPreviewView,
-        props: (route) => ({ theme: route.params.theme }),
+        path: "/",
+        component: LandingView,
+        props: { theme: "light" },
       },
       { path: "/dashboard", component: { template: "<div>Dashboard</div>" } },
       { path: "/copilot", component: { template: "<div>Copilot</div>" } },
     ],
   });
-  await router.push(`/preview/${theme}`);
+  await router.push("/");
   await router.isReady();
-  const wrapper = mount(LandingPreviewView, {
-    props: { theme },
+  const wrapper = mount(LandingView, {
+    props: { theme: "light" },
     attachTo: options.attachTo,
     global: { plugins: [router] },
   });
@@ -163,46 +162,32 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("dual landing preview", () => {
-  it("resolves both previews outside DefaultLayout without changing business routes", () => {
+describe("formal landing", () => {
+  it("resolves outside DefaultLayout without changing business routes", () => {
     const landing = appRouter.resolve("/");
-    const dark = appRouter.resolve("/landing-preview/dark");
-    const light = appRouter.resolve("/landing-preview/light");
     const dashboard = appRouter.resolve("/dashboard");
     const copilot = appRouter.resolve("/copilot");
 
     expect(landing.name).toBe("Landing");
     expect(landing.matched).toHaveLength(1);
     expect(landing.matched.some((record) => record.components?.default === DefaultLayout)).toBe(false);
-    expect(dark.name).toBe("LandingPreviewDark");
-    expect(light.name).toBe("LandingPreviewLight");
-    expect(dark.matched).toHaveLength(1);
-    expect(light.matched).toHaveLength(1);
-    expect(dark.matched.some((record) => record.components?.default === DefaultLayout)).toBe(false);
-    expect(light.matched.some((record) => record.components?.default === DefaultLayout)).toBe(false);
     expect(dashboard.path).toBe("/dashboard");
     expect(copilot.path).toBe("/copilot");
     expect(dashboard.matched[0]?.components?.default).toBe(DefaultLayout);
     expect(copilot.matched[0]?.components?.default).toBe(DefaultLayout);
   });
 
-  it("renders identical content structure with distinct dark and light themes", async () => {
-    const dark = (await mountPreview("dark")).wrapper;
-    const light = (await mountPreview("light")).wrapper;
-    const sectionNames = (wrapper: VueWrapper) =>
-      wrapper.findAll("[data-section]").map((section) => section.attributes("data-section"));
+  it("renders the accepted light landing content", async () => {
+    const landing = (await mountLanding()).wrapper;
 
-    expect(dark.get(".landing-preview").attributes("data-theme")).toBe("dark");
-    expect(light.get(".landing-preview").attributes("data-theme")).toBe("light");
-    expect(sectionNames(dark)).toEqual(sectionNames(light));
-    expect(dark.get("h1").text()).toBe("让工业建模，从数据走向闭环决策");
-    expect(light.get("h1").text()).toBe("让工业建模，从数据走向闭环决策");
-    expect(dark.text()).toContain("按工程目标组合步骤，并非每个任务固定执行全部流程。");
-    expect(dark.text()).toContain("Example Lineage");
+    expect(landing.get(".landing-preview").attributes("data-theme")).toBe("light");
+    expect(landing.get("h1").text()).toBe("让工业建模，从数据走向闭环决策");
+    expect(landing.text()).toContain("按工程目标组合步骤，并非每个任务固定执行全部流程。");
+    expect(landing.text()).toContain("Example Lineage");
   });
 
   it("marks the session and replaces the landing route from every Start Explore CTA", async () => {
-    const { wrapper, router } = await mountPreview("dark");
+    const { wrapper, router } = await mountLanding();
     const replace = vi.spyOn(router, "replace").mockResolvedValue(undefined);
     const buttons = wrapper.findAll("button").filter((candidate) => candidate.text().includes("开始探索"));
 
@@ -217,17 +202,17 @@ describe("dual landing preview", () => {
 
   it("replaces a complete safe next route and rejects external next values", async () => {
     const safe = "/copilot?execution_id=abc#workflow";
-    const safeMount = await mountPreview("light");
+    const safeMount = await mountLanding();
     const safeRouter = safeMount.router;
-    await safeRouter.replace({ path: "/preview/light", query: { next: safe } });
+    await safeRouter.replace({ path: "/", query: { next: safe } });
     const safeReplace = vi.spyOn(safeRouter, "replace").mockResolvedValue(undefined);
 
     await safeMount.wrapper.findAll("button").find((button) => button.text().includes("开始探索"))?.trigger("click");
     expect(safeReplace).toHaveBeenLastCalledWith(safe);
 
     for (const unsafe of ["https://example.com", "//example.com", "/\\example.com"]) {
-      const unsafeMount = await mountPreview("light");
-      await unsafeMount.router.replace({ path: "/preview/light", query: { next: unsafe } });
+      const unsafeMount = await mountLanding();
+      await unsafeMount.router.replace({ path: "/", query: { next: unsafe } });
       const unsafeReplace = vi.spyOn(unsafeMount.router, "replace").mockResolvedValue(undefined);
       await unsafeMount.wrapper.findAll("button").find((button) => button.text().includes("开始探索"))?.trigger("click");
       expect(unsafeReplace).toHaveBeenLastCalledWith("/dashboard");
@@ -237,7 +222,7 @@ describe("dual landing preview", () => {
   it("smooth scrolls to the Agent Workflow section", async () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
-    const { wrapper } = await mountPreview("light", { attachTo: host });
+    const { wrapper } = await mountLanding({ attachTo: host });
     const workflow = wrapper.get("#agent-workflow").element;
     const scrollIntoView = vi.fn();
     Object.defineProperty(workflow, "scrollIntoView", { configurable: true, value: scrollIntoView });
@@ -252,7 +237,7 @@ describe("dual landing preview", () => {
   it("replays a section reveal after exit and supports both scroll directions", async () => {
     installIntersectionObserver();
     setScrollY(0);
-    const { wrapper } = await mountPreview("light");
+    const { wrapper } = await mountLanding();
     const observer = MockIntersectionObserver.instances[0];
     const section = wrapper.get('[data-section="trusted-engineering"]');
 
@@ -306,7 +291,7 @@ describe("dual landing preview", () => {
     setScrollY(0);
     const addEventListener = vi.spyOn(window, "addEventListener");
     const removeEventListener = vi.spyOn(window, "removeEventListener");
-    const { wrapper } = await mountPreview("light");
+    const { wrapper } = await mountLanding();
     const scrollRegistration = addEventListener.mock.calls.find(([event]) => event === "scroll");
 
     expect(scrollRegistration).toBeDefined();
@@ -322,7 +307,7 @@ describe("dual landing preview", () => {
 
   it("keeps pointer interaction independent from replayable section observation", async () => {
     installIntersectionObserver();
-    const { wrapper } = await mountPreview("dark");
+    const { wrapper } = await mountLanding();
     const arxNode = wrapper.findAll(".workflow-node").find((node) => node.text().includes("ARX"));
 
     expect(arxNode).toBeDefined();
@@ -334,7 +319,7 @@ describe("dual landing preview", () => {
   it("keeps all core content visible and exposes reduced-motion state", async () => {
     installIntersectionObserver();
     const addEventListener = vi.spyOn(window, "addEventListener");
-    const { wrapper } = await mountPreview("dark", { reducedMotion: true });
+    const { wrapper } = await mountLanding({ reducedMotion: true });
 
     expect(wrapper.get(".landing-preview").attributes("data-reduced-motion")).toBe("true");
     expect(MockIntersectionObserver.instances).toHaveLength(0);

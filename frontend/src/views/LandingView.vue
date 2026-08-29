@@ -109,6 +109,8 @@ import ModelLifecycle from "../components/landing/ModelLifecycle.vue";
 import TrustedEngineering from "../components/landing/TrustedEngineering.vue";
 import { enterFromLanding } from "../router/landingEntry";
 
+defineOptions({ name: "LandingView" });
+
 defineProps<{
   theme: "dark" | "light";
 }>();

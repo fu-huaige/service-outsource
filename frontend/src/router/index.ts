@@ -11,23 +11,9 @@ const routes: RouteRecordRaw[] = [
   {
     path: "/",
     name: "Landing",
-    component: () => import("../views/LandingPreviewView.vue"),
+    component: () => import("../views/LandingView.vue"),
     props: { theme: "light" },
     meta: { landingGatePublic: true },
-  },
-  {
-    path: "/landing-preview/dark",
-    name: "LandingPreviewDark",
-    component: () => import("../views/LandingPreviewView.vue"),
-    props: { theme: "dark" },
-    meta: { title: "Landing Dark Preview", landingGatePublic: true },
-  },
-  {
-    path: "/landing-preview/light",
-    name: "LandingPreviewLight",
-    component: () => import("../views/LandingPreviewView.vue"),
-    props: { theme: "light" },
-    meta: { title: "Landing Light Preview", landingGatePublic: true },
   },
   {
     path: "/dashboard",

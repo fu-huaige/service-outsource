@@ -61,12 +61,13 @@ describe("formal landing gate", () => {
     expect(copilotRouter.currentRoute.value.fullPath).toBe("/copilot?execution_id=abc");
   });
 
-  it("keeps both previews public and outside DefaultLayout", async () => {
+  it("routes removed preview URLs through the existing public 404 flow", async () => {
     for (const path of ["/landing-preview/dark", "/landing-preview/light"]) {
       const router = await navigate(path);
-      expect(router.currentRoute.value.path).toBe(path);
+      expect(router.currentRoute.value.path).toBe("/404");
       expect(router.currentRoute.value.matched).toHaveLength(1);
       expect(router.currentRoute.value.matched.some((record) => record.components?.default === DefaultLayout)).toBe(false);
+      expect(window.sessionStorage.getItem(LANDING_SESSION_KEY)).toBeNull();
     }
   });
 
