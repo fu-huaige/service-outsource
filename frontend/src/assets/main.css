@@ -1,37 +1,41 @@
-/* IndusOpt industrial workspace tokens and base styles */
+/* IndusOpt industrial workspace tokens and base styles - Glacier Slate Theme */
 
 :root {
   /* Industrial Color Palette */
-  --color-primary: #1E6091;
-  --color-primary-hover: #184E77;
-  --color-primary-light: #E8F1F5;
+  --color-primary: #1e6091;
+  --color-primary-hover: #184e77;
+  --color-primary-light: #eff6ff;
 
-  --color-success: #2A9D8F;
-  --color-success-bg: #E8F6F4;
+  --color-success: #059669;
+  --color-success-bg: #ecfdf5;
 
-  --color-warning: #E9C46A;
-  --color-warning-dark: #D4A373;
-  --color-warning-bg: #FFF9E6;
+  --color-warning: #d97706;
+  --color-warning-dark: #b45309;
+  --color-warning-bg: #fffbeb;
 
-  --color-danger: #E76F51;
-  --color-danger-bg: #FDF0ED;
+  --color-danger: #dc2626;
+  --color-danger-bg: #fef2f2;
 
-  --bg-app: #F4F6F8;
-  --bg-surface: #FFFFFF;
-  --bg-sidebar: #1A212D;
-  --bg-header: #FFFFFF;
-  --bg-subtle: #F8F9FA;
+  --bg-app: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-sidebar: #0f172a;
+  --bg-header: #ffffff;
+  --bg-subtle: #f1f5f9;
 
-  --text-primary: #1A1D20;
-  --text-secondary: #5A626A;
-  --text-muted: #8D96A0;
-  --border-light: #E2E7EC;
-  --border-active: #1E6091;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --border-light: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --border-active: #1e6091;
 
-  --el-color-primary: #1E6091;
-  --el-color-success: #2A9D8F;
-  --el-color-warning: #D4A373;
-  --el-color-danger: #E76F51;
+  --el-color-primary: #1e6091;
+  --el-color-success: #059669;
+  --el-color-warning: #d97706;
+  --el-color-danger: #dc2626;
+
+  --shadow-card: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 8px 24px -4px rgba(15, 23, 42, 0.06);
+  --shadow-floating: 0 20px 48px -8px rgba(15, 23, 42, 0.08);
 
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", Consolas, Monaco, monospace;
@@ -69,38 +73,37 @@ select {
   margin-bottom: 22px;
 }
 
+.page-eyebrow {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-primary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
 .page-header h2 {
-  margin: 3px 0 0;
+  font-size: 24px;
+  font-weight: 700;
   color: var(--text-primary);
-  font-size: 25px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
 .page-header .subtitle {
-  max-width: 780px;
-  margin-top: 7px;
+  font-size: 14px;
   color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.65;
+  margin-top: 4px;
 }
 
-.page-eyebrow {
-  display: block;
-  color: var(--color-primary);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-}
-
-/* Common Layout Helpers */
 .industrial-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-light);
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 20px;
-  box-shadow: 0 3px 14px rgba(31, 53, 72, 0.045);
   margin-bottom: 20px;
+  box-shadow: var(--shadow-card);
 }
 
 .industrial-card-header {
@@ -121,193 +124,6 @@ select {
   gap: 8px;
 }
 
-.industrial-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
+.font-mono {
   font-family: var(--font-mono);
-}
-
-.badge-primary {
-  background: var(--color-primary-light);
-  color: var(--color-primary);
-}
-
-.badge-success {
-  background: var(--color-success-bg);
-  color: var(--color-success);
-}
-
-.badge-warning {
-  background: var(--color-warning-bg);
-  color: var(--color-warning-dark);
-}
-
-.badge-danger {
-  background: var(--color-danger-bg);
-  color: var(--color-danger);
-}
-
-.code-inline {
-  font-family: var(--font-mono);
-  background: var(--bg-subtle);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 13px;
-  border: 1px solid var(--border-light);
-}
-
-@media (max-width: 700px) {
-  .industrial-card {
-    padding: 16px;
-  }
-
-  .industrial-card-header {
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .page-header h2 {
-    font-size: 22px;
-  }
-}
-
-/* Shared parameter-form layout
- *
- * Keep labels beside their controls on desktop, but align every field to the
- * same three-column grid. This replaces content-dependent inline wrapping and
- * the scattered per-control widths that previously made parameter cards look
- * ragged from one row to the next.
- */
-.parameter-form-grid {
-  --parameter-form-label-width: 136px;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-items: start;
-  gap: 16px 24px;
-}
-
-.parameter-form-grid .el-form-item {
-  display: grid;
-  grid-template-columns: var(--parameter-form-label-width) minmax(0, 1fr);
-  align-items: center;
-  min-width: 0;
-  margin: 0;
-}
-
-.parameter-form-grid .el-form-item__label {
-  width: auto !important;
-  height: auto;
-  min-height: 32px;
-  padding: 0 12px 0 0;
-  line-height: 1.35;
-  white-space: normal;
-  text-align: right;
-  justify-content: flex-end;
-}
-
-.parameter-form-grid .el-form-item__content {
-  display: flex;
-  align-items: center;
-  flex-wrap: nowrap;
-  min-width: 0;
-  min-height: 32px;
-  line-height: 1.35;
-}
-
-.parameter-form-grid .el-input,
-.parameter-form-grid .el-input-number,
-.parameter-form-grid .el-select,
-.parameter-form-grid .el-slider {
-  width: 100% !important;
-  min-width: 0;
-}
-
-.parameter-form-grid .el-slider .el-input-number {
-  flex: 0 0 130px;
-  width: 130px !important;
-}
-
-.parameter-form-grid .el-radio-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 0;
-}
-
-.parameter-form-grid .form-span-2 {
-  grid-column: span 2;
-}
-
-.parameter-form-grid .form-span-full,
-.parameter-form-grid .parameter-form-actions,
-.parameter-form-grid .parameter-form-note {
-  grid-column: 1 / -1;
-}
-
-.parameter-form-grid.parameter-form-grid--single {
-  grid-template-columns: minmax(0, 1fr);
-  max-width: 680px;
-}
-
-.parameter-form-grid .parameter-form-actions {
-  display: block;
-  padding-top: 4px;
-}
-
-.parameter-form-grid .parameter-form-actions .el-form-item__content {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.parameter-form-grid .parameter-form-actions .el-button + .el-button {
-  margin-left: 0;
-}
-
-.form-control-suffix {
-  flex: 0 0 auto;
-  margin-left: 8px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
-@media (max-width: 1400px) {
-  .parameter-form-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 900px) {
-  .parameter-form-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 14px;
-  }
-
-  .parameter-form-grid .form-span-2 {
-    grid-column: span 1;
-  }
-
-  .parameter-form-grid .el-form-item {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
-  }
-
-  .parameter-form-grid .el-form-item__label {
-    min-height: 0;
-    padding: 0;
-    text-align: left;
-    justify-content: flex-start;
-  }
-
-  .parameter-form-grid .parameter-form-actions .el-form-item__content {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .parameter-form-grid .parameter-form-actions .el-button {
-    width: 100%;
-  }
 }

@@ -8,29 +8,131 @@
     <LandingHeader @explore="enterApplication" />
 
     <main id="landing-top">
+      <!-- 01 Hero Section with Live Interactive Playground & Workflow -->
       <section class="landing-hero landing-section" data-section="hero">
         <div class="landing-container hero-grid">
           <div class="hero-copy">
-            <span class="hero-eyebrow">INDUSTRIAL INTELLIGENCE</span>
+            <span class="hero-eyebrow">PROCESS INDUSTRY SYSTEM IDENTIFICATION</span>
             <h1>
               <span>让工业建模，</span>
               <span>从数据走向闭环决策</span>
             </h1>
-            <p class="hero-subtitle">Agent 驱动的流程工业数据建模与智能寻优平台</p>
+            <p class="hero-subtitle">
+              面向流程工业建模工程师：导入多变量时序数据，完成质量门控、D-最优优选、ARX 辨识与可追溯验证。
+            </p>
+
             <div class="hero-actions">
               <button class="landing-button landing-button-primary" type="button" @click="enterApplication">
-                开始探索
+                进入工作台
                 <span aria-hidden="true">→</span>
               </button>
-              <button class="landing-button landing-button-secondary" type="button" @click="scrollToWorkflow">
-                查看工作流程
+              <button class="landing-button landing-button-secondary" type="button" @click="scrollToBenchmark">
+                查看实测对账
               </button>
             </div>
+
+            <!-- 3 Hardcore Industrial Metric Highlights (Range & Evidence Based) -->
+            <div class="hero-stats-banner">
+              <div class="hero-stat-item">
+                <span class="stat-num text-cyan">14.3%</span>
+                <span class="stat-desc">S6 实测下达到 89.04% Free-run 拟合优度 (FIT)</span>
+              </div>
+              <div class="hero-stat-divider"></div>
+              <div class="hero-stat-item">
+                <span class="stat-num text-green">16/20</span>
+                <span class="stat-desc">敏感性扫描满秩；低预算由门控拦截</span>
+              </div>
+              <div class="hero-stat-divider"></div>
+              <div class="hero-stat-item">
+                <span class="stat-num text-amber">24×</span>
+                <span class="stat-desc">阶段 8 闭环寻优实测</span>
+              </div>
+            </div>
           </div>
-          <HeroWorkflow />
+
+          <!-- Hero Tab / Interactive Switcher with Full Accessibility -->
+          <div class="hero-interactive-zone">
+            <div class="hero-view-tabs" role="tablist" aria-label="沙盘与工作流切换">
+              <button
+                id="hero-tab-playground"
+                type="button"
+                role="tab"
+                class="view-tab-btn"
+                :class="{ active: heroTab === 'playground' }"
+                :aria-selected="heroTab === 'playground'"
+                aria-controls="hero-panel-playground"
+                @click="heroTab = 'playground'"
+              >
+                <svg class="tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                </svg>
+                <span>实时算法与时序沙盘</span>
+              </button>
+              <button
+                id="hero-tab-workflow"
+                type="button"
+                role="tab"
+                class="view-tab-btn"
+                :class="{ active: heroTab === 'workflow' }"
+                :aria-selected="heroTab === 'workflow'"
+                aria-controls="hero-panel-workflow"
+                @click="heroTab = 'workflow'"
+              >
+                <svg class="tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="14" width="7" height="7"></rect>
+                  <rect x="3" y="14" width="7" height="7"></rect>
+                </svg>
+                <span>组合工作流探查</span>
+              </button>
+            </div>
+
+            <div
+              id="hero-panel-playground"
+              v-show="heroTab === 'playground'"
+              role="tabpanel"
+              aria-labelledby="hero-tab-playground"
+            >
+              <InteractivePlayground />
+            </div>
+            <div
+              id="hero-panel-workflow"
+              v-show="heroTab === 'workflow'"
+              role="tabpanel"
+              aria-labelledby="hero-tab-workflow"
+            >
+              <HeroWorkflow />
+            </div>
+          </div>
         </div>
       </section>
 
+      <!-- 02 Benchmark Evidence Matrix (Moved up immediately after Hero) -->
+      <section id="ablation-benchmark" class="landing-section section-benchmark" data-section="benchmark-evidence">
+        <div class="landing-container">
+          <div class="section-heading">
+            <span class="section-eyebrow">ABLATION BENCHMARK</span>
+            <h2>10 组独立随机种子消融对账：拒绝“黑盒玄学”</h2>
+            <p>包含 200 个工作点敏感性扫描实测，直面算法优势与自身失效边界，全量数据公开可复现。</p>
+          </div>
+          <BenchmarkComparison />
+        </div>
+      </section>
+
+      <!-- 03 Engineering Pipeline Architecture -->
+      <section id="pipeline-architecture" class="landing-section section-pipeline" data-section="pipeline">
+        <div class="landing-container">
+          <div class="section-heading">
+            <span class="section-eyebrow">ENGINEERING PIPELINE</span>
+            <h2>工业建模闭环体系：从原始时序到可验证模型交付</h2>
+            <p>每个环节均提供严谨的算法数学证明、物理防呆门控与不可变数据版本血缘。</p>
+          </div>
+          <PipelineArchitecture />
+        </div>
+      </section>
+
+      <!-- 04 Unified Trusted Engineering & Lineage Traceability Zone -->
       <section
         id="trusted-engineering"
         class="landing-section section-trust"
@@ -38,6 +140,7 @@
       >
         <div class="landing-container">
           <div class="section-heading">
+            <span class="section-eyebrow">CORE TRUST & LINEAGE</span>
             <h2>复杂工业建模，需要的不只是一个模型。</h2>
             <p>从数据版本到模型资产，再到最终评价，每个关键决定都保留真实来源与人为控制。</p>
           </div>
@@ -45,36 +148,7 @@
         </div>
       </section>
 
-      <section id="agent-workflow" class="landing-section section-agent" data-section="agent-workflow">
-        <div class="landing-container">
-          <div class="section-heading section-heading-narrow">
-            <h2>从一句工程目标，到一条可确认的执行路径。</h2>
-            <p>Agent 负责组织正式工具与依赖关系，确认门控仍由工程人员掌握。</p>
-          </div>
-          <AgentWorkflowShowcase />
-        </div>
-      </section>
-
-      <section id="dataset-lineage" class="landing-section section-lineage" data-section="dataset-lineage">
-        <div class="landing-container">
-          <div class="section-heading section-heading-narrow">
-            <h2>数据不会被覆盖，每一步都有来路。</h2>
-            <p>不可变派生版本把数据处理、建模来源与最终结果连接成可审计的证据链。</p>
-          </div>
-          <LineageDiagram />
-        </div>
-      </section>
-
-      <section class="landing-section section-model" data-section="model-lifecycle">
-        <div class="landing-container">
-          <div class="section-heading">
-            <h2>模型、寻优与评价，保持清晰边界。</h2>
-            <p>ARX 结构、Validation 搜索、Saved Model 与 held-out Test 各自承担明确职责。</p>
-          </div>
-          <ModelLifecycle />
-        </div>
-      </section>
-
+      <!-- 05 Final CTA -->
       <section class="landing-section landing-final" data-section="final-cta">
         <div class="landing-container final-layout">
           <div>
@@ -82,7 +156,7 @@
             <p>进入现有工作台，从真实数据和可追溯工作流开始。</p>
           </div>
           <button class="landing-button landing-button-primary final-button" type="button" @click="enterApplication">
-            开始探索
+            进入工作台
             <span aria-hidden="true">→</span>
           </button>
         </div>
@@ -91,7 +165,7 @@
 
     <footer class="landing-footer">
       <div class="landing-container">
-        <span>IndusOpt 工模智优</span>
+        <span>IndusOpt 工模智优 · 2026 第十三届浙江省大学生服务外包创新应用大赛 A14</span>
         <span>流程工业数据建模与智能寻优平台</span>
       </div>
     </footer>
@@ -101,11 +175,11 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import AgentWorkflowShowcase from "../components/landing/AgentWorkflowShowcase.vue";
+import BenchmarkComparison from "../components/landing/BenchmarkComparison.vue";
 import HeroWorkflow from "../components/landing/HeroWorkflow.vue";
+import InteractivePlayground from "../components/landing/InteractivePlayground.vue";
 import LandingHeader from "../components/landing/LandingHeader.vue";
-import LineageDiagram from "../components/landing/LineageDiagram.vue";
-import ModelLifecycle from "../components/landing/ModelLifecycle.vue";
+import PipelineArchitecture from "../components/landing/PipelineArchitecture.vue";
 import TrustedEngineering from "../components/landing/TrustedEngineering.vue";
 import { enterFromLanding } from "../router/landingEntry";
 
@@ -119,13 +193,14 @@ const router = useRouter();
 const route = useRoute();
 const pageRoot = ref<HTMLElement | null>(null);
 const reducedMotion = ref(false);
+const heroTab = ref<"playground" | "workflow">("playground");
+
 let mediaQuery: MediaQueryList | null = null;
 let sectionObserver: IntersectionObserver | null = null;
 let revealFrame: number | null = null;
 let directionFrame: number | null = null;
 let lastScrollY = 0;
 let scrollDirection: "down" | "up" = "down";
-const visibleSections = new WeakSet<HTMLElement>();
 const pendingReveal = new Set<HTMLElement>();
 const SCROLL_DIRECTION_DEAD_ZONE = 4;
 
@@ -133,8 +208,8 @@ function enterApplication() {
   void enterFromLanding(router, route.query.next);
 }
 
-function scrollToWorkflow() {
-  document.getElementById("agent-workflow")?.scrollIntoView({
+function scrollToBenchmark() {
+  document.getElementById("ablation-benchmark")?.scrollIntoView({
     behavior: reducedMotion.value ? "auto" : "smooth",
     block: "start",
   });
@@ -174,13 +249,6 @@ function queueSectionReveal(section: HTMLElement) {
   });
 }
 
-function resetSection(section: HTMLElement, direction: "down" | "up") {
-  pendingReveal.delete(section);
-  section.classList.remove("is-visible");
-  setRevealOrigin(section, direction);
-  visibleSections.delete(section);
-}
-
 function revealSections() {
   const sections = pageRoot.value?.querySelectorAll<HTMLElement>(".landing-section");
   if (!sections) return;
@@ -198,10 +266,8 @@ function revealSections() {
         const section = entry.target as HTMLElement;
         if (entry.isIntersecting) {
           setRevealOrigin(section, scrollDirection);
-          visibleSections.add(section);
           queueSectionReveal(section);
-        } else if (visibleSections.has(section)) {
-          resetSection(section, scrollDirection);
+          sectionObserver?.unobserve(section);
         }
       });
     },
@@ -235,76 +301,90 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .landing-preview {
-  --landing-radius: 3px;
+  position: relative;
+  --landing-radius: 6px;
   min-width: 320px;
   min-height: 100dvh;
   overflow-x: hidden;
   background: var(--landing-bg);
   color: var(--landing-text);
-  color-scheme: dark;
-  font-family: var(--font-family);
-  scroll-behavior: smooth;
+  font-family: var(--font-sans);
 }
 
-.landing-preview[data-theme="dark"] {
-  --landing-bg: #081118;
-  --landing-surface: #0c1922;
-  --landing-surface-active: #10212c;
-  --landing-surface-tinted: #0a151d;
-  --landing-node-bg: rgb(15 31 42 / 0.88);
-  --landing-text: #eef0e8;
-  --landing-muted: #9baab2;
-  --landing-faint: #667983;
-  --landing-accent: #63add3;
-  --landing-accent-strong: #83c4e5;
-  --landing-accent-contrast: #071016;
-  --landing-accent-soft: rgb(99 173 211 / 0.1);
-  --landing-border: rgb(156 185 199 / 0.15);
-  --landing-border-strong: rgb(156 185 199 / 0.28);
-  --landing-border-active: rgb(99 173 211 / 0.52);
-  --landing-grid: rgb(145 175 190 / 0.055);
-  --landing-highlight: rgb(78 153 191 / 0.12);
-  --landing-header-bg: rgb(8 17 24 / 0.92);
-  --landing-shadow: 0 28px 70px rgb(0 5 10 / 0.26);
+
+
+.landing-preview::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background-image:
+    linear-gradient(var(--landing-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--landing-grid) 1px, transparent 1px);
+  background-size: 44px 44px;
+  opacity: 0.65;
+  z-index: 0;
 }
 
 .landing-preview[data-theme="light"] {
-  --landing-bg: #f4f3ee;
-  --landing-surface: #fbfaf6;
-  --landing-surface-active: #f7f9f7;
-  --landing-surface-tinted: #edf2f2;
-  --landing-node-bg: rgb(248 249 246 / 0.94);
-  --landing-text: #18262d;
-  --landing-muted: #5d6c72;
-  --landing-faint: #8b989d;
-  --landing-accent: #236d98;
-  --landing-accent-strong: #174f70;
-  --landing-accent-contrast: #f7faf8;
-  --landing-accent-soft: rgb(35 109 152 / 0.08);
-  --landing-border: rgb(45 73 84 / 0.14);
-  --landing-border-strong: rgb(45 73 84 / 0.25);
-  --landing-border-active: rgb(35 109 152 / 0.48);
-  --landing-grid: rgb(41 83 102 / 0.045);
-  --landing-highlight: rgb(35 109 152 / 0.08);
-  --landing-header-bg: rgb(244 243 238 / 0.92);
-  --landing-shadow: 0 28px 70px rgb(42 63 71 / 0.09);
+  --landing-bg: #f8fafc;
+  --landing-surface: #ffffff;
+  --landing-surface-active: #ffffff;
+  --landing-surface-tinted: #f1f5f9;
+  --landing-node-bg: #f8fafc;
+  --landing-text: #0f172a;
+  --landing-muted: #64748b;
+  --landing-faint: #64748b;
+  --landing-accent: #2563eb;
+  --landing-accent-strong: #1d4ed8;
+  --landing-accent-contrast: #ffffff;
+  --landing-accent-soft: rgba(37, 99, 235, 0.08);
+  --landing-border: #e2e8f0;
+  --landing-border-strong: #cbd5e1;
+  --landing-border-active: #2563eb;
+  --landing-grid: rgba(203, 213, 225, 0.55);
+  --landing-highlight: rgba(37, 99, 235, 0.06);
+  --landing-header-bg: rgba(248, 250, 252, 0.92);
+  --landing-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
+  color-scheme: light;
+}
+
+.landing-preview[data-theme="dark"] {
+  --landing-bg: #f8fafc;
+  --landing-surface: #ffffff;
+  --landing-surface-active: #ffffff;
+  --landing-surface-tinted: #f1f5f9;
+  --landing-node-bg: #f8fafc;
+  --landing-text: #0f172a;
+  --landing-muted: #64748b;
+  --landing-faint: #64748b;
+  --landing-accent: #2563eb;
+  --landing-accent-strong: #1d4ed8;
+  --landing-accent-contrast: #ffffff;
+  --landing-accent-soft: rgba(37, 99, 235, 0.08);
+  --landing-border: #e2e8f0;
+  --landing-border-strong: #cbd5e1;
+  --landing-border-active: #2563eb;
+  --landing-grid: rgba(203, 213, 225, 0.55);
+  --landing-highlight: rgba(37, 99, 235, 0.06);
+  --landing-header-bg: rgba(248, 250, 252, 0.92);
+  --landing-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
   color-scheme: light;
 }
 
 .landing-container {
-  width: min(100% - 44px, 1320px);
+  position: relative;
+  z-index: 1;
+  width: min(100% - 44px, 1380px);
   margin-inline: auto;
 }
 
 .landing-section {
   position: relative;
-  padding: clamp(86px, 10vw, 150px) 0;
+  padding: clamp(48px, 6vw, 84px) 0;
   scroll-margin-top: 72px;
-}
-
-.landing-section {
   opacity: 0;
-  transition: opacity 780ms cubic-bezier(0.16, 1, 0.3, 1), transform 780ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 380ms cubic-bezier(0.16, 1, 0.3, 1), transform 380ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .landing-section.reveal-from-bottom {
@@ -312,7 +392,7 @@ onBeforeUnmount(() => {
 }
 
 .landing-section.reveal-from-top {
-  transform: translateY(-20px);
+  transform: translateY(-16px);
 }
 
 .landing-section.is-visible {
@@ -320,105 +400,78 @@ onBeforeUnmount(() => {
   transform: translateY(0);
 }
 
+/* Hero Section */
 .landing-hero {
+  position: relative;
   display: flex;
   align-items: center;
   min-height: calc(100dvh - 72px);
-  padding: clamp(46px, 7vw, 90px) 0;
-}
-
-.landing-hero::before,
-.landing-hero::after {
-  position: absolute;
-  pointer-events: none;
-  content: "";
-}
-
-.landing-hero::before {
-  inset: 0;
-  background-image:
-    linear-gradient(var(--landing-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--landing-grid) 1px, transparent 1px);
-  background-size: 56px 56px;
-  mask-image: linear-gradient(to bottom, black, transparent 88%);
-}
-
-.landing-hero::after {
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  width: 1px;
-  background: var(--landing-border);
-  opacity: 0.7;
+  padding: clamp(24px, 4vw, 56px) 0;
 }
 
 .hero-grid {
-  position: relative;
-  z-index: 1;
   display: grid;
-  grid-template-columns: minmax(390px, 0.82fr) minmax(0, 1.18fr);
+  grid-template-columns: minmax(360px, 1.15fr) minmax(420px, 1.35fr);
+  gap: clamp(32px, 4vw, 56px);
   align-items: center;
-  gap: clamp(42px, 6vw, 92px);
 }
 
 .hero-copy {
-  padding: 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .hero-eyebrow {
-  display: block;
-  margin-bottom: 28px;
-  color: var(--landing-accent);
+  display: inline-block;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  color: var(--landing-accent);
+  letter-spacing: 0.1em;
 }
 
 .hero-copy h1 {
-  max-width: 720px;
   margin: 0;
+  display: flex;
+  flex-direction: column;
+  font-size: clamp(34px, 3.8vw, 50px);
+  font-weight: 800;
+  line-height: 1.18;
+  letter-spacing: -0.035em;
   color: var(--landing-text);
-  font-size: clamp(44px, 5.2vw, 72px);
-  font-weight: 650;
-  line-height: 1.12;
-  letter-spacing: -0.055em;
-}
-
-.hero-copy h1 span {
-  display: block;
-  white-space: nowrap;
 }
 
 .hero-subtitle {
-  max-width: 560px;
-  margin: 30px 0 0;
+  margin: 0;
   color: var(--landing-muted);
-  font-size: clamp(16px, 1.5vw, 20px);
+  font-size: 14px;
   line-height: 1.65;
+  max-width: 580px;
 }
 
 .hero-actions {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 38px;
+  flex-wrap: wrap;
+  margin-top: 4px;
 }
 
 .landing-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 14px;
-  min-height: 48px;
-  padding: 0 22px;
-  border: 1px solid transparent;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 20px;
   border-radius: var(--landing-radius);
+  border: 1px solid transparent;
   cursor: pointer;
   font-size: 14px;
   font-weight: 700;
   white-space: nowrap;
-  transition: background-color 320ms ease, border-color 320ms ease, color 320ms ease, transform 180ms ease;
+  transition: all 0.2s ease;
 }
 
 .landing-button-primary {
@@ -434,7 +487,7 @@ onBeforeUnmount(() => {
 
 .landing-button-secondary {
   border-color: var(--landing-border-strong);
-  background: transparent;
+  background: #ffffff;
   color: var(--landing-text);
 }
 
@@ -443,183 +496,229 @@ onBeforeUnmount(() => {
   background: var(--landing-accent-soft);
 }
 
-.landing-button:active {
-  transform: translateY(1px);
+/* 3 Hardcore Metric Highlights */
+.hero-stats-banner {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 14px 18px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
 }
 
-.landing-button:focus-visible {
-  outline: 2px solid var(--landing-accent);
-  outline-offset: 4px;
+.hero-stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
+.stat-num {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.text-cyan { color: #0284c7; }
+.text-green { color: #059669; }
+.text-amber { color: #d97706; }
+
+.stat-desc {
+  font-size: 10px;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.hero-stat-divider {
+  width: 1px;
+  height: 28px;
+  background: #e2e8f0;
+}
+
+/* Hero Right Interactive Zone */
+.hero-interactive-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hero-view-tabs {
+  display: inline-flex;
+  background: #e2e8f0;
+  padding: 3px;
+  border-radius: 8px;
+  align-self: flex-start;
+  gap: 2px;
+}
+
+.view-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.view-tab-btn:hover {
+  color: #0f172a;
+}
+
+.view-tab-btn.active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.tab-svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* Section Headings */
 .section-heading {
-  max-width: 820px;
-  margin-bottom: clamp(42px, 6vw, 76px);
+  margin-bottom: 24px;
 }
 
-.section-heading-narrow {
-  max-width: 720px;
+.section-eyebrow {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--landing-accent);
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
 }
 
 .section-heading h2,
 .landing-final h2 {
   margin: 0;
   color: var(--landing-text);
-  font-size: clamp(34px, 4.2vw, 58px);
-  font-weight: 620;
-  line-height: 1.18;
-  letter-spacing: -0.05em;
+  font-size: clamp(26px, 3vw, 38px);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
 }
 
 .section-heading p {
-  max-width: 620px;
-  margin: 22px 0 0;
-  color: var(--landing-muted);
-  font-size: 15px;
-  line-height: 1.8;
+  max-width: 680px;
+  margin: 10px 0 0;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
-.section-trust {
+.section-trust,
+.section-pipeline,
+.section-benchmark {
   border-top: 1px solid var(--landing-border);
 }
 
-.section-agent::before,
-.section-lineage::before,
-.section-model::before {
-  position: absolute;
-  top: 0;
-  right: max(22px, calc((100vw - 1320px) / 2));
-  left: max(22px, calc((100vw - 1320px) / 2));
-  height: 1px;
-  background: var(--landing-border);
-  content: "";
-}
-
-.section-lineage {
-  background: var(--landing-surface-tinted);
-}
-
+/* Final CTA Section */
 .landing-final {
-  padding-top: clamp(100px, 13vw, 190px);
-  padding-bottom: clamp(100px, 13vw, 190px);
-  border-top: 1px solid var(--landing-border-strong);
+  padding: clamp(60px, 7vw, 100px) 0;
+  border-top: 1px solid var(--landing-border);
 }
 
 .final-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 48px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 40px;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #1e3a8a 100%);
+  border: 1px solid #334155;
+  border-radius: 14px;
+  padding: clamp(36px, 5vw, 60px);
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.16);
+  color: #ffffff;
+}
+
+.landing-final h2 {
+  color: #ffffff !important;
 }
 
 .landing-final p {
-  max-width: 520px;
-  margin: 25px 0 0;
-  color: var(--landing-muted);
+  max-width: 580px;
+  margin: 14px 0 0;
+  color: #94a3b8 !important;
   font-size: 15px;
   line-height: 1.7;
 }
 
 .final-button {
-  min-width: 170px;
+  min-width: 160px;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #ffffff !important;
+  box-shadow: 0 4px 16px rgba(255, 255, 255, 0.2);
+}
+
+.final-button:hover {
+  background: #f1f5f9 !important;
+  color: #2563eb !important;
+  transform: translateY(-2px);
 }
 
 .landing-footer {
   border-top: 1px solid var(--landing-border);
-  color: var(--landing-faint);
+  color: #64748b;
 }
 
 .landing-footer .landing-container {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 88px;
+  min-height: 64px;
   gap: 24px;
   font-size: 12px;
 }
 
-@media (max-width: 1100px) {
-  .landing-hero::after {
-    display: none;
-  }
+.font-mono {
+  font-family: var(--font-mono);
+}
 
+@media (max-width: 1100px) {
   .hero-grid {
     grid-template-columns: 1fr;
-  }
-
-  .hero-copy {
-    max-width: 760px;
-  }
-
-  .landing-hero {
-    min-height: auto;
   }
 }
 
-@media (max-width: 720px) {
-  .landing-container {
-    width: min(100% - 32px, 1320px);
-  }
-
-  .landing-section {
-    padding: 76px 0;
-    scroll-margin-top: 64px;
-  }
-
-  .landing-hero {
-    padding-top: 46px;
-  }
-
-  .hero-grid {
-    gap: 48px;
-  }
-
-  .hero-copy h1 {
-    font-size: clamp(37px, 10.8vw, 54px);
-    line-height: 1.16;
-  }
-
-  .hero-copy h1 span {
-    white-space: normal;
-  }
-
-  .hero-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .landing-button {
-    width: 100%;
-  }
-
-  .final-layout {
+@media (max-width: 768px) {
+  .hero-stats-banner {
     grid-template-columns: 1fr;
-    align-items: start;
+    gap: 10px;
   }
-
-  .final-button {
-    width: auto;
-    justify-self: start;
+  .hero-stat-divider {
+    display: none;
   }
-
-  .landing-footer .landing-container {
-    align-items: flex-start;
+  .final-layout {
     flex-direction: column;
-    justify-content: center;
-    gap: 6px;
+    align-items: flex-start;
+    gap: 24px;
+  }
+  .landing-footer .landing-container {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 16px 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .landing-preview {
-    scroll-behavior: auto;
-  }
-
-  .landing-section,
-  .landing-button {
-    opacity: 1 !important;
-    transform: none !important;
+  .landing-section {
     transition: none !important;
+    transform: none !important;
   }
 }
 </style>

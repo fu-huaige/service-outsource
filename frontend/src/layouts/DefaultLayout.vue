@@ -1,6 +1,6 @@
 <template>
   <div class="default-layout">
-    <AppHeader />
+    <AppHeader @open-command="openCmdPalette" />
 
     <div class="layout-body">
       <AppSidebar />
@@ -24,8 +24,10 @@
           <router-view />
         </div>
       </main>
-
     </div>
+
+    <!-- Global Command Palette -->
+    <CommandPalette ref="cmdPaletteRef" />
   </div>
 </template>
 
@@ -33,13 +35,19 @@
 import { onBeforeUnmount, ref } from "vue";
 import AppHeader from "../components/AppHeader.vue";
 import AppSidebar from "../components/AppSidebar.vue";
+import CommandPalette from "../components/CommandPalette.vue";
 
 const mainScroller = ref<HTMLElement | null>(null);
+const cmdPaletteRef = ref<{ open: () => void; close: () => void } | null>(null);
 const bounceOffset = ref(0);
 const isRebounding = ref(false);
 let settleTimer: ReturnType<typeof setTimeout> | null = null;
 let reboundTimer: ReturnType<typeof setTimeout> | null = null;
 let touchStartY: number | null = null;
+
+function openCmdPalette() {
+  cmdPaletteRef.value?.open();
+}
 
 const prefersReducedMotion = () =>
   typeof window !== "undefined" &&

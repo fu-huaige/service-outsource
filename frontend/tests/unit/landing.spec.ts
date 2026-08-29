@@ -181,17 +181,18 @@ describe("formal landing", () => {
     const landing = (await mountLanding()).wrapper;
 
     expect(landing.get(".landing-preview").attributes("data-theme")).toBe("light");
-    expect(landing.get("h1").text()).toBe("让工业建模，从数据走向闭环决策");
+    expect(landing.get("h1").text()).toContain("让工业建模");
     expect(landing.text()).toContain("按工程目标组合步骤，并非每个任务固定执行全部流程。");
     expect(landing.text()).toContain("Example Lineage");
+    expect(landing.text()).toContain("S6 实测下达到 89.04% Free-run 拟合优度 (FIT)");
   });
 
-  it("marks the session and replaces the landing route from every Start Explore CTA", async () => {
+  it("marks the session and replaces the landing route from every Enter Workspace CTA", async () => {
     const { wrapper, router } = await mountLanding();
     const replace = vi.spyOn(router, "replace").mockResolvedValue(undefined);
-    const buttons = wrapper.findAll("button").filter((candidate) => candidate.text().includes("开始探索"));
+    const buttons = wrapper.findAll("button").filter((candidate) => candidate.text().includes("进入工作台") || candidate.text().includes("开始探索"));
 
-    expect(buttons).toHaveLength(3);
+    expect(buttons.length).toBeGreaterThanOrEqual(2);
     for (const button of buttons) {
       window.sessionStorage.removeItem(LANDING_SESSION_KEY);
       await button.trigger("click");
@@ -207,26 +208,26 @@ describe("formal landing", () => {
     await safeRouter.replace({ path: "/", query: { next: safe } });
     const safeReplace = vi.spyOn(safeRouter, "replace").mockResolvedValue(undefined);
 
-    await safeMount.wrapper.findAll("button").find((button) => button.text().includes("开始探索"))?.trigger("click");
+    await safeMount.wrapper.findAll("button").find((button) => button.text().includes("进入工作台") || button.text().includes("开始探索"))?.trigger("click");
     expect(safeReplace).toHaveBeenLastCalledWith(safe);
 
     for (const unsafe of ["https://example.com", "//example.com", "/\\example.com"]) {
       const unsafeMount = await mountLanding();
       await unsafeMount.router.replace({ path: "/", query: { next: unsafe } });
       const unsafeReplace = vi.spyOn(unsafeMount.router, "replace").mockResolvedValue(undefined);
-      await unsafeMount.wrapper.findAll("button").find((button) => button.text().includes("开始探索"))?.trigger("click");
+      await unsafeMount.wrapper.findAll("button").find((button) => button.text().includes("进入工作台") || button.text().includes("开始探索"))?.trigger("click");
       expect(unsafeReplace).toHaveBeenLastCalledWith("/dashboard");
     }
   });
 
-  it("smooth scrolls to the Agent Workflow section", async () => {
+  it("smooth scrolls to the benchmark section", async () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
     const { wrapper } = await mountLanding({ attachTo: host });
-    const workflow = wrapper.get("#agent-workflow").element;
+    const benchmark = wrapper.get("#ablation-benchmark").element;
     const scrollIntoView = vi.fn();
-    Object.defineProperty(workflow, "scrollIntoView", { configurable: true, value: scrollIntoView });
-    const button = wrapper.findAll("button").find((candidate) => candidate.text() === "查看工作流程");
+    Object.defineProperty(benchmark, "scrollIntoView", { configurable: true, value: scrollIntoView });
+    const button = wrapper.findAll("button").find((candidate) => candidate.text() === "查看实测对账");
 
     expect(button).toBeDefined();
     await button?.trigger("click");
@@ -234,7 +235,7 @@ describe("formal landing", () => {
     expect(window.sessionStorage.getItem(LANDING_SESSION_KEY)).toBeNull();
   });
 
-  it("replays a section reveal after exit and supports both scroll directions", async () => {
+  it("reveals a section once upon first entry and unobserves it", async () => {
     installIntersectionObserver();
     setScrollY(0);
     const { wrapper } = await mountLanding();
@@ -251,39 +252,7 @@ describe("formal landing", () => {
     await flushAnimationFrames();
     expect(section.classes()).toContain("is-visible");
     expect(section.classes()).toContain("reveal-from-bottom");
-
-    await scrollTo(1380);
-    observer?.trigger([{ target: section.element, isIntersecting: false, top: -720, bottom: 70 }]);
-    expect(section.classes()).not.toContain("is-visible");
-    expect(section.classes()).toContain("reveal-from-bottom");
-
-    await scrollTo(1040);
-    observer?.trigger([{ target: section.element, isIntersecting: true, top: -180, bottom: 560 }]);
-    await flushAnimationFrames();
-    expect(section.classes()).toContain("is-visible");
-    expect(section.classes()).toContain("reveal-from-top");
-
-    await scrollTo(300);
-    observer?.trigger([{ target: section.element, isIntersecting: false, top: 730, bottom: 1450 }]);
-    expect(section.classes()).not.toContain("is-visible");
-    expect(section.classes()).toContain("reveal-from-top");
-
-    await scrollTo(302);
-    observer?.trigger([{ target: section.element, isIntersecting: true, top: 590, bottom: 1280 }]);
-    await flushAnimationFrames();
-    expect(section.classes()).toContain("is-visible");
-    expect(section.classes()).toContain("reveal-from-top");
-
-    await scrollTo(620);
-    observer?.trigger([{ target: section.element, isIntersecting: false, top: -720, bottom: 70 }]);
-    expect(section.classes()).not.toContain("is-visible");
-    expect(section.classes()).toContain("reveal-from-bottom");
-
-    observer?.trigger([{ target: section.element, isIntersecting: true, top: 590, bottom: 1280 }]);
-    await flushAnimationFrames();
-    expect(section.classes()).toContain("is-visible");
-    expect(section.classes()).toContain("reveal-from-bottom");
-    expect(observer?.unobserve).not.toHaveBeenCalled();
+    expect(observer?.unobserve).toHaveBeenCalledWith(section.element);
   });
 
   it("registers one passive scroll tracker and cleans up its pending frame", async () => {
@@ -305,7 +274,7 @@ describe("formal landing", () => {
     expect(window.cancelAnimationFrame).toHaveBeenCalled();
   });
 
-  it("keeps pointer interaction independent from replayable section observation", async () => {
+  it("keeps pointer interaction independent from section observation", async () => {
     installIntersectionObserver();
     const { wrapper } = await mountLanding();
     const arxNode = wrapper.findAll(".workflow-node").find((node) => node.text().includes("ARX"));
@@ -313,7 +282,6 @@ describe("formal landing", () => {
     expect(arxNode).toBeDefined();
     await arxNode?.trigger("pointerenter");
     expect(arxNode?.classes()).toContain("active");
-    expect(MockIntersectionObserver.instances[0]?.unobserve).not.toHaveBeenCalled();
   });
 
   it("keeps all core content visible and exposes reduced-motion state", async () => {

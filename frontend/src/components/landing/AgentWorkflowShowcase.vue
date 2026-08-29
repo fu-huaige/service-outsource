@@ -1,37 +1,93 @@
 <template>
-  <div class="agent-showcase">
-    <blockquote class="engineering-intent">
-      <span>工程目标</span>
-      <p>完成 ARX 模型辨识，使用 Optuna 对模型进行优化，并评价优化后的模型。</p>
-    </blockquote>
+  <div class="agent-showcase" aria-label="Agent 执行路径">
+    <!-- Two-Column Terminal / Copilot Studio Layout -->
+    <div class="copilot-grid">
+      <!-- Left: Agent Dialog & Execution Stream -->
+      <div class="copilot-stream">
+        <div class="stream-header">
+          <div class="stream-title">
+            <span class="pulse-indicator"></span>
+            <span class="font-mono text-bold">INDUS-COPILOT · AGENT ENGINE</span>
+          </div>
+          <span class="stream-mode font-mono">AUTONOMOUS ORCHESTRATION</span>
+        </div>
 
-    <div class="agent-path" aria-label="Agent 执行路径">
-      <template v-for="(step, index) in steps" :key="step.name">
-        <button
-          class="agent-step"
-          :class="{ active: activeIndex === index }"
-          type="button"
-          @focus="activeIndex = index"
-          @pointerenter="activeIndex = index"
-          @click="activeIndex = index"
-        >
-          <span class="agent-step-name">{{ step.name }}</span>
-          <span class="agent-step-control">{{ step.control }}</span>
-        </button>
-        <span
-          v-if="index < steps.length - 1"
-          class="agent-connector"
-          :class="{ active: activeIndex === index || activeIndex === index + 1 }"
-          aria-hidden="true"
-        ></span>
-      </template>
-    </div>
+        <div class="intent-bubble">
+          <div class="bubble-sender font-mono">
+            <svg class="sender-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+            <span>ENGINEERING INTENT</span>
+          </div>
+          <p class="bubble-prompt font-mono">
+            "完成 ARX 模型辨识，使用 Optuna 对模型进行优化，并评价优化后的模型。"
+          </p>
+        </div>
 
-    <div class="agent-detail" aria-live="polite">
-      <span class="detail-type">{{ activeStep.type }}</span>
-      <strong>{{ activeStep.name }}</strong>
-      <p>{{ activeStep.detail }}</p>
-      <span class="detail-boundary">{{ activeStep.boundary }}</span>
+        <!-- Step List Stream -->
+        <div class="stream-steps" role="tablist">
+          <button
+            v-for="(step, index) in steps"
+            :key="step.name"
+            class="stream-step-row"
+            :class="{ active: activeIndex === index, 'is-gate': step.control === 'Human Approval' || step.control === 'User Trigger' }"
+            type="button"
+            role="tab"
+            :aria-selected="activeIndex === index"
+            @click="activeIndex = index"
+            @pointerenter="activeIndex = index"
+          >
+            <div class="step-badge-index font-mono">0{{ index + 1 }}</div>
+            <div class="step-main-info">
+              <div class="step-name-row">
+                <span class="step-name">{{ step.name }}</span>
+                <span class="step-control-tag font-mono" :class="'ctrl-' + step.control.toLowerCase().replace(/\s+/g, '-')">
+                  {{ step.control }}
+                </span>
+              </div>
+              <span class="step-type-text font-mono">{{ step.type }}</span>
+            </div>
+            <div class="step-select-chevron">›</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Right: Real-time Node Inspector & Safety Boundary -->
+      <div class="copilot-inspector" aria-live="polite">
+        <div class="inspector-top">
+          <div class="ins-tag font-mono">{{ activeStep.type }} · STAGE 0{{ activeIndex + 1 }}</div>
+          <h4 class="ins-title">{{ activeStep.name }}</h4>
+        </div>
+
+        <div class="ins-content">
+          <div class="ins-section">
+            <div class="ins-label font-mono">TASK EXECUTION</div>
+            <p class="ins-desc">{{ activeStep.detail }}</p>
+          </div>
+
+          <div class="ins-meta-grid">
+            <div class="meta-box">
+              <span class="meta-box-label font-mono">CONTROL GATE</span>
+              <span class="meta-box-val font-mono">{{ activeStep.control }}</span>
+            </div>
+            <div class="meta-box">
+              <span class="meta-box-label font-mono">INTERACTION LEVEL</span>
+              <span class="meta-box-val font-mono">{{ activeStep.control === 'Human Approval' ? 'HITL (人在回路)' : 'Autonomous (自动)' }}</span>
+            </div>
+          </div>
+
+          <div class="ins-boundary-card">
+            <div class="boundary-header font-mono">
+              <svg class="boundary-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+              </svg>
+              <span>DETERMINISTIC BOUNDARY</span>
+            </div>
+            <div class="boundary-value font-mono">{{ activeStep.boundary }}</div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -52,36 +108,36 @@ const steps: AgentStep[] = [
     name: "Profile",
     control: "Inspect",
     type: "DATA CONTEXT",
-    detail: "读取数据画像，为后续结构决策建立可追溯上下文。",
-    boundary: "Read-only analysis",
+    detail: "读取数据画像与多通道采样统计量，为后续模型阶数决策建立不可变上下文。",
+    boundary: "Read-only analysis (只读不修改)",
   },
   {
     name: "Dynamic Segment",
     control: "Select",
     type: "SIGNAL WINDOW",
-    detail: "定位能够表达过程动态特性的高信噪比区间。",
-    boundary: "Traceable source segment",
+    detail: "基于质量约束 D-最优算法，自动定位表达过程动态特性的高信噪比过渡带。",
+    boundary: "Traceable source segment (可溯源段)",
   },
   {
     name: "Fit ARX",
     control: "Human Approval",
     type: "MODEL STRUCTURE",
-    detail: "用户确认结构后执行系统辨识，并保存可重放的模型资产。",
-    boundary: "Confirmation required",
+    detail: "工程师确认拟合参数与时滞阶数后执行系统辨识，并保存可重放的模型资产。",
+    boundary: "Confirmation required (必须人工确认)",
   },
   {
     name: "Optimize",
     control: "Human Approval",
     type: "VALIDATION SEARCH",
-    detail: "在验证边界内运行 Optuna 搜索，生成新的正式优化模型。",
-    boundary: "No Test tuning",
+    detail: "在验证集边界内运行 Optuna 贝叶斯搜索，生成新的正式全局寻优模型。",
+    boundary: "No Test tuning (严禁测试集调优)",
   },
   {
     name: "Evaluate",
     control: "User Trigger",
     type: "HELD-OUT TEST",
-    detail: "用户显式触发保存模型评价，读取 held-out Test 生成真实结果。",
-    boundary: "No refit",
+    detail: "用户显式触发已保存模型的最终评测，读取 held-out Test 独立数据集生成真实结果。",
+    boundary: "No refit (不可重新拟合)",
   },
 ];
 
@@ -91,178 +147,313 @@ const activeStep = computed(() => steps[activeIndex.value]);
 
 <style scoped>
 .agent-showcase {
-  border: 1px solid var(--landing-border-strong);
-  border-radius: var(--landing-radius);
-  background: var(--landing-surface);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.05);
 }
 
-.engineering-intent {
+.copilot-grid {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr);
-  gap: 30px;
-  margin: 0;
-  padding: clamp(24px, 4vw, 44px);
-  border-bottom: 1px solid var(--landing-border);
+  grid-template-columns: 1.15fr 0.85fr;
+  min-height: 440px;
 }
 
-.engineering-intent span {
-  padding-top: 5px;
-  color: var(--landing-accent);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.12em;
-}
-
-.engineering-intent p {
-  max-width: 780px;
-  margin: 0;
-  color: var(--landing-text);
-  font-size: clamp(19px, 2.2vw, 29px);
-  font-weight: 520;
-  line-height: 1.55;
-  letter-spacing: -0.025em;
-}
-
-.agent-path {
+/* Left: Dialog & Stream */
+.copilot-stream {
+  padding: 24px;
+  background: #f8fafc;
+  border-right: 1px solid #e2e8f0;
   display: flex;
-  align-items: stretch;
-  padding: clamp(30px, 5vw, 58px) clamp(24px, 4vw, 44px);
-  overflow-x: auto;
-}
-
-.agent-step {
-  display: flex;
-  flex: 1 0 138px;
   flex-direction: column;
-  align-items: flex-start;
+  gap: 16px;
+}
+
+.stream-header {
+  display: flex;
   justify-content: space-between;
-  min-height: 126px;
-  padding: 18px;
-  border: 1px solid var(--landing-border);
-  border-radius: var(--landing-radius);
-  background: var(--landing-node-bg);
-  color: var(--landing-muted);
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.stream-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #0f172a;
+}
+
+.pulse-indicator {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2563eb;
+  box-shadow: 0 0 6px #2563eb;
+}
+
+.stream-mode {
+  font-size: 9px;
+  color: #64748b;
+  letter-spacing: 0.05em;
+}
+
+/* Intent Bubble */
+.intent-bubble {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.bubble-sender {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.sender-svg {
+  width: 12px;
+  height: 12px;
+}
+
+.bubble-prompt {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  line-height: 1.5;
+}
+
+/* Step List */
+.stream-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stream-step-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
   cursor: pointer;
   text-align: left;
-  transition: border-color 380ms ease, background-color 380ms ease, color 380ms ease, transform 380ms ease;
+  transition: all 0.18s ease;
 }
 
-.agent-step.active {
-  border-color: var(--landing-accent);
-  background: var(--landing-accent-soft);
-  color: var(--landing-text);
-  transform: translateY(-3px);
+.stream-step-row:hover {
+  border-color: #93c5fd;
+  transform: translateX(3px);
 }
 
-.agent-step:focus-visible {
-  outline: 2px solid var(--landing-accent);
-  outline-offset: 3px;
+.stream-step-row.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
 }
 
-.agent-step-name {
-  font-size: 14px;
-  font-weight: 700;
+.stream-step-row.is-gate {
+  border-left: 3px solid #d97706;
 }
 
-.agent-step-control {
-  color: var(--landing-accent);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  line-height: 1.45;
+.step-badge-index {
+  font-size: 11px;
+  font-weight: 800;
+  color: #2563eb;
+  background: #eff6ff;
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
-.agent-connector {
-  position: relative;
-  flex: 0 0 clamp(18px, 3vw, 42px);
-  align-self: center;
-  height: 1px;
-  overflow: hidden;
-  background: var(--landing-border-strong);
+.step-main-info {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.agent-connector::after {
-  position: absolute;
-  inset: 0;
-  background: var(--landing-accent);
-  content: "";
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 620ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.agent-connector.active::after {
-  transform: scaleX(1);
-}
-
-.agent-detail {
-  display: grid;
-  grid-template-columns: 130px minmax(120px, 0.7fr) minmax(260px, 1.5fr) minmax(130px, 0.6fr);
+.step-name-row {
+  display: flex;
   align-items: center;
-  gap: 24px;
-  min-height: 98px;
-  padding: 24px clamp(24px, 4vw, 44px);
-  border-top: 1px solid var(--landing-border);
-  background: var(--landing-surface-tinted);
+  gap: 8px;
 }
 
-.detail-type,
-.detail-boundary {
-  color: var(--landing-accent);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.1em;
-}
-
-.agent-detail strong {
-  color: var(--landing-text);
-  font-size: 15px;
-}
-
-.agent-detail p {
-  margin: 0;
-  color: var(--landing-muted);
+.step-name {
   font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.step-control-tag {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.ctrl-human-approval,
+.ctrl-user-trigger {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.step-type-text {
+  font-size: 9px;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.step-select-chevron {
+  font-size: 16px;
+  color: #cbd5e1;
+  font-weight: bold;
+}
+
+.stream-step-row.active .step-select-chevron {
+  color: #2563eb;
+}
+
+/* Right: Inspector */
+.copilot-inspector {
+  padding: 28px 24px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.inspector-top {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.ins-tag {
+  font-size: 10px;
+  font-weight: 700;
+  color: #2563eb;
+  letter-spacing: 0.05em;
+}
+
+.ins-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.ins-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ins-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+
+.ins-desc {
+  margin: 0;
+  font-size: 13px;
+  color: #334155;
   line-height: 1.65;
 }
 
-.detail-boundary {
-  justify-self: end;
-  color: var(--landing-muted);
-  text-align: right;
+.ins-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 }
 
-@media (max-width: 760px) {
-  .engineering-intent {
+.meta-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.meta-box-label {
+  font-size: 9px;
+  color: #94a3b8;
+  font-weight: 700;
+}
+
+.meta-box-val {
+  font-size: 11px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.ins-boundary-card {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.boundary-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #15803d;
+}
+
+.boundary-svg {
+  width: 12px;
+  height: 12px;
+}
+
+.boundary-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: #047857;
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+.text-bold {
+  font-weight: 700;
+}
+
+@media (max-width: 860px) {
+  .copilot-grid {
     grid-template-columns: 1fr;
-    gap: 10px;
   }
-
-  .agent-detail {
-    grid-template-columns: 1fr;
-    gap: 7px;
-  }
-
-  .detail-boundary {
-    justify-self: start;
-    text-align: left;
-  }
-}
-
-@media (pointer: coarse) {
-  .agent-step {
-    min-height: 118px;
-  }
-
-  .agent-step-control {
-    color: var(--landing-text);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .agent-step,
-  .agent-connector::after {
-    transition: none !important;
-    transform: none !important;
+  .copilot-stream {
+    border-right: none;
+    border-bottom: 1px solid #e2e8f0;
   }
 }
 </style>
