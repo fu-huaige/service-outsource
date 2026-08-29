@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter, type Router } from "vue-router";
 import { nextTick } from "vue";
 import DefaultLayout from "../../src/layouts/DefaultLayout.vue";
 import appRouter from "../../src/router";
+import { LANDING_SESSION_KEY } from "../../src/router/landingEntry";
 import LandingPreviewView from "../../src/views/LandingPreviewView.vue";
 
 interface MountedPreview {
@@ -139,6 +140,7 @@ async function mountPreview(
         props: (route) => ({ theme: route.params.theme }),
       },
       { path: "/dashboard", component: { template: "<div>Dashboard</div>" } },
+      { path: "/copilot", component: { template: "<div>Copilot</div>" } },
     ],
   });
   await router.push(`/preview/${theme}`);
@@ -156,17 +158,22 @@ async function mountPreview(
 afterEach(() => {
   mountedWrappers.splice(0).forEach((wrapper) => wrapper.unmount());
   document.body.innerHTML = "";
+  window.sessionStorage.clear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 describe("dual landing preview", () => {
   it("resolves both previews outside DefaultLayout without changing business routes", () => {
+    const landing = appRouter.resolve("/");
     const dark = appRouter.resolve("/landing-preview/dark");
     const light = appRouter.resolve("/landing-preview/light");
     const dashboard = appRouter.resolve("/dashboard");
     const copilot = appRouter.resolve("/copilot");
 
+    expect(landing.name).toBe("Landing");
+    expect(landing.matched).toHaveLength(1);
+    expect(landing.matched.some((record) => record.components?.default === DefaultLayout)).toBe(false);
     expect(dark.name).toBe("LandingPreviewDark");
     expect(light.name).toBe("LandingPreviewLight");
     expect(dark.matched).toHaveLength(1);
@@ -194,15 +201,37 @@ describe("dual landing preview", () => {
     expect(dark.text()).toContain("Example Lineage");
   });
 
-  it("navigates to the existing dashboard from Start Explore", async () => {
+  it("marks the session and replaces the landing route from every Start Explore CTA", async () => {
     const { wrapper, router } = await mountPreview("dark");
-    const button = wrapper.findAll("button").find((candidate) => candidate.text().includes("开始探索"));
+    const replace = vi.spyOn(router, "replace").mockResolvedValue(undefined);
+    const buttons = wrapper.findAll("button").filter((candidate) => candidate.text().includes("开始探索"));
 
-    expect(button).toBeDefined();
-    await button?.trigger("click");
-    await vi.waitFor(() => {
-      expect(router.currentRoute.value.path).toBe("/dashboard");
-    });
+    expect(buttons).toHaveLength(3);
+    for (const button of buttons) {
+      window.sessionStorage.removeItem(LANDING_SESSION_KEY);
+      await button.trigger("click");
+      expect(window.sessionStorage.getItem(LANDING_SESSION_KEY)).toBe("1");
+      expect(replace).toHaveBeenLastCalledWith("/dashboard");
+    }
+  });
+
+  it("replaces a complete safe next route and rejects external next values", async () => {
+    const safe = "/copilot?execution_id=abc#workflow";
+    const safeMount = await mountPreview("light");
+    const safeRouter = safeMount.router;
+    await safeRouter.replace({ path: "/preview/light", query: { next: safe } });
+    const safeReplace = vi.spyOn(safeRouter, "replace").mockResolvedValue(undefined);
+
+    await safeMount.wrapper.findAll("button").find((button) => button.text().includes("开始探索"))?.trigger("click");
+    expect(safeReplace).toHaveBeenLastCalledWith(safe);
+
+    for (const unsafe of ["https://example.com", "//example.com", "/\\example.com"]) {
+      const unsafeMount = await mountPreview("light");
+      await unsafeMount.router.replace({ path: "/preview/light", query: { next: unsafe } });
+      const unsafeReplace = vi.spyOn(unsafeMount.router, "replace").mockResolvedValue(undefined);
+      await unsafeMount.wrapper.findAll("button").find((button) => button.text().includes("开始探索"))?.trigger("click");
+      expect(unsafeReplace).toHaveBeenLastCalledWith("/dashboard");
+    }
   });
 
   it("smooth scrolls to the Agent Workflow section", async () => {
@@ -217,6 +246,7 @@ describe("dual landing preview", () => {
     expect(button).toBeDefined();
     await button?.trigger("click");
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+    expect(window.sessionStorage.getItem(LANDING_SESSION_KEY)).toBeNull();
   });
 
   it("replays a section reveal after exit and supports both scroll directions", async () => {

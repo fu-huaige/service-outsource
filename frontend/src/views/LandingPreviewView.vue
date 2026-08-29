@@ -5,7 +5,7 @@
     :data-theme="theme"
     :data-reduced-motion="reducedMotion ? 'true' : 'false'"
   >
-    <LandingHeader @explore="navigateToDashboard" />
+    <LandingHeader @explore="enterApplication" />
 
     <main id="landing-top">
       <section class="landing-hero landing-section" data-section="hero">
@@ -18,7 +18,7 @@
             </h1>
             <p class="hero-subtitle">Agent 驱动的流程工业数据建模与智能寻优平台</p>
             <div class="hero-actions">
-              <button class="landing-button landing-button-primary" type="button" @click="navigateToDashboard">
+              <button class="landing-button landing-button-primary" type="button" @click="enterApplication">
                 开始探索
                 <span aria-hidden="true">→</span>
               </button>
@@ -81,7 +81,7 @@
             <h2>把工业数据，<br />变成可验证的模型与决策。</h2>
             <p>进入现有工作台，从真实数据和可追溯工作流开始。</p>
           </div>
-          <button class="landing-button landing-button-primary final-button" type="button" @click="navigateToDashboard">
+          <button class="landing-button landing-button-primary final-button" type="button" @click="enterApplication">
             开始探索
             <span aria-hidden="true">→</span>
           </button>
@@ -100,19 +100,21 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import AgentWorkflowShowcase from "../components/landing/AgentWorkflowShowcase.vue";
 import HeroWorkflow from "../components/landing/HeroWorkflow.vue";
 import LandingHeader from "../components/landing/LandingHeader.vue";
 import LineageDiagram from "../components/landing/LineageDiagram.vue";
 import ModelLifecycle from "../components/landing/ModelLifecycle.vue";
 import TrustedEngineering from "../components/landing/TrustedEngineering.vue";
+import { enterFromLanding } from "../router/landingEntry";
 
 defineProps<{
   theme: "dark" | "light";
 }>();
 
 const router = useRouter();
+const route = useRoute();
 const pageRoot = ref<HTMLElement | null>(null);
 const reducedMotion = ref(false);
 let mediaQuery: MediaQueryList | null = null;
@@ -125,8 +127,8 @@ const visibleSections = new WeakSet<HTMLElement>();
 const pendingReveal = new Set<HTMLElement>();
 const SCROLL_DIRECTION_DEAD_ZONE = 4;
 
-function navigateToDashboard() {
-  void router.push("/dashboard");
+function enterApplication() {
+  void enterFromLanding(router, route.query.next);
 }
 
 function scrollToWorkflow() {
