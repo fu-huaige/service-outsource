@@ -12,19 +12,19 @@
       <section class="landing-hero landing-section" data-section="hero">
         <div class="landing-container hero-grid">
           <div class="hero-copy">
-            <span class="hero-eyebrow">PROCESS INDUSTRY SYSTEM IDENTIFICATION</span>
-            <h1>
+            <span class="hero-eyebrow hero-anim-1">PROCESS INDUSTRY SYSTEM IDENTIFICATION</span>
+            <h1 class="hero-anim-2">
               <span>让工业建模，</span>
               <span>从数据走向闭环决策</span>
             </h1>
-            <p class="hero-subtitle">
+            <p class="hero-subtitle hero-anim-3">
               面向流程工业建模工程师：导入多变量时序数据，完成质量门控、D-最优优选、ARX 辨识与可追溯验证。
             </p>
 
-            <div class="hero-actions">
+            <div class="hero-actions hero-anim-4">
               <button class="landing-button landing-button-primary" type="button" @click="enterApplication">
                 进入工作台
-                <span aria-hidden="true">→</span>
+                <span class="btn-arrow" aria-hidden="true">→</span>
               </button>
               <button class="landing-button landing-button-secondary" type="button" @click="scrollToBenchmark">
                 查看实测对账
@@ -32,7 +32,7 @@
             </div>
 
             <!-- 3 Hardcore Industrial Metric Highlights (Range & Evidence Based) -->
-            <div class="hero-stats-banner">
+            <div class="hero-stats-banner hero-anim-5">
               <div class="hero-stat-item">
                 <span class="stat-num text-cyan">14.3%</span>
                 <span class="stat-desc">S6 实测下达到 89.04% Free-run 拟合优度 (FIT)</span>
@@ -51,7 +51,7 @@
           </div>
 
           <!-- Hero Tab / Interactive Switcher with Full Accessibility -->
-          <div class="hero-interactive-zone">
+          <div class="hero-interactive-zone hero-anim-right">
             <div class="hero-view-tabs" role="tablist" aria-label="沙盘与工作流切换">
               <button
                 id="hero-tab-playground"
@@ -151,14 +151,37 @@
       <!-- 05 Final CTA -->
       <section class="landing-section landing-final" data-section="final-cta">
         <div class="landing-container final-layout">
-          <div>
+          <div class="final-copy">
+            <span class="final-tag font-mono">READY TO DEPLOY</span>
             <h2>把工业数据，<br />变成可验证的模型与决策。</h2>
             <p>进入现有工作台，从真实数据和可追溯工作流开始。</p>
+            <div class="final-checkmarks font-mono">
+              <span class="chk-item">
+                <svg class="chk-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                <span>全生命周期血缘</span>
+              </span>
+              <span class="chk-item">
+                <svg class="chk-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                <span>满秩 D-最优闭环</span>
+              </span>
+              <span class="chk-item">
+                <svg class="chk-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                <span>白盒机理自由仿真</span>
+              </span>
+            </div>
           </div>
-          <button class="landing-button landing-button-primary final-button" type="button" @click="enterApplication">
-            进入工作台
-            <span aria-hidden="true">→</span>
-          </button>
+          <div class="final-action-box">
+            <button class="landing-button landing-button-primary final-button" type="button" @click="enterApplication">
+              进入工作台
+              <span class="btn-arrow" aria-hidden="true">→</span>
+            </button>
+          </div>
         </div>
       </section>
     </main>
@@ -311,8 +334,6 @@ onBeforeUnmount(() => {
   font-family: var(--font-sans);
 }
 
-
-
 .landing-preview::before {
   position: absolute;
   inset: 0;
@@ -379,25 +400,66 @@ onBeforeUnmount(() => {
   margin-inline: auto;
 }
 
+/* Scroll Triggered Smooth Slide-in / Slide-out Animation */
 .landing-section {
   position: relative;
   padding: clamp(48px, 6vw, 84px) 0;
   scroll-margin-top: 72px;
   opacity: 0;
-  transition: opacity 380ms cubic-bezier(0.16, 1, 0.3, 1), transform 380ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform: translateY(28px) scale(0.992);
+  transition:
+    opacity 560ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 560ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
 }
 
 .landing-section.reveal-from-bottom {
-  transform: translateY(16px);
+  transform: translateY(28px) scale(0.992);
 }
 
 .landing-section.reveal-from-top {
-  transform: translateY(-16px);
+  transform: translateY(-24px) scale(0.992);
 }
 
 .landing-section.is-visible {
   opacity: 1;
-  transform: translateY(0);
+  transform: translateY(0) scale(1);
+}
+
+/* Hero Staggered Entrance Animations */
+@keyframes heroFadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.hero-anim-1 {
+  animation: heroFadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.05s backwards;
+}
+
+.hero-anim-2 {
+  animation: heroFadeInUp 0.65s cubic-bezier(0.16, 1, 0.3, 1) 0.12s backwards;
+}
+
+.hero-anim-3 {
+  animation: heroFadeInUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.2s backwards;
+}
+
+.hero-anim-4 {
+  animation: heroFadeInUp 0.75s cubic-bezier(0.16, 1, 0.3, 1) 0.28s backwards;
+}
+
+.hero-anim-5 {
+  animation: heroFadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.36s backwards;
+}
+
+.hero-anim-right {
+  animation: heroFadeInUp 0.85s cubic-bezier(0.16, 1, 0.3, 1) 0.18s backwards;
 }
 
 /* Hero Section */
@@ -471,29 +533,44 @@ onBeforeUnmount(() => {
   font-size: 14px;
   font-weight: 700;
   white-space: nowrap;
-  transition: all 0.2s ease;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .landing-button-primary {
   border-color: var(--landing-accent);
   background: var(--landing-accent);
   color: var(--landing-accent-contrast);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.22);
 }
 
 .landing-button-primary:hover {
   border-color: var(--landing-accent-strong);
   background: var(--landing-accent-strong);
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.38);
+  transform: translateY(-2px);
+}
+
+.btn-arrow {
+  display: inline-block;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.landing-button-primary:hover .btn-arrow {
+  transform: translateX(4px);
 }
 
 .landing-button-secondary {
   border-color: var(--landing-border-strong);
   background: #ffffff;
   color: var(--landing-text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 
 .landing-button-secondary:hover {
   border-color: var(--landing-accent);
   background: var(--landing-accent-soft);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
 /* 3 Hardcore Metric Highlights */
@@ -508,6 +585,13 @@ onBeforeUnmount(() => {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hero-stats-banner:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  border-color: #cbd5e1;
 }
 
 .hero-stat-item {
@@ -544,6 +628,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .hero-view-tabs {
@@ -625,9 +710,9 @@ onBeforeUnmount(() => {
   border-top: 1px solid var(--landing-border);
 }
 
-/* Final CTA Section */
+/* Final CTA Section (Glacier Slate Theme) */
 .landing-final {
-  padding: clamp(60px, 7vw, 100px) 0;
+  padding: clamp(48px, 6vw, 84px) 0;
   border-top: 1px solid var(--landing-border);
 }
 
@@ -636,38 +721,108 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   align-items: center;
   gap: 40px;
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #1e3a8a 100%);
-  border: 1px solid #334155;
-  border-radius: 14px;
-  padding: clamp(36px, 5vw, 60px);
-  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.16);
-  color: #ffffff;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: clamp(32px, 5vw, 48px);
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.04);
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.landing-final h2 {
-  color: #ffffff !important;
+.final-layout::before {
+  position: absolute;
+  right: -40px;
+  bottom: -40px;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.06) 0%, transparent 70%);
+  pointer-events: none;
+  content: "";
 }
 
-.landing-final p {
+.final-layout:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+  border-color: #cbd5e1;
+}
+
+.final-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+  z-index: 1;
+}
+
+.final-tag {
+  font-size: 10px;
+  font-weight: 700;
+  color: #2563eb;
+  letter-spacing: 0.1em;
+}
+
+.final-copy h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: clamp(26px, 3vw, 36px);
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+}
+
+.final-copy p {
   max-width: 580px;
-  margin: 14px 0 0;
-  color: #94a3b8 !important;
-  font-size: 15px;
-  line-height: 1.7;
+  margin: 4px 0 8px;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.final-checkmarks {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.chk-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.chk-svg {
+  width: 13px;
+  height: 13px;
+  color: #059669;
+  flex-shrink: 0;
+}
+
+.final-action-box {
+  position: relative;
+  z-index: 1;
 }
 
 .final-button {
   min-width: 160px;
-  background: #ffffff !important;
-  color: #0f172a !important;
-  border-color: #ffffff !important;
-  box-shadow: 0 4px 16px rgba(255, 255, 255, 0.2);
+  background: #2563eb !important;
+  color: #ffffff !important;
+  border-color: #2563eb !important;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);
 }
 
 .final-button:hover {
-  background: #f1f5f9 !important;
-  color: #2563eb !important;
+  background: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
   transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.4);
 }
 
 .landing-footer {
@@ -716,7 +871,14 @@ onBeforeUnmount(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .landing-section {
+  .landing-section,
+  .hero-anim-1,
+  .hero-anim-2,
+  .hero-anim-3,
+  .hero-anim-4,
+  .hero-anim-5,
+  .hero-anim-right {
+    animation: none !important;
     transition: none !important;
     transform: none !important;
   }

@@ -1,42 +1,100 @@
-/* IndusOpt industrial workspace tokens and base styles - Glacier Slate Theme */
+/* IndusOpt Industrial Workspace Theme - Glacier Slate & Blueprint Palette */
 
 :root {
-  /* Industrial Color Palette */
-  --color-primary: #1e6091;
-  --color-primary-hover: #184e77;
+  /* Brand & Industrial Precision Palette */
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-active: #1e40af;
   --color-primary-light: #eff6ff;
+  --color-primary-soft: rgba(37, 99, 235, 0.08);
+  --color-primary-border: #bfdbfe;
+
+  --color-cyan: #0284c7;
+  --color-cyan-light: #f0f9ff;
+  --color-cyan-border: #bae6fd;
 
   --color-success: #059669;
+  --color-success-hover: #047857;
   --color-success-bg: #ecfdf5;
+  --color-success-border: #a7f3d0;
 
   --color-warning: #d97706;
   --color-warning-dark: #b45309;
   --color-warning-bg: #fffbeb;
+  --color-warning-border: #fde68a;
 
   --color-danger: #dc2626;
+  --color-danger-hover: #b91c1c;
   --color-danger-bg: #fef2f2;
+  --color-danger-border: #fecaca;
 
+  /* Surfaces & Backgrounds */
   --bg-app: #f8fafc;
   --bg-surface: #ffffff;
+  --bg-surface-hover: #f8fafc;
   --bg-sidebar: #0f172a;
-  --bg-header: #ffffff;
+  --bg-sidebar-active: #1e293b;
+  --bg-header: rgba(255, 255, 255, 0.92);
   --bg-subtle: #f1f5f9;
+  --bg-muted: #e2e8f0;
 
+  /* Typography */
   --text-primary: #0f172a;
   --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  --text-muted: #64748b;
+  --text-faint: #94a3b8;
+
+  /* Borders & Dividers */
   --border-light: #e2e8f0;
   --border-strong: #cbd5e1;
-  --border-active: #1e6091;
+  --border-active: #2563eb;
+  --border-radius-sm: 4px;
+  --border-radius-base: 6px;
+  --border-radius-lg: 10px;
+  --border-radius-xl: 14px;
 
-  --el-color-primary: #1e6091;
+  /* Engineering Blueprint Grid */
+  --workspace-grid: rgba(203, 213, 225, 0.45);
+
+  /* Element Plus Theme Token Overrides */
+  --el-color-primary: #2563eb;
+  --el-color-primary-light-3: #60a5fa;
+  --el-color-primary-light-5: #93c5fd;
+  --el-color-primary-light-7: #bfdbfe;
+  --el-color-primary-light-8: #dbeafe;
+  --el-color-primary-light-9: #eff6ff;
+  --el-color-primary-dark-2: #1d4ed8;
+
   --el-color-success: #059669;
+  --el-color-success-light-9: #ecfdf5;
   --el-color-warning: #d97706;
+  --el-color-warning-light-9: #fffbeb;
   --el-color-danger: #dc2626;
+  --el-color-danger-light-9: #fef2f2;
+  --el-color-info: #64748b;
+  --el-color-info-light-9: #f1f5f9;
 
-  --shadow-card: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 8px 24px -4px rgba(15, 23, 42, 0.06);
-  --shadow-floating: 0 20px 48px -8px rgba(15, 23, 42, 0.08);
+  --el-bg-color: #ffffff;
+  --el-bg-color-page: #f8fafc;
+  --el-border-color: #e2e8f0;
+  --el-border-color-light: #f1f5f9;
+  --el-border-color-lighter: #f8fafc;
+  --el-border-radius-base: 6px;
+  --el-border-radius-small: 4px;
+  --el-text-color-primary: #0f172a;
+  --el-text-color-regular: #475569;
+  --el-text-color-secondary: #64748b;
 
+  --el-table-header-bg-color: #f8fafc;
+  --el-table-header-text-color: #475569;
+  --el-table-border-color: #e2e8f0;
+
+  /* Shadows */
+  --shadow-card: 0 1px 3px 0 rgba(15, 23, 42, 0.03), 0 6px 18px -4px rgba(15, 23, 42, 0.05);
+  --shadow-card-hover: 0 4px 6px -1px rgba(15, 23, 42, 0.05), 0 12px 28px -6px rgba(15, 23, 42, 0.09);
+  --shadow-floating: 0 20px 48px -8px rgba(15, 23, 42, 0.1);
+
+  /* Fonts */
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", Consolas, Monaco, monospace;
 }
@@ -69,12 +127,13 @@ select {
   font: inherit;
 }
 
+/* Common Page Header */
 .page-header {
   margin-bottom: 22px;
 }
 
 .page-eyebrow {
-  display: block;
+  display: inline-block;
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
@@ -86,24 +145,32 @@ select {
 
 .page-header h2 {
   font-size: 24px;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--text-primary);
-  line-height: 1.2;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
 }
 
 .page-header .subtitle {
   font-size: 14px;
   color: var(--text-secondary);
   margin-top: 4px;
+  line-height: 1.5;
 }
 
+/* Industrial Card Structure */
 .industrial-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-light);
-  border-radius: 8px;
-  padding: 20px;
+  border-radius: var(--border-radius-lg);
+  padding: 22px;
   margin-bottom: 20px;
   box-shadow: var(--shadow-card);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.industrial-card:hover {
+  border-color: var(--border-strong);
 }
 
 .industrial-card-header {
@@ -116,14 +183,87 @@ select {
 }
 
 .industrial-card-title {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: 8px;
+  letter-spacing: -0.01em;
+}
+
+.industrial-card-title .el-icon {
+  color: var(--color-primary);
 }
 
 .font-mono {
   font-family: var(--font-mono);
+}
+
+/* Element Plus Custom Polish */
+.el-button--primary {
+  --el-button-bg-color: var(--color-primary);
+  --el-button-border-color: var(--color-primary);
+  --el-button-hover-bg-color: var(--color-primary-hover);
+  --el-button-hover-border-color: var(--color-primary-hover);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.15);
+}
+
+.el-button {
+  border-radius: var(--border-radius-base);
+  font-weight: 600;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.el-card {
+  border-radius: var(--border-radius-lg);
+  border-color: var(--border-light);
+  box-shadow: var(--shadow-card);
+}
+
+.el-table {
+  --el-table-header-bg-color: #f8fafc;
+  --el-table-row-hover-bg-color: #f1f5f9;
+  border-radius: var(--border-radius-base);
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+}
+
+.el-table th.el-table__cell {
+  font-weight: 700;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.el-tag {
+  font-weight: 600;
+  border-radius: var(--border-radius-sm);
+}
+
+.el-tag--primary {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary-border);
+  color: var(--color-primary);
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
 }

@@ -27,7 +27,7 @@
         <div class="cmd-list" ref="listRef">
           <template v-if="groupedItems.length > 0">
             <div v-for="group in groupedItems" :key="group.category" class="cmd-group">
-              <div class="cmd-group-title">{{ group.category }}</div>
+              <div class="cmd-group-title font-mono">{{ group.category }}</div>
               <div
                 v-for="item in group.items"
                 :key="item.id"
@@ -37,14 +37,16 @@
                 @mouseenter="selectedId = item.id"
               >
                 <div class="cmd-item-left">
-                  <component :is="item.icon" class="cmd-item-icon" />
+                  <div class="cmd-icon-box">
+                    <component :is="item.icon" class="cmd-item-icon" />
+                  </div>
                   <div class="cmd-item-text">
                     <span class="cmd-item-title">{{ item.title }}</span>
                     <span v-if="item.sub" class="cmd-item-sub">{{ item.sub }}</span>
                   </div>
                 </div>
                 <div class="cmd-item-right">
-                  <span v-if="item.shortcut" class="cmd-item-shortcut">{{ item.shortcut }}</span>
+                  <span v-if="item.shortcut" class="cmd-item-shortcut font-mono">{{ item.shortcut }}</span>
                   <el-icon class="cmd-enter-icon"><Right /></el-icon>
                 </div>
               </div>
@@ -113,8 +115,8 @@ const allCommands: CommandItem[] = [
   {
     id: "dashboard",
     category: "常用导航",
-    title: "工作台概览 (Dashboard)",
-    sub: "查看当前任务与模型排行榜",
+    title: "工作台总览 (Dashboard)",
+    sub: "查看当前任务状态与模型排行榜",
     shortcut: "G D",
     path: "/dashboard",
     icon: Odometer,
@@ -122,8 +124,8 @@ const allCommands: CommandItem[] = [
   {
     id: "copilot",
     category: "常用导航",
-    title: "Agent 协作工作台 (Copilot)",
-    sub: "自然语言驱动白名单工作流编排",
+    title: "AI 智能工模 Copilot",
+    sub: "自然语言驱动闭环建模与工作流编排",
     shortcut: "G C",
     path: "/copilot",
     icon: ChatDotSquare,
@@ -132,7 +134,7 @@ const allCommands: CommandItem[] = [
     id: "datasets",
     category: "常用导航",
     title: "数据资产中心 (Datasets)",
-    sub: "管理已上传 CSV 与不可变数据版本",
+    sub: "管理已上传工业 CSV 与版本血缘",
     shortcut: "G A",
     path: "/datasets",
     icon: FolderOpened,
@@ -150,7 +152,7 @@ const allCommands: CommandItem[] = [
     id: "cleaning",
     category: "预处理与优选",
     title: "时间规整与清洗 (Cleaning)",
-    sub: "重采样、缺失填补与 3σ 异常过滤",
+    sub: "等间隔重采样、缺失填补与 3σ 异常过滤",
     path: "/preprocessing/cleaning",
     icon: Operation,
   },
@@ -165,16 +167,16 @@ const allCommands: CommandItem[] = [
   {
     id: "delay",
     category: "预处理与优选",
-    title: "多变量时滞分析 (Delay Compensation)",
-    sub: "预白化互相关估计与通道移位对齐",
+    title: "多变量时滞对齐 (Delay Compensation)",
+    sub: "预白化互相关估计与通道纯时滞移位",
     path: "/preprocessing/delay",
     icon: Compass,
   },
   {
     id: "collinearity",
     category: "预处理与优选",
-    title: "共线性与变量筛选 (Collinearity)",
-    sub: "VIF 方差膨胀因子检测与特征剔除",
+    title: "VIF 共线性与筛选 (Collinearity)",
+    sub: "方差膨胀因子诊断与强相关输入特征剔除",
     path: "/preprocessing/collinearity",
     icon: Operation,
   },
@@ -197,7 +199,7 @@ const allCommands: CommandItem[] = [
   {
     id: "benchmark",
     category: "分析与交付",
-    title: "一键自评测基准 (Benchmark)",
+    title: "消融对账评测 (Benchmark)",
     sub: "执行 10 组随机种子消融实验与敏感性扫描",
     path: "/benchmark",
     icon: Odometer,
@@ -205,15 +207,15 @@ const allCommands: CommandItem[] = [
   {
     id: "deliverables",
     category: "分析与交付",
-    title: "报告与数据交付 (Deliverables)",
-    sub: "导出全数值可溯源图文报告与优选 CSV",
+    title: "工程报告与数据交付 (Deliverables)",
+    sub: "导出全数值可溯源图文报告与优选特征集",
     path: "/deliverables",
     icon: Document,
   },
   {
     id: "settings",
     category: "分析与交付",
-    title: "系统设置 (Settings)",
+    title: "系统环境设置 (Settings)",
     sub: "大模型 Provider 运行时配置与网络测试",
     path: "/settings",
     icon: Setting,
@@ -251,25 +253,30 @@ const flatFilteredItems = computed(() => {
   return groupedItems.value.flatMap((g) => g.items);
 });
 
-watch(flatFilteredItems, (newItems) => {
-  if (newItems.length > 0 && !newItems.some((i) => i.id === selectedId.value)) {
-    selectedId.value = newItems[0].id;
-  }
-});
+watch(
+  () => flatFilteredItems.value,
+  (items) => {
+    if (items.length > 0 && (!selectedId.value || !items.some((i) => i.id === selectedId.value))) {
+      selectedId.value = items[0]?.id || "";
+    }
+  },
+  { immediate: true }
+);
 
 function open() {
   isOpen.value = true;
   query.value = "";
   if (flatFilteredItems.value.length > 0) {
-    selectedId.value = flatFilteredItems.value[0].id;
+    selectedId.value = flatFilteredItems.value[0]?.id || "";
   }
-  nextTick(() => {
+  void nextTick(() => {
     inputRef.value?.focus();
   });
 }
 
 function close() {
   isOpen.value = false;
+  query.value = "";
 }
 
 function moveSelection(direction: 1 | -1) {
@@ -279,7 +286,7 @@ function moveSelection(direction: 1 | -1) {
   let nextIndex = currentIndex + direction;
   if (nextIndex < 0) nextIndex = items.length - 1;
   if (nextIndex >= items.length) nextIndex = 0;
-  selectedId.value = items[nextIndex].id;
+  selectedId.value = items[nextIndex]?.id || "";
 }
 
 function executeSelected() {
@@ -294,7 +301,7 @@ function executeItem(item: CommandItem) {
   if (item.action) {
     item.action();
   } else if (item.path) {
-    router.push(item.path);
+    void router.push(item.path);
   }
 }
 
@@ -327,13 +334,14 @@ defineExpose({
 .cmd-palette-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 9999;
-  background: rgba(0, 0, 0, 0.65);
+  background: rgba(15, 23, 42, 0.45);
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 9999;
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: clamp(60px, 12vh, 120px);
+  padding-top: clamp(60px, 14vh, 120px);
   animation: fadeIn 0.15s ease-out;
 }
 
@@ -344,19 +352,21 @@ defineExpose({
 
 .cmd-palette-modal {
   width: min(640px, 92vw);
-  background: #111822;
-  border: 1px solid #2d3b4e;
-  border-radius: 8px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18), 0 4px 12px rgba(15, 23, 42, 0.06);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  animation: slideDown 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: slideDown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes slideDown {
-  from { transform: translateY(-12px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from { transform: translateY(-12px) scale(0.98); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
 }
 
 .cmd-search-wrapper {
@@ -364,53 +374,69 @@ defineExpose({
   align-items: center;
   gap: 12px;
   padding: 14px 18px;
-  border-bottom: 1px solid #222f3e;
-  background: #16202c;
+  border-bottom: 1px solid var(--border-light);
+  background: #ffffff;
 }
 
 .cmd-search-icon {
+  width: 18px;
+  height: 18px;
   font-size: 18px;
-  color: #7a8c9e;
+  color: var(--color-primary);
+  flex-shrink: 0;
 }
 
 .cmd-input {
   flex: 1;
   background: transparent;
   border: none;
-  color: #f1f5f9;
+  color: var(--text-primary);
   font-size: 15px;
+  font-weight: 500;
   outline: none;
   line-height: 1.4;
 }
 
 .cmd-input::placeholder {
-  color: #64748b;
+  color: var(--text-muted);
   font-size: 14px;
+  font-weight: 400;
 }
 
 .cmd-esc-badge {
   font-family: var(--font-mono);
   font-size: 10px;
-  padding: 2px 6px;
-  background: #253342;
-  color: #94a3b8;
+  font-weight: 700;
+  padding: 2px 7px;
+  background: var(--bg-subtle);
+  color: var(--text-muted);
   border-radius: 4px;
-  border: 1px solid #334454;
+  border: 1px solid var(--border-light);
   cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cmd-esc-badge:hover {
+  background: #e2e8f0;
+  color: var(--text-primary);
 }
 
 .cmd-list {
   max-height: 380px;
   overflow-y: auto;
-  padding: 10px;
+  padding: 8px;
+}
+
+.cmd-group {
+  margin-bottom: 6px;
 }
 
 .cmd-group-title {
-  padding: 8px 10px 4px;
-  font-size: 11px;
+  padding: 6px 12px 4px;
+  font-size: 10px;
   font-weight: 700;
-  color: #5c6e82;
-  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -419,15 +445,16 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: background-color 0.12s ease;
-  color: #cbd5e1;
+  transition: all 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+  color: var(--text-primary);
+  border: 1px solid transparent;
 }
 
 .cmd-item:hover, .cmd-item.active {
-  background: #1e2c3c;
-  color: #ffffff;
+  background: var(--color-primary-light);
+  border-color: var(--color-primary-border);
 }
 
 .cmd-item-left {
@@ -437,10 +464,36 @@ defineExpose({
   min-width: 0;
 }
 
-.cmd-item-icon {
-  font-size: 16px;
-  color: #63add3;
+.cmd-icon-box {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  transition: all 0.14s ease;
+}
+
+.cmd-item.active .cmd-icon-box {
+  background: #ffffff;
+  border-color: var(--color-primary-border);
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.15);
+}
+
+.cmd-item-icon {
+  width: 15px;
+  height: 15px;
+  max-width: 15px;
+  max-height: 15px;
+  color: var(--text-secondary);
+  transition: color 0.14s ease;
+}
+
+.cmd-item.active .cmd-item-icon {
+  color: var(--color-primary);
 }
 
 .cmd-item-text {
@@ -453,21 +506,26 @@ defineExpose({
 .cmd-item-title {
   font-size: 13px;
   font-weight: 600;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.cmd-item.active .cmd-item-title {
+  color: var(--color-primary-hover);
+}
+
 .cmd-item-sub {
   font-size: 11px;
-  color: #64748b;
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .cmd-item.active .cmd-item-sub {
-  color: #94a3b8;
+  color: var(--color-primary);
 }
 
 .cmd-item-right {
@@ -478,24 +536,28 @@ defineExpose({
 }
 
 .cmd-item-shortcut {
-  font-family: var(--font-mono);
   font-size: 10px;
-  color: #64748b;
-  background: #182330;
-  padding: 1px 5px;
-  border-radius: 3px;
-  border: 1px solid #2d3b4e;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: #ffffff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-light);
 }
 
 .cmd-enter-icon {
+  width: 14px;
+  height: 14px;
   font-size: 12px;
-  color: #64748b;
+  color: var(--color-primary);
   opacity: 0;
+  transform: translateX(-4px);
+  transition: all 0.14s ease;
 }
 
 .cmd-item.active .cmd-enter-icon {
   opacity: 1;
-  color: #63add3;
+  transform: translateX(0);
 }
 
 .cmd-empty {
@@ -504,7 +566,7 @@ defineExpose({
   justify-content: center;
   gap: 8px;
   padding: 36px 16px;
-  color: #64748b;
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -512,32 +574,40 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
-  background: #0d141d;
-  border-top: 1px solid #1c2633;
+  padding: 10px 18px;
+  background: var(--bg-subtle);
+  border-top: 1px solid var(--border-light);
   font-size: 11px;
-  color: #5c6e82;
+  color: var(--text-muted);
 }
 
 .footer-keys {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
 }
 
 .footer-keys kbd {
   font-family: var(--font-mono);
   font-size: 10px;
-  padding: 1px 4px;
-  background: #192430;
-  border: 1px solid #2d3b4e;
-  border-radius: 3px;
-  color: #94a3b8;
+  font-weight: 600;
+  padding: 1px 5px;
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  color: var(--text-secondary);
   margin-right: 3px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .footer-brand {
   font-size: 10px;
+  font-weight: 600;
   letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
 }
 </style>

@@ -132,16 +132,32 @@ onBeforeUnmount(clearBounceTimers);
 }
 
 .layout-main {
+  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 0;
-  padding: 20px;
+  padding: 24px clamp(20px, 3vw, 36px);
   overflow-y: auto;
   overscroll-behavior-y: contain;
   background-color: var(--bg-app);
 }
 
+.layout-main::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background-image:
+    linear-gradient(var(--workspace-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--workspace-grid) 1px, transparent 1px);
+  background-size: 40px 40px;
+  opacity: 0.5;
+  z-index: 0;
+}
+
 .route-stage {
+  position: relative;
+  z-index: 1;
   min-height: 100%;
   transition: transform 70ms ease-out;
   will-change: transform;

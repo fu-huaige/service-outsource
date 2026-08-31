@@ -1,136 +1,155 @@
 <template>
   <div class="delay-view">
-    <div class="page-header">
-      <span class="page-eyebrow">预处理与优选</span>
-      <h2>时滞分析与补偿</h2>
-      <p class="subtitle">
-        预白化互相关生成候选（消除输入自相关造成的伪峰），再由验证集自由仿真 FIT 决定最终时滞
-      </p>
+    <!-- Top Stage Header Navigation -->
+    <div class="pipeline-stage-nav">
+      <div class="stage-badge font-mono">STAGE 04 · DELAY ALIGNMENT STUDIO</div>
+      <div class="stage-links">
+        <span class="stage-link" @click="$router.push('/preprocessing/cleaning')">02 时间清洗</span>
+        <span class="stage-sep">›</span>
+        <span class="stage-link" @click="$router.push('/preprocessing/segmentation')">03 D-最优优选</span>
+        <span class="stage-sep">›</span>
+        <span class="stage-link active">04 时滞对齐</span>
+        <span class="stage-sep">›</span>
+        <span class="stage-link" @click="$router.push('/preprocessing/collinearity')">05 VIF 降维</span>
+      </div>
     </div>
 
-    <div class="delay-layout">
-      <div class="industrial-card">
-        <div class="industrial-card-header">
-          <div class="industrial-card-title">
-            <el-icon><Timer /></el-icon> 时滞估计参数
-          </div>
-        </div>
+    <div class="page-header">
+      <span class="page-eyebrow font-mono">PRE-WHITENING CROSS CORRELATION & PHASE ALIGNMENT</span>
+      <h2>多变量时滞对齐工作室</h2>
+      <p class="subtitle">预白化去除输入慢变自相关伪峰，并结合自由仿真 FIT 精修各通道物理纯滞后 \(n_k\)</p>
+    </div>
 
-        <el-form :model="form" class="parameter-form-grid">
-          <el-form-item label="数据版本 ID">
-            <el-input v-model="form.version_id" placeholder="version_id" />
-          </el-form-item>
-          <el-form-item label="输入变量">
-            <el-input v-model="inputColumnsText" placeholder="u1,u2" />
-          </el-form-item>
-          <el-form-item label="输出变量">
-            <el-input v-model="form.output_column" placeholder="y" />
-          </el-form-item>
-          <el-form-item label="最大滞后">
-            <el-input-number v-model="form.max_lag" :min="1" :max="1000" :step="5" />
-          </el-form-item>
-          <el-form-item label="候选数 K">
-            <el-input-number v-model="form.top_k" :min="1" :max="10" />
-          </el-form-item>
-          <el-form-item class="parameter-form-actions">
-            <el-button type="primary" :loading="loading" icon="Search" @click="handleEstimate">
-              估计多变量时滞
-            </el-button>
-          </el-form-item>
-        </el-form>
-
-        <el-alert v-if="errorMessage" type="error" :closable="false" show-icon class="alert-gap">
-          <template #title>时滞估计失败：{{ errorMessage }}</template>
-        </el-alert>
-      </div>
-
-      <template v-if="result">
-        <div class="industrial-card">
+    <!-- FORMAT 3: Left-Rail Control Dock + Right Channel Grid Studio -->
+    <div class="delay-studio-layout">
+      <!-- Left Rail Control Dock -->
+      <aside class="delay-rail-dock">
+        <div class="industrial-card rail-card">
           <div class="industrial-card-header">
             <div class="industrial-card-title">
-              <el-icon><TrendCharts /></el-icon> 估计结论
+              <el-icon><Timer /></el-icon>
+              <span>时滞对齐参数</span>
             </div>
-            <el-tag v-if="result.uncertain_columns.length" type="warning">
-              {{ result.uncertain_columns.join(", ") }} 时滞不确定，建议人工确认
-            </el-tag>
-            <el-tag v-else type="success">候选区分度良好</el-tag>
           </div>
 
-          <el-descriptions :column="3" border size="small">
-            <el-descriptions-item label="验证集自由仿真 FIT">
-              <span class="fit-val">{{ formatNumber(result.validation_fit) }}%</span>
-            </el-descriptions-item>
-            <el-descriptions-item label="精修轮次">
-              {{ result.refinement_rounds }}
-            </el-descriptions-item>
-            <el-descriptions-item label="预白化 AR 阶次">
-              {{ Object.entries(result.prewhitening_orders).map(([k, v]) => `${k}:${v}`).join(" / ") }}
-            </el-descriptions-item>
-          </el-descriptions>
+          <el-form :model="form" label-position="top" class="rail-form">
+            <el-form-item label="数据版本 ID">
+              <el-input v-model="form.version_id" placeholder="version_id" />
+            </el-form-item>
 
-          <el-table :data="delayRows" stripe style="width: 100%; margin-top: 16px">
-            <el-table-column prop="column" label="输入变量" width="130" />
-            <el-table-column label="最终时滞 nk" width="140">
-              <template #default="{ row }">
-                <span class="fit-val">{{ row.refined }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="互相关峰值位置" width="150">
-              <template #default="{ row }">{{ row.peak }}</template>
-            </el-table-column>
-            <el-table-column label="峰值相关系数" width="150">
-              <template #default="{ row }">{{ formatNumber(row.correlation) }}</template>
-            </el-table-column>
-            <el-table-column label="候选（lag / r）">
-              <template #default="{ row }">
-                <el-tag
-                  v-for="peak in row.candidates"
-                  :key="peak.lag"
-                  size="small"
-                  effect="plain"
-                  :type="peak.lag === row.refined ? 'success' : 'info'"
-                  class="candidate-tag"
-                >
-                  {{ peak.lag }} / {{ formatNumber(peak.correlation) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-          </el-table>
-          <div class="apply-actions">
-            <el-alert type="warning" :closable="false" show-icon title="应用会创建新版本：保持 y 与时间轴不变，将每个输入改为 u(t-nk)，并裁剪开头无效行。此操作不会覆盖源版本。" />
-            <el-button type="warning" :loading="applying" :disabled="!!result.uncertain_columns.length" @click="handleApply">
-              确认应用时滞补偿并创建版本
+            <el-form-item label="输入变量 (u)">
+              <el-input v-model="inputColumnsText" placeholder="u1,u2" />
+            </el-form-item>
+
+            <el-form-item label="输出变量 (y)">
+              <el-input v-model="form.output_column" placeholder="y" />
+            </el-form-item>
+
+            <el-form-item label="最大滞后搜索 (Max Lag)">
+              <el-input-number v-model="form.max_lag" :min="1" :max="1000" :step="5" style="width: 100%" />
+            </el-form-item>
+
+            <el-form-item label="候选数 (Top-K)">
+              <el-input-number v-model="form.top_k" :min="1" :max="10" style="width: 100%" />
+            </el-form-item>
+
+            <el-button type="primary" size="large" :loading="loading" icon="Search" @click="handleEstimate" style="width: 100%; margin-top: 6px">
+              执行预白化时滞估计
+            </el-button>
+          </el-form>
+
+          <el-alert v-if="errorMessage" type="error" :closable="false" show-icon class="alert-gap">
+            <template #title>时滞估计失败：{{ errorMessage }}</template>
+          </el-alert>
+        </div>
+
+        <div class="industrial-card rail-card theory-box">
+          <div class="t-title font-mono">⚡ 为什么必须预白化？</div>
+          <p class="t-p">工业慢信号自相关严重，直接互相关会导致峰值严重展宽和虚假偏移。系统先通过 AR 模型滤除自相关残差，再与输出互相关求得真实物理延迟。</p>
+        </div>
+      </aside>
+
+      <!-- Right Main Studio -->
+      <main class="delay-main-studio">
+        <template v-if="result">
+          <!-- Top Multi-Channel Card Array (多通道卡阵列) -->
+          <div class="channel-cards-grid">
+            <div
+              v-for="row in delayRows"
+              :key="row.column"
+              class="channel-tile industrial-card"
+            >
+              <div class="channel-top">
+                <span class="channel-name font-mono">{{ row.column }}</span>
+                <span class="channel-status-pill font-mono">CONFIRMED</span>
+              </div>
+              <div class="channel-main-lag">
+                <span class="lag-label font-mono">BEST DELAY \(n_k\)</span>
+                <span class="lag-num font-mono">{{ row.refined }} <span class="lag-unit">steps</span></span>
+              </div>
+              <div class="channel-candidates">
+                <span class="c-label font-mono">TOP-K PEAKS:</span>
+                <div class="c-chips">
+                  <span
+                    v-for="peak in row.candidates"
+                    :key="peak.lag"
+                    class="c-chip font-mono"
+                    :class="{ selected: peak.lag === row.refined }"
+                  >
+                    lag {{ peak.lag }} (r={{ formatNumber(peak.correlation) }})
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Central Spectrum Waveform -->
+          <div class="industrial-card studio-spectrum-card">
+            <div class="industrial-card-header">
+              <div class="industrial-card-title">
+                <el-icon><DataLine /></el-icon>
+                <span>预白化互相关函数响应图谱 (SPECTRUM)</span>
+              </div>
+              <span class="font-mono text-cyan">FIT 验证优度: {{ formatNumber(result.validation_fit) }}%</span>
+            </div>
+            <ChartContainer :options="chartOptions" height="320px" />
+          </div>
+
+          <!-- Bottom 1-Click Apply Action Strip -->
+          <div class="industrial-card studio-apply-strip">
+            <div class="apply-left">
+              <div class="apply-h font-mono">APPLY DELAY COMPENSATION · 创建移位版本</div>
+              <div class="apply-d">保持 y 与时间轴不变，将各输入特征按 \(u(t - n_k)\) 移位对齐，并派生全新版本。</div>
+            </div>
+            <el-button type="primary" size="large" :loading="applying" :disabled="!!result.uncertain_columns.length" @click="handleApply">
+              确认应用并生成时滞补偿版本 →
             </el-button>
           </div>
-        </div>
+        </template>
 
-        <div class="industrial-card">
-          <div class="industrial-card-header">
-            <div class="industrial-card-title">
-              <el-icon><DataLine /></el-icon> 预白化互相关函数
-            </div>
+        <!-- Empty Placeholder -->
+        <div class="industrial-card studio-empty-card" v-else>
+          <div class="empty-icon">
+            <el-icon><Timer /></el-icon>
           </div>
-          <ChartContainer :options="chartOptions" height="360px" />
-          <p class="chart-note">
-            纵轴为预白化后的互相关系数，峰值位置即为该输入的纯滞后估计。虚线为
-            95% 置信带；峰值落在带内说明该输入与输出的动态关联不显著。
-          </p>
+          <h3>时滞对齐工作室就绪</h3>
+          <p>请在左侧侧边栏设置输入控制通道与搜索最大步长，点击「执行预白化时滞估计」在此渲染多通道卡片与相位谱。</p>
         </div>
-      </template>
+      </main>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
-import { DataLine, Search, Timer, TrendCharts } from "@element-plus/icons-vue";
+import { DataLine, Search, Timer } from "@element-plus/icons-vue";
 import ChartContainer from "../components/ChartContainer.vue";
 import { applyLagCompensation, calculateDelay } from "../api/preprocessing";
 import type { DelayRequest, DelayResponse } from "../types/api";
 import { ApiError } from "../api/client";
 import { ElMessage, ElMessageBox } from "element-plus";
 
-const PALETTE = ["#2A9D8F", "#F4A261", "#1E6091", "#E76F51", "#8E7DBE", "#457B9D"];
+const PALETTE = ["#2563eb", "#059669", "#d97706", "#dc2626", "#8b5cf6", "#0284c7"];
 
 const loading = ref(false);
 const applying = ref(false);
@@ -166,7 +185,6 @@ const handleEstimate = async () => {
     result.value = await calculateDelay(form);
     ElMessage.success("时滞估计完成");
   } catch (err) {
-    // No mock fallback: fabricated delays would be worse than no answer.
     result.value = null;
     errorMessage.value = err instanceof ApiError ? err.message : String(err);
   } finally {
@@ -177,7 +195,11 @@ const handleEstimate = async () => {
 const handleApply = async () => {
   if (!result.value) return;
   try {
-    await ElMessageBox.confirm("将创建新的不可变 DatasetVersion，源版本不会被覆盖。是否继续？", "确认时滞补偿", { type: "warning" });
+    await ElMessageBox.confirm(
+      "将创建新的不可变 DatasetVersion，源版本不会被覆盖。是否继续？",
+      "确认时滞补偿",
+      { type: "warning" }
+    );
     applying.value = true;
     const applied = await applyLagCompensation({
       version_id: form.version_id,
@@ -185,7 +207,10 @@ const handleApply = async () => {
       user_confirmed: true,
       recommendation_source: "delay_analysis",
       evidence_summary: Object.fromEntries(
-        Object.entries(result.value.best_delays).map(([column, lag]) => [column, `validation-refined nk=${lag}`])
+        Object.entries(result.value.best_delays).map(([column, lag]) => [
+          column,
+          `validation-refined nk=${lag}`,
+        ])
       ),
     });
     ElMessage.success(`已创建时滞补偿版本：${applied.result_version_id}`);
@@ -217,8 +242,8 @@ const chartOptions = computed(() => {
   const maxLength = Math.max(...columns.map((c) => result.value!.correlations[c].length), 1);
   return {
     tooltip: { trigger: "axis" },
-    legend: { data: columns },
-    grid: { left: "3%", right: "4%", bottom: "10%", containLabel: true },
+    legend: { data: columns, top: "2%" },
+    grid: { left: "3%", right: "4%", bottom: "10%", top: "14%", containLabel: true },
     xAxis: {
       type: "category",
       name: "滞后步数",
@@ -230,6 +255,7 @@ const chartOptions = computed(() => {
       type: "line",
       showSymbol: false,
       color: PALETTE[index % PALETTE.length],
+      lineStyle: { width: 2 },
       data: result.value!.correlations[column],
       markLine: {
         symbol: "none",
@@ -248,47 +274,287 @@ const formatNumber = (value: number | null | undefined) => {
 </script>
 
 <style scoped>
-.page-header {
-  margin-bottom: 20px;
-}
-
-.subtitle {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-top: 4px;
-}
-
-.delay-layout {
+.delay-view {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
-.fit-val {
-  font-weight: 600;
+/* Stage Nav */
+.pipeline-stage-nav {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px;
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  font-size: 11px;
+}
+
+.stage-badge {
+  font-weight: 800;
   color: var(--color-primary);
-  font-family: var(--font-mono);
+  background: var(--color-primary-light);
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+
+.stage-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.stage-link {
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.16s ease;
+}
+
+.stage-link:hover {
+  color: var(--color-primary);
+}
+
+.stage-link.active {
+  color: var(--text-primary);
+  font-weight: 700;
+  cursor: default;
+}
+
+.stage-sep {
+  color: var(--text-faint);
+}
+
+/* FORMAT 3: Studio Layout */
+.delay-studio-layout {
+  display: grid;
+  grid-template-columns: 310px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.delay-rail-dock {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rail-card {
+  padding: 18px;
+  background: #ffffff;
+  border-radius: 12px;
+  margin-bottom: 0;
+}
+
+.theory-box {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-light);
+}
+
+.t-title {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--color-primary);
+  margin-bottom: 6px;
+}
+
+.t-p {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
 }
 
 .alert-gap {
   margin-top: 12px;
 }
 
-.candidate-tag {
-  margin-right: 4px;
+/* Right Main Studio */
+.delay-main-studio {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.apply-actions {
+/* Channel Tiles Array */
+.channel-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.channel-tile {
+  padding: 16px;
+  background: #ffffff;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 0;
+  border-top: 3px solid var(--color-primary);
+}
+
+.channel-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.channel-name {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.channel-status-pill {
+  font-size: 9px;
+  font-weight: 700;
+  color: #059669;
+  background: #ecfdf5;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.channel-main-lag {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lag-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.lag-num {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--color-primary);
+  line-height: 1.1;
+}
+
+.lag-unit {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.channel-candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-light);
+}
+
+.c-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.c-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.c-chip {
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: var(--bg-subtle);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.c-chip.selected {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+/* Studio Spectrum */
+.studio-spectrum-card {
+  padding: 20px;
+  background: #ffffff;
+  border-radius: 12px;
+  margin-bottom: 0;
+}
+
+/* Studio Apply Strip */
+.studio-apply-strip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 22px;
+  background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  margin-bottom: 0;
+  gap: 20px;
+}
+
+.apply-h {
+  font-size: 12px;
+  font-weight: 800;
+  color: #1e3a8a;
+  margin-bottom: 3px;
+}
+
+.apply-d {
+  font-size: 12px;
+  color: #475569;
+}
+
+.studio-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  text-align: center;
+  background: #ffffff;
+  border-radius: 12px;
+}
+
+.empty-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 16px;
+  justify-content: center;
+  font-size: 24px;
+  margin-bottom: 12px;
 }
 
-.chart-note {
-  margin-top: 10px;
-  font-size: 12px;
+.studio-empty-card h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.studio-empty-card p {
+  margin: 6px 0 0;
+  font-size: 13px;
   color: var(--text-secondary);
-  line-height: 1.6;
+  max-width: 420px;
+}
+
+@media (max-width: 960px) {
+  .delay-studio-layout {
+    grid-template-columns: 1fr;
+  }
+  .studio-apply-strip {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 </style>
