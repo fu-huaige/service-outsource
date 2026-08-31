@@ -1,257 +1,206 @@
 <template>
   <div class="segmentation-view">
-    <div class="page-header">
-      <span class="page-eyebrow">预处理与优选</span>
-      <h2>质量约束 D-最优动态区间优选</h2>
-      <p class="subtitle">
-        先做质量门控（缺失 / 异常 / 稳态 / 信噪比），再在合格窗口上按 Fisher 信息增益贪心优选
-      </p>
+    <!-- Top Stage Header Navigation -->
+    <div class="pipeline-stage-nav">
+      <div class="stage-badge font-mono">STAGE 03 · D-OPTIMAL SEGMENTATION</div>
+      <div class="stage-links">
+        <span class="stage-link" @click="$router.push('/preprocessing/cleaning')">02 时间清洗</span>
+        <span class="stage-sep">›</span>
+        <span class="stage-link active">03 D-最优优选</span>
+        <span class="stage-sep">›</span>
+        <span class="stage-link" @click="$router.push('/preprocessing/delay')">04 时滞对齐</span>
+        <span class="stage-sep">›</span>
+        <span class="stage-link" @click="$router.push('/preprocessing/collinearity')">05 VIF 降维</span>
+      </div>
     </div>
 
-    <div class="segmentation-layout">
-      <div class="industrial-card">
-        <div class="industrial-card-header">
-          <div class="industrial-card-title">
-            <el-icon><Crop /></el-icon> 数据版本与优选参数
-          </div>
-        </div>
-
-        <el-form :model="form" class="parameter-form-grid">
-          <el-form-item label="数据版本 ID">
-            <el-input v-model="form.version_id" placeholder="version_id" />
-          </el-form-item>
-          <el-form-item label="输入变量">
-            <el-input v-model="inputColumnsText" placeholder="u1,u2,u3" />
-          </el-form-item>
-          <el-form-item label="输出变量">
-            <el-input v-model="form.output_column" placeholder="y" />
-          </el-form-item>
-          <el-form-item label="窗口长度">
-            <el-input-number v-model="form.window_size" :min="5" :max="2000" :step="10" />
-          </el-form-item>
-          <el-form-item label="保留区间数">
-            <el-input-number v-model="form.max_segments" :min="1" :max="100" />
-          </el-form-item>
-          <el-form-item label="最低 SNR">
-            <el-input-number v-model="form.min_snr_db" :min="-20" :max="60" :step="1" />
-            <span class="form-control-suffix">dB</span>
-          </el-form-item>
-          <el-form-item label="最大缺失率">
-            <el-input-number
-              v-model="form.max_missing_ratio"
-              :min="0"
-              :max="1"
-              :step="0.05"
-              :precision="2"
-            />
-          </el-form-item>
-          <el-form-item label="最大异常率">
-            <el-input-number
-              v-model="form.max_anomaly_ratio"
-              :min="0"
-              :max="1"
-              :step="0.05"
-              :precision="2"
-            />
-          </el-form-item>
-          <el-form-item class="parameter-form-actions">
-            <el-button type="primary" :loading="loading" icon="Search" @click="handleSegment">
-              执行门控与信息增益优选
-            </el-button>
-          </el-form-item>
-        </el-form>
-
-        <el-alert v-if="errorMessage" type="error" :closable="false" show-icon class="alert-gap">
-          <template #title>优选失败：{{ errorMessage }}</template>
-        </el-alert>
+    <!-- Header with Breadcrumb & Quick Action -->
+    <div class="page-header-row">
+      <div class="page-header">
+        <span class="page-eyebrow font-mono">FISHER INFORMATION MATRIX DET-MAXIMIZATION</span>
+        <h2>质量约束 D-最优区间剪辑工作台</h2>
+        <p class="subtitle">先做质量门控过滤稳态与坏段，再由 CELF 延迟贪心算法截取信息量极大化高动态过渡带</p>
       </div>
 
-      <template v-if="result && result.selection">
-        <div class="industrial-card">
-          <div class="industrial-card-header">
-            <div class="industrial-card-title">
-              <el-icon><TrendCharts /></el-icon> 优选结论
-            </div>
-            <el-tag :type="result.selection.excitation_satisfied ? 'success' : 'danger'">
-              {{ result.selection.excitation_satisfied ? "持续激励条件满足" : "持续激励不足" }}
-            </el-tag>
+      <div class="top-segment-trigger">
+        <el-button type="primary" size="large" :loading="loading" icon="Search" @click="handleSegment">
+          执行门控与 D-最优区间剪辑
+        </el-button>
+      </div>
+    </div>
+
+    <!-- FORMAT 2: Collapsible Top Parameter Bar with Badges -->
+    <div class="industrial-card segment-param-bar">
+      <div class="param-grid-row">
+        <div class="param-item">
+          <label class="font-mono">数据版本 ID</label>
+          <el-input v-model="form.version_id" placeholder="version_id" size="small" />
+        </div>
+        <div class="param-item">
+          <label class="font-mono">输入变量 (u)</label>
+          <el-input v-model="inputColumnsText" placeholder="u1,u2,u3" size="small" />
+        </div>
+        <div class="param-item">
+          <label class="font-mono">输出变量 (y)</label>
+          <el-input v-model="form.output_column" placeholder="y" size="small" />
+        </div>
+        <div class="param-item">
+          <label class="font-mono">窗长 (L)</label>
+          <el-input-number v-model="form.window_size" :min="5" :max="2000" :step="10" size="small" />
+        </div>
+        <div class="param-item">
+          <label class="font-mono">保留段数 (K)</label>
+          <el-input-number v-model="form.max_segments" :min="1" :max="100" size="small" />
+        </div>
+        <div class="param-item">
+          <label class="font-mono">最低 SNR (dB)</label>
+          <el-input-number v-model="form.min_snr_db" :min="-20" :max="60" size="small" />
+        </div>
+      </div>
+    </div>
+
+    <el-alert v-if="errorMessage" type="error" :closable="false" show-icon class="alert-gap">
+      <template #title>优选失败：{{ errorMessage }}</template>
+    </el-alert>
+
+    <!-- FORMAT 2: Full-Width Waveform Scrubber with Floating KPI HUD (全景时序切片看板) -->
+    <section class="industrial-card scrubber-card">
+      <div class="scrubber-header">
+        <div class="scrubber-title font-mono">
+          <el-icon><DataLine /></el-icon>
+          <span>全景响应时序与选定过渡带切片 (SELECTED D-OPTIMAL SLICES)</span>
+        </div>
+        <div class="scrubber-badges" v-if="result && result.selection">
+          <el-tag :type="result.selection.excitation_satisfied ? 'success' : 'danger'" effect="light" class="font-mono">
+            {{ result.selection.excitation_satisfied ? "🟢 持续激励条件满足" : "🔴 持续激励不足" }}
+          </el-tag>
+        </div>
+      </div>
+
+      <!-- Floating 5-KPI HUD -->
+      <div class="hud-kpi-bar" v-if="result && result.selection">
+        <div class="hud-item">
+          <span class="hud-label font-mono">CANDIDATES</span>
+          <span class="hud-val font-mono">{{ result.selection.candidate_count }}</span>
+        </div>
+        <div class="hud-sep"></div>
+        <div class="hud-item">
+          <span class="hud-label font-mono">GATED PASS</span>
+          <span class="hud-val font-mono text-cyan">{{ result.selection.gated_count }}</span>
+        </div>
+        <div class="hud-sep"></div>
+        <div class="hud-item">
+          <span class="hud-label font-mono">SELECTED SEGMENTS</span>
+          <span class="hud-val font-mono text-primary">{{ result.selection.selected_count }}</span>
+        </div>
+        <div class="hud-sep"></div>
+        <div class="hud-item">
+          <span class="hud-label font-mono">SAMPLE COVERAGE</span>
+          <span class="hud-val font-mono text-green">{{ percent(result.selection.coverage_ratio) }}</span>
+        </div>
+        <div class="hud-sep"></div>
+        <div class="hud-item">
+          <span class="hud-label font-mono">COND NUMBER</span>
+          <span class="hud-val font-mono">{{ formatNumber(result.selection.design_matrix_condition_number) }}</span>
+        </div>
+      </div>
+
+      <div v-if="result && result.selection">
+        <ChartContainer :options="chartOptions" height="340px" />
+      </div>
+      <div class="scrubber-empty" v-else>
+        <el-icon><Crop /></el-icon>
+        <p>输入参数后点击右上角「执行门控与 D-最优区间剪辑」，在此高亮渲染全景时序与黄金区间切片。</p>
+      </div>
+    </section>
+
+    <!-- FORMAT 2: Master-Detail Dual Table & Quality Filter Funnel (主从双表决策看板) -->
+    <div class="segment-master-detail-grid" v-if="result && result.selection">
+      <!-- Left: Selected Segments Leaderboard -->
+      <div class="industrial-card detail-pane">
+        <div class="industrial-card-header">
+          <div class="industrial-card-title">
+            <el-icon><TrendCharts /></el-icon>
+            <span>优选区间贡献排行榜</span>
           </div>
-
-          <el-descriptions :column="4" border size="small">
-            <el-descriptions-item label="候选窗口">
-              {{ result.selection.candidate_count }}
-            </el-descriptions-item>
-            <el-descriptions-item label="通过门控">
-              {{ result.selection.gated_count }}
-            </el-descriptions-item>
-            <el-descriptions-item label="最终选中">
-              {{ result.selection.selected_count }}
-            </el-descriptions-item>
-            <el-descriptions-item label="采样占比">
-              {{ percent(result.selection.coverage_ratio) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="信息保留率">
-              {{
-                result.selection.information_retention === null
-                  ? "—"
-                  : percent(result.selection.information_retention)
-              }}
-            </el-descriptions-item>
-            <el-descriptions-item label="设计矩阵条件数">
-              {{ formatNumber(result.selection.condition_number) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="CELF 求值加速">
-              {{ result.selection.lazy_speedup.toFixed(2) }}×
-            </el-descriptions-item>
-            <el-descriptions-item label="停止原因">
-              <span class="code-inline">{{ result.selection.stopped_reason }}</span>
-            </el-descriptions-item>
-          </el-descriptions>
-
-          <el-alert
-            v-if="result.selection.budget_advisory"
-            type="warning"
-            :closable="false"
-            show-icon
-            class="advisory"
-          >
-            <template #title>{{ result.selection.budget_advisory }}</template>
-          </el-alert>
-
-          <div v-if="rejectionRows.length" class="rejection-block">
-            <span class="rejection-title">门控剔除统计：</span>
-            <el-tag
-              v-for="row in rejectionRows"
-              :key="row.reason"
-              type="info"
-              effect="plain"
-              class="rejection-tag"
-            >
-              {{ reasonLabel(row.reason) }} × {{ row.count }}
-            </el-tag>
-          </div>
-
-          <div v-if="excitationRows.length" class="rejection-block">
-            <span class="rejection-title">持续激励阶次（实际 / 所需）：</span>
-            <el-tag
-              v-for="row in excitationRows"
-              :key="row.column"
-              :type="row.actual >= row.required ? 'success' : 'danger'"
-              effect="plain"
-              class="rejection-tag"
-            >
-              {{ row.column }}: {{ row.actual }} / {{ row.required }}
-            </el-tag>
-          </div>
+          <span class="card-tag font-mono">RANKED LIST</span>
         </div>
 
-        <div class="industrial-card">
-          <div class="industrial-card-header">
-            <div class="industrial-card-title">
-              <el-icon><DataLine /></el-icon> 优选区间高亮叠加图
-            </div>
-            <el-tag type="warning">选中 {{ result.segments.length }} 个高信息量区间</el-tag>
+        <el-table :data="result.segments" stripe height="280" style="width: 100%">
+          <el-table-column prop="rank" label="排名" width="70">
+            <template #default="{ row }">
+              <span class="rank-badge font-mono">#{{ row.rank }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="样本索引区间" width="160">
+            <template #default="{ row }">
+              <span class="font-mono">[{{ row.start_index }} - {{ row.end_index }}]</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="区间点数" width="100">
+            <template #default="{ row }">
+              <span class="font-mono">{{ row.end_index - row.start_index }} 点</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="信噪比 SNR" width="110">
+            <template #default="{ row }">
+              <span class="font-mono text-green">{{ formatNumber(row.snr_db) }} dB</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+
+      <!-- Right: Gated Funnel Breakdown -->
+      <div class="industrial-card detail-pane">
+        <div class="industrial-card-header">
+          <div class="industrial-card-title">
+            <el-icon><Filter /></el-icon>
+            <span>质量门控过滤漏斗明细</span>
           </div>
-          <ChartContainer :options="chartOptions" height="380px" />
+          <el-tag type="info" effect="plain" class="font-mono">共扫描 {{ result.gated_windows.length }} 个窗口</el-tag>
         </div>
 
-        <div class="industrial-card">
-          <div class="industrial-card-header">
-            <div class="industrial-card-title">
-              <el-icon><List /></el-icon> 选中区间与信息增益
-            </div>
-          </div>
-
-          <el-table :data="result.segments" stripe style="width: 100%">
-            <el-table-column prop="rank" label="选中次序" width="90" />
-            <el-table-column prop="segment_id" label="区间 ID" width="110" />
-            <el-table-column label="样本范围" width="180">
-              <template #default="{ row }">
-                <span class="code-inline">[{{ row.start_index }} - {{ row.end_index }}]</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="信息增益" width="140">
-              <template #default="{ row }">
-                <span class="fit-val">{{ formatNumber(row.information_gain_bits) }} bit</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="信噪比" width="120">
-              <template #default="{ row }">{{ formatNumber(row.snr_db) }} dB</template>
-            </el-table-column>
-            <el-table-column label="缺失率" width="100">
-              <template #default="{ row }">{{ percent(row.missing_ratio) }}</template>
-            </el-table-column>
-            <el-table-column label="异常率" width="100">
-              <template #default="{ row }">{{ percent(row.anomaly_ratio) }}</template>
-            </el-table-column>
-            <el-table-column prop="recommendation" label="推荐意见" />
-          </el-table>
-
-          <div class="footer-actions">
-            <el-button
-              type="success"
-              icon="ArrowRight"
-              @click="$router.push('/preprocessing/delay')"
-            >
-              下一步: 时滞分析与补偿 →
-            </el-button>
-          </div>
-        </div>
-
-        <div class="industrial-card">
-          <div class="industrial-card-header">
-            <div class="industrial-card-title">
-              <el-icon><Filter /></el-icon> 质量门控明细（含被剔除窗口）
-            </div>
-          </div>
-          <el-table :data="result.gated_windows" stripe height="320" style="width: 100%">
-            <el-table-column prop="window_index" label="窗口" width="80" />
-            <el-table-column label="样本范围" width="170">
-              <template #default="{ row }">
-                <span class="code-inline">[{{ row.start_index }} - {{ row.end_index }}]</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="结果" width="100">
-              <template #default="{ row }">
-                <el-tag :type="row.accepted ? 'success' : 'info'" size="small">
-                  {{ row.accepted ? "通过" : "剔除" }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="缺失率" width="100">
-              <template #default="{ row }">{{ percent(row.missing_ratio) }}</template>
-            </el-table-column>
-            <el-table-column label="异常率" width="100">
-              <template #default="{ row }">{{ percent(row.anomaly_ratio) }}</template>
-            </el-table-column>
-            <el-table-column label="SNR" width="110">
-              <template #default="{ row }">{{ formatNumber(row.snr_db) }} dB</template>
-            </el-table-column>
-            <el-table-column label="剔除原因">
-              <template #default="{ row }">
-                <span v-if="!row.rejection_reasons.length">—</span>
-                <el-tag
-                  v-for="reason in row.rejection_reasons"
-                  :key="reason"
-                  size="small"
-                  type="warning"
-                  effect="plain"
-                  class="rejection-tag"
-                >
-                  {{ reasonLabel(reason) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-      </template>
+        <el-table :data="result.gated_windows" stripe height="280" style="width: 100%">
+          <el-table-column prop="window_index" label="窗口" width="70" />
+          <el-table-column label="样本范围" width="140">
+            <template #default="{ row }">
+              <span class="font-mono">[{{ row.start_index }} - {{ row.end_index }}]</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="门控状态" width="90">
+            <template #default="{ row }">
+              <el-tag :type="row.accepted ? 'success' : 'info'" size="small">
+                {{ row.accepted ? "通过" : "剔除" }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="缺失率" width="80">
+            <template #default="{ row }">{{ percent(row.missing_ratio) }}</template>
+          </el-table-column>
+          <el-table-column label="剔除原因">
+            <template #default="{ row }">
+              <span v-if="!row.rejection_reasons.length">—</span>
+              <el-tag
+                v-for="reason in row.rejection_reasons"
+                :key="reason"
+                size="small"
+                type="warning"
+                effect="plain"
+                class="rejection-tag font-mono"
+              >
+                {{ reasonLabel(reason) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
-import { ArrowRight, Crop, DataLine, Filter, List, Search, TrendCharts } from "@element-plus/icons-vue";
+import { Crop, DataLine, Filter, TrendCharts } from "@element-plus/icons-vue";
 import ChartContainer from "../components/ChartContainer.vue";
 import { segmentDataset } from "../api/preprocessing";
 import type { SegmentRequest, SegmentResponse } from "../types/api";
@@ -306,7 +255,6 @@ const handleSegment = async () => {
       )}`
     );
   } catch (err) {
-    // No mock fallback: a failed run must read as a failure, never as fabricated results.
     result.value = null;
     errorMessage.value = err instanceof ApiError ? err.message : String(err);
   } finally {
@@ -327,8 +275,8 @@ const chartOptions = computed(() => {
   ]);
   return {
     tooltip: { trigger: "axis" },
-    grid: { left: "3%", right: "4%", bottom: "10%", containLabel: true },
-    dataZoom: [{ type: "inside" }, { type: "slider" }],
+    grid: { left: "3%", right: "4%", bottom: "12%", top: "8%", containLabel: true },
+    dataZoom: [{ type: "inside" }, { type: "slider", height: 20, bottom: 2 }],
     xAxis: { type: "category", data: values.map((_, index) => index) },
     yAxis: { type: "value", scale: true },
     series: [
@@ -336,32 +284,16 @@ const chartOptions = computed(() => {
         name: form.output_column,
         type: "line",
         showSymbol: false,
-        color: "#1E6091",
+        color: "#2563eb",
+        lineStyle: { width: 2 },
         data: values,
         markArea: {
-          itemStyle: { color: "rgba(230, 145, 56, 0.22)" },
+          itemStyle: { color: "rgba(37, 99, 235, 0.15)", borderColor: "rgba(37, 99, 235, 0.4)", borderWidth: 1 },
           data: marks,
         },
       },
     ],
   };
-});
-
-const rejectionRows = computed(() =>
-  Object.entries(result.value?.selection?.rejection_counts ?? {}).map(([reason, count]) => ({
-    reason,
-    count,
-  }))
-);
-
-const excitationRows = computed(() => {
-  const actual = result.value?.selection?.persistent_excitation_order ?? {};
-  const required = result.value?.selection?.required_excitation_order ?? {};
-  return Object.keys(required).map((column) => ({
-    column,
-    actual: actual[column] ?? 0,
-    required: required[column],
-  }));
 });
 
 const reasonLabel = (reason: string) => REASON_LABELS[reason] ?? reason;
@@ -377,56 +309,229 @@ const formatNumber = (value: number | null | undefined) => {
 </script>
 
 <style scoped>
-.page-header {
-  margin-bottom: 20px;
-}
-
-.subtitle {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-top: 4px;
-}
-
-.segmentation-layout {
+.segmentation-view {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
-.fit-val {
-  font-weight: 600;
+/* Stage Nav */
+.pipeline-stage-nav {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px;
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  font-size: 11px;
+}
+
+.stage-badge {
+  font-weight: 800;
   color: var(--color-primary);
-  font-family: var(--font-mono);
+  background: var(--color-primary-light);
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+
+.stage-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.stage-link {
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.16s ease;
+}
+
+.stage-link:hover {
+  color: var(--color-primary);
+}
+
+.stage-link.active {
+  color: var(--text-primary);
+  font-weight: 700;
+  cursor: default;
+}
+
+.stage-sep {
+  color: var(--text-faint);
+}
+
+.page-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+/* Format 2: Parameter Bar */
+.segment-param-bar {
+  padding: 14px 18px;
+  background: #ffffff;
+  border-radius: 10px;
+  margin-bottom: 0;
+}
+
+.param-grid-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 14px;
+}
+
+.param-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.param-item label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
 }
 
 .alert-gap {
-  margin-top: 12px;
+  margin-top: 4px;
 }
 
-.advisory {
-  margin-top: 14px;
+/* Scrubber Card */
+.scrubber-card {
+  padding: 20px;
+  background: #ffffff;
+  border-radius: 12px;
+  margin-bottom: 0;
 }
 
-.rejection-block {
-  margin-top: 14px;
+.scrubber-header {
   display: flex;
-  flex-wrap: wrap;
+  justify-content: space-between;
   align-items: center;
-  gap: 6px;
+  margin-bottom: 12px;
 }
 
-.rejection-title {
-  font-size: 13px;
-  color: var(--text-secondary);
+.scrubber-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.hud-kpi-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 10px 16px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  margin-bottom: 14px;
+}
+
+.hud-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.hud-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.hud-val {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.hud-sep {
+  width: 1px;
+  height: 28px;
+  background: var(--border-light);
+}
+
+.text-primary { color: var(--color-primary); }
+.text-cyan { color: #0284c7; }
+.text-green { color: #059669; }
+
+.scrubber-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.scrubber-empty .el-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+  color: var(--color-primary);
+}
+
+/* Master-Detail Dual Pane */
+.segment-master-detail-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1.4fr;
+  gap: 20px;
+}
+
+.detail-pane {
+  padding: 18px;
+  background: #ffffff;
+  border-radius: 12px;
+  margin-bottom: 0;
+}
+
+.rank-badge {
+  font-weight: 800;
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.card-tag {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
 }
 
 .rejection-tag {
   margin-right: 4px;
 }
 
-.footer-actions {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
+@media (max-width: 1100px) {
+  .param-grid-row {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .segment-master-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .param-grid-row {
+    grid-template-columns: 1fr;
+  }
+  .hud-kpi-bar {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .hud-sep {
+    display: none;
+  }
 }
 </style>

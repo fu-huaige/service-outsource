@@ -13,10 +13,21 @@ from app.core.errors import AppError
 from app.schemas.benchmark import BenchmarkData, BenchmarkRequest
 from app.schemas.common import ErrorEnvelope, SuccessEnvelope
 from app.schemas.copilot import (
+    ArxStructureValidationData,
+    ArxStructureValidationRequest,
     CopilotChatData,
     CopilotChatRequest,
     CopilotConfirmData,
     CopilotConfirmRequest,
+    CopilotEvaluateModelExecuteData,
+    CopilotEvaluateModelExecuteRequest,
+    CopilotExecutionSnapshotData,
+    CopilotOptimizePipelineExecuteData,
+    FeatureSelectionValidationData,
+    FeatureSelectionValidationRequest,
+    LagOverrideValidationData,
+    LagOverrideValidationRequest,
+    OptimizePipelineExecuteRequest,
 )
 from app.schemas.dashboard import DashboardLeaderboardData
 from app.schemas.datasets import (
@@ -68,7 +79,38 @@ from app.schemas.system import (
     SystemInfoData,
 )
 from app.schemas.tasks import CancelTaskData
-from app.services.agent_service import AgentDomainError, run_copilot
+from app.services.agent_arx_modeling_service import (
+    ArxStructureError,
+    approve_and_execute_arx_step,
+    is_arx_fit_step,
+    validate_arx_structure,
+)
+from app.services.agent_execution_service import (
+    ExecutionStateError,
+    approve_step,
+    get_execution,
+    reject_step,
+    to_copilot_execution_snapshot,
+)
+from app.services.agent_feature_selection_service import (
+    FeatureSelectionError,
+    approve_and_execute_feature_step,
+    is_feature_apply_step,
+    validate_feature_selection,
+)
+from app.services.agent_lag_apply_service import (
+    LagOverrideError,
+    approve_and_execute_lag_step,
+    is_lag_apply_step,
+    validate_lag_overrides,
+)
+from app.services.agent_service import (
+    AgentDomainError,
+    execute_approved_optimization_step,
+    execute_pending_evaluation_step,
+    run_copilot,
+)
+from app.services.agent_tool_adapter import AgentToolAdapterError
 from app.services.benchmark_service import BenchmarkDomainError, run_benchmark
 from app.services.cleaning_service import CleaningDomainError, clean_dataset_version
 from app.services.contract_stubs import completed_task, queued_task
@@ -114,6 +156,7 @@ from app.services.report_service import (
 )
 from app.services.segment_service import SegmentDomainError, select_dynamic_segments
 from app.services.simulation_service import generate_simulation as generate_simulation_service
+from app.services.version_data import VersionDataError
 from app.services.versioned_preprocessing_service import (
     VersionedPreprocessingError,
     apply_feature_selection,
@@ -829,28 +872,336 @@ async def copilot_chat(
     return success(request, data)
 
 
+@router.get(
+    "/copilot/executions/{execution_id}",
+    tags=["Copilot"],
+    summary="Read one persisted copilot execution snapshot",
+    response_model=SuccessEnvelope[CopilotExecutionSnapshotData],
+    responses=ERROR_RESPONSES,
+)
+async def get_copilot_execution(
+    request: Request,
+    execution_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessEnvelope[CopilotExecutionSnapshotData]:
+    """Return durable execution state without dispatching a tool or mutating workflow state."""
+
+    try:
+        execution = await get_execution(session, execution_id=execution_id)
+    except ExecutionStateError as error:
+        raise AppError(
+            "AGENT_EXECUTION_NOT_FOUND",
+            "未找到指定的 Agent 执行记录。",
+            status_code=status.HTTP_404_NOT_FOUND,
+            details={"execution_id": str(execution_id)},
+        ) from error
+    return success(request, to_copilot_execution_snapshot(execution))
+
+@router.post(
+    "/copilot/arx-structure/validate",
+    tags=["Copilot"],
+    summary="Validate controlled ARX na/nb overrides without persisting a model",
+    response_model=SuccessEnvelope[ArxStructureValidationData],
+    responses={**ERROR_RESPONSES, 409: {"model": ErrorEnvelope}},
+)
+async def validate_copilot_arx_structure(
+    request: Request,
+    payload: ArxStructureValidationRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessEnvelope[ArxStructureValidationData]:
+    try:
+        data = await validate_arx_structure(
+            session,
+            execution_id=payload.execution_id,
+            step_id=payload.step_id,
+            manual_overrides=payload.manual_overrides,
+            artifact_root=get_settings().artifact_root,
+        )
+    except ExecutionStateError as error:
+        raise AppError(
+            "AGENT_EXECUTION_STATE_CONFLICT",
+            "当前执行步骤不可校验 ARX 结构。",
+            status_code=status.HTTP_409_CONFLICT,
+            details={"reason": str(error)},
+        ) from error
+    except ArxStructureError as error:
+        raise AppError(
+            error.code,
+            error.message,
+            status_code=error.status_code,
+            details=error.details,
+        ) from error
+    return success(request, data)
+
+@router.post(
+    "/copilot/feature-selection/validate",
+    tags=["Copilot"],
+    summary="Validate a controlled Feature Selection without executing a tool",
+    response_model=SuccessEnvelope[FeatureSelectionValidationData],
+    responses={**ERROR_RESPONSES, 409: {"model": ErrorEnvelope}},
+)
+async def validate_copilot_feature_selection(
+    request: Request,
+    payload: FeatureSelectionValidationRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessEnvelope[FeatureSelectionValidationData]:
+    try:
+        data = await validate_feature_selection(
+            session,
+            execution_id=payload.execution_id,
+            step_id=payload.step_id,
+            drop_columns=payload.drop_columns,
+        )
+    except ExecutionStateError as error:
+        raise AppError(
+            "AGENT_EXECUTION_STATE_CONFLICT",
+            "当前执行步骤不可校验变量选择。",
+            status_code=status.HTTP_409_CONFLICT,
+            details={"reason": str(error)},
+        ) from error
+    except FeatureSelectionError as error:
+        raise AppError(
+            error.code,
+            error.message,
+            status_code=error.status_code,
+            details=error.details,
+        ) from error
+    return success(request, data)
+
+
+@router.post(
+    "/copilot/lag-overrides/validate",
+    tags=["Copilot"],
+    summary="Validate controlled manual lag overrides without executing a tool",
+    response_model=SuccessEnvelope[LagOverrideValidationData],
+    responses={**ERROR_RESPONSES, 409: {"model": ErrorEnvelope}},
+)
+async def validate_copilot_lag_overrides(
+    request: Request,
+    payload: LagOverrideValidationRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessEnvelope[LagOverrideValidationData]:
+    try:
+        data = await validate_lag_overrides(
+            session,
+            execution_id=payload.execution_id,
+            step_id=payload.step_id,
+            manual_overrides=payload.manual_overrides,
+        )
+    except ExecutionStateError as error:
+        raise AppError(
+            "AGENT_EXECUTION_STATE_CONFLICT",
+            "当前执行步骤不可校验时滞覆盖。",
+            status_code=status.HTTP_409_CONFLICT,
+            details={"reason": str(error)},
+        ) from error
+    except LagOverrideError as error:
+        raise AppError(error.code, error.message, status_code=error.status_code, details=error.details) from error
+    return success(request, data)
+
+
 @router.post(
     "/copilot/confirm",
     tags=["Copilot"],
-    summary="Record a human-in-the-loop approval or rejection",
+    summary="Persist a human confirmation decision for an Agent execution step",
     response_model=SuccessEnvelope[CopilotConfirmData],
-    responses=ERROR_RESPONSES,
+    responses={
+        **ERROR_RESPONSES,
+        409: {"model": ErrorEnvelope, "description": "执行状态不允许该确认操作。"},
+    },
 )
 async def copilot_confirm(
-    request: Request, payload: CopilotConfirmRequest
+    request: Request,
+    payload: CopilotConfirmRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SuccessEnvelope[CopilotConfirmData]:
+    if payload.execution_id is None or payload.step_id is None:
+        raise AppError(
+            "AGENT_EXECUTION_REFERENCE_REQUIRED",
+            "持久确认需要 execution_id 和 step_id。",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+    validation: LagOverrideValidationData | None = None
+    feature_validation: FeatureSelectionValidationData | None = None
+    arx_validation: ArxStructureValidationData | None = None
+    try:
+        if not payload.approved:
+            execution = await reject_step(
+                session, execution_id=payload.execution_id, step_id=payload.step_id
+            )
+        elif await is_lag_apply_step(
+            session, execution_id=payload.execution_id, step_id=payload.step_id
+        ):
+            outcome = await approve_and_execute_lag_step(
+                session,
+                execution_id=payload.execution_id,
+                step_id=payload.step_id,
+                manual_overrides=payload.manual_overrides,
+                warning_acknowledged=payload.warning_acknowledged,
+                artifact_root=get_settings().artifact_root,
+            )
+            execution, validation = outcome.execution, outcome.validation
+        elif await is_feature_apply_step(
+            session, execution_id=payload.execution_id, step_id=payload.step_id
+        ):
+            feature_outcome = await approve_and_execute_feature_step(
+                session,
+                execution_id=payload.execution_id,
+                step_id=payload.step_id,
+                drop_columns=payload.feature_drop_columns,
+                artifact_root=get_settings().artifact_root,
+            )
+            execution = feature_outcome.execution
+            feature_validation = feature_outcome.validation
+        elif await is_arx_fit_step(
+            session, execution_id=payload.execution_id, step_id=payload.step_id
+        ):
+            arx_outcome = await approve_and_execute_arx_step(
+                session,
+                execution_id=payload.execution_id,
+                step_id=payload.step_id,
+                manual_overrides=payload.arx_structure_overrides,
+                artifact_root=get_settings().artifact_root,
+            )
+            execution = arx_outcome.execution
+            arx_validation = arx_outcome.validation
+        else:
+            execution = await approve_step(
+                session, execution_id=payload.execution_id, step_id=payload.step_id
+            )
+    except ExecutionStateError as error:
+        raise AppError(
+            "AGENT_EXECUTION_STATE_CONFLICT",
+            "当前执行状态不允许该确认操作。",
+            status_code=status.HTTP_409_CONFLICT,
+            details={"reason": str(error)},
+        ) from error
+    except (LagOverrideError, FeatureSelectionError, ArxStructureError) as error:
+        raise AppError(
+            error.code,
+            error.message,
+            status_code=error.status_code,
+            details=error.details,
+        ) from error
+    except (AgentToolAdapterError, VersionDataError, VersionedPreprocessingError) as error:
+        raise AppError(
+            getattr(error, "code", "AGENT_CONFIRMED_TOOL_FAILED"),
+            getattr(error, "message", str(error)),
+            status_code=getattr(error, "status_code", status.HTTP_400_BAD_REQUEST),
+            details=getattr(error, "details", {}),
+        ) from error
+
+    step = next(item for item in execution.step_runs if item.step_id == payload.step_id)
     return success(
         request,
         CopilotConfirmData(
             copilot_run_id=payload.copilot_run_id,
             confirmation_id=payload.confirmation_id,
             decision="approved" if payload.approved else "rejected",
-            task=(
-                queued_task(status="queued", stage="await_execution") if payload.approved else None
-            ),
+            execution_id=execution.id,
+            workflow_status=execution.workflow_status,
+            current_version_id=execution.current_version_id,
+            current_step_id=execution.current_step_id,
+            pending_confirmation_step_id=execution.pending_confirmation_step_id,
+            step_id=step.step_id,
+            step_status=step.status,
+            confirmation_status=step.confirmation_status,
+            result_version_id=step.result_version_id,
+            result_payload=step.result_payload,
+            lag_override_validation=validation,
+            feature_selection_validation=feature_validation,
+            arx_structure_validation=arx_validation,
+        ),
+    )
+@router.post(
+    "/copilot/optimize-pipeline/execute",
+    tags=["Copilot"],
+    summary="Execute the approved agent optimization step",
+    response_model=SuccessEnvelope[CopilotOptimizePipelineExecuteData],
+    responses={
+        **ERROR_RESPONSES,
+        409: {"model": ErrorEnvelope, "description": "执行状态不允许模型寻优。"},
+    },
+)
+async def execute_copilot_optimize_pipeline(
+    request: Request,
+    payload: OptimizePipelineExecuteRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessEnvelope[CopilotOptimizePipelineExecuteData]:
+    """Execute exactly one already-approved optimize_pipeline step synchronously."""
+
+    try:
+        execution = await execute_approved_optimization_step(
+            session,
+            execution_id=payload.execution_id,
+            artifact_root=get_settings().artifact_root,
+        )
+    except ExecutionStateError as error:
+        raise AppError(
+            "AGENT_EXECUTION_STATE_CONFLICT",
+            "当前执行状态不允许模型寻优。",
+            status_code=status.HTTP_409_CONFLICT,
+            details={"reason": str(error)},
+        ) from error
+    except AgentDomainError as error:
+        raise AppError(
+            error.code,
+            error.message,
+            status_code=error.status_code,
+            details=error.details,
+        ) from error
+
+    step = next(item for item in execution.step_runs if item.tool_name == "optimize_pipeline")
+    return success(
+        request,
+        CopilotOptimizePipelineExecuteData(
+            execution_id=execution.id,
+            workflow_status=execution.workflow_status,
+            current_version_id=execution.current_version_id,
+            step_id=step.step_id,
+            step_status=step.status,
+            result_payload=step.result_payload,
+            error_code=step.error_code,
+            error_message=step.error_message,
+            processing_run_ids=step.processing_run_ids,
         ),
     )
 
+@router.post(
+    "/copilot/evaluate-model/execute",
+    tags=["Copilot"],
+    summary="Execute the pending saved-model evaluation step",
+    response_model=SuccessEnvelope[CopilotEvaluateModelExecuteData],
+    responses={
+        **ERROR_RESPONSES,
+        409: {"model": ErrorEnvelope, "description": "执行状态不允许模型评价。"},
+    },
+)
+async def execute_copilot_evaluate_model(
+    request: Request,
+    payload: CopilotEvaluateModelExecuteRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessEnvelope[CopilotEvaluateModelExecuteData]:
+    try:
+        execution = await execute_pending_evaluation_step(session, execution_id=payload.execution_id, artifact_root=get_settings().artifact_root)
+    except ExecutionStateError as error:
+        raise AppError("AGENT_EXECUTION_STATE_CONFLICT", "当前执行状态不允许模型评价。", status_code=status.HTTP_409_CONFLICT, details={"reason": str(error)}) from error
+    except AgentDomainError as error:
+        raise AppError(error.code, error.message, status_code=error.status_code, details=error.details) from error
+
+    step = next(item for item in execution.step_runs if item.tool_name == "evaluate_model")
+    return success(request, CopilotEvaluateModelExecuteData(
+        execution_id=execution.id,
+        workflow_status=execution.workflow_status,
+        current_version_id=execution.current_version_id,
+        step_id=step.step_id,
+        step_status=step.status,
+        result_payload=step.result_payload,
+        error_code=step.error_code,
+        error_message=step.error_message,
+        processing_run_ids=step.processing_run_ids,
+    ))
 
 @router.post(
     "/reports/generate",

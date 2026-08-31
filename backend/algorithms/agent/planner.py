@@ -30,6 +30,7 @@ TOOL_WHITELIST: tuple[str, ...] = (
     "clean_data",
     "detect_dynamic_segments",
     "estimate_delays",
+    "apply_lag_compensation",
     "analyze_collinearity",
     "select_variables",
     "fit_arx",
@@ -41,7 +42,13 @@ TOOL_WHITELIST: tuple[str, ...] = (
 
 # Tools whose effect is expensive or destructive enough to need a human decision first.
 CONFIRMATION_REQUIRED: frozenset[str] = frozenset(
-    {"select_variables", "optimize_pipeline", "export_dataset"}
+    {
+        "apply_lag_compensation",
+        "select_variables",
+        "fit_arx",
+        "optimize_pipeline",
+        "export_dataset",
+    }
 )
 
 # Ordering constraints. A tool may only run after everything it depends on.
@@ -52,11 +59,12 @@ TOOL_PREREQUISITES: dict[str, tuple[str, ...]] = {
     "clean_data": ("detect_anomalies",),
     "detect_dynamic_segments": ("profile_dataset",),
     "estimate_delays": ("profile_dataset",),
+    "apply_lag_compensation": ("estimate_delays",),
     "analyze_collinearity": ("profile_dataset",),
     "select_variables": ("analyze_collinearity",),
     "fit_arx": ("profile_dataset",),
-    "evaluate_model": ("fit_arx",),
-    "optimize_pipeline": ("profile_dataset",),
+    "optimize_pipeline": ("fit_arx",),
+    "evaluate_model": ("optimize_pipeline",),
     "generate_report": (),
     "export_dataset": (),
 }
@@ -88,7 +96,7 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
     "delay": ("时滞", "滞后", "纯滞后", "延迟", "delay", "lag", "dead time"),
     "collinearity": ("共线", "相关性", "冗余", "降维", "collinear", "vif", "redundant"),
     "model": ("辨识", "建模", "模型", "arx", "identif", "model"),
-    "optimize": ("寻优", "闭环", "自动优化", "调参", "最佳", "optimi", "closed loop", "tune"),
+    "optimize": ("寻优", "闭环", "优化", "自动优化", "调参", "最佳", "optimi", "optuna", "closed loop", "tune"),
     "report": ("报告", "结论", "解释", "report", "explain"),
     "export": ("导出", "交付", "下载", "export", "deliver"),
 }
@@ -163,9 +171,12 @@ class RuleBasedPlanner:
         def emit(tool: str, parameters: dict[str, Any] | None = None) -> str:
             if tool in emitted:
                 return emitted[tool]
+            prerequisites = TOOL_PREREQUISITES.get(tool, ())
+            if tool == "evaluate_model" and "optimize_pipeline" not in emitted:
+                prerequisites = ("fit_arx",)
             depends = tuple(
                 emitted[prerequisite]
-                for prerequisite in TOOL_PREREQUISITES.get(tool, ())
+                for prerequisite in prerequisites
                 if prerequisite in emitted
             )
             step_id = f"s{len(steps) + 1}"
@@ -195,6 +206,7 @@ class RuleBasedPlanner:
             )
         if intent.wants("delay"):
             emit("estimate_delays", _subset(intent.parameters, ("max_lag",)))
+            emit("apply_lag_compensation")
         if intent.wants("collinearity"):
             emit("analyze_collinearity")
             emit("select_variables")
@@ -206,9 +218,9 @@ class RuleBasedPlanner:
                 )
                 assumptions.append("建模前默认执行质量门控与 D-最优区间优选。")
             emit("fit_arx")
+            if intent.wants("optimize"):
+                emit("optimize_pipeline", _subset(intent.parameters, ("max_trials",)))
             emit("evaluate_model")
-        if intent.wants("optimize"):
-            emit("optimize_pipeline", _subset(intent.parameters, ("max_trials",)))
         if intent.wants("report"):
             emit("generate_report")
         if intent.wants("export"):

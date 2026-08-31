@@ -681,7 +681,19 @@ export type AgentStepStatus =
   | "running"
   | "waiting_confirmation"
   | "completed"
-  | "failed";
+  | "failed"
+  | "cancelled";
+
+export type AgentWorkflowStatus =
+  | "PLANNED"
+  | "RUNNING"
+  | "WAITING_CONFIRMATION"
+  | "WAITING_ASYNC_TASK"
+  | "SUCCEEDED"
+  | "FAILED"
+  | "CANCELLED";
+
+export type AgentConfirmationStatus = "NOT_REQUIRED" | "PENDING" | "APPROVED" | "REJECTED";
 
 export interface ExecutionPlanStep {
   step_id: string;
@@ -724,8 +736,17 @@ export interface AgentStepRun {
   parameters: Record<string, any>;
   summary: string;
   result: Record<string, any>;
-  duration_ms: number;
+  duration_ms: number | null;
   error_code: string | null;
+  error_message?: string | null;
+  processing_run_ids?: string[];
+  input_payload?: Record<string, any>;
+  source_version_id?: string | null;
+  result_version_id?: string | null;
+  confirmation_status?: AgentConfirmationStatus;
+  attempt_count?: number;
+  started_at?: string | null;
+  finished_at?: string | null;
 }
 
 export interface CopilotChatRequest {
@@ -736,7 +757,11 @@ export interface CopilotChatRequest {
 }
 
 export interface CopilotChatResponse {
-  copilot_run_id: string;
+  copilot_run_id: string | null;
+  execution_id: string | null;
+  workflow_status: AgentWorkflowStatus | null;
+  current_version_id: string | null;
+  pending_confirmation_step_id: string | null;
   plan: ExecutionPlan;
   task: TaskResource | null;
   compliance: ComplianceProofData | null;
@@ -751,13 +776,201 @@ export interface CopilotChatResponse {
   llm_fallback_reason: string | null;
 }
 
+export interface LagManualOverride {
+  variable: string;
+  value: number | string;
+}
+
+export type LagOverrideStatus = "VALID" | "WARNING" | "INVALID";
+
+export interface LagOverrideParameterValidation {
+  variable: string;
+  recommended_value: number | null;
+  manual_value: number | string | null;
+  final_value: number | null;
+  status: LagOverrideStatus;
+  issues: string[];
+}
+
+export interface LagOverrideValidationRequest {
+  execution_id: string;
+  step_id: string;
+  manual_overrides: LagManualOverride[];
+}
+
+export interface LagOverrideValidationResponse {
+  recommended_lag_map: Record<string, number>;
+  manual_overrides: Record<string, number | string>;
+  final_lag_map: Record<string, number>;
+  parameter_sources: Record<string, "delay_recommendation" | "manual_override">;
+  per_parameter_validation: LagOverrideParameterValidation[];
+  overall_status: LagOverrideStatus;
+  issues: string[];
+}
+export type FeatureSelectionAction = "keep" | "drop" | "merge" | "review";
+
+export interface FeatureSelectionDecision {
+  variable: string;
+  recommended_action: FeatureSelectionAction;
+  final_action: "keep" | "drop";
+  source: "collinearity_analysis" | "manual_override";
+}
+
+export interface FeatureSelectionValidationRequest {
+  execution_id: string;
+  step_id: string;
+  drop_columns?: string[] | null;
+}
+
+export interface FeatureSelectionValidationResponse {
+  recommended_selection: Record<string, FeatureSelectionAction>;
+  recommended_drop_columns: string[];
+  manual_drop_columns: string[] | null;
+  final_drop_columns: string[];
+  kept_input_columns: string[];
+  selection_sources: Record<string, "collinearity_analysis" | "manual_override">;
+  decisions: FeatureSelectionDecision[];
+  overall_status: "VALID" | "INVALID";
+  issues: string[];
+}
+export interface ArxStructureManualOverrides {
+  na?: number | null;
+  nb?: Record<string, number>;
+}
+
+export interface ArxStructureValidationRequest {
+  execution_id: string;
+  step_id: string;
+  manual_overrides: ArxStructureManualOverrides;
+}
+
+export interface ArxStructureValidationResponse {
+  recommended_structure: Record<string, any>;
+  manual_overrides: Record<string, any>;
+  final_structure: Record<string, any>;
+  structure_sources: Record<string, "structure_recommendation" | "manual_override">;
+  selection_evidence: Record<string, any>;
+  overall_status: "VALID" | "INVALID";
+  issues: string[];
+}
 export interface CopilotConfirmRequest {
   copilot_run_id: string;
   confirmation_id: string;
   approved: boolean;
+  execution_id?: string | null;
+  step_id?: string | null;
   parameter_overrides?: Record<string, any>;
+  manual_overrides?: LagManualOverride[];
+  warning_acknowledged?: boolean;
+  feature_drop_columns?: string[] | null;
+  arx_structure_overrides?: ArxStructureManualOverrides;
   comment?: string | null;
 }
+
+export interface CopilotConfirmResponse {
+  copilot_run_id: string;
+  confirmation_id: string;
+  decision: "approved" | "rejected";
+  execution_id: string;
+  workflow_status: AgentWorkflowStatus;
+  current_version_id?: string | null;
+  current_step_id: string | null;
+  pending_confirmation_step_id: string | null;
+  step_id: string;
+  step_status: string;
+  confirmation_status: AgentConfirmationStatus;
+  result_version_id?: string | null;
+  result_payload?: Record<string, any>;
+  lag_override_validation?: LagOverrideValidationResponse | null;
+  feature_selection_validation?: FeatureSelectionValidationResponse | null;
+  arx_structure_validation?: ArxStructureValidationResponse | null;
+  task: TaskResource | null;
+}
+
+
+export interface PredictionMetrics {
+  mae: number | null;
+  rmse: number | null;
+  r2: number | null;
+  fit: number | null;
+  nrmse: number | null;
+}
+
+export interface SavedArxEvaluationTest {
+  one_step: PredictionMetrics;
+  free_run: PredictionMetrics;
+}
+
+export interface SavedArxEvaluationResult {
+  model_id: string;
+  source_version_id: string;
+  processing_run_id: string;
+  test: SavedArxEvaluationTest;
+}
+
+export interface CopilotStepExecutionResponse {
+  execution_id: string;
+  workflow_status: AgentWorkflowStatus;
+  current_version_id: string | null;
+  step_id: string;
+  step_status: string;
+  result_payload: Record<string, unknown>;
+  error_code: string | null;
+  error_message: string | null;
+  processing_run_ids: string[];
+}
+
+export interface CopilotExecutionStepSnapshot {
+  step_id: string;
+  sequence: number;
+  tool: string;
+  status: string;
+  requires_confirmation: boolean;
+  confirmation_status: string;
+  attempt_count: number;
+  source_version_id: string | null;
+  result_version_id: string | null;
+  input_payload: Record<string, any>;
+  result_payload: Record<string, any>;
+  processing_run_ids: string[];
+  error_code: string | null;
+  error_message: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface CopilotExecutionSnapshot {
+  execution_id: string;
+  copilot_run_id: string | null;
+  dataset_id: string;
+  initial_version_id: string;
+  current_version_id: string;
+  planner_source: string;
+  workflow_status: AgentWorkflowStatus;
+  current_step_id: string | null;
+  pending_confirmation_step_id: string | null;
+  plan: ExecutionPlan;
+  artifacts: Record<string, any>;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+  finished_at: string | null;
+  step_runs: CopilotExecutionStepSnapshot[];
+}
+export interface CopilotEvaluateModelExecuteResponse extends CopilotStepExecutionResponse {}
+
+export interface AgentOptimizationResult {
+  study_id: string;
+  baseline_model_id: string;
+  model_id: string;
+  optimized_model_id: string;
+  source_version_id: string;
+  best_params: Record<string, unknown>;
+  best_value: number | null;
+}
+
+export interface CopilotOptimizePipelineExecuteResponse extends CopilotStepExecutionResponse {}
 
 // Delivery API Types (Phase 10)
 export interface ReportRequest {

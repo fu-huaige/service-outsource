@@ -45,6 +45,7 @@ from algorithms.identifiability.validation import (
     steady_state_gains,
     validate_model,
 )
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dataset import ProcessingRun
@@ -55,6 +56,8 @@ from app.schemas.modeling import (
     ArxMetrics,
     ArxPlotData,
     ArxResidualDiagnostics,
+    ArxSavedModelEvaluationData,
+    ArxTestEvaluationData,
     ModelValidationData,
     PredictionMetrics,
     PriorViolation,
@@ -126,17 +129,9 @@ def fit_arx_core(
 
     structure = _structure(payload, input_columns)
     n_samples = int(np.asarray(output, dtype=float).shape[0])
-    train_end = int(n_samples * payload.train_ratio)
-    val_end = int(n_samples * (payload.train_ratio + payload.validation_ratio))
-    if val_end >= n_samples:
-        raise ModelingDomainError(
-            "PARAMETER_OUT_OF_RANGE",
-            "训练集与验证集比例之和必须小于 1。",
-            details={
-                "train_ratio": payload.train_ratio,
-                "validation_ratio": payload.validation_ratio,
-            },
-        )
+    splits = _split_indices(n_samples, payload)
+    train_end = splits.train_end
+    val_end = splits.val_end
 
     try:
         full = build_regressor(inputs=inputs, output=output, structure=structure)
@@ -244,8 +239,8 @@ def fit_arx_core(
             y_true=[float(full.targets[row]) for row in visible_rows],
             y_pred=[float(predicted[row]) for row in visible_rows],
             residuals=[float(residuals[row]) for row in visible_rows],
-            splits=SplitIndices(train_end=train_end, val_end=val_end, test_end=n_samples),
-            split_indices=SplitIndices(train_end=train_end, val_end=val_end, test_end=n_samples),
+            splits=splits,
+            split_indices=splits,
         ),
         residual_diagnostics=_acf(residuals[train_rows]),
         validation=validation,
@@ -283,7 +278,7 @@ async def fit_arx_on_version(
             error.code, error.message, status_code=error.status_code, details=error.details
         ) from error
 
-    resolved = payload.model_copy(update={"output_column": output_column})
+    resolved = payload.model_copy(update={"input_columns": input_columns, "output_column": output_column})
     result = fit_arx_core(
         inputs={column: series.values[column] for column in input_columns},
         output=series.values[output_column],
@@ -311,10 +306,13 @@ async def fit_arx_on_version(
     artifact_uri = _persist_artifact(
         artifact_root, model_id=model_id, series=series, payload=resolved, result=result
     )
-    await _persist_run(session, model_id=model_id, series=series, payload=resolved, result=result)
+    processing_run_id = await _persist_run(
+        session, model_id=model_id, series=series, payload=resolved, result=result
+    )
 
     return ArxFitData(
         model_id=model_id,
+        processing_run_id=processing_run_id,
         task=completed_task(
             stage="fit_arx",
             message="ARX 辨识、自由仿真评价与先验校验已完成。",
@@ -335,6 +333,189 @@ async def fit_arx_on_version(
         free_run_series=result.free_run_series,
     )
 
+
+@dataclass(frozen=True)
+class SavedArxModel:
+    """A persisted ARX artifact reconstructed without estimating any parameters."""
+
+    model_id: UUID
+    dataset_id: UUID
+    source_version_id: UUID
+    payload: ArxFitRequest
+    structure: ArxStructure
+    theta: FloatArray
+    artifact_uri: str
+
+
+def load_saved_arx_model(*, model_id: UUID, artifact_root: Path) -> SavedArxModel:
+    """Load one persisted ARX artifact and reconstruct its fixed structure and parameters."""
+
+    artifact_uri = (Path("models") / f"{model_id}.json").as_posix()
+    path = artifact_root / artifact_uri
+    if not path.is_file():
+        raise ModelingDomainError(
+            "MODEL_ARTIFACT_NOT_FOUND",
+            "未找到指定的 ARX 模型 artifact。",
+            status_code=404,
+            details={"model_id": str(model_id)},
+        )
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            raise TypeError("artifact root must be an object")
+        stored_model_id = UUID(str(document["model_id"]))
+        source_version_id = UUID(str(document["version_id"]))
+        dataset_id = UUID(str(document["dataset_id"]))
+        payload = ArxFitRequest.model_validate(document["configuration"])
+        coefficients = document["coefficients"]
+        if not isinstance(coefficients, dict):
+            raise TypeError("coefficients must be an object")
+    except (KeyError, TypeError, ValueError, ValidationError, json.JSONDecodeError, OSError) as error:
+        raise ModelingDomainError(
+            "MODEL_ARTIFACT_INVALID",
+            "ARX 模型 artifact 缺少可验证的重放信息。",
+            status_code=422,
+            details={"model_id": str(model_id)},
+        ) from error
+    if stored_model_id != model_id or payload.version_id != source_version_id:
+        raise ModelingDomainError(
+            "MODEL_ARTIFACT_INVALID",
+            "ARX 模型 artifact 的标识或来源版本不一致。",
+            status_code=422,
+            details={"model_id": str(model_id)},
+        )
+    input_columns = list(payload.input_columns)
+    if not input_columns:
+        raise ModelingDomainError(
+            "MODEL_ARTIFACT_INVALID",
+            "ARX 模型 artifact 未保存输入变量顺序。",
+            status_code=422,
+            details={"model_id": str(model_id)},
+        )
+    structure = _structure(payload, input_columns)
+    theta = _theta_from_coefficients(structure, coefficients)
+    return SavedArxModel(
+        model_id=model_id,
+        dataset_id=dataset_id,
+        source_version_id=source_version_id,
+        payload=payload,
+        structure=structure,
+        theta=theta,
+        artifact_uri=artifact_uri,
+    )
+
+
+async def evaluate_saved_arx_model(
+    session: AsyncSession,
+    *,
+    model_id: UUID,
+    artifact_root: Path,
+    expected_source_version_id: UUID | None = None,
+) -> ArxSavedModelEvaluationData:
+    """Evaluate only the held-out Test partition of one already-trained ARX model."""
+
+    saved = load_saved_arx_model(model_id=model_id, artifact_root=artifact_root)
+    if (
+        expected_source_version_id is not None
+        and expected_source_version_id != saved.source_version_id
+    ):
+        raise ModelingDomainError(
+            "MODEL_SOURCE_VERSION_MISMATCH",
+            "请求的来源版本与已保存 ARX 模型不一致。",
+            status_code=409,
+            details={
+                "model_id": str(model_id),
+                "expected_source_version_id": str(expected_source_version_id),
+                "artifact_source_version_id": str(saved.source_version_id),
+            },
+        )
+    try:
+        series = await load_version_series(
+            session,
+            version_id=saved.source_version_id,
+            dataset_id=saved.dataset_id,
+            artifact_root=artifact_root,
+        )
+        input_columns, output_column = series.resolve_columns(
+            input_columns=list(saved.payload.input_columns),
+            output_column=saved.payload.output_column,
+        )
+    except VersionDataError as error:
+        raise ModelingDomainError(
+            error.code, error.message, status_code=error.status_code, details=error.details
+        ) from error
+    if input_columns != saved.payload.input_columns or output_column != saved.payload.output_column:
+        raise ModelingDomainError(
+            "MODEL_ARTIFACT_INVALID",
+            "ARX 模型 artifact 的变量定义与来源版本不一致。",
+            status_code=422,
+            details={"model_id": str(model_id)},
+        )
+
+    run = ProcessingRun(
+        id=uuid4(),
+        dataset_id=series.dataset_id if series.origin == "dataset" else None,
+        source_version_id=saved.source_version_id if series.origin == "dataset" else None,
+        run_type="modeling.arx_evaluation",
+        status="running",
+        parameters={"model_id": str(model_id), "evaluation_scope": "test"},
+        result={},
+        created_at=datetime.now(UTC),
+    )
+    session.add(run)
+    try:
+        inputs = {column: series.values[column] for column in input_columns}
+        output = series.values[output_column]
+        splits = _split_indices(int(np.asarray(output, dtype=float).shape[0]), saved.payload)
+        regressor = build_regressor(inputs=inputs, output=output, structure=saved.structure)
+        test_rows = _partition_rows(
+            regressor,
+            splits.val_end + saved.structure.max_history,
+            splits.test_end,
+        )
+        if test_rows.size == 0:
+            raise ModelingDomainError(
+                "INSUFFICIENT_ROWS",
+                "Test 分区没有可评价的 ARX 样本。",
+                details={"model_id": str(model_id)},
+            )
+        one_step = PredictionMetrics(
+            **_scores(regressor.targets[test_rows], (regressor.features @ saved.theta)[test_rows])
+        )
+        free_run = PredictionMetrics(
+            **_free_run_scores(
+                saved.theta,
+                saved.structure,
+                inputs=inputs,
+                output=output,
+                start=splits.val_end + saved.structure.max_history,
+                stop=splits.test_end,
+            )
+        )
+        test = ArxTestEvaluationData(one_step=one_step, free_run=free_run)
+        run.status = "succeeded"
+        run.result = {
+            "model_id": str(model_id),
+            "test": test.model_dump(mode="json"),
+        }
+        run.finished_at = datetime.now(UTC)
+        await session.commit()
+    except Exception as error:
+        run.status = "failed"
+        run.result = {
+            "model_id": str(model_id),
+            "error_code": error.code if isinstance(error, ModelingDomainError) else "MODEL_EVALUATION_FAILED",
+            "error_message": error.message if isinstance(error, ModelingDomainError) else str(error),
+        }
+        run.finished_at = datetime.now(UTC)
+        await session.commit()
+        raise
+    return ArxSavedModelEvaluationData(
+        model_id=model_id,
+        source_version_id=saved.source_version_id,
+        test=test,
+        processing_run_id=run.id,
+    )
 
 def to_validation_data(
     validation: ModelValidation,
@@ -369,6 +550,54 @@ def _structure(payload: ArxFitRequest, input_columns: list[str]) -> ArxStructure
     except IdentifiabilityError as error:
         raise ModelingDomainError(error.code, error.message, details=error.details) from error
 
+
+def _split_indices(n_samples: int, payload: ArxFitRequest) -> SplitIndices:
+    """Resolve the canonical Train/Validation/Test boundaries for one ARX request."""
+
+    train_end = int(n_samples * payload.train_ratio)
+    val_end = int(n_samples * (payload.train_ratio + payload.validation_ratio))
+    if val_end >= n_samples:
+        raise ModelingDomainError(
+            "PARAMETER_OUT_OF_RANGE",
+            "训练集与验证集比例之和必须小于 1。",
+            details={
+                "train_ratio": payload.train_ratio,
+                "validation_ratio": payload.validation_ratio,
+            },
+        )
+    return SplitIndices(train_end=train_end, val_end=val_end, test_end=n_samples)
+
+
+def _theta_from_coefficients(
+    structure: ArxStructure, coefficients: dict[str, object]
+) -> FloatArray:
+    """Restore theta in the single canonical regressor feature-name order."""
+
+    names = structure.feature_names()
+    missing = [name for name in names if name not in coefficients]
+    unexpected = sorted(set(coefficients) - set(names))
+    if missing or unexpected:
+        raise ModelingDomainError(
+            "MODEL_ARTIFACT_INVALID",
+            "ARX 模型 artifact 的系数与模型结构不一致。",
+            status_code=422,
+            details={"missing": missing, "unexpected": unexpected},
+        )
+    try:
+        theta = np.asarray([float(coefficients[name]) for name in names], dtype=float)
+    except (TypeError, ValueError) as error:
+        raise ModelingDomainError(
+            "MODEL_ARTIFACT_INVALID",
+            "ARX 模型 artifact 含有无效系数。",
+            status_code=422,
+        ) from error
+    if not np.all(np.isfinite(theta)):
+        raise ModelingDomainError(
+            "MODEL_ARTIFACT_INVALID",
+            "ARX 模型 artifact 含有非有限系数。",
+            status_code=422,
+        )
+    return theta
 
 def _orders(
     value: dict[str, int] | list[int],
@@ -632,11 +861,12 @@ async def _persist_run(
     series: VersionSeries,
     payload: ArxFitRequest,
     result: ArxCoreResult,
-) -> None:
+) -> UUID:
     now = datetime.now(UTC)
+    processing_run_id = uuid4()
     session.add(
         ProcessingRun(
-            id=uuid4(),
+            id=processing_run_id,
             dataset_id=series.dataset_id if series.origin == "dataset" else None,
             source_version_id=series.version_id if series.origin == "dataset" else None,
             run_type="modeling.arx",
@@ -673,6 +903,7 @@ async def _persist_run(
         )
     )
     await session.commit()
+    return processing_run_id
 
 
 def _finite(value: float | None) -> float | None:
@@ -684,9 +915,12 @@ def _finite(value: float | None) -> float | None:
 __all__ = [
     "ArxCoreResult",
     "ModelingDomainError",
+    "SavedArxModel",
+    "evaluate_saved_arx_model",
     "fit_arx_core",
     "fit_arx_on_version",
     "is_stable",
+    "load_saved_arx_model",
     "residual_whiteness_ratio",
     "to_validation_data",
 ]

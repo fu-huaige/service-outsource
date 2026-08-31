@@ -1,38 +1,100 @@
-/* IndusOpt industrial workspace tokens and base styles */
+/* IndusOpt Industrial Workspace Theme - Glacier Slate & Blueprint Palette */
 
 :root {
-  /* Industrial Color Palette */
-  --color-primary: #1E6091;
-  --color-primary-hover: #184E77;
-  --color-primary-light: #E8F1F5;
+  /* Brand & Industrial Precision Palette */
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-active: #1e40af;
+  --color-primary-light: #eff6ff;
+  --color-primary-soft: rgba(37, 99, 235, 0.08);
+  --color-primary-border: #bfdbfe;
 
-  --color-success: #2A9D8F;
-  --color-success-bg: #E8F6F4;
+  --color-cyan: #0284c7;
+  --color-cyan-light: #f0f9ff;
+  --color-cyan-border: #bae6fd;
 
-  --color-warning: #E9C46A;
-  --color-warning-dark: #D4A373;
-  --color-warning-bg: #FFF9E6;
+  --color-success: #059669;
+  --color-success-hover: #047857;
+  --color-success-bg: #ecfdf5;
+  --color-success-border: #a7f3d0;
 
-  --color-danger: #E76F51;
-  --color-danger-bg: #FDF0ED;
+  --color-warning: #d97706;
+  --color-warning-dark: #b45309;
+  --color-warning-bg: #fffbeb;
+  --color-warning-border: #fde68a;
 
-  --bg-app: #F4F6F8;
-  --bg-surface: #FFFFFF;
-  --bg-sidebar: #1A212D;
-  --bg-header: #FFFFFF;
-  --bg-subtle: #F8F9FA;
+  --color-danger: #dc2626;
+  --color-danger-hover: #b91c1c;
+  --color-danger-bg: #fef2f2;
+  --color-danger-border: #fecaca;
 
-  --text-primary: #1A1D20;
-  --text-secondary: #5A626A;
-  --text-muted: #8D96A0;
-  --border-light: #E2E7EC;
-  --border-active: #1E6091;
+  /* Surfaces & Backgrounds */
+  --bg-app: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-surface-hover: #f8fafc;
+  --bg-sidebar: #0f172a;
+  --bg-sidebar-active: #1e293b;
+  --bg-header: rgba(255, 255, 255, 0.92);
+  --bg-subtle: #f1f5f9;
+  --bg-muted: #e2e8f0;
 
-  --el-color-primary: #1E6091;
-  --el-color-success: #2A9D8F;
-  --el-color-warning: #D4A373;
-  --el-color-danger: #E76F51;
+  /* Typography */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --text-faint: #94a3b8;
 
+  /* Borders & Dividers */
+  --border-light: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --border-active: #2563eb;
+  --border-radius-sm: 4px;
+  --border-radius-base: 6px;
+  --border-radius-lg: 10px;
+  --border-radius-xl: 14px;
+
+  /* Engineering Blueprint Grid */
+  --workspace-grid: rgba(203, 213, 225, 0.45);
+
+  /* Element Plus Theme Token Overrides */
+  --el-color-primary: #2563eb;
+  --el-color-primary-light-3: #60a5fa;
+  --el-color-primary-light-5: #93c5fd;
+  --el-color-primary-light-7: #bfdbfe;
+  --el-color-primary-light-8: #dbeafe;
+  --el-color-primary-light-9: #eff6ff;
+  --el-color-primary-dark-2: #1d4ed8;
+
+  --el-color-success: #059669;
+  --el-color-success-light-9: #ecfdf5;
+  --el-color-warning: #d97706;
+  --el-color-warning-light-9: #fffbeb;
+  --el-color-danger: #dc2626;
+  --el-color-danger-light-9: #fef2f2;
+  --el-color-info: #64748b;
+  --el-color-info-light-9: #f1f5f9;
+
+  --el-bg-color: #ffffff;
+  --el-bg-color-page: #f8fafc;
+  --el-border-color: #e2e8f0;
+  --el-border-color-light: #f1f5f9;
+  --el-border-color-lighter: #f8fafc;
+  --el-border-radius-base: 6px;
+  --el-border-radius-small: 4px;
+  --el-text-color-primary: #0f172a;
+  --el-text-color-regular: #475569;
+  --el-text-color-secondary: #64748b;
+
+  --el-table-header-bg-color: #f8fafc;
+  --el-table-header-text-color: #475569;
+  --el-table-border-color: #e2e8f0;
+
+  /* Shadows */
+  --shadow-card: 0 1px 3px 0 rgba(15, 23, 42, 0.03), 0 6px 18px -4px rgba(15, 23, 42, 0.05);
+  --shadow-card-hover: 0 4px 6px -1px rgba(15, 23, 42, 0.05), 0 12px 28px -6px rgba(15, 23, 42, 0.09);
+  --shadow-floating: 0 20px 48px -8px rgba(15, 23, 42, 0.1);
+
+  /* Fonts */
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", Consolas, Monaco, monospace;
 }
@@ -65,42 +127,50 @@ select {
   font: inherit;
 }
 
+/* Common Page Header */
 .page-header {
   margin-bottom: 22px;
 }
 
+.page-eyebrow {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-primary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
 .page-header h2 {
-  margin: 3px 0 0;
+  font-size: 24px;
+  font-weight: 800;
   color: var(--text-primary);
-  font-size: 25px;
-  font-weight: 650;
+  line-height: 1.25;
   letter-spacing: -0.02em;
 }
 
 .page-header .subtitle {
-  max-width: 780px;
-  margin-top: 7px;
+  font-size: 14px;
   color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.65;
+  margin-top: 4px;
+  line-height: 1.5;
 }
 
-.page-eyebrow {
-  display: block;
-  color: var(--color-primary);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-}
-
-/* Common Layout Helpers */
+/* Industrial Card Structure */
 .industrial-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-light);
-  border-radius: 10px;
-  padding: 20px;
-  box-shadow: 0 3px 14px rgba(31, 53, 72, 0.045);
+  border-radius: var(--border-radius-lg);
+  padding: 22px;
   margin-bottom: 20px;
+  box-shadow: var(--shadow-card);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.industrial-card:hover {
+  border-color: var(--border-strong);
 }
 
 .industrial-card-header {
@@ -113,201 +183,87 @@ select {
 }
 
 .industrial-card-title {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: 8px;
+  letter-spacing: -0.01em;
 }
 
-.industrial-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-  font-family: var(--font-mono);
-}
-
-.badge-primary {
-  background: var(--color-primary-light);
+.industrial-card-title .el-icon {
   color: var(--color-primary);
 }
 
-.badge-success {
-  background: var(--color-success-bg);
-  color: var(--color-success);
-}
-
-.badge-warning {
-  background: var(--color-warning-bg);
-  color: var(--color-warning-dark);
-}
-
-.badge-danger {
-  background: var(--color-danger-bg);
-  color: var(--color-danger);
-}
-
-.code-inline {
+.font-mono {
   font-family: var(--font-mono);
-  background: var(--bg-subtle);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 13px;
+}
+
+/* Element Plus Custom Polish */
+.el-button--primary {
+  --el-button-bg-color: var(--color-primary);
+  --el-button-border-color: var(--color-primary);
+  --el-button-hover-bg-color: var(--color-primary-hover);
+  --el-button-hover-border-color: var(--color-primary-hover);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.15);
+}
+
+.el-button {
+  border-radius: var(--border-radius-base);
+  font-weight: 600;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.el-card {
+  border-radius: var(--border-radius-lg);
+  border-color: var(--border-light);
+  box-shadow: var(--shadow-card);
+}
+
+.el-table {
+  --el-table-header-bg-color: #f8fafc;
+  --el-table-row-hover-bg-color: #f1f5f9;
+  border-radius: var(--border-radius-base);
+  overflow: hidden;
   border: 1px solid var(--border-light);
 }
 
-@media (max-width: 700px) {
-  .industrial-card {
-    padding: 16px;
-  }
-
-  .industrial-card-header {
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .page-header h2 {
-    font-size: 22px;
-  }
-}
-
-/* Shared parameter-form layout
- *
- * Keep labels beside their controls on desktop, but align every field to the
- * same three-column grid. This replaces content-dependent inline wrapping and
- * the scattered per-control widths that previously made parameter cards look
- * ragged from one row to the next.
- */
-.parameter-form-grid {
-  --parameter-form-label-width: 136px;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-items: start;
-  gap: 16px 24px;
-}
-
-.parameter-form-grid .el-form-item {
-  display: grid;
-  grid-template-columns: var(--parameter-form-label-width) minmax(0, 1fr);
-  align-items: center;
-  min-width: 0;
-  margin: 0;
-}
-
-.parameter-form-grid .el-form-item__label {
-  width: auto !important;
-  height: auto;
-  min-height: 32px;
-  padding: 0 12px 0 0;
-  line-height: 1.35;
-  white-space: normal;
-  text-align: right;
-  justify-content: flex-end;
-}
-
-.parameter-form-grid .el-form-item__content {
-  display: flex;
-  align-items: center;
-  flex-wrap: nowrap;
-  min-width: 0;
-  min-height: 32px;
-  line-height: 1.35;
-}
-
-.parameter-form-grid .el-input,
-.parameter-form-grid .el-input-number,
-.parameter-form-grid .el-select,
-.parameter-form-grid .el-slider {
-  width: 100% !important;
-  min-width: 0;
-}
-
-.parameter-form-grid .el-slider .el-input-number {
-  flex: 0 0 130px;
-  width: 130px !important;
-}
-
-.parameter-form-grid .el-radio-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 0;
-}
-
-.parameter-form-grid .form-span-2 {
-  grid-column: span 2;
-}
-
-.parameter-form-grid .form-span-full,
-.parameter-form-grid .parameter-form-actions,
-.parameter-form-grid .parameter-form-note {
-  grid-column: 1 / -1;
-}
-
-.parameter-form-grid.parameter-form-grid--single {
-  grid-template-columns: minmax(0, 1fr);
-  max-width: 680px;
-}
-
-.parameter-form-grid .parameter-form-actions {
-  display: block;
-  padding-top: 4px;
-}
-
-.parameter-form-grid .parameter-form-actions .el-form-item__content {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.parameter-form-grid .parameter-form-actions .el-button + .el-button {
-  margin-left: 0;
-}
-
-.form-control-suffix {
-  flex: 0 0 auto;
-  margin-left: 8px;
+.el-table th.el-table__cell {
+  font-weight: 700;
   color: var(--text-secondary);
-  white-space: nowrap;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
-@media (max-width: 1400px) {
-  .parameter-form-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.el-tag {
+  font-weight: 600;
+  border-radius: var(--border-radius-sm);
 }
 
-@media (max-width: 900px) {
-  .parameter-form-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 14px;
-  }
+.el-tag--primary {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary-border);
+  color: var(--color-primary);
+}
 
-  .parameter-form-grid .form-span-2 {
-    grid-column: span 1;
-  }
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
 
-  .parameter-form-grid .el-form-item {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
-  }
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
 
-  .parameter-form-grid .el-form-item__label {
-    min-height: 0;
-    padding: 0;
-    text-align: left;
-    justify-content: flex-start;
-  }
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
 
-  .parameter-form-grid .parameter-form-actions .el-form-item__content {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .parameter-form-grid .parameter-form-actions .el-button {
-    width: 100%;
-  }
+::-webkit-scrollbar-track {
+  background: transparent;
 }

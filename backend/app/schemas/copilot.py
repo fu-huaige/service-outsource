@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -22,6 +23,7 @@ class ExecutionPlanStep(Schema):
         "clean_data",
         "detect_dynamic_segments",
         "estimate_delays",
+        "apply_lag_compensation",
         "analyze_collinearity",
         "select_variables",
         "fit_arx",
@@ -82,6 +84,10 @@ class AgentStepRun(Schema):
 
 class CopilotChatData(Schema):
     copilot_run_id: UUID
+    execution_id: UUID | None = None
+    workflow_status: str | None = None
+    current_version_id: UUID | None = None
+    pending_confirmation_step_id: str | None = None
     plan: ExecutionPlan
     task: TaskResource | None = None
     compliance: ComplianceProofData | None = None
@@ -97,11 +103,97 @@ class CopilotChatData(Schema):
     llm_fallback_reason: str | None = None
 
 
+class LagOverrideEntry(Schema):
+    """One explicit human override row, kept as input rather than inferred by the Agent."""
+
+    variable: str = Field(min_length=1, max_length=255)
+    value: Any
+
+
+class LagOverrideParameterValidation(Schema):
+    variable: str
+    recommended_value: int | None = None
+    manual_value: Any | None = None
+    final_value: int | None = None
+    status: Literal["VALID", "WARNING", "INVALID"]
+    issues: list[str] = Field(default_factory=list)
+
+
+class LagOverrideValidationRequest(Schema):
+    execution_id: UUID
+    step_id: str = Field(min_length=1)
+    manual_overrides: list[LagOverrideEntry] = Field(default_factory=list)
+
+
+class LagOverrideValidationData(Schema):
+    recommended_lag_map: dict[str, int]
+    manual_overrides: dict[str, Any]
+    final_lag_map: dict[str, int]
+    parameter_sources: dict[str, Literal["delay_recommendation", "manual_override"]]
+    per_parameter_validation: list[LagOverrideParameterValidation] = Field(default_factory=list)
+    overall_status: Literal["VALID", "WARNING", "INVALID"]
+    issues: list[str] = Field(default_factory=list)
+
+
+class FeatureSelectionValidationRequest(Schema):
+    execution_id: UUID
+    step_id: str = Field(min_length=1)
+    drop_columns: list[str] | None = None
+
+
+class FeatureSelectionDecision(Schema):
+    variable: str
+    recommended_action: Literal["keep", "drop", "merge", "review"]
+    final_action: Literal["keep", "drop"]
+    source: Literal["collinearity_analysis", "manual_override"]
+
+
+class FeatureSelectionValidationData(Schema):
+    recommended_selection: dict[str, Literal["keep", "drop", "merge", "review"]]
+    recommended_drop_columns: list[str]
+    manual_drop_columns: list[str] | None = None
+    final_drop_columns: list[str]
+    kept_input_columns: list[str]
+    selection_sources: dict[str, Literal["collinearity_analysis", "manual_override"]]
+    decisions: list[FeatureSelectionDecision] = Field(default_factory=list)
+    overall_status: Literal["VALID", "INVALID"]
+    issues: list[str] = Field(default_factory=list)
+
+class ArxStructureManualOverrides(Schema):
+    na: Any | None = None
+    nb: dict[str, Any] = Field(default_factory=dict)
+
+
+class ArxStructureValidationRequest(Schema):
+    execution_id: UUID
+    step_id: str = Field(min_length=1)
+    manual_overrides: ArxStructureManualOverrides = Field(
+        default_factory=ArxStructureManualOverrides
+    )
+
+
+class ArxStructureValidationData(Schema):
+    recommended_structure: dict[str, Any]
+    manual_overrides: dict[str, Any]
+    final_structure: dict[str, Any]
+    structure_sources: dict[str, Literal["structure_recommendation", "manual_override"]]
+    selection_evidence: dict[str, Any]
+    overall_status: Literal["VALID", "INVALID"]
+    issues: list[str] = Field(default_factory=list)
+
 class CopilotConfirmRequest(Schema):
     copilot_run_id: UUID
     confirmation_id: str = Field(min_length=1)
     approved: bool
+    execution_id: UUID | None = None
+    step_id: str | None = Field(default=None, min_length=1)
     parameter_overrides: dict[str, Any] = Field(default_factory=dict)
+    manual_overrides: list[LagOverrideEntry] = Field(default_factory=list)
+    warning_acknowledged: bool = False
+    feature_drop_columns: list[str] | None = None
+    arx_structure_overrides: ArxStructureManualOverrides = Field(
+        default_factory=ArxStructureManualOverrides
+    )
     comment: str | None = Field(default=None, max_length=2_000)
 
 
@@ -109,4 +201,82 @@ class CopilotConfirmData(Schema):
     copilot_run_id: UUID
     confirmation_id: str
     decision: Literal["approved", "rejected"]
+    execution_id: UUID
+    workflow_status: str
+    current_version_id: UUID | None = None
+    current_step_id: str | None
+    pending_confirmation_step_id: str | None
+    step_id: str
+    step_status: str
+    confirmation_status: str
+    result_version_id: UUID | None = None
+    result_payload: dict[str, Any] = Field(default_factory=dict)
+    lag_override_validation: LagOverrideValidationData | None = None
+    feature_selection_validation: FeatureSelectionValidationData | None = None
+    arx_structure_validation: ArxStructureValidationData | None = None
     task: TaskResource | None = None
+
+class CopilotStepExecutionData(Schema):
+    execution_id: UUID
+    workflow_status: str
+    current_version_id: UUID | None = None
+    step_id: str
+    step_status: str
+    result_payload: dict[str, Any] = Field(default_factory=dict)
+    error_code: str | None = None
+    error_message: str | None = None
+    processing_run_ids: list[str] = Field(default_factory=list)
+
+
+class CopilotExecutionStepSnapshot(Schema):
+    step_id: str
+    sequence: int
+    tool: str
+    status: str
+    requires_confirmation: bool
+    confirmation_status: str
+    attempt_count: int
+    source_version_id: UUID | None = None
+    result_version_id: UUID | None = None
+    input_payload: dict[str, Any] = Field(default_factory=dict)
+    result_payload: dict[str, Any] = Field(default_factory=dict)
+    processing_run_ids: list[str] = Field(default_factory=list)
+    error_code: str | None = None
+    error_message: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class CopilotExecutionSnapshotData(Schema):
+    execution_id: UUID
+    copilot_run_id: UUID | None = None
+    dataset_id: UUID
+    initial_version_id: UUID
+    current_version_id: UUID
+    planner_source: str
+    workflow_status: str
+    current_step_id: str | None = None
+    pending_confirmation_step_id: str | None = None
+    plan: ExecutionPlan
+    artifacts: dict[str, Any] = Field(default_factory=dict)
+    error_code: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    finished_at: datetime | None = None
+    step_runs: list[CopilotExecutionStepSnapshot] = Field(default_factory=list)
+
+
+class OptimizePipelineExecuteRequest(Schema):
+    execution_id: UUID
+
+
+class CopilotOptimizePipelineExecuteData(CopilotStepExecutionData):
+    pass
+
+class CopilotEvaluateModelExecuteRequest(Schema):
+    execution_id: UUID
+
+
+class CopilotEvaluateModelExecuteData(CopilotStepExecutionData):
+    pass

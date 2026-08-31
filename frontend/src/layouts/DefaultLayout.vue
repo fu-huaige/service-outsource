@@ -1,6 +1,6 @@
 <template>
   <div class="default-layout">
-    <AppHeader @toggle-copilot="isCopilotOpen = !isCopilotOpen" />
+    <AppHeader @open-command="openCmdPalette" />
 
     <div class="layout-body">
       <AppSidebar />
@@ -24,17 +24,10 @@
           <router-view />
         </div>
       </main>
-
-      <el-drawer
-        v-model="isCopilotOpen"
-        title="Agent 工作台"
-        direction="rtl"
-        size="min(420px, 100vw)"
-        :with-header="true"
-      >
-        <CopilotView />
-      </el-drawer>
     </div>
+
+    <!-- Global Command Palette -->
+    <CommandPalette ref="cmdPaletteRef" />
   </div>
 </template>
 
@@ -42,15 +35,19 @@
 import { onBeforeUnmount, ref } from "vue";
 import AppHeader from "../components/AppHeader.vue";
 import AppSidebar from "../components/AppSidebar.vue";
-import CopilotView from "../views/CopilotView.vue";
+import CommandPalette from "../components/CommandPalette.vue";
 
-const isCopilotOpen = ref(false);
 const mainScroller = ref<HTMLElement | null>(null);
+const cmdPaletteRef = ref<{ open: () => void; close: () => void } | null>(null);
 const bounceOffset = ref(0);
 const isRebounding = ref(false);
 let settleTimer: ReturnType<typeof setTimeout> | null = null;
 let reboundTimer: ReturnType<typeof setTimeout> | null = null;
 let touchStartY: number | null = null;
+
+function openCmdPalette() {
+  cmdPaletteRef.value?.open();
+}
 
 const prefersReducedMotion = () =>
   typeof window !== "undefined" &&
@@ -135,16 +132,32 @@ onBeforeUnmount(clearBounceTimers);
 }
 
 .layout-main {
+  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 0;
-  padding: 20px;
+  padding: 24px clamp(20px, 3vw, 36px);
   overflow-y: auto;
   overscroll-behavior-y: contain;
   background-color: var(--bg-app);
 }
 
+.layout-main::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background-image:
+    linear-gradient(var(--workspace-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--workspace-grid) 1px, transparent 1px);
+  background-size: 40px 40px;
+  opacity: 0.5;
+  z-index: 0;
+}
+
 .route-stage {
+  position: relative;
+  z-index: 1;
   min-height: 100%;
   transition: transform 70ms ease-out;
   will-change: transform;

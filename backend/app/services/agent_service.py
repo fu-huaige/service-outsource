@@ -30,6 +30,7 @@ from algorithms.agent.llm_planner import LlmPlanner, PlanOutcome
 from algorithms.agent.planner import PlannedStep, parse_intent
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.agent_execution import AgentExecutionSession
 from app.models.dataset import ProcessingRun
 from app.models.operation_log import OperationLog
 from app.schemas.copilot import (
@@ -43,6 +44,19 @@ from app.schemas.copilot import (
 from app.schemas.modeling import ArxFitRequest
 from app.schemas.optimization import OptimizationStartRequest
 from app.schemas.preprocessing import SegmentRequest
+from app.services.agent_arx_modeling_service import prepare_arx_confirmation
+from app.services.agent_execution_service import (
+    claim_approved_optimization_step,
+    create_execution,
+    get_execution,
+    mark_step_failed,
+    mark_step_succeeded,
+    start_step,
+)
+from app.services.agent_feature_selection_service import prepare_feature_confirmation
+from app.services.agent_lag_apply_service import prepare_lag_confirmation
+from app.services.agent_tool_adapter import AgentToolAdapterError, execute_agent_tool
+from app.services.cleaning_service import CleaningDomainError
 from app.services.contract_stubs import completed_task
 from app.services.modeling_service import ModelingDomainError, fit_arx_core
 from app.services.optimization_service import run_study
@@ -85,6 +99,114 @@ class StepExecution:
     error_code: str | None = None
 
 
+async def execute_approved_optimization_step(
+    session: AsyncSession,
+    *,
+    execution_id: UUID,
+    artifact_root: Path,
+) -> AgentExecutionSession:
+    """Execute one confirmed optimization step once; terminal replays return its snapshot."""
+
+    execution = await get_execution(session, execution_id=execution_id)
+    steps = [step for step in execution.step_runs if step.tool_name == "optimize_pipeline"]
+    if len(steps) != 1:
+        raise AgentDomainError(
+            "OPTIMIZATION_STEP_REQUIRED",
+            "当前执行必须恰好包含一个 optimize_pipeline 步骤。",
+            status_code=409,
+            details={"execution_id": str(execution_id), "count": len(steps)},
+        )
+    optimization = steps[0]
+    if optimization.status in {"SUCCEEDED", "FAILED"}:
+        return execution
+
+    execution, _ = await claim_approved_optimization_step(
+        session, execution_id=execution.id, step_id=optimization.step_id
+    )
+    optimization = next(step for step in execution.step_runs if step.step_id == optimization.step_id)
+    try:
+        result = await execute_agent_tool(
+            session,
+            execution=execution,
+            step=optimization,
+            parameters=dict(optimization.input_payload["parameters"]),
+            artifact_root=artifact_root,
+        )
+    except Exception as error:
+        return await mark_step_failed(
+            session,
+            execution_id=execution.id,
+            step_id=optimization.step_id,
+            error_code=getattr(error, "code", "AGENT_OPTIMIZATION_FAILED"),
+            error_message=getattr(error, "message", str(error)),
+        )
+
+    return await mark_step_succeeded(
+        session,
+        execution_id=execution.id,
+        step_id=optimization.step_id,
+        result_payload=result.result_payload,
+        source_version_id=result.source_version_id,
+        result_version_id=None,
+        processing_run_ids=result.processing_run_ids,
+    )
+
+async def execute_pending_evaluation_step(
+    session: AsyncSession,
+    *,
+    execution_id: UUID,
+    artifact_root: Path,
+) -> AgentExecutionSession:
+    """Execute only the persisted pending evaluate_model step for one execution."""
+
+    execution = await get_execution(session, execution_id=execution_id)
+    evaluation_steps = [step for step in execution.step_runs if step.tool_name == "evaluate_model"]
+    if len(evaluation_steps) != 1:
+        raise AgentDomainError(
+            "EVALUATION_STEP_REQUIRED",
+            "当前执行必须恰好包含一个 evaluate_model 步骤。",
+            status_code=409,
+            details={"execution_id": str(execution_id), "count": len(evaluation_steps)},
+        )
+
+    evaluation = evaluation_steps[0]
+    execution = await start_step(session, execution_id=execution.id, step_id=evaluation.step_id)
+    evaluation = next(step for step in execution.step_runs if step.step_id == evaluation.step_id)
+    if evaluation.status != "RUNNING":
+        raise AgentDomainError(
+            "EVALUATION_STEP_NOT_RUNNING",
+            "模型评价步骤未进入可执行状态。",
+            status_code=409,
+            details={"execution_id": str(execution.id), "step_id": evaluation.step_id},
+        )
+
+    try:
+        result = await execute_agent_tool(
+            session,
+            execution=execution,
+            step=evaluation,
+            parameters=dict(evaluation.input_payload["parameters"]),
+            artifact_root=artifact_root,
+        )
+    except Exception as error:
+        return await mark_step_failed(
+            session,
+            execution_id=execution.id,
+            step_id=evaluation.step_id,
+            error_code=getattr(error, "code", "AGENT_EVALUATION_FAILED"),
+            error_message=getattr(error, "message", str(error)),
+        )
+
+    return await mark_step_succeeded(
+        session,
+        execution_id=execution.id,
+        step_id=evaluation.step_id,
+        result_payload=result.result_payload,
+        source_version_id=result.source_version_id,
+        result_version_id=result.result_version_id,
+        processing_run_ids=result.processing_run_ids,
+    )
+
 async def run_copilot(
     session: AsyncSession,
     *,
@@ -92,12 +214,7 @@ async def run_copilot(
     artifact_root: Path,
     provider: LlmProvider | None = None,
 ) -> CopilotChatData:
-    """Parse, plan, verify and (when the proof passes) execute.
-
-    The LLM proposes the plan when one is configured; the rule-based planner is the floor.
-    Either way the plan is validated identically, so an unreachable model degrades the
-    wording of the answer, never its safety.
-    """
+    """Plan, verify, execute once, and mirror real outcomes into durable workflow state."""
 
     intent = parse_intent(payload.message)
     planner = LlmPlanner(provider or _resolve_provider(), code_version=CODE_VERSION)
@@ -124,10 +241,27 @@ async def run_copilot(
         for step in steps
     ]
     proof = verify_plan(raw_steps, code_version=CODE_VERSION, confirmed_steps=confirmed)
+    execution_plan = ExecutionPlan(
+        goal=payload.message,
+        dataset_id=payload.dataset_id,
+        steps=[
+            ExecutionPlanStep(
+                step_id=step.step_id,
+                tool=step.tool,
+                depends_on=list(step.depends_on),
+                parameters=dict(step.parameters),
+                requires_confirmation=step.requires_confirmation,
+            )
+            for step in steps
+        ],
+        stop_conditions=stop_conditions,
+        assumptions=assumptions,
+    )
 
     run_id = uuid4()
     executions: list[StepExecution] = []
     series: VersionSeries | None = None
+    persistent_execution: AgentExecutionSession | None = None
 
     if proof.passed and payload.active_version_id is not None:
         try:
@@ -141,7 +275,32 @@ async def run_copilot(
             raise AgentDomainError(
                 error.code, error.message, status_code=error.status_code, details=error.details
             ) from error
-        executions = _execute(series, steps, intent.parameters)
+
+        persistent_execution = await create_execution(
+            session,
+            dataset_id=series.dataset_id,
+            initial_version_id=series.version_id,
+            planner_source=outcome.source,
+            plan=execution_plan,
+            compliance_proof=proof,
+            copilot_run_id=run_id,
+        )
+        if _uses_formal_tool_adapter(steps):
+            persistent_execution, executions = await _execute_with_formal_tools(
+                session,
+                execution=persistent_execution,
+                series=series,
+                steps=steps,
+                hints=intent.parameters,
+                artifact_root=artifact_root,
+            )
+        else:
+            executions = _execute(series, steps, intent.parameters)
+            persistent_execution = await _sync_execution_state(
+                session,
+                execution=persistent_execution,
+                executions=executions,
+            )
 
     conclusion = _conclusion(proof, executions, intent.goals)
     await _persist(
@@ -157,9 +316,15 @@ async def run_copilot(
 
     return CopilotChatData(
         copilot_run_id=run_id,
+        execution_id=persistent_execution.id if persistent_execution else None,
+        workflow_status=persistent_execution.workflow_status if persistent_execution else None,
+        current_version_id=persistent_execution.current_version_id if persistent_execution else None,
+        pending_confirmation_step_id=(
+            persistent_execution.pending_confirmation_step_id if persistent_execution else None
+        ),
         plan=ExecutionPlan(
-            goal=payload.message,
-            dataset_id=payload.dataset_id,
+            goal=execution_plan.goal,
+            dataset_id=execution_plan.dataset_id,
             steps=[
                 ExecutionPlanStep(
                     step_id=step.step_id,
@@ -171,8 +336,8 @@ async def run_copilot(
                 )
                 for step in steps
             ],
-            stop_conditions=stop_conditions,
-            assumptions=assumptions,
+            stop_conditions=execution_plan.stop_conditions,
+            assumptions=execution_plan.assumptions,
         ),
         task=completed_task(stage="copilot_plan", message=conclusion),
         compliance=ComplianceProofData(**proof.to_payload()),
@@ -190,13 +355,208 @@ async def run_copilot(
             for execution in executions
         ],
         conclusion=conclusion,
-        executed=bool(executions),
+        executed=any(execution.status != "pending" for execution in executions),
         plan_source=outcome.source,
         llm_provider=outcome.provider,
         llm_model=outcome.model,
         llm_fallback_reason=outcome.fallback_reason,
     )
 
+_FORMAL_ADAPTER_TOOLS = frozenset(
+    {
+        "clean_data",
+        "estimate_delays",
+        "apply_lag_compensation",
+        "analyze_collinearity",
+        "select_variables",
+        "fit_arx",
+        "evaluate_model",
+    }
+)
+_DEFERRED_TOOLS = frozenset({"generate_report", "export_dataset"})
+
+
+def _uses_formal_tool_adapter(steps: list[PlannedStep]) -> bool:
+    return any(step.tool in _FORMAL_ADAPTER_TOOLS for step in steps)
+
+
+async def _execute_with_formal_tools(
+    session: AsyncSession,
+    *,
+    execution: AgentExecutionSession,
+    series: VersionSeries,
+    steps: list[PlannedStep],
+    hints: dict[str, Any],
+    artifact_root: Path,
+) -> tuple[AgentExecutionSession, list[StepExecution]]:
+    """Run a mixed plan once while formal tools resolve the latest persisted Version."""
+
+    try:
+        input_columns, output_column = series.resolve_columns(
+            input_columns=None, output_column=None
+        )
+    except VersionDataError as error:
+        first = steps[0] if steps else None
+        if first is None:
+            return execution, []
+        current = await start_step(session, execution_id=execution.id, step_id=first.step_id)
+        current = await mark_step_failed(
+            session,
+            execution_id=current.id,
+            step_id=first.step_id,
+            error_code=error.code,
+            error_message=error.message,
+        )
+        return current, [
+            StepExecution(
+                step_id=first.step_id,
+                tool=first.tool,
+                status="failed",
+                parameters=dict(first.parameters),
+                summary=error.message,
+                error_code=error.code,
+            )
+        ]
+
+    context: dict[str, Any] = {
+        "input_columns": input_columns,
+        "output_column": output_column,
+        "selected_indices": [],
+        "delays": {column: 0 for column in input_columns},
+        "na": 2,
+        "nb": 2,
+    }
+    current = execution
+    executions: list[StepExecution] = []
+
+    for step in steps:
+        if step.tool in _DEFERRED_TOOLS:
+            executions.append(
+                StepExecution(
+                    step_id=step.step_id,
+                    tool=step.tool,
+                    status="pending",
+                    parameters=dict(step.parameters),
+                    summary="该步骤将在后续专用工作流中执行。",
+                    result={"deferred": True},
+                )
+            )
+            break
+
+        confirmation_input: dict[str, Any] | None = None
+        if step.tool == "apply_lag_compensation":
+            confirmation_input = await prepare_lag_confirmation(current, step_id=step.step_id)
+        elif step.tool == "select_variables":
+            confirmation_input = await prepare_feature_confirmation(
+                current, step_id=step.step_id
+            )
+        elif step.tool == "fit_arx":
+            confirmation_input = await prepare_arx_confirmation(
+                session,
+                current,
+                step_id=step.step_id,
+                artifact_root=artifact_root,
+            )
+
+        current = await start_step(
+            session,
+            execution_id=current.id,
+            step_id=step.step_id,
+            input_payload_update=confirmation_input,
+        )
+        persisted_step = next(item for item in current.step_runs if item.step_id == step.step_id)
+        if step.requires_confirmation:
+            executions.append(
+                StepExecution(
+                    step_id=step.step_id,
+                    tool=step.tool,
+                    status="waiting_confirmation",
+                    parameters=dict(step.parameters),
+                    summary="高影响操作，等待人工确认后执行。",
+                    result=confirmation_input or {},
+                )
+            )
+            break
+
+        started = time.perf_counter()
+        try:
+            if step.tool in _FORMAL_ADAPTER_TOOLS:
+                tool_result = await execute_agent_tool(
+                    session,
+                    execution=current,
+                    step=persisted_step,
+                    parameters=dict(step.parameters),
+                    artifact_root=artifact_root,
+                )
+                result = dict(tool_result.result_payload)
+                summary = tool_result.summary
+                current = await mark_step_succeeded(
+                    session,
+                    execution_id=current.id,
+                    step_id=step.step_id,
+                    result_payload=result,
+                    source_version_id=tool_result.source_version_id,
+                    result_version_id=tool_result.result_version_id,
+                    processing_run_ids=tool_result.processing_run_ids,
+                )
+            else:
+                summary, result = _dispatch(step, series, context, hints)
+                if result.get("deferred"):
+                    raise AgentDomainError(
+                        "UNEXPECTED_DEFERRED_AGENT_TOOL",
+                        f"持久 Agent 执行器遇到未声明的 deferred 工具：{step.tool}",
+                        status_code=500,
+                    )
+                current = await mark_step_succeeded(
+                    session,
+                    execution_id=current.id,
+                    step_id=step.step_id,
+                    result_payload={
+                        "summary": summary,
+                        "result": dict(result),
+                    },
+                )
+            executions.append(
+                StepExecution(
+                    step_id=step.step_id,
+                    tool=step.tool,
+                    status="completed",
+                    parameters=dict(step.parameters),
+                    summary=summary,
+                    result=result,
+                    duration_ms=(time.perf_counter() - started) * 1000.0,
+                )
+            )
+        except (
+            AgentToolAdapterError,
+            CleaningDomainError,
+            SegmentDomainError,
+            ModelingDomainError,
+            AnalysisDomainError,
+            VersionDataError,
+        ) as error:
+            error_code = getattr(error, "code", "AGENT_STEP_FAILED")
+            error_message = getattr(error, "message", str(error))
+            current = await mark_step_failed(
+                session,
+                execution_id=current.id,
+                step_id=step.step_id,
+                error_code=error_code,
+                error_message=error_message,
+            )
+            executions.append(
+                StepExecution(
+                    step_id=step.step_id,
+                    tool=step.tool,
+                    status="failed",
+                    parameters=dict(step.parameters),
+                    summary=error_message,
+                    duration_ms=(time.perf_counter() - started) * 1000.0,
+                    error_code=error_code,
+                )
+            )
+            break
+    return current, executions
 
 def _execute(
     series: VersionSeries,
@@ -242,12 +602,12 @@ def _execute(
                     summary="高影响操作，等待人工确认后执行。",
                 )
             )
-            continue
+            return executions
 
         started = time.perf_counter()
         try:
             summary, result = _dispatch(step, series, context, hints)
-            status = "completed"
+            status = "pending" if result.get("deferred") else "completed"
             error_code = None
         except (SegmentDomainError, ModelingDomainError, AnalysisDomainError) as error:
             summary, result, status, error_code = error.message, {}, "failed", error.code
@@ -266,10 +626,62 @@ def _execute(
                 error_code=error_code,
             )
         )
-        if status == "failed":
+        if status in {"failed", "pending"}:
             break
     return executions
 
+
+async def _sync_execution_state(
+    session: AsyncSession,
+    *,
+    execution: AgentExecutionSession,
+    executions: list[StepExecution],
+) -> AgentExecutionSession:
+    """Mirror executor outcomes without dispatching a tool a second time."""
+
+    current = execution
+    for executed in executions:
+        if executed.status == "pending":
+            break
+
+        current = await start_step(
+            session,
+            execution_id=current.id,
+            step_id=executed.step_id,
+        )
+        if executed.status == "waiting_confirmation":
+            break
+
+        result_payload = {
+            "summary": executed.summary,
+            "result": dict(executed.result),
+            "duration_ms": executed.duration_ms,
+            "error_code": executed.error_code,
+        }
+        if executed.status == "completed":
+            current = await mark_step_succeeded(
+                session,
+                execution_id=current.id,
+                step_id=executed.step_id,
+                result_payload=result_payload,
+            )
+        elif executed.status == "failed":
+            current = await mark_step_failed(
+                session,
+                execution_id=current.id,
+                step_id=executed.step_id,
+                error_code=executed.error_code or "AGENT_STEP_FAILED",
+                error_message=executed.summary,
+                result_payload=result_payload,
+            )
+            break
+        else:
+            raise AgentDomainError(
+                "INVALID_AGENT_STEP_STATUS",
+                f"Agent 执行器返回了无法持久化的步骤状态：{executed.status}",
+                status_code=500,
+            )
+    return current
 
 def _dispatch(
     step: PlannedStep,
@@ -463,6 +875,20 @@ def _resolve_provider() -> LlmProvider:
     return build_effective_llm_provider()
 
 
+def _processing_run_status(proof: ComplianceProof, executions: list[StepExecution]) -> str:
+    """Summarise the actual executor state without calling an incomplete run successful."""
+
+    if not proof.passed:
+        return "rejected"
+    if any(execution.status == "failed" for execution in executions):
+        return "failed"
+    if any(execution.status == "waiting_confirmation" for execution in executions):
+        return "waiting_confirmation"
+    if any(execution.status == "pending" for execution in executions):
+        return "running"
+    return "succeeded"
+
+
 async def _persist(
     session: AsyncSession,
     *,
@@ -477,13 +903,15 @@ async def _persist(
     """Persist the full audit trail: request, proof, every step's input and output."""
 
     now = datetime.now(UTC)
+    run_status = _processing_run_status(proof, executions)
+    finished_at = None if run_status in {"waiting_confirmation", "running"} else now
     session.add(
         ProcessingRun(
             id=run_id,
             dataset_id=series.dataset_id if series and series.origin == "dataset" else None,
             source_version_id=series.version_id if series and series.origin == "dataset" else None,
             run_type="agent.copilot",
-            status="succeeded" if proof.passed else "rejected",
+            status=run_status,
             parameters=payload.model_dump(mode="json"),
             result={
                 "plan_source": plan_source,
@@ -504,19 +932,20 @@ async def _persist(
                 ],
             },
             created_at=now,
-            finished_at=now,
+            finished_at=finished_at,
         )
     )
     session.add(
         OperationLog(
             id=uuid4(),
-            event_type="agent.copilot.completed",
+            event_type=f"agent.copilot.{run_status}",
             subject_id=str(payload.dataset_id) if payload.dataset_id else str(run_id),
             payload_json=json.dumps(
                 {
                     "copilot_run_id": str(run_id),
                     "message": payload.message,
                     "compliance_passed": proof.passed,
+                    "run_status": run_status,
                     "proof_id": proof.proof_id,
                     "executed_steps": len(executions),
                     "plan_source": plan_source,

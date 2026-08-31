@@ -1,84 +1,111 @@
 <template>
   <div class="cleaning-view">
-    <div class="page-header">
-      <span class="page-eyebrow">预处理与优选</span>
-      <h2>时间规整与清洗</h2>
-      <p class="subtitle">消除采样不均匀、补全缺失值并过滤尖峰异常点，派生可信数据版本</p>
+    <!-- Top Stage Header Navigation -->
+    <div class="pipeline-stage-nav">
+      <div class="stage-badge font-mono">STAGE 02 · DATA CLEANING LAB</div>
+      <div class="stage-links">
+        <span class="stage-link active">02 时间清洗</span>
+        <span class="stage-sep">›</span>
+        <span class="stage-link" @click="$router.push('/preprocessing/segmentation')">03 D-最优优选</span>
+        <span class="stage-sep">›</span>
+        <span class="stage-link" @click="$router.push('/preprocessing/delay')">04 时滞对齐</span>
+        <span class="stage-sep">›</span>
+        <span class="stage-link" @click="$router.push('/preprocessing/collinearity')">05 VIF 降维</span>
+      </div>
     </div>
 
-    <div class="cleaning-layout">
-      <!-- Config Panel -->
-      <div class="industrial-card form-card">
-        <div class="industrial-card-header">
-          <div class="industrial-card-title">
-            <el-icon><Operation /></el-icon> 清洗规整算法参数
-          </div>
-        </div>
-
-        <el-form :model="form" class="parameter-form-grid">
-          <div class="source-version-row parameter-form-note">
-            <div class="source-version-label">源数据版本</div>
-            <div class="source-version-content">
-              <div class="source-version-primary">
-                <el-tag size="small" type="info" effect="plain">本次清洗输入</el-tag>
-                <template v-if="sourceVersion">
-                  <span class="source-version-name">{{ sourceVersion.name }}</span>
-                  <span class="code-inline source-version-id">{{ sourceVersion.id }}</span>
-                </template>
-                <span v-else class="source-version-pending">{{ sourceLoadMessage }}</span>
-                <span class="source-version-note">清洗后将生成新版本，源版本不会被覆盖。</span>
-              </div>
-            </div>
-          </div>
-
-          <el-form-item label="重采样周期 Ts">
-            <el-input-number v-model="form.target_sample_period_seconds" :min="0.1" :max="60" :step="0.5" />
-            <span class="form-control-suffix">秒 (s)</span>
-          </el-form-item>
-
-          <el-form-item label="缺失值插值算法" class="form-span-2">
-            <el-radio-group v-model="form.interpolation">
-              <el-radio label="linear">线性插值</el-radio>
-              <el-radio label="forward_fill">前向填充</el-radio>
-              <el-radio label="backward_fill">后向填充</el-radio>
-            </el-radio-group>
-          </el-form-item>
-
-          <el-form-item label="异常值检测算法">
-            <el-select v-model="form.anomaly_detector">
-              <el-option label="Hampel Filter (推荐)" value="hampel" />
-              <el-option label="IQR 四分位距" value="iqr" />
-              <el-option label="Z-Score 阈值" value="z_score" />
-            </el-select>
-          </el-form-item>
-
-          <el-form-item label="Hampel 滑窗 k" v-if="form.anomaly_detector === 'hampel'">
-            <el-input-number v-model="form.hampel_window" :min="3" :max="21" :step="2" />
-          </el-form-item>
-
-          <el-form-item class="parameter-form-actions">
-            <el-button type="primary" :loading="loading" :disabled="!sourceVersion || loading" icon="MagicStick" @click="handleClean">
-              执行清洗并生成新版本 V1_Cleaned
-            </el-button>
-          </el-form-item>
-        </el-form>
-
-        <el-alert v-if="errorMessage" type="error" :title="errorMessage" :closable="false" show-icon>
-          <ul v-if="validationIssues.length" class="validation-issues">
-            <li v-for="issue in validationIssues" :key="issue">{{ issue }}</li>
-          </ul>
-        </el-alert>
+    <!-- Page Header with Inline Dataset Pill -->
+    <div class="cleaning-hero-bar">
+      <div>
+        <span class="page-eyebrow font-mono">EQUISPACED RESAMPLING & 3-SIGMA TRIAGE</span>
+        <h2>时间规整与清洗实验室</h2>
+        <p class="subtitle">消除采样不均匀、补全缺失值并过滤尖峰异常点，派生可信基准版本 V1_Cleaned</p>
       </div>
 
-      <!-- Comparison Chart Card -->
-      <div class="industrial-card result-card" v-if="cleanedData">
-        <div class="industrial-card-header">
-          <div class="industrial-card-title">
-              <el-icon><DataAnalysis /></el-icon> 清洗前后对比
-          </div>
-          <el-tag type="success">已修复 {{ cleanedData.total_cleaned_points }} 个唯一数据单元格</el-tag>
+      <div class="source-hero-badge" v-if="sourceVersion">
+        <div class="badge-top font-mono">
+          <span class="badge-dot"></span>
+          <span>源数据版本 (SOURCE)</span>
+          <el-tag size="small" type="primary" effect="light">本次清洗输入</el-tag>
         </div>
+        <div class="badge-name">{{ sourceVersion.name }}</div>
+        <div class="badge-hash font-mono">{{ sourceVersion.id }}</div>
+      </div>
+      <div class="source-hero-badge pending" v-else>
+        <span class="font-mono">源数据版本</span>
+        <p>{{ sourceLoadMessage }}</p>
+      </div>
+    </div>
 
+    <!-- FORMAT 1: Horizontal High-Density Control Strip (横向参数控制中枢) -->
+    <section class="cleaning-toolbar industrial-card">
+      <div class="toolbar-section">
+        <span class="tb-label font-mono">重采样周期 Ts (s)</span>
+        <el-input-number v-model="form.target_sample_period_seconds" :min="0.1" :max="60" :step="0.5" size="default" />
+      </div>
+
+      <div class="tb-divider"></div>
+
+      <div class="toolbar-section">
+        <span class="tb-label font-mono">异常值检测算法</span>
+        <el-select v-model="form.anomaly_detector" size="default" style="width: 190px">
+          <el-option label="Hampel Filter (3σ 稳健)" value="hampel" />
+          <el-option label="IQR 四分位距" value="iqr" />
+          <el-option label="Z-Score 阈值" value="z_score" />
+        </el-select>
+      </div>
+
+      <div class="tb-divider" v-if="form.anomaly_detector === 'hampel'"></div>
+
+      <div class="toolbar-section" v-if="form.anomaly_detector === 'hampel'">
+        <span class="tb-label font-mono">Hampel 滑窗 k</span>
+        <el-input-number v-model="form.hampel_window" :min="3" :max="21" :step="2" size="default" />
+      </div>
+
+      <div class="tb-divider"></div>
+
+      <div class="toolbar-section">
+        <span class="tb-label font-mono">缺失值插值策略</span>
+        <el-select v-model="form.interpolation" size="default" style="width: 170px">
+          <el-option label="线性插值 (Linear)" value="linear" />
+          <el-option label="前向填充 (Forward)" value="forward_fill" />
+          <el-option label="后向填充 (Backward)" value="backward_fill" />
+        </el-select>
+      </div>
+
+      <div class="tb-actions">
+        <el-button
+          type="primary"
+          size="default"
+          :loading="loading"
+          :disabled="!sourceVersion || loading"
+          icon="MagicStick"
+          @click="handleClean"
+        >
+          执行规整并派生 V1_Cleaned
+        </el-button>
+      </div>
+    </section>
+
+    <el-alert v-if="errorMessage" type="error" :title="errorMessage" :closable="false" show-icon>
+      <ul v-if="validationIssues.length" class="validation-issues">
+        <li v-for="issue in validationIssues" :key="issue">{{ issue }}</li>
+      </ul>
+    </el-alert>
+
+    <!-- FORMAT 1: Full-Width Dual-Track Waveform Inspection Deck (全宽双轨波形对账) -->
+    <section class="industrial-card waveform-inspection-card">
+      <div class="industrial-card-header">
+        <div class="industrial-card-title">
+          <el-icon><DataAnalysis /></el-icon>
+          <span>多通道时序规整波形对比 (RAW VS CLEANED)</span>
+        </div>
+        <div class="header-pills" v-if="cleanedData">
+          <el-tag type="success" effect="light" class="font-mono">已修复 {{ cleanedData.total_cleaned_points }} 个唯一数据单元格</el-tag>
+        </div>
+      </div>
+
+      <div v-if="cleanedData">
         <el-alert
           class="cleaning-summary"
           type="success"
@@ -86,13 +113,41 @@
           :closable="false"
           show-icon
         />
+        <ChartContainer :options="compareChartOptions" height="380px" />
+      </div>
 
-        <ChartContainer :options="compareChartOptions" height="360px" />
+      <div class="clean-empty-state" v-else>
+        <div class="clean-empty-icon">
+          <el-icon><Operation /></el-icon>
+        </div>
+        <h4>等待清洗触发</h4>
+        <p>在上方工具栏调整重采样周期与 3σ 滤波参数，点击「执行规整」在此生成高分辨率对账波形。</p>
+      </div>
+    </section>
 
-        <div style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 12px">
-          <el-button type="success" icon="ArrowRight" @click="$router.push('/preprocessing/segmentation')">
-            下一步: 动态响应区间优选 ->
-          </el-button>
+    <!-- FORMAT 1: Bottom 3-Card Telemetry Triage Strip (底部修复三联卡) -->
+    <div class="triage-cards-grid">
+      <div class="triage-card industrial-card">
+        <div class="triage-num font-mono">01</div>
+        <div class="triage-content">
+          <div class="triage-title font-mono">HAMPEL 3-SIGMA FILTER</div>
+          <div class="triage-desc">计算滑窗中位数绝对差 (MAD)，自适应截断偏离 3σ 的高频孤立尖峰，避免极大异常值拉偏最小二乘超平面。</div>
+        </div>
+      </div>
+
+      <div class="triage-card industrial-card">
+        <div class="triage-num font-mono">02</div>
+        <div class="triage-content">
+          <div class="triage-title font-mono">EQUISPACED RESAMPLING</div>
+          <div class="triage-desc">重构严格单调递增的等间隔时间轴，统一多源 DCS 采样率，为后续差分方程辨识提供稳定的时间步长基准。</div>
+        </div>
+      </div>
+
+      <div class="triage-card industrial-card next-triage-card" @click="$router.push('/preprocessing/segmentation')">
+        <div class="triage-num font-mono">03</div>
+        <div class="triage-content">
+          <div class="triage-title font-mono">NEXT STEP · D-OPTIMAL</div>
+          <div class="triage-desc">清洗数据已固化至当前资产树。点击直接进入质量门控与 D-最优高动态区间优选 →</div>
         </div>
       </div>
     </div>
@@ -102,7 +157,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
-import { Operation, MagicStick, DataAnalysis, ArrowRight } from "@element-plus/icons-vue";
+import { Operation, MagicStick, DataAnalysis } from "@element-plus/icons-vue";
 import ChartContainer from "../components/ChartContainer.vue";
 import { cleanDataset } from "../api/preprocessing";
 import { getDatasetDetail, getDatasetVersions } from "../api/datasets";
@@ -141,7 +196,10 @@ const queryValue = (name: "dataset_id" | "version_id") => {
 const loadSourceVersion = async () => {
   const selectedDataset = datasetStore.activeDataset;
   const datasetId = queryValue("dataset_id") || selectedDataset?.id;
-  const versionId = queryValue("version_id") || selectedDataset?.version_id || selectedDataset?.latest_version_id;
+  const versionId =
+    queryValue("version_id") ||
+    selectedDataset?.version_id ||
+    selectedDataset?.latest_version_id;
   if (!datasetId || !versionId) {
     sourceLoadMessage.value = "请从数据资产中心或数据集详情页选择源数据版本。";
     return;
@@ -160,9 +218,10 @@ const loadSourceVersion = async () => {
     sourceVersion.value = version;
     datasetStore.setActiveDataset(dataset);
   } catch (error) {
-    sourceLoadMessage.value = error instanceof ApiError
-      ? `源版本加载失败 [${error.code}]：${error.message}`
-      : "源版本加载失败，请确认后端服务和数据资产状态。";
+    sourceLoadMessage.value =
+      error instanceof ApiError
+        ? `源版本加载失败 [${error.code}]：${error.message}`
+        : "源版本加载失败，请确认后端服务和数据资产状态。";
   }
 };
 
@@ -211,23 +270,23 @@ const compareChartOptions = computed(() => {
 
   return {
     tooltip: { trigger: "axis" },
-    legend: { data: ["原始序列", "清洗后序列"] },
-    grid: { left: "3%", right: "4%", bottom: "10%", containLabel: true },
+    legend: { data: ["原始序列 (Raw)", "清洗后序列 (Cleaned)"], top: "2%" },
+    grid: { left: "3%", right: "4%", bottom: "8%", top: "14%", containLabel: true },
     xAxis: { type: "category", data: xData },
     yAxis: { type: "value" },
     series: [
       {
-        name: "原始序列",
+        name: "原始序列 (Raw)",
         type: "line",
-        color: "#E76F51",
-        lineStyle: { type: "dashed", width: 1 },
+        color: "#f43f5e",
+        lineStyle: { type: "dashed", width: 1.5 },
         data: cleanedData.value.raw_series,
       },
       {
-        name: "清洗后序列",
+        name: "清洗后序列 (Cleaned)",
         type: "line",
-        color: "#1E6091",
-        lineStyle: { width: 2 },
+        color: "#2563eb",
+        lineStyle: { width: 2.2 },
         data: cleanedData.value.cleaned_series,
       },
     ],
@@ -259,105 +318,275 @@ onMounted(loadSourceVersion);
 </script>
 
 <style scoped>
-.page-header {
-  margin-bottom: 20px;
+.cleaning-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.subtitle {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-top: 4px;
-}
-
-.source-version-row {
-  display: grid;
-  grid-template-columns: var(--parameter-form-label-width) minmax(0, 1fr);
-  align-items: start;
-  gap: 12px;
-  padding: 2px 0 16px;
-  border-bottom: 1px dashed var(--border-light);
-}
-
-.source-version-label {
-  padding-right: 12px;
-  color: var(--text-secondary);
-  line-height: 28px;
-  text-align: right;
-}
-
-.source-version-content {
-  min-width: 0;
-}
-
-.source-version-primary {
+/* Stage Nav */
+.pipeline-stage-nav {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  gap: 14px;
+  padding: 8px 14px;
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  font-size: 11px;
+}
+
+.stage-badge {
+  font-weight: 800;
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+
+.stage-links {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  min-height: 28px;
+  font-weight: 600;
 }
 
-.source-version-name {
-  font-weight: 500;
+.stage-link {
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.16s ease;
 }
 
-.source-version-id {
-  max-width: min(100%, 520px);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.stage-link:hover {
+  color: var(--color-primary);
 }
 
-.source-version-pending,
-.source-version-note {
-  color: var(--text-secondary);
+.stage-link.active {
+  color: var(--text-primary);
+  font-weight: 700;
+  cursor: default;
+}
+
+.stage-sep {
+  color: var(--text-faint);
+}
+
+/* Hero Bar */
+.cleaning-hero-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.source-hero-badge {
+  padding: 10px 16px;
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 260px;
+}
+
+.badge-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #059669;
+}
+
+.badge-name {
   font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
-.source-version-note {
-  margin-left: 2px;
-  padding-left: 10px;
-  border-left: 1px solid var(--border-light);
+.badge-hash {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.source-hero-badge.pending {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* Format 1: Horizontal Toolbar */
+.cleaning-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 16px 20px;
+  background: #ffffff;
+  border-radius: 10px;
+  margin-bottom: 0;
+  flex-wrap: wrap;
+}
+
+.toolbar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tb-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.tb-divider {
+  width: 1px;
+  height: 38px;
+  background: var(--border-light);
+}
+
+.tb-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: flex-end;
+  padding-top: 18px;
+}
+
+/* Full-width Waveform Deck */
+.waveform-inspection-card {
+  padding: 20px;
+  background: #ffffff;
+  border-radius: 12px;
+  margin-bottom: 0;
+}
+
+.clean-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 70px 20px;
+  text-align: center;
+}
+
+.clean-empty-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 12px;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin-bottom: 12px;
+}
+
+.clean-empty-state h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.clean-empty-state p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  max-width: 440px;
+}
+
+/* 3-Card Triage */
+.triage-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.triage-card {
+  display: flex;
+  gap: 14px;
+  padding: 16px 18px;
+  background: #ffffff;
+  border-radius: 10px;
+  margin-bottom: 0;
+}
+
+.triage-num {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.triage-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.triage-title {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: 0.04em;
+}
+
+.triage-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
   line-height: 1.5;
-  white-space: nowrap;
+}
+
+.next-triage-card {
+  cursor: pointer;
+  border-color: var(--color-primary-border);
+  background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
+  transition: all 0.2s ease;
+}
+
+.next-triage-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.12);
 }
 
 .validation-issues {
-  margin: 8px 0 0;
-  padding-left: 20px;
+  margin: 6px 0 0;
+  padding-left: 16px;
+  font-size: 12px;
 }
 
-.cleaning-summary {
-  margin-bottom: 16px;
-}
-
-.cleaning-layout {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-@media (max-width: 900px) {
-  .source-version-row {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
+@media (max-width: 1000px) {
+  .cleaning-toolbar {
+    flex-direction: column;
+    align-items: stretch;
   }
-
-  .source-version-label {
-    padding-right: 0;
-    line-height: 1.5;
-    text-align: left;
+  .tb-divider {
+    display: none;
   }
-
-  .source-version-primary {
-    align-items: flex-start;
-  }
-
-  .source-version-note {
+  .tb-actions {
     margin-left: 0;
-    padding-left: 0;
-    border-left: 0;
-    white-space: normal;
+    padding-top: 0;
+  }
+  .triage-cards-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

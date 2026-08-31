@@ -26,6 +26,8 @@ class OptimizationStudy(Base):
     best_trial_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     best_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     best_params: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    baseline_model_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    optimized_model_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
     fingerprint: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     # Cache-hit and pruning statistics; the phase-8 acceptance criteria are measured here.
     statistics: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)

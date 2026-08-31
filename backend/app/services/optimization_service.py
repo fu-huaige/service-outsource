@@ -14,8 +14,8 @@ Three things make it practical rather than merely correct:
 * **Strategy memory.** A finished study is stored against a profile fingerprint, and a new
   study on similar data enqueues those parameters as its first trials.
 
-Test data never enters the objective. The best configuration is frozen first, and only then
-are test metrics computed for reporting.
+Test data never enters the objective. The best configuration is frozen first and persisted as
+a formal model without opening the held-out Test split.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.dataset import ProcessingRun
 from app.models.operation_log import OperationLog
 from app.models.optimization import OptimizationStudy, OptimizationTrialRecord, StrategyMemory
-from app.schemas.modeling import ArxFitRequest
+from app.schemas.modeling import ArxFitData, ArxFitRequest
 from app.schemas.optimization import (
     BaselineEvaluation,
     FinalTestEvaluation,
@@ -56,7 +56,12 @@ from app.schemas.preprocessing import SegmentRequest
 from app.services.contract_stubs import completed_task, queued_task
 from app.services.evaluation_policy import DEFAULT_BASELINE_CONFIG
 from app.services.job_queue import submit_optimization
-from app.services.modeling_service import ArxCoreResult, ModelingDomainError, fit_arx_core
+from app.services.modeling_service import (
+    ArxCoreResult,
+    ModelingDomainError,
+    fit_arx_core,
+    fit_arx_on_version,
+)
 from app.services.segment_service import SegmentDomainError, run_segment_selection
 from app.services.version_data import VersionDataError, VersionSeries, load_version_series
 
@@ -153,6 +158,35 @@ class EvaluationOutcome:
     best_trial_number: int | None = None
 
 
+@dataclass(frozen=True)
+class OptimizationStudyExecution:
+    """One completed formal study, including the runs needed by an Agent step."""
+
+    study_id: UUID
+    source_version_id: UUID
+    statistics: dict[str, Any]
+    best_params: dict[str, Any]
+    best_value: float | None
+    baseline_processing_run_id: UUID
+    optimized_model_id: UUID | None
+    optimized_model_processing_run_id: UUID | None
+
+
+@dataclass(frozen=True)
+class AgentOptimizationStudyResult:
+    """The compact, provenance-complete result of the Agent-only inline entry."""
+
+    study_id: UUID
+    status: str
+    source_version_id: UUID
+    baseline_model_id: UUID
+    optimized_model_id: UUID
+    best_params: dict[str, Any]
+    best_value: float | None
+    processing_run_ids: list[str]
+    error_code: str | None = None
+    error_message: str | None = None
+
 def objective_value(result: ArxCoreResult) -> tuple[float, dict[str, Any]]:
     """Score a candidate model the way an APC engineer would rank it.
 
@@ -243,7 +277,7 @@ def run_baseline(
                     train_ratio=payload.train_ratio,
                     validation_ratio=payload.validation_ratio,
                     training_sample_indices=selection.selected_sample_indices,
-                    evaluate_test=True,
+                    evaluate_test=False,
                 ),
                 input_columns=input_columns,
             )
@@ -267,12 +301,18 @@ def run_baseline(
                 }
             )
             result = fit(estimator="ridge", ridge_alpha=BASELINE_RIDGE_FALLBACK_ALPHA)
-        return _evaluation_from_result(
+        evaluation = _evaluation_from_result(
             result,
             parameters=parameters,
             started_at=started_at,
             started=started,
+            require_test=False,
         )
+        validation_objective, _ = objective_value(result)
+        if not np.isfinite(validation_objective):
+            evaluation.status = "failed"
+            evaluation.error_code = "BASELINE_VALIDATION_REJECTED"
+        return evaluation
     except (SegmentDomainError, ModelingDomainError) as error:
         return _failed_evaluation(
             parameters=parameters,
@@ -281,6 +321,61 @@ def run_baseline(
             error_code=error.code,
         )
 
+
+
+async def _persist_optimized_model(
+    session: AsyncSession,
+    *,
+    series: VersionSeries,
+    payload: OptimizationStartRequest,
+    outcome: StudyOutcome,
+    input_columns: list[str],
+    output_column: str,
+    artifact_root: Path,
+) -> ArxFitData:
+    """Persist the validation-selected winner without evaluating the held-out Test split."""
+
+    if outcome.best_number is None or not outcome.best_params:
+        raise OptimizationDomainError(
+            "BEST_TRIAL_UNAVAILABLE", "寻优未产生可持久化的 Best Trial。", status_code=409
+        )
+
+    parameters = dict(outcome.best_params)
+    try:
+        selection_params = _selection_params(
+            parameters,
+            input_columns,
+            output_column,
+            train_ratio=payload.train_ratio,
+        )
+        selection = run_segment_selection(
+            series,
+            SegmentRequest(version_id=series.version_id, **selection_params),
+        )
+        formal_payload = ArxFitRequest(
+            version_id=series.version_id,
+            input_columns=input_columns,
+            output_column=output_column,
+            na=int(parameters["na"]),
+            nb={column: int(parameters["nb"]) for column in input_columns},
+            delays={column: int(parameters["nk"]) for column in input_columns},
+            estimator=parameters["estimator"],
+            ridge_alpha=parameters.get("ridge_alpha"),
+            train_ratio=payload.train_ratio,
+            validation_ratio=payload.validation_ratio,
+            training_sample_indices=selection.selected_sample_indices,
+            evaluate_test=False,
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise OptimizationDomainError(
+            "BEST_TRIAL_PERSISTENCE_FAILED", "Best Trial 参数无法重放为正式 ARX 模型。"
+        ) from error
+    except SegmentDomainError as error:
+        raise OptimizationDomainError(
+            error.code, error.message, status_code=error.status_code, details=error.details
+        ) from error
+
+    return await fit_arx_on_version(session, payload=formal_payload, artifact_root=artifact_root)
 
 def evaluate_best_trial(
     series: VersionSeries,
@@ -354,13 +449,14 @@ def _evaluation_from_result(
     started_at: datetime,
     started: float,
     best_trial_number: int | None = None,
+    require_test: bool = True,
 ) -> EvaluationOutcome:
-    one_step = result.metrics.one_step.get("test")
-    free_run = result.metrics.free_run.get("test")
+    one_step = result.metrics.one_step.get("test") if require_test else None
+    free_run = result.metrics.free_run.get("test") if require_test else None
     test_fit = free_run.fit if free_run is not None else None
     validation_fit = result.metrics.val_free_run_fit
     error_code = None
-    if validation_fit is None or test_fit is None:
+    if validation_fit is None or (require_test and test_fit is None):
         error_code = "EVALUATION_METRIC_UNAVAILABLE"
     finished_at = datetime.now(UTC)
     return EvaluationOutcome(
@@ -678,13 +774,107 @@ async def start_optimization_study(
     )
 
 
+async def execute_agent_optimization_study(
+    session: AsyncSession,
+    *,
+    payload: OptimizationStartRequest,
+    baseline_model_id: UUID,
+    artifact_root: Path,
+    study_id: UUID | None = None,
+) -> AgentOptimizationStudyResult:
+    """Run one Agent-authorized study inline, without historical warm starts or RQ."""
+
+    study_id = study_id or uuid4()
+    try:
+        await _reserve_study(
+            session,
+            study_id=study_id,
+            payload=payload,
+            baseline_model_id=baseline_model_id,
+        )
+        execution = await _execute_study(
+            session,
+            study_id=study_id,
+            payload=payload,
+            artifact_root=artifact_root,
+            use_warm_start=False,
+        )
+    except OptimizationDomainError:
+        raise
+    except Exception as error:
+        raise OptimizationDomainError(
+            getattr(error, "code", "AGENT_OPTIMIZATION_STUDY_FAILED"),
+            getattr(error, "message", "Agent 优化研究执行失败。"),
+        ) from error
+
+    study = await session.get(OptimizationStudy, study_id)
+    if study is None:
+        raise OptimizationDomainError(
+            "OPTIMIZATION_STUDY_NOT_FOUND", "Agent 优化研究未能持久化。", status_code=500
+        )
+    if study.status != "succeeded":
+        raise OptimizationDomainError(
+            str(study.statistics.get("error_code", "OPTIMIZATION_STUDY_FAILED")),
+            "Agent 优化研究未成功完成。",
+        )
+    if study.baseline_model_id != baseline_model_id:
+        raise OptimizationDomainError(
+            "OPTIMIZATION_BASELINE_MODEL_MISMATCH",
+            "Agent 优化研究的基线模型血缘不一致。",
+            status_code=500,
+        )
+    if (
+        study.optimized_model_id is None
+        or execution.optimized_model_id is None
+        or execution.optimized_model_processing_run_id is None
+        or study.optimized_model_id != execution.optimized_model_id
+    ):
+        raise OptimizationDomainError(
+            "OPTIMIZED_MODEL_REQUIRED", "Agent 优化研究未产生正式优化模型。", status_code=500
+        )
+
+    return AgentOptimizationStudyResult(
+        study_id=study.id,
+        status=study.status,
+        source_version_id=study.version_id,
+        baseline_model_id=study.baseline_model_id,
+        optimized_model_id=study.optimized_model_id,
+        best_params=dict(study.best_params),
+        best_value=study.best_value,
+        processing_run_ids=[
+            str(execution.baseline_processing_run_id),
+            str(execution.optimized_model_processing_run_id),
+        ],
+    )
+
 async def execute_study(
     session: AsyncSession,
     *,
     study_id: UUID,
     payload: OptimizationStartRequest,
     artifact_root: Path,
+    use_warm_start: bool = True,
 ) -> dict[str, Any]:
+    """Run one reserved study and keep the standalone/worker return contract stable."""
+
+    execution = await _execute_study(
+        session,
+        study_id=study_id,
+        payload=payload,
+        artifact_root=artifact_root,
+        use_warm_start=use_warm_start,
+    )
+    return dict(execution.statistics)
+
+
+async def _execute_study(
+    session: AsyncSession,
+    *,
+    study_id: UUID,
+    payload: OptimizationStartRequest,
+    artifact_root: Path,
+    use_warm_start: bool,
+) -> OptimizationStudyExecution:
     """Run one reserved study to completion and persist it. Shared by API and worker.
 
     Both callers go through this function on purpose. A worker that computed something
@@ -712,7 +902,7 @@ async def execute_study(
         input_columns=input_columns,
         output_column=output_column,
     )
-    await _persist_evaluation(
+    baseline_processing_run_id = await _persist_evaluation(
         session,
         study_id=study_id,
         series=series,
@@ -735,7 +925,11 @@ async def execute_study(
         inputs={column: series.values[column] for column in input_columns},
         output=series.values[output_column],
     )
-    warm_start, source = await _retrieve_warm_start(session, series=series, fingerprint=fingerprint)
+    warm_start, source = (
+        await _retrieve_warm_start(session, series=series, fingerprint=fingerprint)
+        if use_warm_start
+        else ([], None)
+    )
 
     try:
         outcome = run_study(
@@ -753,23 +947,70 @@ async def execute_study(
         await _mark_study_failed(session, study_id=study_id, reason="STUDY_EXECUTION_FAILED")
         raise
 
-    await _persist_study(session, series=series, payload=payload, outcome=outcome)
-    if outcome.best_number is not None:
-        final_evaluation = evaluate_best_trial(
-            series,
-            payload,
-            outcome,
+    if outcome.best_number is None:
+        await _persist_study(
+            session,
+            series=series,
+            payload=payload,
+            outcome=outcome,
+            optimized_model_id=None,
+        )
+        return OptimizationStudyExecution(
+            study_id=study_id,
+            source_version_id=series.version_id,
+            statistics=dict(outcome.statistics),
+            best_params=dict(outcome.best_params),
+            best_value=outcome.best_value,
+            baseline_processing_run_id=baseline_processing_run_id,
+            optimized_model_id=None,
+            optimized_model_processing_run_id=None,
+        )
+
+    try:
+        optimized = await _persist_optimized_model(
+            session,
+            series=series,
+            payload=payload,
+            outcome=outcome,
             input_columns=input_columns,
             output_column=output_column,
+            artifact_root=artifact_root,
         )
-        await _persist_evaluation(
+    except Exception as error:
+        await _persist_study(
             session,
-            study_id=study_id,
             series=series,
-            evaluation=final_evaluation,
-            kind="final_test",
+            payload=payload,
+            outcome=outcome,
+            optimized_model_id=None,
         )
-    return dict(outcome.statistics)
+        error_code = getattr(error, "code", "OPTIMIZED_MODEL_PERSISTENCE_FAILED")
+        await _mark_study_failed(session, study_id=study_id, reason=error_code)
+        if isinstance(error, OptimizationDomainError):
+            raise
+        if isinstance(error, ModelingDomainError):
+            raise OptimizationDomainError(
+                error.code, error.message, status_code=error.status_code, details=error.details
+            ) from error
+        raise
+
+    await _persist_study(
+        session,
+        series=series,
+        payload=payload,
+        outcome=outcome,
+        optimized_model_id=optimized.model_id,
+    )
+    return OptimizationStudyExecution(
+        study_id=study_id,
+        source_version_id=series.version_id,
+        statistics=dict(outcome.statistics),
+        best_params=dict(outcome.best_params),
+        best_value=outcome.best_value,
+        baseline_processing_run_id=baseline_processing_run_id,
+        optimized_model_id=optimized.model_id,
+        optimized_model_processing_run_id=optimized.processing_run_id,
+    )
 
 
 async def get_optimization_status(
@@ -820,6 +1061,8 @@ async def get_optimization_status(
         param_importances=_param_importances(records),
         statistics=dict(study.statistics),
         best_params=dict(study.best_params),
+        baseline_model_id=study.baseline_model_id,
+        optimized_model_id=study.optimized_model_id,
         warm_started_from=study.warm_started_from,
         baseline=_stored_baseline(study.statistics),
         final_test_evaluation=_stored_final_evaluation(study.statistics),
@@ -973,6 +1216,7 @@ async def _reserve_study(
     *,
     study_id: UUID,
     payload: OptimizationStartRequest,
+    baseline_model_id: UUID | None = None,
 ) -> None:
     """Write the study row before any long work starts.
 
@@ -988,6 +1232,7 @@ async def _reserve_study(
             status="queued",
             objective="val_free_run_fit",
             parameters=payload.model_dump(mode="json"),
+            baseline_model_id=baseline_model_id,
             best_params={},
             fingerprint={},
             statistics={"target_trials": payload.max_trials},
@@ -1023,12 +1268,14 @@ async def _persist_evaluation(
     series: VersionSeries,
     evaluation: EvaluationOutcome,
     kind: str,
-) -> None:
+) -> UUID:
     """Persist a baseline/final evaluation without introducing a new table."""
 
     study = await session.get(OptimizationStudy, study_id)
     if study is None:
-        return
+        raise OptimizationDomainError(
+            "OPTIMIZATION_STUDY_NOT_FOUND", "优化研究不存在，无法持久化评价运行。", status_code=404
+        )
     run_id = uuid4()
     payload = _evaluation_payload(evaluation, processing_run_id=run_id)
     evaluations = dict(study.statistics.get("evaluations", {}))
@@ -1048,6 +1295,7 @@ async def _persist_evaluation(
         )
     )
     await session.commit()
+    return run_id
 
 
 def _evaluation_payload(
@@ -1106,6 +1354,7 @@ async def _persist_study(
     series: VersionSeries,
     payload: OptimizationStartRequest,
     outcome: StudyOutcome,
+    optimized_model_id: UUID | None,
 ) -> None:
     now = datetime.now(UTC)
     # The row already exists when the API or the worker reserved it. Updating in place is
@@ -1117,12 +1366,13 @@ async def _persist_study(
         session.add(study)
     study.dataset_id = series.dataset_id
     study.version_id = series.version_id
-    study.status = "succeeded" if outcome.best_number is not None else "failed"
+    study.status = ("succeeded" if outcome.best_number is not None and optimized_model_id else "failed")
     study.objective = "val_free_run_fit"
     study.parameters = payload.model_dump(mode="json")
     study.best_trial_number = outcome.best_number
     study.best_value = outcome.best_value
     study.best_params = outcome.best_params
+    study.optimized_model_id = optimized_model_id
     study.fingerprint = outcome.fingerprint.to_payload()
     # Keep what was asked for alongside what happened: a study that requested 50 trials and
     # completed 12 is a different story from one that requested 12, and the final statistics
@@ -1156,7 +1406,7 @@ async def _persist_study(
                 finished_at=now,
             )
         )
-    if outcome.best_number is not None:
+    if outcome.best_number is not None and optimized_model_id is not None:
         session.add(
             StrategyMemory(
                 id=uuid4(),
@@ -1175,13 +1425,20 @@ async def _persist_study(
     session.add(
         OperationLog(
             id=uuid4(),
-            event_type="optimization.study.completed",
+            event_type=(
+                "optimization.study.completed"
+                if optimized_model_id is not None
+                else "optimization.study.failed"
+            ),
             subject_id=str(series.dataset_id),
             payload_json=json.dumps(
                 {
                     "study_id": str(outcome.study_id),
                     "best_value": outcome.best_value,
                     "best_params": outcome.best_params,
+                    "optimized_model_id": str(optimized_model_id)
+                    if optimized_model_id is not None
+                    else None,
                     "statistics": outcome.statistics,
                     "warm_started_from": str(outcome.warm_started_from)
                     if outcome.warm_started_from

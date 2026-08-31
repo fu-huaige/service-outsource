@@ -66,7 +66,7 @@ async def run_delay_estimation(
     except IdentifiabilityError as error:
         raise AnalysisDomainError(error.code, error.message, details=error.details) from error
 
-    await _persist(
+    processing_run_id = await _persist(
         session,
         series=series,
         run_type="preprocessing.delay",
@@ -78,6 +78,7 @@ async def run_delay_estimation(
     estimates = {estimate.column: estimate for estimate in result.estimates}
     return DelayData(
         source_version_id=series.version_id,
+        processing_run_id=processing_run_id,
         task=completed_task(
             stage="estimate_delays",
             message="预白化互相关候选与验证集复核已完成。",
@@ -126,7 +127,7 @@ async def run_collinearity_analysis(
     except IdentifiabilityError as error:
         raise AnalysisDomainError(error.code, error.message, details=error.details) from error
 
-    await _persist(
+    processing_run_id = await _persist(
         session,
         series=series,
         run_type="preprocessing.collinearity",
@@ -137,6 +138,7 @@ async def run_collinearity_analysis(
 
     return CollinearityData(
         source_version_id=series.version_id,
+        processing_run_id=processing_run_id,
         task=completed_task(
             stage="analyze_collinearity",
             message="相关性、VIF 与条件数诊断已完成。",
@@ -200,7 +202,7 @@ async def _persist(
     parameters: dict[str, object],
     result: dict[str, object],
     event: str,
-) -> None:
+) -> UUID:
     now = datetime.now(UTC)
     run_id = uuid4()
     session.add(
@@ -236,6 +238,7 @@ async def _persist(
         )
     )
     await session.commit()
+    return run_id
 
 
 def _finite(value: float, *, fallback: float | None = 0.0) -> float | None:

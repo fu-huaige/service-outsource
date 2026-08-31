@@ -12,17 +12,17 @@
     >
       <el-menu-item index="/dashboard">
         <el-icon><Odometer /></el-icon>
-        <template #title>工作台</template>
+        <template #title>工作台总览</template>
       </el-menu-item>
 
-      <el-menu-item-group title="准备数据">
+      <el-menu-item-group title="数据准备">
         <el-menu-item index="/simulation">
           <el-icon><Cpu /></el-icon>
           <template #title>生成仿真数据</template>
         </el-menu-item>
         <el-menu-item index="/datasets">
           <el-icon><FolderOpened /></el-icon>
-          <template #title>数据资产</template>
+          <template #title>数据资产管理</template>
         </el-menu-item>
       </el-menu-item-group>
 
@@ -33,9 +33,9 @@
             <span>预处理与优选</span>
           </template>
           <el-menu-item index="/preprocessing/cleaning">时间规整与清洗</el-menu-item>
-          <el-menu-item index="/preprocessing/segmentation">动态区间优选</el-menu-item>
-          <el-menu-item index="/preprocessing/delay">多变量时滞分析</el-menu-item>
-          <el-menu-item index="/preprocessing/collinearity">共线性与变量筛选</el-menu-item>
+          <el-menu-item index="/preprocessing/segmentation">D-最优动态区间优选</el-menu-item>
+          <el-menu-item index="/preprocessing/delay">多变量时滞对齐</el-menu-item>
+          <el-menu-item index="/preprocessing/collinearity">VIF 共线性与筛选</el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu index="/modeling">
@@ -51,19 +51,19 @@
       <el-menu-item-group title="协作与交付">
         <el-menu-item index="/copilot">
           <el-icon><ChatDotSquare /></el-icon>
-          <template #title>Agent 工作台</template>
+          <template #title>AI 智能工模 Copilot</template>
         </el-menu-item>
         <el-menu-item index="/benchmark">
           <el-icon><Odometer /></el-icon>
-          <template #title>系统自评测</template>
+          <template #title>消融对账评测</template>
         </el-menu-item>
         <el-menu-item index="/deliverables">
           <el-icon><Document /></el-icon>
-          <template #title>报告与数据交付</template>
+          <template #title>工程报告与交付</template>
         </el-menu-item>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>
-          <template #title>系统设置</template>
+          <template #title>系统环境设置</template>
         </el-menu-item>
       </el-menu-item-group>
     </el-menu>
@@ -94,14 +94,16 @@ const activePath = computed(() => route.path);
 
 <style scoped>
 .app-sidebar {
-  width: 220px;
+  width: 232px;
   background: var(--bg-sidebar);
-  transition: width 0.2s ease;
+  border-right: 1px solid #1e293b;
+  transition: width 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  z-index: 5;
 }
 
 .app-sidebar.collapsed {
@@ -109,14 +111,19 @@ const activePath = computed(() => route.path);
 }
 
 .toggle-btn {
-  height: 40px;
+  height: 42px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   padding: 0 16px;
-  color: #8d96a0;
+  color: #64748b;
   cursor: pointer;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  transition: color 0.18s ease;
+}
+
+.toggle-btn:hover {
+  color: #f8fafc;
 }
 
 .app-sidebar.collapsed .toggle-btn {
@@ -129,24 +136,21 @@ const activePath = computed(() => route.path);
   background: transparent;
   flex: 1;
   min-height: 0;
+  padding: 8px 0;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-color: rgba(160, 174, 192, 0.45) transparent;
+  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
   scrollbar-width: thin;
 }
 
 .sidebar-menu::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
 }
 
 .sidebar-menu::-webkit-scrollbar-thumb {
-  background: rgba(160, 174, 192, 0.45);
+  background: rgba(148, 163, 184, 0.25);
   border-radius: 999px;
-}
-
-.sidebar-menu::-webkit-scrollbar-track {
-  background: transparent;
 }
 
 :deep(.el-menu) {
@@ -154,26 +158,51 @@ const activePath = computed(() => route.path);
 }
 
 :deep(.el-menu-item), :deep(.el-sub-menu__title) {
-  color: #a0aec0;
+  height: 42px;
+  line-height: 42px;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 500;
+  margin: 2px 8px;
+  border-radius: 6px;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:deep(.el-menu-item .el-icon), :deep(.el-sub-menu__title .el-icon) {
+  font-size: 16px;
+  color: #64748b;
+  transition: color 0.18s ease;
 }
 
 :deep(.el-menu-item:hover), :deep(.el-sub-menu__title:hover) {
   background: rgba(255, 255, 255, 0.06) !important;
-  color: #ffffff;
+  color: #f8fafc;
+}
+
+:deep(.el-menu-item:hover .el-icon), :deep(.el-sub-menu__title:hover .el-icon) {
+  color: #93c5fd;
 }
 
 :deep(.el-menu-item.is-active) {
   color: #ffffff !important;
-  background: var(--color-primary) !important;
-  font-weight: 600;
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.25) 0%, rgba(37, 99, 235, 0.1) 100%) !important;
+  font-weight: 700;
+  border-left: 3px solid #3b82f6;
+  border-radius: 0 6px 6px 0;
+}
+
+:deep(.el-menu-item.is-active .el-icon) {
+  color: #60a5fa !important;
 }
 
 :deep(.el-menu-item-group__title) {
-  padding: 16px 20px 6px !important;
-  color: #6f7b8a;
-  font-size: 11px;
-  font-weight: 600;
+  padding: 14px 18px 4px !important;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 700;
   letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
 }
 
 .collapsed :deep(.el-menu-item-group__title) {

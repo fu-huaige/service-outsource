@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import numpy as np
 import pytest
@@ -16,6 +17,7 @@ from app.core.db import get_session
 from app.main import create_app
 from app.models import Base
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 
@@ -203,28 +205,50 @@ class TestObjective:
 
 
 class TestFormalEvaluation:
-    def test_baseline_is_deterministic_and_does_not_create_trials(self) -> None:
+    def test_baseline_is_test_free_and_ignores_the_held_out_tail(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from app.schemas.optimization import OptimizationStartRequest
-        from app.services.optimization_service import run_baseline
+        from app.services import optimization_service
 
-        series = make_series()
+        clean = make_series()
+        changed_test = make_series()
         payload = OptimizationStartRequest(
-            version_id=series.version_id,
+            version_id=clean.version_id,
             input_columns=["u1", "u2"],
             output_column="y",
             max_trials=2,
         )
-        first = run_baseline(
-            series, payload, input_columns=["u1", "u2"], output_column="y"
+        test_start = int(clean.n_samples * (payload.train_ratio + payload.validation_ratio))
+        changed_test.values["y"][test_start:] += 10_000.0
+
+        observed_evaluate_test: list[bool] = []
+        formal_fit = optimization_service.fit_arx_core
+
+        def spy_fit_arx_core(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+            observed_evaluate_test.append(kwargs["payload"].evaluate_test)  # type: ignore[index,union-attr]
+            return formal_fit(*args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(optimization_service, "fit_arx_core", spy_fit_arx_core)
+        first = optimization_service.run_baseline(
+            clean, payload, input_columns=["u1", "u2"], output_column="y"
         )
-        second = run_baseline(
-            series, payload, input_columns=["u1", "u2"], output_column="y"
+        second = optimization_service.run_baseline(
+            changed_test,
+            payload.model_copy(update={"version_id": changed_test.version_id}),
+            input_columns=["u1", "u2"],
+            output_column="y",
         )
 
         assert first.status == second.status == "succeeded"
         assert first.parameters == second.parameters
         assert first.validation_free_run_fit == pytest.approx(second.validation_free_run_fit)
-        assert first.test_free_run_fit == pytest.approx(second.test_free_run_fit)
+        assert observed_evaluate_test and all(value is False for value in observed_evaluate_test)
+        assert first.test_free_run_fit is None
+        assert first.test_mae is None
+        assert first.test_rmse is None
+        assert first.test_r2 is None
+        assert second.test_free_run_fit is None
         assert first.parameters["window_size"] == 60
         assert first.parameters["train_ratio"] == 0.6
         assert first.parameters["validation_ratio"] == 0.2
@@ -276,7 +300,7 @@ class TestFormalEvaluation:
         assert baseline.parameters["ridge_alpha"] == pytest.approx(0.1)
         assert baseline.parameters["fallback_reason"] == "DESIGN_MATRIX_RANK_DEFICIENT"
         assert baseline.validation_free_run_fit is not None
-        assert baseline.test_free_run_fit is not None
+        assert baseline.test_free_run_fit is None
 
     def test_optuna_trials_do_not_evaluate_the_test_partition(self) -> None:
         from app.schemas.optimization import OptimizationStartRequest
@@ -296,6 +320,22 @@ class TestFormalEvaluation:
             output_column="y",
         )
 
+        changed_test = make_series()
+        test_start = int(changed_test.n_samples * 0.8)
+        changed_test.values["y"][test_start:] += 10_000.0
+        changed = run_study(
+            changed_test,
+            OptimizationStartRequest(
+                version_id=changed_test.version_id,
+                input_columns=["u1", "u2"],
+                output_column="y",
+                max_trials=3,
+                random_seed=5,
+            ),
+            input_columns=["u1", "u2"],
+            output_column="y",
+        )
+
         completed = [trial for trial in outcome.trials if trial.state == "complete"]
         assert completed
         assert all("test_free_run_fit" not in trial.metrics for trial in completed)
@@ -304,6 +344,9 @@ class TestFormalEvaluation:
             trial.params.get("estimator") == "ridge" or "ridge_alpha" not in trial.params
             for trial in completed
         )
+        assert changed.best_number == outcome.best_number
+        assert changed.best_value == pytest.approx(outcome.best_value)
+        assert changed.best_params == outcome.best_params
 
 
 @pytest.fixture
@@ -338,11 +381,262 @@ def generate(client: TestClient, *, seed: int = 4, scenario: str = "S2") -> str:
     return response.json()["data"]["version_id"]
 
 
-class TestOptimizationApi:
-    def test_persists_strict_baseline_and_final_held_out_evaluation(
-        self, client: TestClient
+async def _dataset_version_count(database_path: Path, version_id: UUID) -> int:
+    from app.models.dataset import DatasetVersion
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}")
+    try:
+        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+            version = await session.get(DatasetVersion, version_id)
+            assert version is not None
+            count = await session.scalar(
+                select(func.count())
+                .select_from(DatasetVersion)
+                .where(DatasetVersion.dataset_id == version.dataset_id)
+            )
+            return int(count or 0)
+    finally:
+        await engine.dispose()
+
+
+async def _optimization_snapshot(
+    database_path: Path, *, study_id: UUID, processing_run_id: UUID | None = None
+) -> dict[str, object]:
+    from app.models.dataset import ProcessingRun
+    from app.models.optimization import OptimizationStudy
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}")
+    try:
+        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+            study = await session.get(OptimizationStudy, study_id)
+            assert study is not None
+            final_test_runs = await session.scalar(
+                select(func.count())
+                .select_from(ProcessingRun)
+                .where(
+                    ProcessingRun.source_version_id == study.version_id,
+                    ProcessingRun.run_type == "optimization.final_test",
+                )
+            )
+            run = (
+                await session.get(ProcessingRun, processing_run_id)
+                if processing_run_id is not None
+                else None
+            )
+            return {
+                "study_status": study.status,
+                "baseline_model_id": study.baseline_model_id,
+                "optimized_model_id": study.optimized_model_id,
+                "error_code": study.statistics.get("error_code"),
+                "final_test_run_count": int(final_test_runs or 0),
+                "processing_run_type": run.run_type if run is not None else None,
+                "processing_run_status": run.status if run is not None else None,
+                "processing_run_source_version_id": run.source_version_id if run is not None else None,
+            }
+    finally:
+        await engine.dispose()
+
+
+async def _agent_optimization_snapshot(
+    database_path: Path, *, study_id: UUID, processing_run_ids: list[str]
+) -> dict[str, object]:
+    from app.models.dataset import ProcessingRun
+    from app.models.optimization import OptimizationStudy, OptimizationTrialRecord
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}")
+    try:
+        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+            study = await session.get(OptimizationStudy, study_id)
+            assert study is not None
+            runs = [await session.get(ProcessingRun, UUID(run_id)) for run_id in processing_run_ids]
+            final_test_runs = await session.scalar(
+                select(func.count())
+                .select_from(ProcessingRun)
+                .where(
+                    ProcessingRun.source_version_id == study.version_id,
+                    ProcessingRun.run_type == "optimization.final_test",
+                )
+            )
+            completed_params = list(
+                (
+                    await session.scalars(
+                        select(OptimizationTrialRecord.params)
+                        .where(
+                            OptimizationTrialRecord.study_id == study_id,
+                            OptimizationTrialRecord.state == "complete",
+                        )
+                        .order_by(OptimizationTrialRecord.trial_number)
+                    )
+                ).all()
+            )
+            return {
+                "study_status": study.status,
+                "baseline_model_id": study.baseline_model_id,
+                "optimized_model_id": study.optimized_model_id,
+                "processing_run_types": [run.run_type for run in runs if run is not None],
+                "completed_trial_nks": [params.get("nk") for params in completed_params],
+                "final_test_run_count": int(final_test_runs or 0),
+            }
+    finally:
+        await engine.dispose()
+
+
+class TestAgentSafeOptimizationEntry:
+    def test_forces_inline_without_warm_start_and_returns_real_provenance(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
+        from app.services import optimization_service
+        from app.services.optimization_service import execute_agent_optimization_study
+
+        def fail_if_enqueued(*args: object, **kwargs: object) -> None:
+            raise AssertionError("Agent-safe optimization must not submit an RQ job")
+
+        async def fail_if_warm_started(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+            raise AssertionError("Agent-safe optimization must not read StrategyMemory")
+
+        monkeypatch.setattr(optimization_service, "submit_optimization", fail_if_enqueued)
+        monkeypatch.setattr(optimization_service, "_retrieve_warm_start", fail_if_warm_started)
+        assert "baseline_model_id" not in optimization_service.OptimizationStartRequest.model_fields
+        version_id = UUID(generate(client, seed=151))
+        baseline_model_id = uuid4()
+        before_versions = asyncio.run(_dataset_version_count(tmp_path / "optimize.db", version_id))
+
+        async def execute() -> object:
+            engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'optimize.db'}")
+            try:
+                async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+                    return await execute_agent_optimization_study(
+                        session,
+                        payload=optimization_service.OptimizationStartRequest(
+                            version_id=version_id,
+                            input_columns=["u1", "u2"],
+                            output_column="y",
+                            max_trials=3,
+                            random_seed=151,
+                            search_space={"nk": [0, 0]},
+                        ),
+                        baseline_model_id=baseline_model_id,
+                        artifact_root=tmp_path,
+                    )
+            finally:
+                await engine.dispose()
+
+        result = asyncio.run(execute())
+        assert result.status == "succeeded"
+        assert result.source_version_id == version_id
+        assert result.baseline_model_id == baseline_model_id
+        assert result.optimized_model_id
+        assert len(result.processing_run_ids) == 2
+        assert (tmp_path / "models" / f"{result.optimized_model_id}.json").is_file()
+
+        snapshot = asyncio.run(
+            _agent_optimization_snapshot(
+                tmp_path / "optimize.db",
+                study_id=result.study_id,
+                processing_run_ids=result.processing_run_ids,
+            )
+        )
+        assert snapshot["study_status"] == "succeeded"
+        assert snapshot["baseline_model_id"] == baseline_model_id
+        assert snapshot["optimized_model_id"] == result.optimized_model_id
+        assert snapshot["processing_run_types"] == ["optimization.baseline", "modeling.arx"]
+        completed_nks = snapshot["completed_trial_nks"]
+        assert completed_nks and all(value == 0 for value in completed_nks)
+        assert snapshot["final_test_run_count"] == 0
+        assert asyncio.run(_dataset_version_count(tmp_path / "optimize.db", version_id)) == before_versions
+
+    def test_rejects_succeeded_study_without_persisted_optimized_model(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from app.services import optimization_service
+        from app.services.optimization_service import (
+            OptimizationDomainError,
+            execute_agent_optimization_study,
+        )
+
+        reserved_study_ids: list[UUID] = []
+        reserve = optimization_service._reserve_study
+        persist_study = optimization_service._persist_study
+
+        async def spy_reserve_study(*args: object, **kwargs: object) -> None:
+            reserved_study_ids.append(kwargs["study_id"])  # type: ignore[index]
+            await reserve(*args, **kwargs)  # type: ignore[arg-type]
+
+        async def erase_optimized_model(*args: object, **kwargs: object) -> None:
+            await persist_study(*args, **kwargs)  # type: ignore[arg-type]
+            if kwargs["optimized_model_id"] is not None:  # type: ignore[index]
+                study = await args[0].get(  # type: ignore[index]
+                    optimization_service.OptimizationStudy, kwargs["outcome"].study_id  # type: ignore[index]
+                )
+                assert study is not None
+                study.optimized_model_id = None
+                study.status = "succeeded"
+                await args[0].commit()  # type: ignore[index]
+
+        monkeypatch.setattr(optimization_service, "_reserve_study", spy_reserve_study)
+        monkeypatch.setattr(optimization_service, "_persist_study", erase_optimized_model)
+        version_id = UUID(generate(client, seed=152))
+
+        async def execute() -> None:
+            engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'optimize.db'}")
+            try:
+                async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+                    await execute_agent_optimization_study(
+                        session,
+                        payload=optimization_service.OptimizationStartRequest(
+                            version_id=version_id,
+                            input_columns=["u1", "u2"],
+                            output_column="y",
+                            max_trials=2,
+                            random_seed=152,
+                            search_space={"nk": [0, 0]},
+                        ),
+                        baseline_model_id=uuid4(),
+                        artifact_root=tmp_path,
+                    )
+            finally:
+                await engine.dispose()
+
+        with pytest.raises(OptimizationDomainError) as raised:
+            asyncio.run(execute())
+        assert raised.value.code == "OPTIMIZED_MODEL_REQUIRED"
+        assert len(reserved_study_ids) == 1
+        snapshot = asyncio.run(
+            _optimization_snapshot(tmp_path / "optimize.db", study_id=reserved_study_ids[0])
+        )
+        assert snapshot["study_status"] == "succeeded"
+        assert snapshot["optimized_model_id"] is None
+        assert snapshot["final_test_run_count"] == 0
+
+class TestOptimizationApi:
+    def test_persists_optimized_model_without_opening_test(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from app.services import optimization_service
+
+        def fail_if_final_test_replayed(*args: object, **kwargs: object) -> None:
+            raise AssertionError("execute_study must not replay the held-out Test partition")
+
+        formal_fit = optimization_service.fit_arx_on_version
+        formal_selection = optimization_service.run_segment_selection
+        persisted_fits = []
+        selections: list[list[int]] = []
+
+        async def spy_fit_arx_on_version(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+            data = await formal_fit(*args, **kwargs)  # type: ignore[arg-type]
+            persisted_fits.append((kwargs["payload"], data))  # type: ignore[index]
+            return data
+
+        def spy_segment_selection(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+            selection = formal_selection(*args, **kwargs)  # type: ignore[arg-type]
+            selections.append(list(selection.selected_sample_indices))
+            return selection
+
+        monkeypatch.setattr(optimization_service, "evaluate_best_trial", fail_if_final_test_replayed)
+        monkeypatch.setattr(optimization_service, "fit_arx_on_version", spy_fit_arx_on_version)
+        monkeypatch.setattr(optimization_service, "run_segment_selection", spy_segment_selection)
         version_id = generate(client, seed=52)
+        before_versions = asyncio.run(_dataset_version_count(tmp_path / "optimize.db", UUID(version_id)))
         started = client.post(
             "/api/v1/optimization/optuna/start",
             json={
@@ -354,35 +648,97 @@ class TestOptimizationApi:
             },
         )
         assert started.status_code == 202, started.text
-        data = client.get(
-            f"/api/v1/optimization/optuna/{started.json()['data']['study_id']}/status"
-        ).json()["data"]
+        study_id = UUID(started.json()["data"]["study_id"])
+        data = client.get(f"/api/v1/optimization/optuna/{study_id}/status").json()["data"]
 
         baseline = data["baseline"]
-        final = data["final_test_evaluation"]
         assert baseline["status"] == "succeeded"
         assert baseline["processing_run_id"]
         assert baseline["parameters"]["window_size"] == 60
         assert baseline["validation_free_run_fit"] is not None
-        assert baseline["test_free_run_fit"] is not None
+        assert baseline["test_free_run_fit"] is None
+        assert baseline["test_mae"] is None
+        assert baseline["test_rmse"] is None
+        assert baseline["test_r2"] is None
         assert len(data["trials"]) == 4, "Baseline must not become an Optuna trial."
 
         complete = [trial for trial in data["trials"] if trial["state"] == "complete"]
         selected = max(complete, key=lambda trial: trial["value"])
         assert data["best_trial_id"] == selected["trial_id"]
-        assert final["status"] == "succeeded"
-        assert final["best_trial_number"] == selected["trial_id"]
-        assert final["processing_run_id"]
-        assert final["test_free_run_fit"] is not None
-        assert final["test_mae"] is not None
-        assert final["test_rmse"] is not None
-        assert final["test_r2"] is not None
-        assert final["test_one_step_fit"] is not None
-        assert final["test_one_step_r2"] == final["test_r2"]
-        assert final["test_free_run_r2"] is not None
-        assert final["generalization_gap"] == pytest.approx(
-            final["validation_free_run_fit"] - final["test_free_run_fit"]
+        assert data["final_test_evaluation"] is None
+        assert data["baseline_model_id"] is None
+        assert data["optimized_model_id"]
+        assert len(persisted_fits) == 1
+
+        fitted_payload, fitted = persisted_fits[0]
+        assert fitted_payload.evaluate_test is False
+        assert fitted.model_id == UUID(data["optimized_model_id"])
+        assert fitted.metrics.one_step.get("test") is None
+        assert fitted.metrics.free_run.get("test") is None
+        assert fitted_payload.training_sample_indices == selections[-1]
+
+        artifact = tmp_path / "models" / f"{fitted.model_id}.json"
+        document = json.loads(artifact.read_text(encoding="utf-8"))
+        assert document["model_id"] == str(fitted.model_id)
+        assert document["version_id"] == version_id
+        assert document["configuration"]["evaluate_test"] is False
+        assert document["configuration"]["training_sample_indices"] == fitted_payload.training_sample_indices
+
+        snapshot = asyncio.run(
+            _optimization_snapshot(
+                tmp_path / "optimize.db",
+                study_id=study_id,
+                processing_run_id=fitted.processing_run_id,
+            )
         )
+        assert snapshot["study_status"] == "succeeded"
+        assert snapshot["baseline_model_id"] is None
+        assert snapshot["optimized_model_id"] == fitted.model_id
+        assert snapshot["processing_run_type"] == "modeling.arx"
+        assert snapshot["processing_run_status"] == "succeeded"
+        assert snapshot["processing_run_source_version_id"] == UUID(version_id)
+        assert snapshot["final_test_run_count"] == 0
+        assert asyncio.run(_dataset_version_count(tmp_path / "optimize.db", UUID(version_id))) == before_versions
+
+    def test_optimized_model_persistence_failure_marks_study_failed(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from app.services import optimization_service
+        from app.services.modeling_service import ModelingDomainError
+
+        reserved_study_ids: list[UUID] = []
+        reserve = optimization_service._reserve_study
+
+        async def spy_reserve_study(*args: object, **kwargs: object) -> None:
+            reserved_study_ids.append(kwargs["study_id"])  # type: ignore[index]
+            await reserve(*args, **kwargs)  # type: ignore[arg-type]
+
+        async def fail_formal_fit(*args: object, **kwargs: object) -> None:
+            raise ModelingDomainError("OPTIMIZED_MODEL_PERSISTENCE_FAILED", "formal fit failed")
+
+        monkeypatch.setattr(optimization_service, "_reserve_study", spy_reserve_study)
+        monkeypatch.setattr(optimization_service, "fit_arx_on_version", fail_formal_fit)
+        version_id = generate(client, seed=79)
+        response = client.post(
+            "/api/v1/optimization/optuna/start",
+            json={
+                "version_id": version_id,
+                "input_columns": ["u1", "u2"],
+                "output_column": "y",
+                "max_trials": 2,
+                "random_seed": 29,
+            },
+        )
+
+        assert response.status_code == 400, response.text
+        assert len(reserved_study_ids) == 1
+        snapshot = asyncio.run(
+            _optimization_snapshot(tmp_path / "optimize.db", study_id=reserved_study_ids[0])
+        )
+        assert snapshot["study_status"] == "failed"
+        assert snapshot["error_code"] == "OPTIMIZED_MODEL_PERSISTENCE_FAILED"
+        assert snapshot["optimized_model_id"] is None
+        assert snapshot["final_test_run_count"] == 0
 
     def test_diagnostics_replay_fixed_winner_without_changing_study(self, client: TestClient) -> None:
         version_id = generate(client, seed=73)
