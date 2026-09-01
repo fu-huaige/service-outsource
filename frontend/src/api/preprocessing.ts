@@ -6,6 +6,7 @@ import type {
   SegmentResponse,
   DelayRequest,
   DelayResponse,
+  LatestDelayRequest,
   CollinearityRequest,
   CollinearityResponse,
   FeatureSelectionApplyRequest,
@@ -21,6 +22,9 @@ export const segmentDataset = (req: SegmentRequest): Promise<SegmentResponse> =>
 
 export const calculateDelay = (req: DelayRequest): Promise<DelayResponse> =>
   apiClient.post("/preprocessing/delay", req);
+
+export const getLatestDelay = (req: LatestDelayRequest): Promise<DelayResponse> =>
+  apiClient.get("/preprocessing/delay/latest", { params: req });
 
 export const applyLagCompensation = (req: LagCompensationRequest): Promise<VersionApplyResponse> =>
   apiClient.post("/preprocessing/delay/apply", req);

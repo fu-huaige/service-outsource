@@ -39,6 +39,7 @@ from app.schemas.datasets import (
     DatasetProfile,
     DatasetUploadData,
     DatasetVersionsData,
+    DelaySourceVersionsData,
 )
 from app.schemas.diagnostics import GeneralizationDiagnosticsData
 from app.schemas.modeling import (
@@ -146,6 +147,9 @@ from app.services.optimization_service import (
 )
 from app.services.preprocessing_analysis_service import (
     AnalysisDomainError,
+    get_delay_source_versions,
+    get_latest_collinearity_result,
+    get_latest_delay_result,
     run_collinearity_analysis,
     run_delay_estimation,
 )
@@ -638,6 +642,63 @@ async def estimate_delay(
     return success(request, data)
 
 
+@router.get(
+    "/datasets/{dataset_id}/delay-sources",
+    tags=["Datasets"],
+    summary="List Cleaning versions and their persisted delay-analysis states",
+    response_model=SuccessEnvelope[DelaySourceVersionsData],
+    responses=ERROR_RESPONSES,
+)
+async def get_delay_sources(
+    request: Request,
+    dataset_id: DatasetId,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessEnvelope[DelaySourceVersionsData]:
+    """Read-only selector data; this endpoint never runs or persists analysis."""
+
+    try:
+        data = await get_delay_source_versions(session, dataset_id=dataset_id)
+    except AnalysisDomainError as error:
+        raise AppError(
+            error.code,
+            error.message,
+            status_code=error.status_code,
+            details=error.details,
+        ) from error
+    return success(request, data)
+
+
+@router.get(
+    "/preprocessing/delay/latest",
+    tags=["Preprocessing"],
+    summary="Load the latest complete persisted lag-correlation analysis",
+    response_model=SuccessEnvelope[DelayData],
+    responses=ERROR_RESPONSES,
+)
+async def get_latest_delay(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    version_id: Annotated[UUID, Query(description="源 DatasetVersion UUID。")],
+    dataset_id: Annotated[UUID | None, Query(description="可选的 Dataset UUID 校验。")] = None,
+) -> SuccessEnvelope[DelayData]:
+    """Read a persisted delay result; this endpoint never re-runs analysis."""
+
+    try:
+        data = await get_latest_delay_result(
+            session,
+            version_id=version_id,
+            dataset_id=dataset_id,
+        )
+    except AnalysisDomainError as error:
+        raise AppError(
+            error.code,
+            error.message,
+            status_code=error.status_code,
+            details=error.details,
+        ) from error
+    return success(request, data)
+
+
 @router.post(
     "/preprocessing/delay/apply",
     tags=["Preprocessing"],
@@ -657,6 +718,37 @@ async def apply_delay_compensation(
         )
     except VersionedPreprocessingError as error:
         raise AppError(error.code, error.message, status_code=error.status_code, details=error.details) from error
+    return success(request, data)
+
+
+@router.get(
+    "/preprocessing/collinearity/latest",
+    tags=["Preprocessing"],
+    summary="Load the latest complete persisted collinearity analysis",
+    response_model=SuccessEnvelope[CollinearityData],
+    responses=ERROR_RESPONSES,
+)
+async def get_latest_collinearity(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    version_id: Annotated[UUID, Query(description="源 DatasetVersion UUID。")],
+    dataset_id: Annotated[UUID | None, Query(description="可选的 Dataset UUID 校验。")] = None,
+) -> SuccessEnvelope[CollinearityData]:
+    """Read a persisted collinearity result; this endpoint never recomputes it."""
+
+    try:
+        data = await get_latest_collinearity_result(
+            session,
+            version_id=version_id,
+            dataset_id=dataset_id,
+        )
+    except AnalysisDomainError as error:
+        raise AppError(
+            error.code,
+            error.message,
+            status_code=error.status_code,
+            details=error.details,
+        ) from error
     return success(request, data)
 
 

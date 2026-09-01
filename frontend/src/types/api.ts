@@ -290,6 +290,25 @@ export interface DatasetVersionsResponse {
   edges?: Array<{ source: string; target: string }>;
 }
 
+export type DelaySourceStatus = "complete" | "not_analyzed" | "unrehydratable";
+
+export interface DelaySourceVersion {
+  version_id: string;
+  version_index: number;
+  name: string;
+  operation_name: string;
+  parent_version_id: string | null;
+  created_at: string;
+  delay_status: DelaySourceStatus;
+  latest_complete_delay_run_id: string | null;
+}
+
+export interface DelaySourceVersionsResponse {
+  dataset_id: string;
+  default_source_version_id: string | null;
+  sources: DelaySourceVersion[];
+}
+
 export interface DatasetDeleteResponse {
   dataset_id: string;
   status: string;
@@ -459,6 +478,7 @@ export interface DelayRequest {
 
 export interface DelayResponse {
   source_version_id: string;
+  processing_run_id: string | null;
   dataset_id: string | null;
   task: TaskResource;
   delays: number[];
@@ -472,6 +492,11 @@ export interface DelayResponse {
   /** Inputs whose top two candidates were too close to separate confidently. */
   uncertain_columns: string[];
   prewhitening_orders: Record<string, number>;
+}
+
+export interface LatestDelayRequest {
+  version_id: string;
+  dataset_id?: string | null;
 }
 
 export interface VersionApplyResponse {

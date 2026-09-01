@@ -1449,6 +1449,177 @@
         }
       }
     },
+    "/api/v1/datasets/{dataset_id}/delay-sources": {
+      "get": {
+        "tags": [
+          "Datasets"
+        ],
+        "summary": "List Cleaning versions and their persisted delay-analysis states",
+        "description": "Read-only selector data; this endpoint never runs or persists analysis.",
+        "operationId": "get_delay_sources_api_v1_datasets__dataset_id__delay_sources_get",
+        "parameters": [
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "数据集 UUID。",
+              "title": "Dataset Id"
+            },
+            "description": "数据集 UUID。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_DelaySourceVersionsData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或领域规则无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求体或路径参数未通过 Pydantic 校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/preprocessing/delay/latest": {
+      "get": {
+        "tags": [
+          "Preprocessing"
+        ],
+        "summary": "Load the latest complete persisted lag-correlation analysis",
+        "description": "Read a persisted delay result; this endpoint never re-runs analysis.",
+        "operationId": "get_latest_delay_api_v1_preprocessing_delay_latest_get",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "源 DatasetVersion UUID。",
+              "title": "Version Id"
+            },
+            "description": "源 DatasetVersion UUID。"
+          },
+          {
+            "name": "dataset_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "可选的 Dataset UUID 校验。",
+              "title": "Dataset Id"
+            },
+            "description": "可选的 Dataset UUID 校验。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_DelayData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或领域规则无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求体或路径参数未通过 Pydantic 校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/preprocessing/delay/apply": {
       "post": {
         "tags": [
@@ -1473,6 +1644,101 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SuccessEnvelope_VersionApplyData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或领域规则无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求体或路径参数未通过 Pydantic 校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/preprocessing/collinearity/latest": {
+      "get": {
+        "tags": [
+          "Preprocessing"
+        ],
+        "summary": "Load the latest complete persisted collinearity analysis",
+        "description": "Read a persisted collinearity result; this endpoint never recomputes it.",
+        "operationId": "get_latest_collinearity_api_v1_preprocessing_collinearity_latest_get",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "源 DatasetVersion UUID。",
+              "title": "Version Id"
+            },
+            "description": "源 DatasetVersion UUID。"
+          },
+          {
+            "name": "dataset_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "可选的 Dataset UUID 校验。",
+              "title": "Dataset Id"
+            },
+            "description": "可选的 Dataset UUID 校验。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_CollinearityData_"
                 }
               }
             }
@@ -4673,7 +4939,14 @@
           },
           "vif_scores": {
             "additionalProperties": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "type": "object",
             "title": "Vif Scores"
@@ -6932,6 +7205,114 @@
           "output_column"
         ],
         "title": "DelayRequest"
+      },
+      "DelaySourceVersion": {
+        "properties": {
+          "version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Version Id"
+          },
+          "version_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Version Index"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "operation_name": {
+            "type": "string",
+            "title": "Operation Name"
+          },
+          "parent_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Version Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "delay_status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "not_analyzed",
+              "unrehydratable"
+            ],
+            "title": "Delay Status"
+          },
+          "latest_complete_delay_run_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Complete Delay Run Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version_id",
+          "version_index",
+          "name",
+          "operation_name",
+          "created_at",
+          "delay_status"
+        ],
+        "title": "DelaySourceVersion",
+        "description": "One Cleaning version eligible as a Delay-analysis source."
+      },
+      "DelaySourceVersionsData": {
+        "properties": {
+          "dataset_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Dataset Id"
+          },
+          "default_source_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Source Version Id"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/DelaySourceVersion"
+            },
+            "type": "array",
+            "title": "Sources"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "dataset_id",
+          "sources"
+        ],
+        "title": "DelaySourceVersionsData",
+        "description": "Selector-ready Cleaning-version history for one dataset."
       },
       "DynamicSegment": {
         "properties": {
@@ -11148,6 +11529,35 @@
           "request_id"
         ],
         "title": "SuccessEnvelope[DelayData]"
+      },
+      "SuccessEnvelope_DelaySourceVersionsData_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true,
+            "title": "Success",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/DelaySourceVersionsData"
+          },
+          "error": {
+            "type": "null",
+            "title": "Error"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "SuccessEnvelope[DelaySourceVersionsData]"
       },
       "SuccessEnvelope_ExportDatasetData_": {
         "properties": {

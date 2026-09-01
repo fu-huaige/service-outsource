@@ -164,6 +164,30 @@ class DatasetVersionsData(Schema):
     edges: list[VersionEdge]
 
 
+DelaySourceStatus = Literal["complete", "not_analyzed", "unrehydratable"]
+
+
+class DelaySourceVersion(Schema):
+    """One Cleaning version eligible as a Delay-analysis source."""
+
+    version_id: UUID
+    version_index: int = Field(ge=0)
+    name: str
+    operation_name: str
+    parent_version_id: UUID | None = None
+    created_at: datetime
+    delay_status: DelaySourceStatus
+    latest_complete_delay_run_id: UUID | None = None
+
+
+class DelaySourceVersionsData(Schema):
+    """Selector-ready Cleaning-version history for one dataset."""
+
+    dataset_id: UUID
+    default_source_version_id: UUID | None = None
+    sources: list[DelaySourceVersion]
+
+
 ColumnConfigRole = Literal["timestamp", "time", "input", "output", "ignore", "ignored"]
 
 

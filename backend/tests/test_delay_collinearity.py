@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import AsyncIterator, Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from uuid import UUID, uuid4
 
 import numpy as np
 import pytest
@@ -24,8 +27,10 @@ from algorithms.identifiability.regressor import IdentifiabilityError
 from app.core.config import Settings
 from app.core.db import get_session
 from app.main import create_app
-from app.models import Base
+from app.models import Base, DatasetVersion, ProcessingRun
+from app.models.operation_log import OperationLog
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 AR = [-1.3, 0.42]
@@ -229,6 +234,20 @@ class TestCollinearity:
         with pytest.raises(IdentifiabilityError):
             analyze_collinearity(inputs={"u1": np.zeros(100)})
 
+    def test_non_finite_diagnostics_are_normalized_to_null_before_persistence(self) -> None:
+        from app.services.preprocessing_analysis_service import _normalize_collinearity_payload
+
+        normalized = _normalize_collinearity_payload(
+            {
+                "vif": {"u1": float("inf"), "u2": float("nan")},
+                "condition_number": float("inf"),
+            }
+        )
+
+        assert normalized["vif"] == {"u1": None, "u2": None}
+        assert normalized["condition_number"] is None
+        json.dumps(normalized, allow_nan=False)
+
     def test_spearman_catches_a_monotone_nonlinear_pair_that_pearson_understates(self) -> None:
         base = np.linspace(0.1, 5.0, 1500)
         inputs = {"u1": base, "u2": np.exp(base)}
@@ -254,6 +273,7 @@ def api_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Test
 
     monkeypatch.setattr("app.api.routes.get_settings", lambda: Settings(artifact_root=tmp_path))
     app = create_app()
+    app.state.phase6_session_factory = session_factory
     app.dependency_overrides[get_session] = session_override
     with TestClient(app) as client:
         yield client
@@ -291,6 +311,174 @@ class TestPhase6Api:
         assert data["prewhitening_orders"]["u1"] >= 1
         assert len(data["correlations"]["u1"]) == 31
 
+    def test_delay_persists_full_spectrum_and_rehydrates_without_writes(
+        self, api_client: TestClient
+    ) -> None:
+        version_id = generate_benchmark(api_client)
+        analyzed = api_client.post(
+            "/api/v1/preprocessing/delay",
+            json={
+                "version_id": version_id,
+                "input_columns": ["u1", "u2"],
+                "output_column": "y",
+                "max_lag": 30,
+            },
+        )
+        assert analyzed.status_code == 202, analyzed.text
+        expected = analyzed.json()["data"]
+
+        async def snapshot() -> tuple[int, int]:
+            async with api_client.app.state.phase6_session_factory() as session:
+                run = await session.get(ProcessingRun, UUID(expected["processing_run_id"]))
+                assert run is not None
+                assert run.result["correlations"] == expected["correlations"]
+                runs = int(await session.scalar(select(func.count()).select_from(ProcessingRun)) or 0)
+                versions = int(await session.scalar(select(func.count()).select_from(DatasetVersion)) or 0)
+                return runs, versions
+
+        before = asyncio.run(snapshot())
+        restored = api_client.get(
+            "/api/v1/preprocessing/delay/latest",
+            params={"version_id": version_id, "dataset_id": expected["dataset_id"]},
+        )
+        assert restored.status_code == 200, restored.text
+        data = restored.json()["data"]
+        for field in (
+            "processing_run_id",
+            "correlations",
+            "candidate_peaks",
+            "best_delays",
+            "validation_fit",
+            "refinement_rounds",
+            "uncertain_columns",
+            "prewhitening_orders",
+        ):
+            assert data[field] == expected[field]
+        assert asyncio.run(snapshot()) == before
+
+    def test_delay_latest_query_returns_newest_complete_successful_run(
+        self, api_client: TestClient
+    ) -> None:
+        version_id = generate_benchmark(api_client)
+        first = api_client.post(
+            "/api/v1/preprocessing/delay",
+            json={"version_id": version_id, "input_columns": ["u1", "u2"], "output_column": "y", "max_lag": 20},
+        )
+        second = api_client.post(
+            "/api/v1/preprocessing/delay",
+            json={"version_id": version_id, "input_columns": ["u1", "u2"], "output_column": "y", "max_lag": 30},
+        )
+        assert first.status_code == second.status_code == 202
+        expected = second.json()["data"]
+
+        async def add_ignored_runs() -> None:
+            async with api_client.app.state.phase6_session_factory() as session:
+                current = await session.get(ProcessingRun, UUID(expected["processing_run_id"]))
+                assert current is not None
+                timestamp = datetime.now(UTC) + timedelta(seconds=1)
+                for run_type, status in (("preprocessing.delay", "failed"), ("preprocessing.clean", "succeeded")):
+                    session.add(
+                        ProcessingRun(
+                            id=uuid4(),
+                            dataset_id=current.dataset_id,
+                            source_version_id=current.source_version_id,
+                            run_type=run_type,
+                            status=status,
+                            parameters=dict(current.parameters),
+                            result=dict(current.result),
+                            created_at=timestamp,
+                            finished_at=timestamp,
+                        )
+                    )
+                await session.commit()
+
+        asyncio.run(add_ignored_runs())
+
+        restored = api_client.get(
+            "/api/v1/preprocessing/delay/latest", params={"version_id": version_id}
+        )
+        assert restored.status_code == 200, restored.text
+        data = restored.json()["data"]
+        assert data["processing_run_id"] == expected["processing_run_id"]
+        assert len(data["correlations"]["u1"]) == 31
+        mismatched_dataset = api_client.get(
+            "/api/v1/preprocessing/delay/latest",
+            params={"version_id": version_id, "dataset_id": str(uuid4())},
+        )
+        assert mismatched_dataset.status_code == 404
+        assert mismatched_dataset.json()["error"]["code"] == "DELAY_RESULT_NOT_FOUND"
+
+    def test_delay_latest_query_skips_legacy_incomplete_runs(self, api_client: TestClient) -> None:
+        version_id = generate_benchmark(api_client)
+        analyzed = api_client.post(
+            "/api/v1/preprocessing/delay",
+            json={"version_id": version_id, "input_columns": ["u1", "u2"], "output_column": "y"},
+        )
+        assert analyzed.status_code == 202
+        expected = analyzed.json()["data"]
+
+        async def add_legacy_run() -> None:
+            async with api_client.app.state.phase6_session_factory() as session:
+                current = await session.get(ProcessingRun, UUID(expected["processing_run_id"]))
+                assert current is not None
+                legacy_result = dict(current.result)
+                legacy_result.pop("correlations")
+                timestamp = datetime.now(UTC) + timedelta(seconds=1)
+                session.add(
+                    ProcessingRun(
+                        id=uuid4(),
+                        dataset_id=current.dataset_id,
+                        source_version_id=current.source_version_id,
+                        run_type="preprocessing.delay",
+                        status="succeeded",
+                        parameters=dict(current.parameters),
+                        result=legacy_result,
+                        created_at=timestamp,
+                        finished_at=timestamp,
+                    )
+                )
+                await session.commit()
+
+        asyncio.run(add_legacy_run())
+        restored = api_client.get(
+            "/api/v1/preprocessing/delay/latest", params={"version_id": version_id}
+        )
+        assert restored.status_code == 200, restored.text
+        assert restored.json()["data"]["processing_run_id"] == expected["processing_run_id"]
+
+    def test_delay_latest_query_reports_missing_or_unavailable_results(
+        self, api_client: TestClient
+    ) -> None:
+        version_id = generate_benchmark(api_client)
+        missing = api_client.get(
+            "/api/v1/preprocessing/delay/latest", params={"version_id": version_id}
+        )
+        assert missing.status_code == 404
+        assert missing.json()["error"]["code"] == "DELAY_RESULT_NOT_FOUND"
+
+        analyzed = api_client.post(
+            "/api/v1/preprocessing/delay",
+            json={"version_id": version_id, "input_columns": ["u1", "u2"], "output_column": "y"},
+        )
+        assert analyzed.status_code == 202
+        expected = analyzed.json()["data"]
+
+        async def remove_spectrum() -> None:
+            async with api_client.app.state.phase6_session_factory() as session:
+                run = await session.get(ProcessingRun, UUID(expected["processing_run_id"]))
+                assert run is not None
+                legacy_result = dict(run.result)
+                legacy_result.pop("correlations")
+                run.result = legacy_result
+                await session.commit()
+
+        asyncio.run(remove_spectrum())
+        unavailable = api_client.get(
+            "/api/v1/preprocessing/delay/latest", params={"version_id": version_id}
+        )
+        assert unavailable.status_code == 404
+        assert unavailable.json()["error"]["code"] == "DELAY_RESULT_UNAVAILABLE"
+
     def test_collinearity_endpoint_flags_the_s5_redundant_input(
         self, api_client: TestClient
     ) -> None:
@@ -310,6 +498,184 @@ class TestPhase6Api:
         assert data["correlated_groups"], "S5's redundant input pair must be grouped"
         assert abs(data["matrix"][0][1]) > 0.9
         assert {item["action"] for item in data["recommendations"]} & {"keep", "drop"}
+
+    def test_collinearity_persists_canonical_result_and_rehydrates_without_writes(
+        self, api_client: TestClient
+    ) -> None:
+        version_id = generate_benchmark(api_client, "S5")
+        analyzed = api_client.post(
+            "/api/v1/preprocessing/collinearity",
+            json={"version_id": version_id, "input_columns": ["u1", "u2"]},
+        )
+        assert analyzed.status_code == 202, analyzed.text
+        expected = analyzed.json()["data"]
+
+        async def snapshot() -> tuple[int, int]:
+            async with api_client.app.state.phase6_session_factory() as session:
+                run = await session.get(ProcessingRun, UUID(expected["processing_run_id"]))
+                assert run is not None
+                assert run.result["vif"] == expected["vif_scores"]
+                assert run.result["condition_number"] == expected["condition_number"]
+                assert all(value is None or np.isfinite(value) for value in run.result["vif"].values())
+                assert run.result["condition_number"] is None or np.isfinite(
+                    run.result["condition_number"]
+                )
+                json.dumps(run.result, allow_nan=False)
+                operation_log = await session.scalar(
+                    select(OperationLog).where(
+                        OperationLog.event_type == "preprocessing.collinearity.completed"
+                    )
+                )
+                assert operation_log is not None
+                json.dumps(json.loads(operation_log.payload_json), allow_nan=False)
+                runs = int(await session.scalar(select(func.count()).select_from(ProcessingRun)) or 0)
+                versions = int(await session.scalar(select(func.count()).select_from(DatasetVersion)) or 0)
+                return runs, versions
+
+        before = asyncio.run(snapshot())
+        restored = api_client.get(
+            "/api/v1/preprocessing/collinearity/latest",
+            params={"version_id": version_id, "dataset_id": expected["dataset_id"]},
+        )
+        assert restored.status_code == 200, restored.text
+        data = restored.json()["data"]
+        for field in (
+            "processing_run_id",
+            "variables",
+            "matrix",
+            "vif_scores",
+            "condition_number",
+            "recommendations",
+            "spearman_matrix",
+            "correlated_groups",
+        ):
+            assert data[field] == expected[field]
+        assert asyncio.run(snapshot()) == before
+
+    def test_collinearity_api_returns_null_for_unavailable_vif(
+        self, api_client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from algorithms.identifiability.collinearity import CollinearityAdvice, CollinearityResult
+        from app.services import preprocessing_analysis_service
+
+        monkeypatch.setattr(
+            preprocessing_analysis_service,
+            "analyze_collinearity",
+            lambda **_: CollinearityResult(
+                variables=("u1", "u2"),
+                pearson=((1.0, 1.0), (1.0, 1.0)),
+                spearman=((1.0, 1.0), (1.0, 1.0)),
+                vif={"u1": float("inf"), "u2": float("nan")},
+                condition_number=float("inf"),
+                correlated_pairs=(),
+                groups=(),
+                advice=(
+                    CollinearityAdvice(
+                        variable="u1", action="review", reason="unavailable", related_variables=()
+                    ),
+                ),
+                thresholds={"correlation_threshold": 0.9, "vif_threshold": 10.0},
+            ),
+        )
+        version_id = generate_benchmark(api_client)
+        response = api_client.post(
+            "/api/v1/preprocessing/collinearity",
+            json={"version_id": version_id, "input_columns": ["u1", "u2"]},
+        )
+        assert response.status_code == 202, response.text
+        data = response.json()["data"]
+        assert data["vif_scores"] == {"u1": None, "u2": None}
+        assert data["condition_number"] is None
+
+        async def persisted() -> None:
+            async with api_client.app.state.phase6_session_factory() as session:
+                run = await session.get(ProcessingRun, UUID(data["processing_run_id"]))
+                assert run is not None
+                assert run.result["vif"] == {"u1": None, "u2": None}
+                assert run.result["condition_number"] is None
+                json.dumps(run.result, allow_nan=False)
+
+        asyncio.run(persisted())
+
+    def test_collinearity_latest_skips_newer_incomplete_run_and_filters_dataset(
+        self, api_client: TestClient
+    ) -> None:
+        version_id = generate_benchmark(api_client, "S5")
+        analyzed = api_client.post(
+            "/api/v1/preprocessing/collinearity",
+            json={"version_id": version_id, "input_columns": ["u1", "u2"]},
+        )
+        assert analyzed.status_code == 202
+        expected = analyzed.json()["data"]
+
+        async def add_incomplete_run() -> None:
+            async with api_client.app.state.phase6_session_factory() as session:
+                current = await session.get(ProcessingRun, UUID(expected["processing_run_id"]))
+                assert current is not None
+                incomplete_result = dict(current.result)
+                incomplete_result.pop("vif")
+                timestamp = datetime.now(UTC) + timedelta(seconds=1)
+                session.add(
+                    ProcessingRun(
+                        id=uuid4(),
+                        dataset_id=current.dataset_id,
+                        source_version_id=current.source_version_id,
+                        run_type="preprocessing.collinearity",
+                        status="succeeded",
+                        parameters=dict(current.parameters),
+                        result=incomplete_result,
+                        created_at=timestamp,
+                        finished_at=timestamp,
+                    )
+                )
+                await session.commit()
+
+        asyncio.run(add_incomplete_run())
+        restored = api_client.get(
+            "/api/v1/preprocessing/collinearity/latest", params={"version_id": version_id}
+        )
+        assert restored.status_code == 200, restored.text
+        assert restored.json()["data"]["processing_run_id"] == expected["processing_run_id"]
+
+        mismatched_dataset = api_client.get(
+            "/api/v1/preprocessing/collinearity/latest",
+            params={"version_id": version_id, "dataset_id": str(uuid4())},
+        )
+        assert mismatched_dataset.status_code == 404
+        assert mismatched_dataset.json()["error"]["code"] == "COLLINEARITY_RESULT_NOT_FOUND"
+
+    def test_collinearity_latest_reports_missing_and_unavailable_results(
+        self, api_client: TestClient
+    ) -> None:
+        version_id = generate_benchmark(api_client, "S5")
+        missing = api_client.get(
+            "/api/v1/preprocessing/collinearity/latest", params={"version_id": version_id}
+        )
+        assert missing.status_code == 404
+        assert missing.json()["error"]["code"] == "COLLINEARITY_RESULT_NOT_FOUND"
+
+        analyzed = api_client.post(
+            "/api/v1/preprocessing/collinearity",
+            json={"version_id": version_id, "input_columns": ["u1", "u2"]},
+        )
+        assert analyzed.status_code == 202
+        expected = analyzed.json()["data"]
+
+        async def remove_vif() -> None:
+            async with api_client.app.state.phase6_session_factory() as session:
+                run = await session.get(ProcessingRun, UUID(expected["processing_run_id"]))
+                assert run is not None
+                incomplete_result = dict(run.result)
+                incomplete_result.pop("vif")
+                run.result = incomplete_result
+                await session.commit()
+
+        asyncio.run(remove_vif())
+        unavailable = api_client.get(
+            "/api/v1/preprocessing/collinearity/latest", params={"version_id": version_id}
+        )
+        assert unavailable.status_code == 404
+        assert unavailable.json()["error"]["code"] == "COLLINEARITY_RESULT_UNAVAILABLE"
 
     def test_delay_rejects_an_unknown_column(self, api_client: TestClient) -> None:
         version_id = generate_benchmark(api_client)

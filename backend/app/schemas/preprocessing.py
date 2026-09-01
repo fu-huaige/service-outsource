@@ -236,7 +236,7 @@ class CollinearityData(Schema):
     task: TaskResource
     variables: list[str]
     matrix: list[list[float]]
-    vif_scores: dict[str, float]
+    vif_scores: dict[str, float | None]
     condition_number: float | None = None
     recommendations: list[VariableRecommendation]
     dataset_id: UUID | None = None
