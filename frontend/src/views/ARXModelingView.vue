@@ -73,7 +73,7 @@
       <div class="industrial-card" v-if="fitResult">
         <div class="industrial-card-header">
           <div class="industrial-card-title">
-            <el-icon><Trophy /></el-icon> 辨识结果与多分区验证指标
+            <el-icon><Trophy /></el-icon> 辨识结果与训练 / 验证指标
           </div>
           <el-tag type="success">验证集自由仿真 FIT: {{ pct(fitResult.metrics.val_free_run_fit) }}</el-tag>
         </div>
@@ -84,20 +84,12 @@
             <div class="val">{{ pct(fitResult.metrics.val_free_run_fit) }}</div>
           </div>
           <div class="metric-box">
-            <div class="name">测试集自由仿真 FIT</div>
-            <div class="val">{{ pct(fitResult.metrics.test_free_run_fit) }}</div>
-          </div>
-          <div class="metric-box">
             <div class="name">验证集一步预测 FIT (诊断)</div>
             <div class="val">{{ pct(fitResult.metrics.val_fit) }}</div>
           </div>
           <div class="metric-box" :class="{ warn: (fitResult.validation?.fit_gap ?? 0) > 10 }">
             <div class="name">FIT 差值 (一步 − 自由仿真)</div>
             <div class="val">{{ num(fitResult.validation?.fit_gap) }}</div>
-          </div>
-          <div class="metric-box">
-            <div class="name">测试集 RMSE</div>
-            <div class="val">{{ num(fitResult.metrics.rmse) }}</div>
           </div>
           <div class="metric-box">
             <div class="name">训练样本数</div>
@@ -163,7 +155,7 @@
       <div class="industrial-card" v-if="fitResult">
         <div class="industrial-card-header">
           <div class="industrial-card-title">
-            <el-icon><TrendCharts /></el-icon> 真实实测输出 y(t) vs 辨识预测 ŷ(t) 对比图
+            <el-icon><TrendCharts /></el-icon> 训练 / 验证区间：真实输出 y(t) vs 辨识预测 ŷ(t)
           </div>
         </div>
         <ChartContainer :options="plotOptions" height="380px" />
@@ -208,6 +200,7 @@ const form = reactive<ARXFitRequest>({
   delays: [3],
   estimation_method: "ols",
   ridge_alpha: 0.1,
+  evaluate_test: false,
 });
 
 const syncFormWithStore = () => {
@@ -231,7 +224,7 @@ onMounted(() => {
 const handleFit = async () => {
   loading.value = true;
   try {
-    const res = await fitARXModel(form);
+    const res = await fitARXModel({ ...form, evaluate_test: false });
     fitResult.value = res;
     ElMessage.success(
       `ARX 辨识成功：验证集自由仿真 FIT = ${pct(res.metrics.val_free_run_fit)}`

@@ -204,6 +204,7 @@ def test_api_runs_real_simulation_and_arx_baseline(tmp_path, monkeypatch) -> Non
                 "nb": [2],
                 "delays": [3],
                 "estimation_method": "ols",
+                "evaluate_test": True,
             },
         )
 

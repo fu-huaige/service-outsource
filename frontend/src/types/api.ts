@@ -539,6 +539,8 @@ export interface ARXFitRequest {
   delays: number[];
   estimation_method?: "ols" | "ridge";
   ridge_alpha?: number;
+  /** The standalone modeling page is validation-only; Test belongs to saved-model evaluation. */
+  evaluate_test?: false;
 }
 
 export interface ArxMetrics {

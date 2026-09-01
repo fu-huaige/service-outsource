@@ -90,7 +90,7 @@ class TestIdentification:
 
     def test_reports_both_one_step_and_free_run_per_partition(self) -> None:
         inputs = make_inputs(3000)
-        result = fit(inputs, simulate(inputs, noise=0.03))
+        result = fit(inputs, simulate(inputs, noise=0.03), evaluate_test=True)
         for value in (
             result.metrics.train_fit,
             result.metrics.val_fit,
@@ -273,6 +273,12 @@ class TestModelingApi:
         assert data["validation"]["steady_state_gains"]
         assert data["training_rows"] > 0
         assert data["free_run_series"]
+        assert data["metrics"]["test_fit"] is None
+        assert data["metrics"]["test_free_run_fit"] is None
+        assert "test" not in data["metrics"]["one_step"]
+        assert "test" not in data["metrics"]["free_run"]
+        assert max(data["plot_data"]["indices"]) < data["plot_data"]["splits"]["val_end"]
+        assert len(data["free_run_series"]) == len(data["plot_data"]["indices"])
 
     def test_violating_a_prior_blocks_the_model(self, client: TestClient) -> None:
         version_id = self._version(client)

@@ -19,6 +19,7 @@ def test_noiseless_s1_recovers_known_arx_parameters_within_one_percent(tmp_path)
             na=2,
             nb={"u1": 2},
             delays={"u1": 3},
+            evaluate_test=True,
         ),
         artifact_root=tmp_path,
     )

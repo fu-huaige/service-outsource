@@ -2105,12 +2105,329 @@
         }
       }
     },
+    "/api/v1/copilot/executions/{execution_id}": {
+      "get": {
+        "tags": [
+          "Copilot"
+        ],
+        "summary": "Read one persisted copilot execution snapshot",
+        "description": "Return durable execution state without dispatching a tool or mutating workflow state.",
+        "operationId": "get_copilot_execution_api_v1_copilot_executions__execution_id__get",
+        "parameters": [
+          {
+            "name": "execution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Execution Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_CopilotExecutionSnapshotData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或领域规则无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求体或路径参数未通过 Pydantic 校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/copilot/arx-structure/validate": {
+      "post": {
+        "tags": [
+          "Copilot"
+        ],
+        "summary": "Validate controlled ARX na/nb overrides without persisting a model",
+        "operationId": "validate_copilot_arx_structure_api_v1_copilot_arx_structure_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArxStructureValidationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_ArxStructureValidationData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或领域规则无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求体或路径参数未通过 Pydantic 校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/copilot/feature-selection/validate": {
+      "post": {
+        "tags": [
+          "Copilot"
+        ],
+        "summary": "Validate a controlled Feature Selection without executing a tool",
+        "operationId": "validate_copilot_feature_selection_api_v1_copilot_feature_selection_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeatureSelectionValidationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_FeatureSelectionValidationData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或领域规则无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求体或路径参数未通过 Pydantic 校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/copilot/lag-overrides/validate": {
+      "post": {
+        "tags": [
+          "Copilot"
+        ],
+        "summary": "Validate controlled manual lag overrides without executing a tool",
+        "operationId": "validate_copilot_lag_overrides_api_v1_copilot_lag_overrides_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LagOverrideValidationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_LagOverrideValidationData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或领域规则无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求体或路径参数未通过 Pydantic 校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/copilot/confirm": {
       "post": {
         "tags": [
           "Copilot"
         ],
-        "summary": "Record a human-in-the-loop approval or rejection",
+        "summary": "Persist a human confirmation decision for an Agent execution step",
         "operationId": "copilot_confirm_api_v1_copilot_confirm_post",
         "requestBody": {
           "content": {
@@ -2165,6 +2482,179 @@
           },
           "500": {
             "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "执行状态不允许该确认操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/copilot/optimize-pipeline/execute": {
+      "post": {
+        "tags": [
+          "Copilot"
+        ],
+        "summary": "Execute the approved agent optimization step",
+        "description": "Execute exactly one already-approved optimize_pipeline step synchronously.",
+        "operationId": "execute_copilot_optimize_pipeline_api_v1_copilot_optimize_pipeline_execute_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OptimizePipelineExecuteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_CopilotOptimizePipelineExecuteData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或领域规则无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求体或路径参数未通过 Pydantic 校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "执行状态不允许模型寻优。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/copilot/evaluate-model/execute": {
+      "post": {
+        "tags": [
+          "Copilot"
+        ],
+        "summary": "Execute the pending saved-model evaluation step",
+        "operationId": "execute_copilot_evaluate_model_api_v1_copilot_evaluate_model_execute_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopilotEvaluateModelExecuteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_CopilotEvaluateModelExecuteData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或领域规则无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求体或路径参数未通过 Pydantic 校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "执行状态不允许模型评价。",
             "content": {
               "application/json": {
                 "schema": {
@@ -2618,6 +3108,11 @@
             "format": "uuid",
             "title": "Model Id"
           },
+          "processing_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Processing Run Id"
+          },
           "task": {
             "$ref": "#/components/schemas/TaskResource"
           },
@@ -2732,6 +3227,7 @@
         "type": "object",
         "required": [
           "model_id",
+          "processing_run_id",
           "task",
           "estimator",
           "coefficients",
@@ -2868,7 +3364,7 @@
           "evaluate_test": {
             "type": "boolean",
             "title": "Evaluate Test",
-            "default": true
+            "default": false
           },
           "training_sample_indices": {
             "items": {
@@ -3212,6 +3708,112 @@
           "acf_values"
         ],
         "title": "ArxResidualDiagnostics"
+      },
+      "ArxStructureManualOverrides": {
+        "properties": {
+          "na": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Na"
+          },
+          "nb": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Nb"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ArxStructureManualOverrides"
+      },
+      "ArxStructureValidationData": {
+        "properties": {
+          "recommended_structure": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Recommended Structure"
+          },
+          "manual_overrides": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Manual Overrides"
+          },
+          "final_structure": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Final Structure"
+          },
+          "structure_sources": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "structure_recommendation",
+                "manual_override"
+              ]
+            },
+            "type": "object",
+            "title": "Structure Sources"
+          },
+          "selection_evidence": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Selection Evidence"
+          },
+          "overall_status": {
+            "type": "string",
+            "enum": [
+              "VALID",
+              "INVALID"
+            ],
+            "title": "Overall Status"
+          },
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Issues"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "recommended_structure",
+          "manual_overrides",
+          "final_structure",
+          "structure_sources",
+          "selection_evidence",
+          "overall_status"
+        ],
+        "title": "ArxStructureValidationData"
+      },
+      "ArxStructureValidationRequest": {
+        "properties": {
+          "execution_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Execution Id"
+          },
+          "step_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Step Id"
+          },
+          "manual_overrides": {
+            "$ref": "#/components/schemas/ArxStructureManualOverrides"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "execution_id",
+          "step_id"
+        ],
+        "title": "ArxStructureValidationRequest"
       },
       "BaselineEvaluation": {
         "properties": {
@@ -4044,6 +4646,11 @@
             "format": "uuid",
             "title": "Source Version Id"
           },
+          "processing_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Processing Run Id"
+          },
           "task": {
             "$ref": "#/components/schemas/TaskResource"
           },
@@ -4126,6 +4733,7 @@
         "type": "object",
         "required": [
           "source_version_id",
+          "processing_run_id",
           "task",
           "variables",
           "matrix",
@@ -4337,6 +4945,52 @@
             "format": "uuid",
             "title": "Copilot Run Id"
           },
+          "execution_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Id"
+          },
+          "workflow_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflow Status"
+          },
+          "current_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version Id"
+          },
+          "pending_confirmation_step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Confirmation Step Id"
+          },
           "plan": {
             "$ref": "#/components/schemas/ExecutionPlan"
           },
@@ -4480,6 +5134,108 @@
             ],
             "title": "Decision"
           },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Execution Id"
+          },
+          "workflow_status": {
+            "type": "string",
+            "title": "Workflow Status"
+          },
+          "current_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version Id"
+          },
+          "current_step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Step Id"
+          },
+          "pending_confirmation_step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Confirmation Step Id"
+          },
+          "step_id": {
+            "type": "string",
+            "title": "Step Id"
+          },
+          "step_status": {
+            "type": "string",
+            "title": "Step Status"
+          },
+          "confirmation_status": {
+            "type": "string",
+            "title": "Confirmation Status"
+          },
+          "result_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Version Id"
+          },
+          "result_payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Result Payload"
+          },
+          "lag_override_validation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LagOverrideValidationData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "feature_selection_validation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeatureSelectionValidationData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "arx_structure_validation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArxStructureValidationData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "task": {
             "anyOf": [
               {
@@ -4496,7 +5252,14 @@
         "required": [
           "copilot_run_id",
           "confirmation_id",
-          "decision"
+          "decision",
+          "execution_id",
+          "workflow_status",
+          "current_step_id",
+          "pending_confirmation_step_id",
+          "step_id",
+          "step_status",
+          "confirmation_status"
         ],
         "title": "CopilotConfirmData"
       },
@@ -4516,10 +5279,63 @@
             "type": "boolean",
             "title": "Approved"
           },
+          "execution_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Id"
+          },
+          "step_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Id"
+          },
           "parameter_overrides": {
             "additionalProperties": true,
             "type": "object",
             "title": "Parameter Overrides"
+          },
+          "manual_overrides": {
+            "items": {
+              "$ref": "#/components/schemas/LagOverrideEntry"
+            },
+            "type": "array",
+            "title": "Manual Overrides"
+          },
+          "warning_acknowledged": {
+            "type": "boolean",
+            "title": "Warning Acknowledged",
+            "default": false
+          },
+          "feature_drop_columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feature Drop Columns"
+          },
+          "arx_structure_overrides": {
+            "$ref": "#/components/schemas/ArxStructureManualOverrides"
           },
           "comment": {
             "anyOf": [
@@ -4542,6 +5358,443 @@
           "approved"
         ],
         "title": "CopilotConfirmRequest"
+      },
+      "CopilotEvaluateModelExecuteData": {
+        "properties": {
+          "execution_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Execution Id"
+          },
+          "workflow_status": {
+            "type": "string",
+            "title": "Workflow Status"
+          },
+          "current_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version Id"
+          },
+          "step_id": {
+            "type": "string",
+            "title": "Step Id"
+          },
+          "step_status": {
+            "type": "string",
+            "title": "Step Status"
+          },
+          "result_payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Result Payload"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "processing_run_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Processing Run Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "execution_id",
+          "workflow_status",
+          "step_id",
+          "step_status"
+        ],
+        "title": "CopilotEvaluateModelExecuteData"
+      },
+      "CopilotEvaluateModelExecuteRequest": {
+        "properties": {
+          "execution_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Execution Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "execution_id"
+        ],
+        "title": "CopilotEvaluateModelExecuteRequest"
+      },
+      "CopilotExecutionSnapshotData": {
+        "properties": {
+          "execution_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Execution Id"
+          },
+          "copilot_run_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Copilot Run Id"
+          },
+          "dataset_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Dataset Id"
+          },
+          "initial_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Initial Version Id"
+          },
+          "current_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Current Version Id"
+          },
+          "planner_source": {
+            "type": "string",
+            "title": "Planner Source"
+          },
+          "workflow_status": {
+            "type": "string",
+            "title": "Workflow Status"
+          },
+          "current_step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Step Id"
+          },
+          "pending_confirmation_step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Confirmation Step Id"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/ExecutionPlan"
+          },
+          "artifacts": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Artifacts"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "step_runs": {
+            "items": {
+              "$ref": "#/components/schemas/CopilotExecutionStepSnapshot"
+            },
+            "type": "array",
+            "title": "Step Runs"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "execution_id",
+          "dataset_id",
+          "initial_version_id",
+          "current_version_id",
+          "planner_source",
+          "workflow_status",
+          "plan",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CopilotExecutionSnapshotData"
+      },
+      "CopilotExecutionStepSnapshot": {
+        "properties": {
+          "step_id": {
+            "type": "string",
+            "title": "Step Id"
+          },
+          "sequence": {
+            "type": "integer",
+            "title": "Sequence"
+          },
+          "tool": {
+            "type": "string",
+            "title": "Tool"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "requires_confirmation": {
+            "type": "boolean",
+            "title": "Requires Confirmation"
+          },
+          "confirmation_status": {
+            "type": "string",
+            "title": "Confirmation Status"
+          },
+          "attempt_count": {
+            "type": "integer",
+            "title": "Attempt Count"
+          },
+          "source_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version Id"
+          },
+          "result_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Version Id"
+          },
+          "input_payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Payload"
+          },
+          "result_payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Result Payload"
+          },
+          "processing_run_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Processing Run Ids"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "step_id",
+          "sequence",
+          "tool",
+          "status",
+          "requires_confirmation",
+          "confirmation_status",
+          "attempt_count"
+        ],
+        "title": "CopilotExecutionStepSnapshot"
+      },
+      "CopilotOptimizePipelineExecuteData": {
+        "properties": {
+          "execution_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Execution Id"
+          },
+          "workflow_status": {
+            "type": "string",
+            "title": "Workflow Status"
+          },
+          "current_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version Id"
+          },
+          "step_id": {
+            "type": "string",
+            "title": "Step Id"
+          },
+          "step_status": {
+            "type": "string",
+            "title": "Step Status"
+          },
+          "result_payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Result Payload"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "processing_run_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Processing Run Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "execution_id",
+          "workflow_status",
+          "step_id",
+          "step_status"
+        ],
+        "title": "CopilotOptimizePipelineExecuteData"
       },
       "DashboardLeaderboardData": {
         "properties": {
@@ -5448,6 +6701,18 @@
             "format": "uuid",
             "title": "Source Version Id"
           },
+          "processing_run_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processing Run Id"
+          },
           "task": {
             "$ref": "#/components/schemas/TaskResource"
           },
@@ -5983,6 +7248,7 @@
               "clean_data",
               "detect_dynamic_segments",
               "estimate_delays",
+              "apply_lag_compensation",
               "analyze_collinearity",
               "select_variables",
               "fit_arx",
@@ -6212,6 +7478,180 @@
         ],
         "title": "FeatureSelectionApplyRequest",
         "description": "Drop only explicitly confirmed redundant input columns."
+      },
+      "FeatureSelectionDecision": {
+        "properties": {
+          "variable": {
+            "type": "string",
+            "title": "Variable"
+          },
+          "recommended_action": {
+            "type": "string",
+            "enum": [
+              "keep",
+              "drop",
+              "merge",
+              "review"
+            ],
+            "title": "Recommended Action"
+          },
+          "final_action": {
+            "type": "string",
+            "enum": [
+              "keep",
+              "drop"
+            ],
+            "title": "Final Action"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "collinearity_analysis",
+              "manual_override"
+            ],
+            "title": "Source"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "variable",
+          "recommended_action",
+          "final_action",
+          "source"
+        ],
+        "title": "FeatureSelectionDecision"
+      },
+      "FeatureSelectionValidationData": {
+        "properties": {
+          "recommended_selection": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "keep",
+                "drop",
+                "merge",
+                "review"
+              ]
+            },
+            "type": "object",
+            "title": "Recommended Selection"
+          },
+          "recommended_drop_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recommended Drop Columns"
+          },
+          "manual_drop_columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Drop Columns"
+          },
+          "final_drop_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Final Drop Columns"
+          },
+          "kept_input_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Kept Input Columns"
+          },
+          "selection_sources": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "collinearity_analysis",
+                "manual_override"
+              ]
+            },
+            "type": "object",
+            "title": "Selection Sources"
+          },
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/FeatureSelectionDecision"
+            },
+            "type": "array",
+            "title": "Decisions"
+          },
+          "overall_status": {
+            "type": "string",
+            "enum": [
+              "VALID",
+              "INVALID"
+            ],
+            "title": "Overall Status"
+          },
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Issues"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "recommended_selection",
+          "recommended_drop_columns",
+          "final_drop_columns",
+          "kept_input_columns",
+          "selection_sources",
+          "overall_status"
+        ],
+        "title": "FeatureSelectionValidationData"
+      },
+      "FeatureSelectionValidationRequest": {
+        "properties": {
+          "execution_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Execution Id"
+          },
+          "step_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Step Id"
+          },
+          "drop_columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drop Columns"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "execution_id",
+          "step_id"
+        ],
+        "title": "FeatureSelectionValidationRequest"
       },
       "FinalTestEvaluation": {
         "properties": {
@@ -6800,6 +8240,184 @@
         "title": "LagCompensationRequest",
         "description": "Apply an explicitly confirmed ARX ``nk`` alignment to input columns.\n\nFor this project ``y(k)`` depends on ``u(k-nk)``.  Applying ``nk=d`` therefore\nwrites source ``u(t-d)`` alongside unchanged ``y(t)`` and drops the leading boundary\nrows that cannot be aligned.  The API never infers or applies a lag by itself."
       },
+      "LagOverrideEntry": {
+        "properties": {
+          "variable": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Variable"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "variable",
+          "value"
+        ],
+        "title": "LagOverrideEntry",
+        "description": "One explicit human override row, kept as input rather than inferred by the Agent."
+      },
+      "LagOverrideParameterValidation": {
+        "properties": {
+          "variable": {
+            "type": "string",
+            "title": "Variable"
+          },
+          "recommended_value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Value"
+          },
+          "manual_value": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Value"
+          },
+          "final_value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Value"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "VALID",
+              "WARNING",
+              "INVALID"
+            ],
+            "title": "Status"
+          },
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Issues"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "variable",
+          "status"
+        ],
+        "title": "LagOverrideParameterValidation"
+      },
+      "LagOverrideValidationData": {
+        "properties": {
+          "recommended_lag_map": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Recommended Lag Map"
+          },
+          "manual_overrides": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Manual Overrides"
+          },
+          "final_lag_map": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Final Lag Map"
+          },
+          "parameter_sources": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "delay_recommendation",
+                "manual_override"
+              ]
+            },
+            "type": "object",
+            "title": "Parameter Sources"
+          },
+          "per_parameter_validation": {
+            "items": {
+              "$ref": "#/components/schemas/LagOverrideParameterValidation"
+            },
+            "type": "array",
+            "title": "Per Parameter Validation"
+          },
+          "overall_status": {
+            "type": "string",
+            "enum": [
+              "VALID",
+              "WARNING",
+              "INVALID"
+            ],
+            "title": "Overall Status"
+          },
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Issues"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "recommended_lag_map",
+          "manual_overrides",
+          "final_lag_map",
+          "parameter_sources",
+          "overall_status"
+        ],
+        "title": "LagOverrideValidationData"
+      },
+      "LagOverrideValidationRequest": {
+        "properties": {
+          "execution_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Execution Id"
+          },
+          "step_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Step Id"
+          },
+          "manual_overrides": {
+            "items": {
+              "$ref": "#/components/schemas/LagOverrideEntry"
+            },
+            "type": "array",
+            "title": "Manual Overrides"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "execution_id",
+          "step_id"
+        ],
+        "title": "LagOverrideValidationRequest"
+      },
       "LeaderboardEntry": {
         "properties": {
           "dataset_id": {
@@ -7250,6 +8868,30 @@
             "type": "object",
             "title": "Best Params"
           },
+          "baseline_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Model Id"
+          },
+          "optimized_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Optimized Model Id"
+          },
           "warm_started_from": {
             "anyOf": [
               {
@@ -7366,6 +9008,21 @@
           "created_at"
         ],
         "title": "OptimizationTrial"
+      },
+      "OptimizePipelineExecuteRequest": {
+        "properties": {
+          "execution_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Execution Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "execution_id"
+        ],
+        "title": "OptimizePipelineExecuteRequest"
       },
       "PageInfo": {
         "properties": {
@@ -8941,6 +10598,35 @@
         ],
         "title": "SuccessEnvelope[ArxFitData]"
       },
+      "SuccessEnvelope_ArxStructureValidationData_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true,
+            "title": "Success",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/ArxStructureValidationData"
+          },
+          "error": {
+            "type": "null",
+            "title": "Error"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "SuccessEnvelope[ArxStructureValidationData]"
+      },
       "SuccessEnvelope_BenchmarkData_": {
         "properties": {
           "success": {
@@ -9114,6 +10800,93 @@
           "request_id"
         ],
         "title": "SuccessEnvelope[CopilotConfirmData]"
+      },
+      "SuccessEnvelope_CopilotEvaluateModelExecuteData_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true,
+            "title": "Success",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/CopilotEvaluateModelExecuteData"
+          },
+          "error": {
+            "type": "null",
+            "title": "Error"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "SuccessEnvelope[CopilotEvaluateModelExecuteData]"
+      },
+      "SuccessEnvelope_CopilotExecutionSnapshotData_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true,
+            "title": "Success",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/CopilotExecutionSnapshotData"
+          },
+          "error": {
+            "type": "null",
+            "title": "Error"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "SuccessEnvelope[CopilotExecutionSnapshotData]"
+      },
+      "SuccessEnvelope_CopilotOptimizePipelineExecuteData_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true,
+            "title": "Success",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/CopilotOptimizePipelineExecuteData"
+          },
+          "error": {
+            "type": "null",
+            "title": "Error"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "SuccessEnvelope[CopilotOptimizePipelineExecuteData]"
       },
       "SuccessEnvelope_DashboardLeaderboardData_": {
         "properties": {
@@ -9405,6 +11178,35 @@
         ],
         "title": "SuccessEnvelope[ExportDatasetData]"
       },
+      "SuccessEnvelope_FeatureSelectionValidationData_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true,
+            "title": "Success",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/FeatureSelectionValidationData"
+          },
+          "error": {
+            "type": "null",
+            "title": "Error"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "SuccessEnvelope[FeatureSelectionValidationData]"
+      },
       "SuccessEnvelope_GeneralizationDiagnosticsData_": {
         "properties": {
           "success": {
@@ -9433,6 +11235,35 @@
           "request_id"
         ],
         "title": "SuccessEnvelope[GeneralizationDiagnosticsData]"
+      },
+      "SuccessEnvelope_LagOverrideValidationData_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true,
+            "title": "Success",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/LagOverrideValidationData"
+          },
+          "error": {
+            "type": "null",
+            "title": "Error"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "SuccessEnvelope[LagOverrideValidationData]"
       },
       "SuccessEnvelope_LivenessData_": {
         "properties": {

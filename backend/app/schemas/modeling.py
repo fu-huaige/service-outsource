@@ -26,9 +26,9 @@ class ArxFitRequest(Schema):
     ridge_alpha: float | None = Field(default=None, ge=0)
     train_ratio: float = Field(default=0.6, gt=0, lt=1)
     validation_ratio: float = Field(default=0.2, gt=0, lt=1)
-    # Optimisation trials must never evaluate the held-out test partition. The final
-    # evaluation enables this only after the best validation trial is fixed.
-    evaluate_test: bool = True
+    # Fitting is validation-only by default. The held-out Test partition is available
+    # only to an explicit, post-selection evaluation path.
+    evaluate_test: bool = False
     # Restrict the training rows to specific sample indices, e.g. the output of
     # quality-constrained D-optimal selection. Empty means "use every training row".
     training_sample_indices: list[int] = Field(default_factory=list)
