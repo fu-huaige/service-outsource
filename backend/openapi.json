@@ -1525,6 +1525,82 @@
         }
       }
     },
+    "/api/v1/datasets/{dataset_id}/collinearity-sources": {
+      "get": {
+        "tags": [
+          "Datasets"
+        ],
+        "summary": "List Lag Compensation versions and their persisted collinearity-analysis states",
+        "description": "Read-only selector data; this endpoint never runs or persists analysis.",
+        "operationId": "get_collinearity_sources_api_v1_datasets__dataset_id__collinearity_sources_get",
+        "parameters": [
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "数据集 UUID。",
+              "title": "Dataset Id"
+            },
+            "description": "数据集 UUID。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_CollinearitySourceVersionsData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或领域规则无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求体或路径参数未通过 Pydantic 校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/preprocessing/delay/latest": {
       "get": {
         "tags": [
@@ -5074,6 +5150,114 @@
           "input_columns"
         ],
         "title": "CollinearityRequest"
+      },
+      "CollinearitySourceVersion": {
+        "properties": {
+          "version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Version Id"
+          },
+          "version_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Version Index"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "operation_name": {
+            "type": "string",
+            "title": "Operation Name"
+          },
+          "parent_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Version Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "collinearity_status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "not_analyzed",
+              "unrehydratable"
+            ],
+            "title": "Collinearity Status"
+          },
+          "latest_complete_collinearity_run_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Complete Collinearity Run Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version_id",
+          "version_index",
+          "name",
+          "operation_name",
+          "created_at",
+          "collinearity_status"
+        ],
+        "title": "CollinearitySourceVersion",
+        "description": "One Lag Compensation version eligible as a Collinearity-analysis source."
+      },
+      "CollinearitySourceVersionsData": {
+        "properties": {
+          "dataset_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Dataset Id"
+          },
+          "default_source_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Source Version Id"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/CollinearitySourceVersion"
+            },
+            "type": "array",
+            "title": "Sources"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "dataset_id",
+          "sources"
+        ],
+        "title": "CollinearitySourceVersionsData",
+        "description": "Selector-ready Lag Compensation-version history for one dataset."
       },
       "ColumnStatistics": {
         "properties": {
@@ -11123,6 +11307,35 @@
           "request_id"
         ],
         "title": "SuccessEnvelope[CollinearityData]"
+      },
+      "SuccessEnvelope_CollinearitySourceVersionsData_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true,
+            "title": "Success",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/CollinearitySourceVersionsData"
+          },
+          "error": {
+            "type": "null",
+            "title": "Error"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "SuccessEnvelope[CollinearitySourceVersionsData]"
       },
       "SuccessEnvelope_CopilotChatData_": {
         "properties": {

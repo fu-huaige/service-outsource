@@ -188,6 +188,30 @@ class DelaySourceVersionsData(Schema):
     sources: list[DelaySourceVersion]
 
 
+CollinearitySourceStatus = Literal["complete", "not_analyzed", "unrehydratable"]
+
+
+class CollinearitySourceVersion(Schema):
+    """One Lag Compensation version eligible as a Collinearity-analysis source."""
+
+    version_id: UUID
+    version_index: int = Field(ge=0)
+    name: str
+    operation_name: str
+    parent_version_id: UUID | None = None
+    created_at: datetime
+    collinearity_status: CollinearitySourceStatus
+    latest_complete_collinearity_run_id: UUID | None = None
+
+
+class CollinearitySourceVersionsData(Schema):
+    """Selector-ready Lag Compensation-version history for one dataset."""
+
+    dataset_id: UUID
+    default_source_version_id: UUID | None = None
+    sources: list[CollinearitySourceVersion]
+
+
 ColumnConfigRole = Literal["timestamp", "time", "input", "output", "ignore", "ignored"]
 
 

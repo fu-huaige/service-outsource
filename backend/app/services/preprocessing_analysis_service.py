@@ -17,7 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dataset import Dataset, DatasetVersion, ProcessingRun
 from app.models.operation_log import OperationLog
-from app.schemas.datasets import DelaySourceVersion, DelaySourceVersionsData
+from app.schemas.datasets import (
+    CollinearitySourceVersion,
+    CollinearitySourceVersionsData,
+    DelaySourceVersion,
+    DelaySourceVersionsData,
+)
 from app.schemas.preprocessing import (
     CollinearityData,
     CollinearityRequest,
@@ -175,10 +180,9 @@ async def get_latest_collinearity_result(
         statement = statement.where(ProcessingRun.dataset_id == dataset_id)
     runs = list((await session.scalars(statement)).all())
 
-    for run in runs:
-        rehydrated = _rehydrate_collinearity_data(run)
-        if rehydrated is not None:
-            return rehydrated
+    rehydrated = _latest_rehydrated_collinearity_result(runs)
+    if rehydrated is not None:
+        return rehydrated
 
     if runs:
         raise AnalysisDomainError(
@@ -275,11 +279,114 @@ async def get_delay_source_versions(
     )
 
 
+async def get_collinearity_source_versions(
+    session: AsyncSession,
+    *,
+    dataset_id: UUID,
+) -> CollinearitySourceVersionsData:
+    """Return every Lag Compensation version with its rehydratable analysis state."""
+
+    dataset = await session.get(Dataset, dataset_id)
+    if dataset is None:
+        raise AnalysisDomainError(
+            "DATASET_NOT_FOUND",
+            "数据集不存在。",
+            status_code=404,
+            details={"dataset_id": str(dataset_id)},
+        )
+
+    versions = list(
+        (
+            await session.scalars(
+                select(DatasetVersion)
+                .where(
+                    DatasetVersion.dataset_id == dataset.id,
+                    DatasetVersion.operation_name == "preprocessing.lag_compensation",
+                )
+                .order_by(DatasetVersion.version_index.desc(), DatasetVersion.created_at.desc())
+            )
+        ).all()
+    )
+    if not versions:
+        return CollinearitySourceVersionsData(
+            dataset_id=dataset.id,
+            default_source_version_id=None,
+            sources=[],
+        )
+
+    version_ids = [version.id for version in versions]
+    runs = list(
+        (
+            await session.scalars(
+                select(ProcessingRun)
+                .where(
+                    ProcessingRun.dataset_id == dataset.id,
+                    ProcessingRun.source_version_id.in_(version_ids),
+                    ProcessingRun.run_type == "preprocessing.collinearity",
+                    ProcessingRun.status == "succeeded",
+                )
+                .order_by(ProcessingRun.created_at.desc())
+            )
+        ).all()
+    )
+    runs_by_source: dict[UUID, list[ProcessingRun]] = {version.id: [] for version in versions}
+    for run in runs:
+        if run.source_version_id in runs_by_source:
+            runs_by_source[run.source_version_id].append(run)
+
+    sources: list[CollinearitySourceVersion] = []
+    for version in versions:
+        source_runs = runs_by_source[version.id]
+        rehydrated = _latest_rehydrated_collinearity_result(source_runs)
+        sources.append(
+            CollinearitySourceVersion(
+                version_id=version.id,
+                version_index=version.version_index,
+                name=version.name,
+                operation_name=version.operation_name,
+                parent_version_id=version.parent_version_id,
+                created_at=version.created_at,
+                collinearity_status=(
+                    "complete"
+                    if rehydrated is not None
+                    else "unrehydratable"
+                    if source_runs
+                    else "not_analyzed"
+                ),
+                latest_complete_collinearity_run_id=(
+                    rehydrated.processing_run_id if rehydrated is not None else None
+                ),
+            )
+        )
+
+    default = next(
+        (source.version_id for source in sources if source.collinearity_status == "complete"),
+        sources[0].version_id,
+    )
+    return CollinearitySourceVersionsData(
+        dataset_id=dataset.id,
+        default_source_version_id=default,
+        sources=sources,
+    )
+
+
 def _latest_rehydrated_delay_result(runs: list[ProcessingRun]) -> DelayData | None:
     """Use the one persistence-completeness rule for all Delay result readers."""
 
     for run in runs:
         rehydrated = _rehydrate_delay_data(run)
+        if rehydrated is not None:
+            return rehydrated
+    return None
+
+
+def _latest_rehydrated_collinearity_result(
+    runs: list[ProcessingRun],
+) -> CollinearityData | None:
+    """Use the one persistence-completeness rule for all Collinearity result readers."""
+
+    for run in runs:
+        rehydrated = _rehydrate_collinearity_data(run)
         if rehydrated is not None:
             return rehydrated
     return None

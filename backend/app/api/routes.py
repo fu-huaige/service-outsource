@@ -31,6 +31,7 @@ from app.schemas.copilot import (
 )
 from app.schemas.dashboard import DashboardLeaderboardData
 from app.schemas.datasets import (
+    CollinearitySourceVersionsData,
     DatasetConfigData,
     DatasetConfigRequest,
     DatasetDeleteData,
@@ -147,6 +148,7 @@ from app.services.optimization_service import (
 )
 from app.services.preprocessing_analysis_service import (
     AnalysisDomainError,
+    get_collinearity_source_versions,
     get_delay_source_versions,
     get_latest_collinearity_result,
     get_latest_delay_result,
@@ -658,6 +660,32 @@ async def get_delay_sources(
 
     try:
         data = await get_delay_source_versions(session, dataset_id=dataset_id)
+    except AnalysisDomainError as error:
+        raise AppError(
+            error.code,
+            error.message,
+            status_code=error.status_code,
+            details=error.details,
+        ) from error
+    return success(request, data)
+
+
+@router.get(
+    "/datasets/{dataset_id}/collinearity-sources",
+    tags=["Datasets"],
+    summary="List Lag Compensation versions and their persisted collinearity-analysis states",
+    response_model=SuccessEnvelope[CollinearitySourceVersionsData],
+    responses=ERROR_RESPONSES,
+)
+async def get_collinearity_sources(
+    request: Request,
+    dataset_id: DatasetId,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessEnvelope[CollinearitySourceVersionsData]:
+    """Read-only selector data; this endpoint never runs or persists analysis."""
+
+    try:
+        data = await get_collinearity_source_versions(session, dataset_id=dataset_id)
     except AnalysisDomainError as error:
         raise AppError(
             error.code,
