@@ -309,6 +309,25 @@ export interface DelaySourceVersionsResponse {
   sources: DelaySourceVersion[];
 }
 
+export type CollinearitySourceStatus = "complete" | "not_analyzed" | "unrehydratable";
+
+export interface CollinearitySourceVersionItem {
+  version_id: string;
+  version_index: number;
+  name: string;
+  operation_name: string;
+  parent_version_id: string | null;
+  created_at: string;
+  collinearity_status: CollinearitySourceStatus;
+  latest_complete_collinearity_run_id: string | null;
+}
+
+export interface CollinearitySourceVersionsData {
+  dataset_id: string;
+  default_source_version_id: string | null;
+  sources: CollinearitySourceVersionItem[];
+}
+
 export interface DatasetDeleteResponse {
   dataset_id: string;
   status: string;
@@ -533,14 +552,20 @@ export interface CollinearityRequest {
   vif_threshold?: number;
 }
 
+export interface LatestCollinearityRequest {
+  version_id: string;
+  dataset_id?: string | null;
+}
+
 export interface CollinearityResponse {
   source_version_id: string;
+  processing_run_id: string;
   dataset_id: string | null;
   task: TaskResource;
   variables: string[];
   matrix: number[][];
   spearman_matrix: number[][];
-  vif_scores: Record<string, number>;
+  vif_scores: Record<string, number | null>;
   condition_number: number | null;
   correlated_groups: string[][];
   recommendations: VariableRecommendation[];

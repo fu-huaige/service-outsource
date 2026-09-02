@@ -33,27 +33,27 @@
     <div class="industrial-card segment-param-bar">
       <div class="param-grid-row">
         <div class="param-item">
-          <label class="font-mono">数据版本 ID</label>
+          <label>数据版本 ID</label>
           <el-input v-model="form.version_id" placeholder="version_id" size="small" />
         </div>
         <div class="param-item">
-          <label class="font-mono">输入变量 (u)</label>
+          <label>输入变量 (u)</label>
           <el-input v-model="inputColumnsText" placeholder="u1,u2,u3" size="small" />
         </div>
         <div class="param-item">
-          <label class="font-mono">输出变量 (y)</label>
+          <label>输出变量 (y)</label>
           <el-input v-model="form.output_column" placeholder="y" size="small" />
         </div>
         <div class="param-item">
-          <label class="font-mono">窗长 (L)</label>
+          <label>窗长 (L)</label>
           <el-input-number v-model="form.window_size" :min="5" :max="2000" :step="10" size="small" />
         </div>
         <div class="param-item">
-          <label class="font-mono">保留段数 (K)</label>
+          <label>保留段数 (K)</label>
           <el-input-number v-model="form.max_segments" :min="1" :max="100" size="small" />
         </div>
         <div class="param-item">
-          <label class="font-mono">最低 SNR (dB)</label>
+          <label>最低 SNR (dB)</label>
           <el-input-number v-model="form.min_snr_db" :min="-20" :max="60" size="small" />
         </div>
       </div>
@@ -66,12 +66,12 @@
     <!-- FORMAT 2: Full-Width Waveform Scrubber with Floating KPI HUD (全景时序切片看板) -->
     <section class="industrial-card scrubber-card">
       <div class="scrubber-header">
-        <div class="scrubber-title font-mono">
+        <div class="scrubber-title">
           <el-icon><DataLine /></el-icon>
           <span>全景响应时序与选定过渡带切片 (SELECTED D-OPTIMAL SLICES)</span>
         </div>
         <div class="scrubber-badges" v-if="result && result.selection">
-          <el-tag :type="result.selection.excitation_satisfied ? 'success' : 'danger'" effect="light" class="font-mono">
+          <el-tag :type="result.selection.excitation_satisfied ? 'success' : 'danger'" effect="light">
             {{ result.selection.excitation_satisfied ? "🟢 持续激励条件满足" : "🔴 持续激励不足" }}
           </el-tag>
         </div>
@@ -139,7 +139,7 @@
           </el-table-column>
           <el-table-column label="区间点数" width="100">
             <template #default="{ row }">
-              <span class="font-mono">{{ row.end_index - row.start_index }} 点</span>
+              <span><span class="font-mono">{{ row.end_index - row.start_index }}</span> 点</span>
             </template>
           </el-table-column>
           <el-table-column label="信噪比 SNR" width="110">
@@ -157,7 +157,7 @@
             <el-icon><Filter /></el-icon>
             <span>质量门控过滤漏斗明细</span>
           </div>
-          <el-tag type="info" effect="plain" class="font-mono">共扫描 {{ result.gated_windows.length }} 个窗口</el-tag>
+          <el-tag type="info" effect="plain">共扫描 {{ result.gated_windows.length }} 个窗口</el-tag>
         </div>
 
         <el-table :data="result.gated_windows" stripe height="280" style="width: 100%">
@@ -186,7 +186,7 @@
                 size="small"
                 type="warning"
                 effect="plain"
-                class="rejection-tag font-mono"
+                class="rejection-tag"
               >
                 {{ reasonLabel(reason) }}
               </el-tag>
@@ -393,9 +393,11 @@ const formatNumber = (value: number | null | undefined) => {
 }
 
 .param-item label {
-  font-size: 10px;
-  font-weight: 700;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
   color: var(--text-muted);
+  letter-spacing: normal;
 }
 
 .alert-gap {
@@ -421,9 +423,19 @@ const formatNumber = (value: number | null | undefined) => {
   display: flex;
   align-items: center;
   gap: 8px;
+  font-family: var(--font-sans);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-primary);
+  letter-spacing: normal;
+}
+
+.segmentation-view .industrial-card-title {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .hud-kpi-bar {

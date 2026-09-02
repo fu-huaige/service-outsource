@@ -107,7 +107,7 @@
         </div>
 
         <div class="industrial-card rail-card theory-box">
-          <div class="t-title font-mono">⚡ 为什么必须预白化？</div>
+          <div class="t-title">⚡ 为什么必须预白化？</div>
           <p class="t-p">工业慢信号自相关严重，直接互相关会导致峰值严重展宽和虚假偏移。系统先通过 AR 模型滤除自相关残差，再与输出互相关求得真实物理延迟。</p>
         </div>
       </aside>
@@ -184,7 +184,7 @@
           <!-- Bottom 1-Click Apply Action Strip -->
           <div class="industrial-card studio-apply-strip">
             <div class="apply-left">
-              <div class="apply-h font-mono">APPLY DELAY COMPENSATION · 创建移位版本</div>
+              <div class="apply-h">APPLY DELAY COMPENSATION · 创建移位版本</div>
               <div class="apply-d">
                 {{ result.uncertain_columns.length
                   ? "存在 UNCERTAIN 通道，请先复核 correlation candidate peaks 后再应用。"
@@ -626,10 +626,20 @@ const formatInteger = (value: number | null | undefined) => {
 }
 
 .t-title {
-  font-size: 11px;
-  font-weight: 800;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
   color: var(--color-primary);
+  letter-spacing: normal;
   margin-bottom: 6px;
+}
+
+.delay-view .industrial-card-title {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .t-p {
@@ -911,9 +921,11 @@ const formatInteger = (value: number | null | undefined) => {
 }
 
 .apply-h {
+  font-family: var(--font-sans);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-primary);
+  letter-spacing: normal;
   margin-bottom: 3px;
 }
 

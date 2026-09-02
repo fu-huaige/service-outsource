@@ -6,6 +6,7 @@ import type {
   DatasetProfile,
   DatasetVersionsResponse,
   DelaySourceVersionsResponse,
+  CollinearitySourceVersionsData,
   DatasetDeleteResponse,
   DatasetConfigRequest,
 } from "../types/api";
@@ -43,6 +44,11 @@ export const getDatasetVersions = (datasetId: string): Promise<DatasetVersionsRe
 
 export const getDelaySourceVersions = (datasetId: string): Promise<DelaySourceVersionsResponse> =>
   apiClient.get(`/datasets/${datasetId}/delay-sources`);
+
+export const getCollinearitySourceVersions = (
+  datasetId: string
+): Promise<CollinearitySourceVersionsData> =>
+  apiClient.get(`/datasets/${datasetId}/collinearity-sources`);
 
 export const deleteDataset = (datasetId: string): Promise<DatasetDeleteResponse> =>
   apiClient.delete(`/datasets/${datasetId}`);

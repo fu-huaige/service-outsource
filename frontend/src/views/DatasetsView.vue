@@ -234,6 +234,14 @@ onMounted(() => {
   width: 100%;
 }
 
+.datasets-view .industrial-card-title {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
 .version-summary {
   color: var(--accent);
   font-family: var(--font-mono);

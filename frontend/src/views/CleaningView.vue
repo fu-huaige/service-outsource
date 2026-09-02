@@ -23,7 +23,7 @@
       </div>
 
       <div class="source-hero-badge" v-if="sourceVersion">
-        <div class="badge-top font-mono">
+        <div class="badge-top">
           <span class="badge-dot"></span>
           <span>源数据版本 (SOURCE)</span>
           <el-tag size="small" type="primary" effect="light">本次清洗输入</el-tag>
@@ -32,7 +32,7 @@
         <div class="badge-hash font-mono">{{ sourceVersion.id }}</div>
       </div>
       <div class="source-hero-badge pending" v-else>
-        <span class="font-mono">源数据版本</span>
+        <span>源数据版本</span>
         <p>{{ sourceLoadMessage }}</p>
       </div>
     </div>
@@ -40,14 +40,14 @@
     <!-- FORMAT 1: Horizontal High-Density Control Strip (横向参数控制中枢) -->
     <section class="cleaning-toolbar industrial-card">
       <div class="toolbar-section">
-        <span class="tb-label font-mono">重采样周期 Ts (s)</span>
+        <span class="tb-label">重采样周期 Ts (s)</span>
         <el-input-number v-model="form.target_sample_period_seconds" :min="0.1" :max="60" :step="0.5" size="default" />
       </div>
 
       <div class="tb-divider"></div>
 
       <div class="toolbar-section">
-        <span class="tb-label font-mono">异常值检测算法</span>
+        <span class="tb-label">异常值检测算法</span>
         <el-select v-model="form.anomaly_detector" size="default" style="width: 190px">
           <el-option label="Hampel Filter (3σ 稳健)" value="hampel" />
           <el-option label="IQR 四分位距" value="iqr" />
@@ -58,14 +58,14 @@
       <div class="tb-divider" v-if="form.anomaly_detector === 'hampel'"></div>
 
       <div class="toolbar-section" v-if="form.anomaly_detector === 'hampel'">
-        <span class="tb-label font-mono">Hampel 滑窗 k</span>
+        <span class="tb-label">Hampel 滑窗 k</span>
         <el-input-number v-model="form.hampel_window" :min="3" :max="21" :step="2" size="default" />
       </div>
 
       <div class="tb-divider"></div>
 
       <div class="toolbar-section">
-        <span class="tb-label font-mono">缺失值插值策略</span>
+        <span class="tb-label">缺失值插值策略</span>
         <el-select v-model="form.interpolation" size="default" style="width: 170px">
           <el-option label="线性插值 (Linear)" value="linear" />
           <el-option label="前向填充 (Forward)" value="forward_fill" />
@@ -101,7 +101,7 @@
           <span>多通道时序规整波形对比 (RAW VS CLEANED)</span>
         </div>
         <div class="header-pills" v-if="cleanedData">
-          <el-tag type="success" effect="light" class="font-mono">已修复 {{ cleanedData.total_cleaned_points }} 个唯一数据单元格</el-tag>
+          <el-tag type="success" effect="light">已修复 {{ cleanedData.total_cleaned_points }} 个唯一数据单元格</el-tag>
         </div>
       </div>
 
@@ -397,9 +397,11 @@ onMounted(loadSourceVersion);
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 10px;
-  font-weight: 700;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
   color: var(--text-muted);
+  letter-spacing: normal;
 }
 
 .badge-dot {
@@ -444,10 +446,19 @@ onMounted(loadSourceVersion);
 }
 
 .tb-label {
+  font-family: var(--font-sans);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--text-muted);
-  letter-spacing: 0.04em;
+  letter-spacing: normal;
+}
+
+.cleaning-view .industrial-card-title {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .tb-divider {

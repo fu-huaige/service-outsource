@@ -1,5 +1,5 @@
 <template>
-  <div class="agent-composer" :class="{ 'is-focused': isFocused, 'has-content': message.trim().length > 0 }">
+  <div ref="agentComposerRef" class="agent-composer" :class="{ 'is-focused': isFocused, 'has-content': message.trim().length > 0 }">
     <div class="composer-body">
       <!-- Attached Dataset Pill (if any) -->
       <div v-if="attachedDataset" class="composer-attachments">
@@ -93,6 +93,8 @@
       v-if="showDatasetPicker"
       v-click-outside="() => (showDatasetPicker = false)"
       class="dataset-picker"
+      :class="{ 'is-positioned': pickerPositioned }"
+      :style="pickerStyle"
     >
       <div class="dataset-picker__header">
         <span class="label">选择挂载数据集</span>
@@ -126,7 +128,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch } from 'vue';
+import { ref, computed, nextTick, onBeforeUnmount, watch, type CSSProperties } from 'vue';
 import { useDatasetStore } from '../../stores/datasetStore';
 import { listDatasets } from '../../api/datasets';
 import type { DatasetItem } from '../../types/api';
@@ -153,10 +155,19 @@ const isFocused = ref(false);
 const isSubmitting = ref(false);
 const showDatasetPicker = ref(false);
 const datasetSearch = ref('');
+const agentComposerRef = ref<HTMLElement | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const pickerInputRef = ref<HTMLInputElement | null>(null);
+const pickerPositioned = ref(false);
+const pickerStyle = ref<CSSProperties>({});
 const datasets = ref<DatasetItem[]>([]);
 const attachedDataset = ref<DatasetItem | null>(datasetStore.activeDataset ?? null);
+
+const PICKER_VIEWPORT_MARGIN = 12;
+const PICKER_GAP = 8;
+const PICKER_MAX_HEIGHT = 288;
+let observedVisualViewport: VisualViewport | null = null;
+let pickerPositionListenersActive = false;
 
 const canSubmit = computed(() => message.value.trim().length > 0 && !isSubmitting.value);
 
@@ -205,9 +216,75 @@ function detachDataset() {
   attachedDataset.value = null;
 }
 
+function updateDatasetPickerPosition() {
+  if (!showDatasetPicker.value || !agentComposerRef.value) return;
+
+  const anchor = agentComposerRef.value.getBoundingClientRect();
+  const visualViewport = window.visualViewport;
+  const viewportTop = visualViewport?.offsetTop ?? 0;
+  const viewportLeft = visualViewport?.offsetLeft ?? 0;
+  const viewportHeight = visualViewport?.height ?? window.innerHeight;
+  const viewportWidth = visualViewport?.width ?? window.innerWidth;
+  const viewportBottom = viewportTop + viewportHeight;
+  const viewportRight = viewportLeft + viewportWidth;
+  const availableAbove = Math.max(
+    0,
+    anchor.top - viewportTop - PICKER_GAP - PICKER_VIEWPORT_MARGIN
+  );
+  const availableBelow = Math.max(
+    0,
+    viewportBottom - anchor.bottom - PICKER_GAP - PICKER_VIEWPORT_MARGIN
+  );
+  const placeAbove =
+    availableAbove >= Math.min(PICKER_MAX_HEIGHT, availableBelow) ||
+    availableAbove > availableBelow;
+  const availableHeight = placeAbove ? availableAbove : availableBelow;
+  const maxHeight = Math.min(PICKER_MAX_HEIGHT, availableHeight);
+  const width = Math.min(
+    anchor.width,
+    Math.max(0, viewportWidth - PICKER_VIEWPORT_MARGIN * 2)
+  );
+  const left = Math.min(
+    Math.max(anchor.left, viewportLeft + PICKER_VIEWPORT_MARGIN),
+    viewportRight - PICKER_VIEWPORT_MARGIN - width
+  );
+
+  pickerStyle.value = {
+    left: `${Math.round(left)}px`,
+    width: `${Math.round(width)}px`,
+    maxHeight: `${Math.floor(maxHeight)}px`,
+    top: placeAbove ? 'auto' : `${Math.round(anchor.bottom + PICKER_GAP)}px`,
+    bottom: placeAbove ? `${Math.round(window.innerHeight - anchor.top + PICKER_GAP)}px` : 'auto',
+  };
+  pickerPositioned.value = true;
+}
+
+function bindDatasetPickerPositionListeners() {
+  if (pickerPositionListenersActive) return;
+  pickerPositionListenersActive = true;
+  window.addEventListener('resize', updateDatasetPickerPosition);
+  window.addEventListener('scroll', updateDatasetPickerPosition, true);
+  observedVisualViewport = window.visualViewport;
+  observedVisualViewport?.addEventListener('resize', updateDatasetPickerPosition);
+  observedVisualViewport?.addEventListener('scroll', updateDatasetPickerPosition);
+}
+
+function unbindDatasetPickerPositionListeners() {
+  if (!pickerPositionListenersActive) return;
+  pickerPositionListenersActive = false;
+  window.removeEventListener('resize', updateDatasetPickerPosition);
+  window.removeEventListener('scroll', updateDatasetPickerPosition, true);
+  observedVisualViewport?.removeEventListener('resize', updateDatasetPickerPosition);
+  observedVisualViewport?.removeEventListener('scroll', updateDatasetPickerPosition);
+  observedVisualViewport = null;
+}
+
 watch(showDatasetPicker, async (v) => {
   if (v) {
+    pickerPositioned.value = false;
     await nextTick();
+    updateDatasetPickerPosition();
+    bindDatasetPickerPositionListeners();
     pickerInputRef.value?.focus();
     if (datasets.value.length === 0) {
       try {
@@ -217,7 +294,14 @@ watch(showDatasetPicker, async (v) => {
         // ignore
       }
     }
+  } else {
+    pickerPositioned.value = false;
+    unbindDatasetPickerPositionListeners();
   }
+});
+
+onBeforeUnmount(() => {
+  unbindDatasetPickerPositionListeners();
 });
 
 // v-click-outside directive shim
@@ -355,7 +439,9 @@ const vClickOutside = {
   border: 1px solid #E5E5E8;
   border-radius: 6px;
   color: #666666;
+  font-family: var(--font-sans);
   font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -423,16 +509,21 @@ const vClickOutside = {
 
 /* Dataset Picker */
 .dataset-picker {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
-  right: 0;
+  position: fixed;
+  display: flex;
+  flex-direction: column;
   background: #FFFFFF;
+  font-family: var(--font-sans);
   border: 1px solid #D1D1D6;
   border-radius: 10px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
   z-index: 100;
   overflow: hidden;
+  visibility: hidden;
+}
+
+.dataset-picker.is-positioned {
+  visibility: visible;
 }
 
 .dataset-picker__header {
@@ -441,6 +532,7 @@ const vClickOutside = {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex: none;
 }
 
 .dataset-picker__header .label {
@@ -456,6 +548,7 @@ const vClickOutside = {
   border: 1px solid #E5E5E8;
   border-radius: 6px;
   padding: 6px 10px;
+  font-family: var(--font-sans);
   font-size: 13px;
   color: #171717;
   outline: none;
@@ -466,8 +559,10 @@ const vClickOutside = {
 }
 
 .dataset-picker__list {
-  max-height: 200px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 4px;
 }
 

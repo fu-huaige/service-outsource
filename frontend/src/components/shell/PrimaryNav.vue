@@ -434,8 +434,10 @@ const healthTooltip = computed(() => {
 
 .health-text {
   font-size: 12px;
+  font-weight: 400;
   color: #858B82;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  letter-spacing: normal;
   white-space: nowrap;
 }
 </style>

@@ -9,6 +9,7 @@ import type {
   LatestDelayRequest,
   CollinearityRequest,
   CollinearityResponse,
+  LatestCollinearityRequest,
   FeatureSelectionApplyRequest,
   LagCompensationRequest,
   VersionApplyResponse,
@@ -31,6 +32,11 @@ export const applyLagCompensation = (req: LagCompensationRequest): Promise<Versi
 
 export const calculateCollinearity = (req: CollinearityRequest): Promise<CollinearityResponse> =>
   apiClient.post("/preprocessing/collinearity", req);
+
+export const getLatestCollinearity = (
+  req: LatestCollinearityRequest
+): Promise<CollinearityResponse> =>
+  apiClient.get("/preprocessing/collinearity/latest", { params: req });
 
 export const applyFeatureSelection = (req: FeatureSelectionApplyRequest): Promise<VersionApplyResponse> =>
   apiClient.post("/preprocessing/features/apply", req);
