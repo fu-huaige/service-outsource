@@ -1,10 +1,10 @@
 <template>
-  <div class="simulation-view">
-    <div class="page-header">
-      <span class="page-eyebrow">准备数据</span>
-      <h2>仿真测试集生成器</h2>
-      <p class="subtitle">构造带有精确真值的工业时序 S1–S6 测试场景，用于验证辨识算法</p>
-    </div>
+  <div class="page-container simulation-view">
+    <PageHeader
+      eyebrow="GROUND TRUTH / SIMULATION"
+      title="仿真测试集生成器"
+      description="构造带有精确物理真值的工业时序 S1–S6 测试场景，用于验证时滞与 ARX 辨识算法"
+    />
 
     <div class="simulation-layout">
       <!-- Parameters Form Card -->
@@ -103,6 +103,7 @@
 <script setup lang="ts">
 import { ref, reactive } from "vue";
 import { Setting, Check, Download, Cpu, View } from "@element-plus/icons-vue";
+import PageHeader from "../components/common/PageHeader.vue";
 import { generateSimulationDataset } from "../api/simulation";
 import type { SimulationGenerateRequest, SimulationGenerateResponse } from "../types/api";
 import { useDatasetStore } from "../stores/datasetStore";
@@ -187,28 +188,22 @@ const handleGoToARX = () => {
 </script>
 
 <style scoped>
-.page-header {
-  margin-bottom: 20px;
-}
-
-.subtitle {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-top: 4px;
+.simulation-view {
+  min-height: 100%;
 }
 
 .simulation-layout {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--section-gap-md);
 }
 
 .gt-params-box {
   margin-top: 16px;
-  background: var(--bg-subtle);
+  background: var(--surface-1);
   padding: 12px;
-  border-radius: 6px;
-  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
 }
 
 .gt-params-box h4 {
@@ -220,11 +215,11 @@ const handleGoToARX = () => {
 .params-pre {
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--color-primary);
+  color: var(--accent);
   margin-top: 6px;
-  background: var(--bg-surface);
+  background: var(--surface-2);
   padding: 8px;
-  border-radius: 4px;
-  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-subtle);
 }
 </style>

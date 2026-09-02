@@ -13,18 +13,18 @@ import type {
 export const uploadDataset = (file: File, name?: string): Promise<DatasetUploadResponse> => {
   const formData = new FormData();
   formData.append("file", file);
-  if (name) {
-    formData.append("name", name);
-  }
+  if (name) formData.append("name", name);
   return apiClient.post("/datasets/upload", formData, {
-    headers: {
-      "Content-Type": "multipart/form-data",
-    },
+    headers: { "Content-Type": "multipart/form-data" },
   });
 };
 
 export const getDatasets = (page = 1, pageSize = 20): Promise<DatasetListResponse> =>
   apiClient.get(`/datasets?page=${page}&page_size=${pageSize}`);
+
+/** Alias with object params — used by AgentComposer */
+export const listDatasets = (params: { page?: number; page_size?: number } = {}): Promise<DatasetListResponse> =>
+  apiClient.get(`/datasets?page=${params.page ?? 1}&page_size=${params.page_size ?? 50}`);
 
 export const getDatasetDetail = (datasetId: string): Promise<DatasetItem> =>
   apiClient.get(`/datasets/${datasetId}`);

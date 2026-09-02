@@ -1,13 +1,13 @@
 <template>
-  <div class="datasets-view">
-    <div class="page-header">
-      <span class="page-eyebrow">准备数据</span>
-      <h2>数据资产</h2>
-      <p class="subtitle">上传工业 CSV、配置变量角色，并追踪每一次处理产生的数据版本</p>
-    </div>
+  <div class="page-container datasets-view">
+    <PageHeader
+      eyebrow="PREPARE DATA / DATASETS"
+      title="数据资产"
+      description="上传工业 CSV、配置变量角色，并追踪每一次处理产生的数据版本"
+    />
 
     <!-- Upload Card -->
-    <div class="industrial-card">
+    <div class="industrial-card section-block">
       <div class="industrial-card-header">
         <div class="industrial-card-title">
           <el-icon><Upload /></el-icon> 上传工业 CSV
@@ -33,7 +33,7 @@
     </div>
 
     <!-- Datasets Table -->
-    <div class="industrial-card">
+    <div class="industrial-card section-block">
       <div class="industrial-card-header">
         <div class="industrial-card-title">
           <el-icon><List /></el-icon> 已登记数据集
@@ -42,6 +42,14 @@
       </div>
 
       <el-table :data="datasetList" stripe style="width: 100%" v-loading="loading">
+        <template #empty>
+          <AppEmptyState
+            inline
+            icon="dataset"
+            title="暂无已登记数据集"
+            description="在上方区域上传工业 CSV 文件即可建立数据集与初始基线版本。"
+          />
+        </template>
         <el-table-column prop="name" label="数据集名称" width="200" />
         <el-table-column prop="version_id" label="当前版本" width="150">
           <template #default="{ row }">
@@ -58,28 +66,25 @@
         </el-table-column>
         <el-table-column prop="time_column" label="时间列" width="120">
           <template #default="{ row }">
-            <span v-if="row.time_column">{{ row.time_column }}</span>
-            <el-tag v-else type="info" size="small">未配置</el-tag>
+            <el-tag v-if="row.time_column" size="small" effect="plain">{{ row.time_column }}</el-tag>
+            <el-tag v-else type="info" size="small" effect="plain">未指定</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="输入/输出变量角色">
+        <el-table-column label="变量配置" min-width="220">
           <template #default="{ row }">
-            <span v-if="row.input_columns && row.input_columns.length > 0" class="badge-primary industrial-badge">
-              输入：{{ row.input_columns.join(", ") }}
-            </span>
-            <span v-else class="industrial-badge" style="background: #edf2f7; color: #718096">输入：待配置</span>
-
-            <span v-if="row.output_column" class="badge-success industrial-badge" style="margin-left: 6px">
-              输出：{{ row.output_column }}
-            </span>
-            <span v-else class="industrial-badge" style="margin-left: 6px; background: #edf2f7; color: #718096">输出：待配置</span>
+            <el-tag v-if="row.output_column" type="success" size="small" effect="plain" style="margin-right: 6px">
+              输出: {{ row.output_column }}
+            </el-tag>
+            <el-tag v-if="row.input_columns?.length" type="info" size="small" effect="plain">
+              输入: {{ row.input_columns.join(', ') }}
+            </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="240">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" text size="small" @click="handleSelectDataset(row)">查看诊断</el-button>
-            <el-button type="warning" text size="small" @click="openConfigDialog(row)">列配置</el-button>
-            <el-button type="danger" text size="small" @click="handleDelete(row.id)">删除</el-button>
+            <el-button type="primary" link size="small" @click="handleSelectDataset(row)">查看详情</el-button>
+            <el-button type="default" link size="small" @click="openConfigDialog(row)">列配置</el-button>
+            <el-button type="danger" link size="small" @click="handleDelete(row.id)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -109,6 +114,8 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from "vue";
 import { Upload, List, UploadFilled, Refresh } from "@element-plus/icons-vue";
+import PageHeader from "../components/common/PageHeader.vue";
+import AppEmptyState from "../components/common/AppEmptyState.vue";
 import { useDatasetStore } from "../stores/datasetStore";
 import { getDatasets, deleteDataset, uploadDataset, configureDataset } from "../api/datasets";
 import type { DatasetItem } from "../types/api";
@@ -208,6 +215,11 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.datasets-view {
+  padding: var(--space-6) clamp(20px, 3.5vw, 40px) var(--space-12);
+  min-height: 100%;
+}
+
 .page-header {
   margin-bottom: 20px;
 }
@@ -223,7 +235,7 @@ onMounted(() => {
 }
 
 .version-summary {
-  color: var(--color-primary);
+  color: var(--accent);
   font-family: var(--font-mono);
   font-size: 12px;
   cursor: help;

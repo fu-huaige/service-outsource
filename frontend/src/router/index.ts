@@ -4,27 +4,70 @@ import {
   type RouteRecordRaw,
   type RouterHistory,
 } from "vue-router";
-import DefaultLayout from "../layouts/DefaultLayout.vue";
+import WorkspaceLayout from "../layouts/WorkspaceLayout.vue";
 import { hasEnteredLanding } from "./landingEntry";
 
 const routes: RouteRecordRaw[] = [
+  // ── Public: Landing (Marketing / Showcase) ───────────────
   {
     path: "/",
     name: "Landing",
     component: () => import("../views/LandingView.vue"),
-    props: { theme: "light" },
     meta: { landingGatePublic: true },
   },
+
+  // ── App Shell: All workspace routes ──────────────────────
   {
-    path: "/dashboard",
-    component: DefaultLayout,
+    path: "/",
+    component: WorkspaceLayout,
     children: [
+      // Home (Prompt-first)
       {
-        path: "",
-        name: "Dashboard",
-        component: () => import("../views/DashboardView.vue"),
-        meta: { title: "工作台概览" },
+        path: "/home",
+        name: "Home",
+        component: () => import("../views/HomeView.vue"),
+        meta: { title: "主页" },
       },
+
+      // Agent Workspace (core)
+      {
+        path: "/workspace",
+        name: "Workspace",
+        component: () => import("../views/WorkspaceView.vue"),
+        meta: { title: "Agent Workspace" },
+      },
+      {
+        path: "/workspace/:executionId",
+        name: "WorkspaceExecution",
+        component: () => import("../views/WorkspaceView.vue"),
+        meta: { title: "Agent Workspace" },
+      },
+
+      // Legacy /copilot → kept for E2E test compatibility
+      {
+        path: "/copilot",
+        name: "Copilot",
+        component: () => import("../views/WorkspaceView.vue"),
+        meta: { title: "Agent Workspace" },
+      },
+
+      // Run History
+      {
+        path: "/runs",
+        name: "Runs",
+        component: () => import("../views/RunsView.vue"),
+        meta: { title: "历史任务" },
+      },
+
+      // Assets (aggregated)
+      {
+        path: "/assets",
+        name: "Assets",
+        component: () => import("../views/AssetsView.vue"),
+        meta: { title: "Assets" },
+      },
+
+      // Data Management
       {
         path: "/simulation",
         name: "Simulation",
@@ -43,6 +86,8 @@ const routes: RouteRecordRaw[] = [
         component: () => import("../views/DatasetDetailView.vue"),
         meta: { title: "数据集详情" },
       },
+
+      // Preprocessing (paths kept for E2E)
       {
         path: "/preprocessing/cleaning",
         name: "Cleaning",
@@ -67,6 +112,8 @@ const routes: RouteRecordRaw[] = [
         component: () => import("../views/CollinearityView.vue"),
         meta: { title: "共线性与变量筛选" },
       },
+
+      // Modeling
       {
         path: "/modeling/arx",
         name: "ARXModeling",
@@ -79,32 +126,40 @@ const routes: RouteRecordRaw[] = [
         component: () => import("../views/OptunaView.vue"),
         meta: { title: "Optuna 闭环寻优" },
       },
-      {
-        path: "/copilot",
-        name: "Copilot",
-        component: () => import("../views/CopilotView.vue"),
-        meta: { title: "Agent 工作台" },
-      },
+
+      // Benchmark (path kept for E2E)
       {
         path: "/benchmark",
         name: "Benchmark",
         component: () => import("../views/BenchmarkView.vue"),
         meta: { title: "一键自评测基准" },
       },
+
+      // Deliverables (legacy path kept + new)
       {
         path: "/deliverables",
         name: "Deliverables",
         component: () => import("../views/DeliverablesView.vue"),
         meta: { title: "报告与交付中心" },
       },
+
+      // Settings
       {
         path: "/settings",
         name: "Settings",
         component: () => import("../views/SettingsView.vue"),
         meta: { title: "系统设置" },
       },
+
+      // Legacy /dashboard → redirect home
+      {
+        path: "/dashboard",
+        redirect: "/home",
+      },
     ],
   },
+
+  // ── Error Pages ───────────────────────────────────────────
   {
     path: "/403",
     name: "403",
@@ -134,7 +189,12 @@ export function createAppRouter(history: RouterHistory = createWebHistory()) {
   const router = createRouter({ history, routes });
 
   router.beforeEach((to) => {
-    document.title = to.meta.title ? `${to.meta.title} - IndusOpt` : "IndusOpt 工模智优";
+    document.title = to.meta.title
+      ? `${to.meta.title} — IndusOpt 工模智优`
+      : "IndusOpt 工模智优";
+
+    // Landing gate: if not yet visited landing, redirect there first
+    // Public routes (landing, error pages) bypass this gate.
     if (to.meta.landingGatePublic === true || hasEnteredLanding()) return true;
     return { name: "Landing", query: { next: to.fullPath }, replace: true };
   });
@@ -143,5 +203,4 @@ export function createAppRouter(history: RouterHistory = createWebHistory()) {
 }
 
 const router = createAppRouter();
-
 export default router;

@@ -1,886 +1,1228 @@
 <template>
-  <div
-    ref="pageRoot"
-    class="landing-preview"
-    :data-theme="theme"
-    :data-reduced-motion="reducedMotion ? 'true' : 'false'"
-  >
-    <LandingHeader @explore="enterApplication" />
-
-    <main id="landing-top">
-      <!-- 01 Hero Section with Live Interactive Playground & Workflow -->
-      <section class="landing-hero landing-section" data-section="hero">
-        <div class="landing-container hero-grid">
-          <div class="hero-copy">
-            <span class="hero-eyebrow hero-anim-1">PROCESS INDUSTRY SYSTEM IDENTIFICATION</span>
-            <h1 class="hero-anim-2">
-              <span>让工业建模，</span>
-              <span>从数据走向闭环决策</span>
-            </h1>
-            <p class="hero-subtitle hero-anim-3">
-              面向流程工业建模工程师：导入多变量时序数据，完成质量门控、D-最优优选、ARX 辨识与可追溯验证。
-            </p>
-
-            <div class="hero-actions hero-anim-4">
-              <button class="landing-button landing-button-primary" type="button" @click="enterApplication">
-                进入工作台
-                <span class="btn-arrow" aria-hidden="true">→</span>
-              </button>
-              <button class="landing-button landing-button-secondary" type="button" @click="scrollToBenchmark">
-                查看实测对账
-              </button>
-            </div>
-
-            <!-- 3 Hardcore Industrial Metric Highlights (Range & Evidence Based) -->
-            <div class="hero-stats-banner hero-anim-5">
-              <div class="hero-stat-item">
-                <span class="stat-num text-cyan">14.3%</span>
-                <span class="stat-desc">S6 实测下达到 89.04% Free-run 拟合优度 (FIT)</span>
-              </div>
-              <div class="hero-stat-divider"></div>
-              <div class="hero-stat-item">
-                <span class="stat-num text-green">16/20</span>
-                <span class="stat-desc">敏感性扫描满秩；低预算由门控拦截</span>
-              </div>
-              <div class="hero-stat-divider"></div>
-              <div class="hero-stat-item">
-                <span class="stat-num text-amber">24×</span>
-                <span class="stat-desc">阶段 8 闭环寻优实测</span>
-              </div>
-            </div>
+  <div class="landing" ref="pageRoot">
+    <!-- ── Header ─────────────────────────────────────────── -->
+    <header class="landing-header">
+      <div class="landing-container landing-header__inner">
+        <div class="landing-logo">
+          <div class="landing-logo__mark">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 17l10 5 10-5"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
           </div>
-
-          <!-- Hero Tab / Interactive Switcher with Full Accessibility -->
-          <div class="hero-interactive-zone hero-anim-right">
-            <div class="hero-view-tabs" role="tablist" aria-label="沙盘与工作流切换">
-              <button
-                id="hero-tab-playground"
-                type="button"
-                role="tab"
-                class="view-tab-btn"
-                :class="{ active: heroTab === 'playground' }"
-                :aria-selected="heroTab === 'playground'"
-                aria-controls="hero-panel-playground"
-                @click="heroTab = 'playground'"
-              >
-                <svg class="tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-                </svg>
-                <span>实时算法与时序沙盘</span>
-              </button>
-              <button
-                id="hero-tab-workflow"
-                type="button"
-                role="tab"
-                class="view-tab-btn"
-                :class="{ active: heroTab === 'workflow' }"
-                :aria-selected="heroTab === 'workflow'"
-                aria-controls="hero-panel-workflow"
-                @click="heroTab = 'workflow'"
-              >
-                <svg class="tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="3" y="3" width="7" height="7"></rect>
-                  <rect x="14" y="3" width="7" height="7"></rect>
-                  <rect x="14" y="14" width="7" height="7"></rect>
-                  <rect x="3" y="14" width="7" height="7"></rect>
-                </svg>
-                <span>组合工作流探查</span>
-              </button>
-            </div>
-
-            <div
-              id="hero-panel-playground"
-              v-show="heroTab === 'playground'"
-              role="tabpanel"
-              aria-labelledby="hero-tab-playground"
-            >
-              <InteractivePlayground />
-            </div>
-            <div
-              id="hero-panel-workflow"
-              v-show="heroTab === 'workflow'"
-              role="tabpanel"
-              aria-labelledby="hero-tab-workflow"
-            >
-              <HeroWorkflow />
-            </div>
-          </div>
+          <span class="landing-logo__name">IndusOpt</span>
+          <span class="landing-logo__tag font-mono">A14</span>
         </div>
-      </section>
+        <nav class="landing-nav">
+          <button type="button" class="landing-nav__item" @click="scrollToSection('features')">功能</button>
+          <button type="button" class="landing-nav__item" @click="scrollToSection('workflow')">流程</button>
+          <button type="button" class="landing-nav__item" @click="scrollToSection('benchmark')">基准</button>
+          <button type="button" class="landing-nav__cta" @click="enterApp">进入工作台</button>
+        </nav>
+      </div>
+    </header>
 
-      <!-- 02 Benchmark Evidence Matrix (Moved up immediately after Hero) -->
-      <section id="ablation-benchmark" class="landing-section section-benchmark" data-section="benchmark-evidence">
-        <div class="landing-container">
-          <div class="section-heading">
-            <span class="section-eyebrow">ABLATION BENCHMARK</span>
-            <h2>10 组独立随机种子消融对账：拒绝“黑盒玄学”</h2>
-            <p>包含 200 个工作点敏感性扫描实测，直面算法优势与自身失效边界，全量数据公开可复现。</p>
-          </div>
-          <BenchmarkComparison />
-        </div>
-      </section>
-
-      <!-- 03 Engineering Pipeline Architecture -->
-      <section id="pipeline-architecture" class="landing-section section-pipeline" data-section="pipeline">
-        <div class="landing-container">
-          <div class="section-heading">
-            <span class="section-eyebrow">ENGINEERING PIPELINE</span>
-            <h2>工业建模闭环体系：从原始时序到可验证模型交付</h2>
-            <p>每个环节均提供严谨的算法数学证明、物理防呆门控与不可变数据版本血缘。</p>
-          </div>
-          <PipelineArchitecture />
-        </div>
-      </section>
-
-      <!-- 04 Unified Trusted Engineering & Lineage Traceability Zone -->
-      <section
-        id="trusted-engineering"
-        class="landing-section section-trust"
-        data-section="trusted-engineering"
-      >
-        <div class="landing-container">
-          <div class="section-heading">
-            <span class="section-eyebrow">CORE TRUST & LINEAGE</span>
-            <h2>复杂工业建模，需要的不只是一个模型。</h2>
-            <p>从数据版本到模型资产，再到最终评价，每个关键决定都保留真实来源与人为控制。</p>
-          </div>
-          <TrustedEngineering />
-        </div>
-      </section>
-
-      <!-- 05 Final CTA -->
-      <section class="landing-section landing-final" data-section="final-cta">
-        <div class="landing-container final-layout">
-          <div class="final-copy">
-            <span class="final-tag font-mono">READY TO DEPLOY</span>
-            <h2>把工业数据，<br />变成可验证的模型与决策。</h2>
-            <p>进入现有工作台，从真实数据和可追溯工作流开始。</p>
-            <div class="final-checkmarks font-mono">
-              <span class="chk-item">
-                <svg class="chk-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-                <span>全生命周期血缘</span>
-              </span>
-              <span class="chk-item">
-                <svg class="chk-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-                <span>满秩 D-最优闭环</span>
-              </span>
-              <span class="chk-item">
-                <svg class="chk-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-                <span>白盒机理自由仿真</span>
-              </span>
-            </div>
-          </div>
-          <div class="final-action-box">
-            <button class="landing-button landing-button-primary final-button" type="button" @click="enterApplication">
-              进入工作台
-              <span class="btn-arrow" aria-hidden="true">→</span>
-            </button>
-          </div>
-        </div>
-      </section>
-    </main>
-
-    <footer class="landing-footer">
+    <!-- ── Hero ───────────────────────────────────────────── -->
+    <section class="landing-hero">
       <div class="landing-container">
-        <span>IndusOpt 工模智优 · 2026 第十三届浙江省大学生服务外包创新应用大赛 A14</span>
-        <span>流程工业数据建模与智能寻优平台</span>
+        <div class="hero-eyebrow font-mono">INDUSTRIAL AI AGENT WORKSPACE</div>
+        <h1 class="hero-title">
+          <span>让工业建模，</span>
+          <span class="hero-title__accent">从数据走向闭环决策</span>
+        </h1>
+        <p class="hero-subtitle">
+          面向流程工业建模工程师。导入多变量时序数据，Agent 自动完成质量门控、D-最优优选、
+          ARX 辨识与 Optuna 寻优，全程可追溯、可审核。
+        </p>
+        <div class="hero-actions">
+          <button type="button" class="btn-primary" @click="enterApp">
+            进入工作台
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </button>
+          <button type="button" class="btn-ghost" @click="scrollToSection('benchmark')">查看实测基准</button>
+        </div>
+
+        <!-- Stats strip -->
+        <div class="hero-stats">
+          <div class="hero-stat">
+            <div class="hero-stat__num font-mono">89.0%</div>
+            <div class="hero-stat__desc">S6 Free-run FIT</div>
+          </div>
+          <div class="hero-stat-div"></div>
+          <div class="hero-stat">
+            <div class="hero-stat__num font-mono">8</div>
+            <div class="hero-stat__desc">自动化建模阶段</div>
+          </div>
+          <div class="hero-stat-div"></div>
+          <div class="hero-stat">
+            <div class="hero-stat__num font-mono">24×</div>
+            <div class="hero-stat__desc">闭环寻优实测</div>
+          </div>
+          <div class="hero-stat-div"></div>
+          <div class="hero-stat">
+            <div class="hero-stat__num font-mono">S1~S6</div>
+            <div class="hero-stat__desc">标准工况覆盖</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Agent preview terminal -->
+      <div class="landing-container">
+        <div class="hero-terminal">
+          <div class="hero-terminal__bar">
+            <div class="hero-terminal__dots">
+              <span /><span /><span />
+            </div>
+            <span class="hero-terminal__title font-mono">IndusOpt Agent Workspace</span>
+            <span class="hero-terminal__status font-mono">
+              <span class="status-dot running" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--color-success);margin-right:5px" />
+              Backend Ready
+            </span>
+          </div>
+          <div class="hero-terminal__body">
+            <!-- User prompt -->
+            <div class="ht-msg ht-msg--user">
+              <div class="ht-msg__avatar">U</div>
+              <div class="ht-msg__text">分析 S3 工况时序数据，建立 ARX 动态模型，寻找最优参数</div>
+            </div>
+            <!-- Agent plan -->
+            <div class="ht-msg ht-msg--agent">
+              <div class="ht-msg__avatar ht-msg__avatar--agent">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="10" x="3" y="11" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/></svg>
+              </div>
+              <div class="ht-plan">
+                <div class="ht-plan__label font-mono">AGENT PLAN · 8 STEPS</div>
+                <div class="ht-steps">
+                  <div class="ht-step ht-step--done">
+                    <span class="ht-step__dot done" />
+                    <span class="ht-step__name">data_profile</span>
+                    <span class="ht-step__time font-mono">0.3s</span>
+                  </div>
+                  <div class="ht-step ht-step--done">
+                    <span class="ht-step__dot done" />
+                    <span class="ht-step__name">clean</span>
+                    <span class="ht-step__time font-mono">1.1s</span>
+                  </div>
+                  <div class="ht-step ht-step--done">
+                    <span class="ht-step__dot done" />
+                    <span class="ht-step__name">segment</span>
+                    <span class="ht-step__time font-mono">2.4s</span>
+                  </div>
+                  <div class="ht-step ht-step--running">
+                    <span class="ht-step__dot running" />
+                    <span class="ht-step__name">delay_analyze</span>
+                    <span class="ht-step__spinner font-mono">…</span>
+                  </div>
+                  <div class="ht-step ht-step--pending">
+                    <span class="ht-step__dot pending" />
+                    <span class="ht-step__name font-mono" style="color:var(--text-faint)">arx_fit</span>
+                  </div>
+                  <div class="ht-step ht-step--pending">
+                    <span class="ht-step__dot pending" />
+                    <span class="ht-step__name font-mono" style="color:var(--text-faint)">evaluate_model</span>
+                  </div>
+                  <div class="ht-step ht-step--pending">
+                    <span class="ht-step__dot pending" />
+                    <span class="ht-step__name font-mono" style="color:var(--text-faint)">optimize_pipeline</span>
+                  </div>
+                  <div class="ht-step ht-step--pending">
+                    <span class="ht-step__dot pending" />
+                    <span class="ht-step__name font-mono" style="color:var(--text-faint)">generate_report</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- Tool event -->
+            <div class="ht-event">
+              <span class="ht-event__icon">🔬</span>
+              <span class="ht-event__tool font-mono">delay_analyze</span>
+              <span class="ht-event__desc">估计 u1→y 互相关时滞，预白化处理中…</span>
+              <div class="agent-working-dot" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Features ────────────────────────────────────────── -->
+    <section class="landing-section" id="features">
+      <div class="landing-container">
+        <div class="section-label font-mono">CAPABILITIES</div>
+        <h2 class="section-title">专为流程工业建模设计</h2>
+        <p class="section-subtitle">从原始时序数据到经过验证的 ARX 动态模型，全自动 8 阶段流程</p>
+
+        <div class="features-grid">
+          <div v-for="f in features" :key="f.title" class="feature-card">
+            <div class="feature-card__icon">{{ f.icon }}</div>
+            <div class="feature-card__title">{{ f.title }}</div>
+            <div class="feature-card__desc">{{ f.desc }}</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Workflow ─────────────────────────────────────────── -->
+    <section class="landing-section" id="workflow">
+      <div class="landing-container">
+        <div class="section-label font-mono">8-STAGE PIPELINE</div>
+        <h2 class="section-title">Agent 自动执行完整建模闭环</h2>
+
+        <div class="workflow-steps">
+          <div v-for="(step, i) in workflowSteps" :key="step.name" class="workflow-step">
+            <div class="workflow-step__num font-mono">{{ String(i + 1).padStart(2, '0') }}</div>
+            <div class="workflow-step__body">
+              <div class="workflow-step__name">{{ step.name }}</div>
+              <div class="workflow-step__desc">{{ step.desc }}</div>
+            </div>
+            <div class="workflow-step__badge" :class="step.type">{{ step.label }}</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Benchmark ────────────────────────────────────────── -->
+    <section class="landing-section" id="benchmark">
+      <div class="landing-container">
+        <div class="section-label font-mono">ABLATION RESULTS</div>
+        <h2 class="section-title">消融对照实测基准</h2>
+        <p class="section-subtitle">S3 工况下四种策略对照，所有指标均来自保留测试集</p>
+
+        <div class="benchmark-table">
+          <div class="bm-header">
+            <div class="bm-cell">策略</div>
+            <div class="bm-cell bm-cell--num">FIT (%)</div>
+            <div class="bm-cell bm-cell--num">R²</div>
+            <div class="bm-cell bm-cell--num">RMSE</div>
+            <div class="bm-cell bm-cell--num">Free-FIT (%)</div>
+          </div>
+          <div
+            v-for="row in benchmarkRows"
+            :key="row.strategy"
+            class="bm-row"
+            :class="{ 'bm-row--highlight': row.highlight }"
+          >
+            <div class="bm-cell">
+              <span class="bm-strategy">{{ row.strategy }}</span>
+              <span v-if="row.highlight" class="bm-badge font-mono">BEST</span>
+            </div>
+            <div class="bm-cell bm-cell--num font-mono">{{ row.fit }}</div>
+            <div class="bm-cell bm-cell--num font-mono">{{ row.r2 }}</div>
+            <div class="bm-cell bm-cell--num font-mono">{{ row.rmse }}</div>
+            <div class="bm-cell bm-cell--num font-mono">{{ row.freeFit }}</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── HITL Section ─────────────────────────────────────── -->
+    <section class="landing-section">
+      <div class="landing-container">
+        <div class="section-label font-mono">HUMAN-IN-THE-LOOP</div>
+        <h2 class="section-title">高影响操作，人工审核确认</h2>
+        <p class="section-subtitle">Agent 在时滞补偿、特征筛选、ARX 结构三个节点触发人工确认，而不是静默执行</p>
+
+        <div class="hitl-demo">
+          <div class="hitl-card">
+            <div class="hitl-card__header">
+              <div class="hitl-card__icon">⚠</div>
+              <div>
+                <div class="hitl-card__title">需要你的确认</div>
+                <div class="hitl-card__sub font-mono">时滞补偿</div>
+              </div>
+            </div>
+            <div class="hitl-card__body">
+              <p class="hitl-card__desc">Agent 估计了以下变量的时滞量，请审查后确认：</p>
+              <div class="hitl-lag-row">
+                <span class="font-mono">u1</span>
+                <span class="font-mono hitl-lag-val">推荐: 4 采样点</span>
+              </div>
+              <div class="hitl-lag-row">
+                <span class="font-mono">u2</span>
+                <span class="font-mono hitl-lag-val">推荐: 2 采样点</span>
+              </div>
+            </div>
+            <div class="hitl-card__actions">
+              <button type="button" class="hitl-btn-reject">拒绝</button>
+              <button type="button" class="hitl-btn-approve">批准并继续 ✓</button>
+            </div>
+          </div>
+          <div class="hitl-desc">
+            <div class="hitl-desc__item">
+              <div class="hitl-desc__num font-mono">01</div>
+              <div>
+                <div class="hitl-desc__title">时滞补偿确认</div>
+                <div class="hitl-desc__text">Agent 预白化互相关估计多输入时滞，提供推荐值并允许手动覆盖</div>
+              </div>
+            </div>
+            <div class="hitl-desc__item">
+              <div class="hitl-desc__num font-mono">02</div>
+              <div>
+                <div class="hitl-desc__title">ARX 结构确认</div>
+                <div class="hitl-desc__text">推荐 na/nb/nk 阶次，工程师审查后可调整，附模型验证结果</div>
+              </div>
+            </div>
+            <div class="hitl-desc__item">
+              <div class="hitl-desc__num font-mono">03</div>
+              <div>
+                <div class="hitl-desc__title">特征筛选确认</div>
+                <div class="hitl-desc__text">VIF + Spearman 共线性分析后推荐删除列，工程师可取消勾选保留</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── CTA ─────────────────────────────────────────────── -->
+    <section class="landing-cta">
+      <div class="landing-container">
+        <h2 class="cta-title">准备好开始了吗？</h2>
+        <p class="cta-sub">导入你的时序数据，让 Agent 完成从原始数据到经过验证的动态模型的全过程</p>
+        <button type="button" class="btn-primary btn-primary--lg" @click="enterApp">
+          进入 IndusOpt 工作台
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- ── Footer ──────────────────────────────────────────── -->
+    <footer class="landing-footer">
+      <div class="landing-container landing-footer__inner">
+        <div class="landing-footer__brand">
+          <div class="landing-logo__mark" style="width:22px;height:22px">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 17l10 5 10-5"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <span class="font-mono" style="font-size:12px;color:var(--text-muted)">IndusOpt 工模智优 A14</span>
+        </div>
+        <div class="landing-footer__text">Industrial AI Agent Workspace · 面向流程工业系统辨识</div>
       </div>
     </footer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import BenchmarkComparison from "../components/landing/BenchmarkComparison.vue";
-import HeroWorkflow from "../components/landing/HeroWorkflow.vue";
-import InteractivePlayground from "../components/landing/InteractivePlayground.vue";
-import LandingHeader from "../components/landing/LandingHeader.vue";
-import PipelineArchitecture from "../components/landing/PipelineArchitecture.vue";
-import TrustedEngineering from "../components/landing/TrustedEngineering.vue";
-import { enterFromLanding } from "../router/landingEntry";
-
-defineOptions({ name: "LandingView" });
-
-defineProps<{
-  theme: "dark" | "light";
-}>();
+import { ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { markLandingEntered } from '../router/landingEntry';
 
 const router = useRouter();
-const route = useRoute();
 const pageRoot = ref<HTMLElement | null>(null);
-const reducedMotion = ref(false);
-const heroTab = ref<"playground" | "workflow">("playground");
 
-let mediaQuery: MediaQueryList | null = null;
-let sectionObserver: IntersectionObserver | null = null;
-let revealFrame: number | null = null;
-let directionFrame: number | null = null;
-let lastScrollY = 0;
-let scrollDirection: "down" | "up" = "down";
-const pendingReveal = new Set<HTMLElement>();
-const SCROLL_DIRECTION_DEAD_ZONE = 4;
-
-function enterApplication() {
-  void enterFromLanding(router, route.query.next);
+function enterApp() {
+  markLandingEntered();
+  router.push('/home');
 }
 
-function scrollToBenchmark() {
-  document.getElementById("ablation-benchmark")?.scrollIntoView({
-    behavior: reducedMotion.value ? "auto" : "smooth",
-    block: "start",
-  });
-}
-
-function updateMotionPreference(event: MediaQueryListEvent | MediaQueryList) {
-  reducedMotion.value = event.matches;
-}
-
-function setRevealOrigin(section: HTMLElement, direction: "down" | "up") {
-  section.classList.toggle("reveal-from-bottom", direction === "down");
-  section.classList.toggle("reveal-from-top", direction === "up");
-}
-
-function updateScrollDirection() {
-  directionFrame = null;
-  const currentScrollY = window.scrollY;
-  const delta = currentScrollY - lastScrollY;
-  if (Math.abs(delta) < SCROLL_DIRECTION_DEAD_ZONE) return;
-
-  scrollDirection = delta > 0 ? "down" : "up";
-  lastScrollY = currentScrollY;
-}
-
-function trackScrollDirection() {
-  if (directionFrame !== null) return;
-  directionFrame = window.requestAnimationFrame(updateScrollDirection);
-}
-
-function queueSectionReveal(section: HTMLElement) {
-  pendingReveal.add(section);
-  if (revealFrame !== null) return;
-  revealFrame = window.requestAnimationFrame(() => {
-    pendingReveal.forEach((pendingSection) => pendingSection.classList.add("is-visible"));
-    pendingReveal.clear();
-    revealFrame = null;
-  });
-}
-
-function revealSections() {
-  const sections = pageRoot.value?.querySelectorAll<HTMLElement>(".landing-section");
-  if (!sections) return;
-
-  sections.forEach((section) => setRevealOrigin(section, "down"));
-
-  if (reducedMotion.value || typeof IntersectionObserver === "undefined") {
-    sections.forEach((section) => section.classList.add("is-visible"));
-    return;
+function scrollToSection(id: string) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
-
-  sectionObserver = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        const section = entry.target as HTMLElement;
-        if (entry.isIntersecting) {
-          setRevealOrigin(section, scrollDirection);
-          queueSectionReveal(section);
-          sectionObserver?.unobserve(section);
-        }
-      });
-    },
-    { threshold: 0, rootMargin: "-12% 0px -12%" }
-  );
-  sections.forEach((section) => sectionObserver?.observe(section));
 }
 
-onMounted(() => {
-  if (typeof window.matchMedia === "function") {
-    mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    updateMotionPreference(mediaQuery);
-    mediaQuery.addEventListener("change", updateMotionPreference);
-  }
-  if (!reducedMotion.value) {
-    lastScrollY = window.scrollY;
-    window.addEventListener("scroll", trackScrollDirection, { passive: true });
-  }
-  revealSections();
-});
+const features = [
+  {
+    icon: '🤖',
+    title: 'Agent 自动编排',
+    desc: 'LLM 规划 + 规则兜底双引擎，自然语言描述目标即可触发完整 8 阶段建模流程',
+  },
+  {
+    icon: '📐',
+    title: 'D-最优动态区间优选',
+    desc: '基于 D-最优准则与信息增益，自动识别并保留动态响应最丰富的时间区间',
+  },
+  {
+    icon: '⏱',
+    title: '多变量时滞估计',
+    desc: '预白化互相关算法估计各输入通道对输出的动态延迟，支持人工审核确认',
+  },
+  {
+    icon: '🔬',
+    title: 'ARX 系统辨识',
+    desc: 'OLS/Ridge ARX 参数辨识，三段（训练/验证/测试）严格隔离，One-step + Free-run 双轨验证',
+  },
+  {
+    icon: '⚡',
+    title: 'Optuna 闭环寻优',
+    desc: '基于 Optuna 的超参数寻优，100+ Trials 搜索最优参数组合，FIT 提升可达 14%+',
+  },
+  {
+    icon: '🛡',
+    title: '合规证明可追溯',
+    desc: '每次 Agent 执行生成 proof_id + 数字签名，数据处理全链路可审计',
+  },
+  {
+    icon: '👤',
+    title: '三点 HITL 确认',
+    desc: '时滞补偿、ARX 结构、特征筛选三个关键节点触发人工审核，不静默执行高影响操作',
+  },
+  {
+    icon: '📋',
+    title: 'LLM 工程报告',
+    desc: '自动生成包含模型参数、验证指标和建议的完整 Markdown 工程分析报告',
+  },
+];
 
-onBeforeUnmount(() => {
-  mediaQuery?.removeEventListener("change", updateMotionPreference);
-  window.removeEventListener("scroll", trackScrollDirection);
-  sectionObserver?.disconnect();
-  if (directionFrame !== null) window.cancelAnimationFrame(directionFrame);
-  if (revealFrame !== null) window.cancelAnimationFrame(revealFrame);
-  pendingReveal.clear();
-});
+const workflowSteps = [
+  { name: '数据质量诊断', desc: '缺失值、异常检测、采样一致性检查', type: 'auto', label: '自动' },
+  { name: '时间规整与清洗', desc: 'Hampel 滤波 + IQR 异常替换 + 降采样对齐', type: 'auto', label: '自动' },
+  { name: '动态区间优选', desc: 'D-最优 + 门控 + 信息增益优选覆盖率', type: 'auto', label: '自动' },
+  { name: '多变量时滞分析', desc: '预白化互相关估计各输入时滞', type: 'hitl', label: '需确认' },
+  { name: '共线性与特征筛选', desc: 'VIF + Spearman 分析，推荐移除冗余列', type: 'hitl', label: '需确认' },
+  { name: 'ARX 系统辨识', desc: 'OLS/Ridge ARX 拟合，推荐 na/nb/nk 结构', type: 'hitl', label: '需确认' },
+  { name: '模型评价验证', desc: '测试集 One-step + Free-run 指标评估', type: 'auto', label: '自动' },
+  { name: 'Optuna 参数寻优', desc: '闭环多目标超参数优化，生成工程报告', type: 'auto', label: '自动' },
+];
+
+const benchmarkRows = [
+  { strategy: '全量特征 · 无区间优选', fit: '74.2', r2: '0.847', rmse: '0.081', freeFit: '71.5', highlight: false },
+  { strategy: '能量门控优选', fit: '81.6', r2: '0.901', rmse: '0.063', freeFit: '79.1', highlight: false },
+  { strategy: '质量门控优选', fit: '83.9', r2: '0.921', rmse: '0.057', freeFit: '81.4', highlight: false },
+  { strategy: 'D-最优 + VIF 筛选 + Optuna', fit: '89.0', r2: '0.962', rmse: '0.031', freeFit: '86.9', highlight: true },
+];
 </script>
 
 <style scoped>
-.landing-preview {
-  position: relative;
-  --landing-radius: 6px;
-  min-width: 320px;
-  min-height: 100dvh;
+/* ── Base ──────────────────────────────────────────────────── */
+.landing {
+  width: 100%;
+  height: 100vh;
+  overflow-y: auto;
   overflow-x: hidden;
-  background: var(--landing-bg);
-  color: var(--landing-text);
-  font-family: var(--font-sans);
-}
-
-.landing-preview::before {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  content: "";
-  background-image:
-    linear-gradient(var(--landing-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--landing-grid) 1px, transparent 1px);
-  background-size: 44px 44px;
-  opacity: 0.65;
-  z-index: 0;
-}
-
-.landing-preview[data-theme="light"] {
-  --landing-bg: #f8fafc;
-  --landing-surface: #ffffff;
-  --landing-surface-active: #ffffff;
-  --landing-surface-tinted: #f1f5f9;
-  --landing-node-bg: #f8fafc;
-  --landing-text: #0f172a;
-  --landing-muted: #64748b;
-  --landing-faint: #64748b;
-  --landing-accent: #2563eb;
-  --landing-accent-strong: #1d4ed8;
-  --landing-accent-contrast: #ffffff;
-  --landing-accent-soft: rgba(37, 99, 235, 0.08);
-  --landing-border: #e2e8f0;
-  --landing-border-strong: #cbd5e1;
-  --landing-border-active: #2563eb;
-  --landing-grid: rgba(203, 213, 225, 0.55);
-  --landing-highlight: rgba(37, 99, 235, 0.06);
-  --landing-header-bg: rgba(248, 250, 252, 0.92);
-  --landing-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
-  color-scheme: light;
-}
-
-.landing-preview[data-theme="dark"] {
-  --landing-bg: #f8fafc;
-  --landing-surface: #ffffff;
-  --landing-surface-active: #ffffff;
-  --landing-surface-tinted: #f1f5f9;
-  --landing-node-bg: #f8fafc;
-  --landing-text: #0f172a;
-  --landing-muted: #64748b;
-  --landing-faint: #64748b;
-  --landing-accent: #2563eb;
-  --landing-accent-strong: #1d4ed8;
-  --landing-accent-contrast: #ffffff;
-  --landing-accent-soft: rgba(37, 99, 235, 0.08);
-  --landing-border: #e2e8f0;
-  --landing-border-strong: #cbd5e1;
-  --landing-border-active: #2563eb;
-  --landing-grid: rgba(203, 213, 225, 0.55);
-  --landing-highlight: rgba(37, 99, 235, 0.06);
-  --landing-header-bg: rgba(248, 250, 252, 0.92);
-  --landing-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
-  color-scheme: light;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  position: relative;
 }
 
 .landing-container {
-  position: relative;
-  z-index: 1;
-  width: min(100% - 44px, 1380px);
-  margin-inline: auto;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 var(--space-6);
 }
 
-/* Scroll Triggered Smooth Slide-in / Slide-out Animation */
-.landing-section {
-  position: relative;
-  padding: clamp(48px, 6vw, 84px) 0;
-  scroll-margin-top: 72px;
-  opacity: 0;
-  transform: translateY(28px) scale(0.992);
-  transition:
-    opacity 560ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 560ms cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: opacity, transform;
+/* ── Header ────────────────────────────────────────────────── */
+.landing-header {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-header);
+  background: rgba(246, 247, 243, 0.88);
+  border-bottom: 1px solid #E8EAE5;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
-.landing-section.reveal-from-bottom {
-  transform: translateY(28px) scale(0.992);
+.landing-header__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 58px;
 }
 
-.landing-section.reveal-from-top {
-  transform: translateY(-24px) scale(0.992);
+.landing-logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
-.landing-section.is-visible {
-  opacity: 1;
-  transform: translateY(0) scale(1);
+.landing-logo__mark {
+  width: 28px;
+  height: 28px;
+  background: #FFFFFF;
+  border: 1px solid #DFE4DB;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #698F64;
+  box-shadow: var(--shadow-sm);
 }
 
-/* Hero Staggered Entrance Animations */
-@keyframes heroFadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(24px) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+.landing-logo__name {
+  font-size: 15px;
+  font-weight: 800;
+  color: #20231F;
+  letter-spacing: -0.02em;
 }
 
-.hero-anim-1 {
-  animation: heroFadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.05s backwards;
+.landing-logo__tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: #52735A;
+  background: #EDF4E9;
+  border: 1px solid #D6E5D1;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
 }
 
-.hero-anim-2 {
-  animation: heroFadeInUp 0.65s cubic-bezier(0.16, 1, 0.3, 1) 0.12s backwards;
+.landing-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
 }
 
-.hero-anim-3 {
-  animation: heroFadeInUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.2s backwards;
+.landing-nav__item {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: #626860;
+  font-weight: 500;
+  transition: color var(--transition-fast);
 }
 
-.hero-anim-4 {
-  animation: heroFadeInUp 0.75s cubic-bezier(0.16, 1, 0.3, 1) 0.28s backwards;
+.landing-nav__item:hover {
+  color: #20231F;
 }
 
-.hero-anim-5 {
-  animation: heroFadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.36s backwards;
+.landing-nav__cta {
+  padding: 7px 18px;
+  background: #82A978;
+  border: 1px solid #82A978;
+  border-radius: var(--radius-full);
+  color: #FFFFFF;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(80, 110, 75, 0.12);
+  transition: all var(--transition-fast);
 }
 
-.hero-anim-right {
-  animation: heroFadeInUp 0.85s cubic-bezier(0.16, 1, 0.3, 1) 0.18s backwards;
+.landing-nav__cta:hover {
+  background: #719967;
+  border-color: #719967;
+  transform: translateY(-1px);
 }
 
-/* Hero Section */
+/* ── Hero ──────────────────────────────────────────────────── */
 .landing-hero {
   position: relative;
-  display: flex;
-  align-items: center;
-  min-height: calc(100dvh - 72px);
-  padding: clamp(24px, 4vw, 56px) 0;
-}
-
-.hero-grid {
-  display: grid;
-  grid-template-columns: minmax(360px, 1.15fr) minmax(420px, 1.35fr);
-  gap: clamp(32px, 4vw, 56px);
-  align-items: center;
-}
-
-.hero-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  padding: 96px 0 72px;
+  text-align: center;
+  background: radial-gradient(circle at 50% 0%, rgba(130, 169, 120, 0.08), transparent 35%);
 }
 
 .hero-eyebrow {
   display: inline-block;
-  font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
-  color: var(--landing-accent);
+  color: #5D7E58;
   letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-4);
+  padding: 4px 12px;
+  background: #EDF4E9;
+  border: 1px solid #D3E4CD;
+  border-radius: var(--radius-full);
 }
 
-.hero-copy h1 {
-  margin: 0;
+.hero-title {
+  font-size: clamp(34px, 5.5vw, 60px);
+  font-weight: 800;
+  color: #20231F;
+  letter-spacing: -0.04em;
+  line-height: 1.12;
+  margin-bottom: var(--space-5);
   display: flex;
   flex-direction: column;
-  font-size: clamp(34px, 3.8vw, 50px);
-  font-weight: 800;
-  line-height: 1.18;
-  letter-spacing: -0.035em;
-  color: var(--landing-text);
+  align-items: center;
+  gap: 6px;
+}
+
+.hero-title__accent {
+  color: #52735A;
 }
 
 .hero-subtitle {
-  margin: 0;
-  color: var(--landing-muted);
-  font-size: 14px;
-  line-height: 1.65;
-  max-width: 580px;
+  font-size: var(--font-size-md);
+  color: #626860;
+  max-width: 620px;
+  margin: 0 auto var(--space-6);
+  line-height: 1.7;
 }
 
 .hero-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-top: 4px;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-10);
 }
 
-.landing-button {
+/* ── Buttons ───────────────────────────────────────────────── */
+.btn-primary {
   display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 12px 24px;
+  background: #82A978;
+  border: none;
+  border-radius: var(--radius-full);
+  color: #FFFFFF;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(80, 110, 75, 0.12);
+  transition: all var(--transition-fast);
+}
+
+.btn-primary:hover {
+  background: #719967;
+  transform: translateY(-1px);
+}
+
+.btn-primary--lg {
+  padding: 14px 32px;
+  font-size: var(--font-size-lg);
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 11px 22px;
+  background: #FFFFFF;
+  border: 1px solid #DDE1DA;
+  border-radius: var(--radius-full);
+  color: #444A43;
+  font-size: var(--font-size-md);
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-ghost:hover {
+  background: #F5F7F2;
+  border-color: #C8CEC5;
+  transform: translateY(-1px);
+}
+
+/* ── Stats ─────────────────────────────────────────────────── */
+.hero-stats {
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 42px;
-  padding: 0 20px;
-  border-radius: var(--landing-radius);
-  border: 1px solid transparent;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 700;
-  white-space: nowrap;
-  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  gap: var(--space-8);
+  margin-bottom: var(--space-10);
+  padding: var(--space-4) var(--space-6);
+  background: #FFFFFF;
+  border: 1px solid #E3E6DF;
+  border-radius: var(--radius-lg);
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+  box-shadow: 0 6px 24px rgba(30, 40, 28, 0.035);
 }
 
-.landing-button-primary {
-  border-color: var(--landing-accent);
-  background: var(--landing-accent);
-  color: var(--landing-accent-contrast);
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.22);
-}
+.hero-stat { text-align: center; }
 
-.landing-button-primary:hover {
-  border-color: var(--landing-accent-strong);
-  background: var(--landing-accent-strong);
-  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.38);
-  transform: translateY(-2px);
-}
-
-.btn-arrow {
-  display: inline-block;
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.landing-button-primary:hover .btn-arrow {
-  transform: translateX(4px);
-}
-
-.landing-button-secondary {
-  border-color: var(--landing-border-strong);
-  background: #ffffff;
-  color: var(--landing-text);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-}
-
-.landing-button-secondary:hover {
-  border-color: var(--landing-accent);
-  background: var(--landing-accent-soft);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-}
-
-/* 3 Hardcore Metric Highlights */
-.hero-stats-banner {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr auto 1fr;
-  align-items: center;
-  gap: 14px;
-  margin-top: 14px;
-  padding: 14px 18px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.hero-stats-banner:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
-  border-color: #cbd5e1;
-}
-
-.hero-stat-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.stat-num {
-  font-family: var(--font-mono);
-  font-size: 18px;
+.hero-stat__num {
+  font-size: 26px;
   font-weight: 800;
-  line-height: 1.1;
+  color: #282C27;
+  letter-spacing: -0.03em;
 }
 
-.text-cyan { color: #0284c7; }
-.text-green { color: #059669; }
-.text-amber { color: #d97706; }
-
-.stat-desc {
-  font-size: 10px;
-  color: #64748b;
-  line-height: 1.35;
+.hero-stat:first-child .hero-stat__num {
+  color: #5E8259;
 }
 
-.hero-stat-divider {
+.hero-stat__desc {
+  font-size: 11px;
+  color: #8B9188;
+  margin-top: 2px;
+}
+
+.hero-stat-div {
   width: 1px;
-  height: 28px;
-  background: #e2e8f0;
+  height: 32px;
+  background: #E8EAE5;
 }
 
-/* Hero Right Interactive Zone */
-.hero-interactive-zone {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.hero-view-tabs {
-  display: inline-flex;
-  background: #e2e8f0;
-  padding: 3px;
-  border-radius: 8px;
-  align-self: flex-start;
-  gap: 2px;
-}
-
-.view-tab-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border: none;
-  background: transparent;
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 600;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.18s ease;
-  white-space: nowrap;
-}
-
-.view-tab-btn:hover {
-  color: #0f172a;
-}
-
-.view-tab-btn.active {
-  background: #ffffff;
-  color: #0f172a;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-}
-
-.tab-svg {
-  width: 13px;
-  height: 13px;
-}
-
-/* Section Headings */
-.section-heading {
-  margin-bottom: 24px;
-}
-
-.section-eyebrow {
-  display: block;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--landing-accent);
-  letter-spacing: 0.1em;
-  margin-bottom: 8px;
-}
-
-.section-heading h2,
-.landing-final h2 {
-  margin: 0;
-  color: var(--landing-text);
-  font-size: clamp(26px, 3vw, 38px);
-  font-weight: 700;
-  line-height: 1.25;
-  letter-spacing: -0.025em;
-}
-
-.section-heading p {
-  max-width: 680px;
-  margin: 10px 0 0;
-  color: #64748b;
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.section-trust,
-.section-pipeline,
-.section-benchmark {
-  border-top: 1px solid var(--landing-border);
-}
-
-/* Final CTA Section (Glacier Slate Theme) */
-.landing-final {
-  padding: clamp(48px, 6vw, 84px) 0;
-  border-top: 1px solid var(--landing-border);
-}
-
-.final-layout {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 40px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: clamp(32px, 5vw, 48px);
-  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.04);
-  position: relative;
+/* ── Terminal / Workspace Preview ──────────────────────────── */
+.hero-terminal {
+  border: 1px solid #E1E4DE;
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  max-width: 780px;
+  margin: 0 auto;
+  text-align: left;
+  background: #FFFFFF;
+  box-shadow: 0 18px 50px rgba(30, 40, 28, 0.06);
 }
 
-.final-layout::before {
-  position: absolute;
-  right: -40px;
-  bottom: -40px;
-  width: 280px;
-  height: 280px;
+.hero-terminal__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: #F2F4EF;
+  border-bottom: 1px solid #E1E4DE;
+}
+
+.hero-terminal__dots {
+  display: flex;
+  gap: 6px;
+}
+
+.hero-terminal__dots span {
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(37, 99, 235, 0.06) 0%, transparent 70%);
-  pointer-events: none;
-  content: "";
+  background: #D0D4CD;
 }
 
-.final-layout:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
-  border-color: #cbd5e1;
+.hero-terminal__title {
+  font-size: var(--font-size-xs);
+  color: #868C83;
+  flex: 1;
+  text-align: center;
 }
 
-.final-copy {
+.hero-terminal__status {
+  font-size: 11px;
+  color: #67936C;
+  display: flex;
+  align-items: center;
+}
+
+.hero-terminal__body {
+  background: #FAFBF8;
+  padding: var(--space-5);
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  position: relative;
-  z-index: 1;
+  gap: var(--space-3);
+  min-height: 190px;
 }
 
-.final-tag {
-  font-size: 10px;
+.ht-msg {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.ht-msg__avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-xs);
+  background: #E8EDE5;
+  border: 1px solid #D8DFD5;
+  color: #5D7E58;
+  font-size: 11px;
   font-weight: 700;
-  color: #2563eb;
-  letter-spacing: 0.1em;
-}
-
-.final-copy h2 {
-  margin: 0;
-  color: #0f172a;
-  font-size: clamp(26px, 3vw, 36px);
-  font-weight: 800;
-  line-height: 1.25;
-  letter-spacing: -0.025em;
-}
-
-.final-copy p {
-  max-width: 580px;
-  margin: 4px 0 8px;
-  color: #64748b;
-  font-size: 14px;
-  line-height: 1.65;
-}
-
-.final-checkmarks {
   display: flex;
   align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-top: 4px;
-}
-
-.chk-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #475569;
-}
-
-.chk-svg {
-  width: 13px;
-  height: 13px;
-  color: #059669;
+  justify-content: center;
   flex-shrink: 0;
 }
 
-.final-action-box {
-  position: relative;
-  z-index: 1;
+.ht-msg__avatar--agent {
+  background: #EDF4E9;
+  border-color: #D3E4CD;
+  color: #52735A;
 }
 
-.final-button {
-  min-width: 160px;
-  background: #2563eb !important;
-  color: #ffffff !important;
-  border-color: #2563eb !important;
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);
+.ht-msg--user {
+  background: #F0F4ED;
+  border: 1px solid #E2E8DE;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
 }
 
-.final-button:hover {
-  background: #1d4ed8 !important;
-  border-color: #1d4ed8 !important;
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.4);
+.ht-msg__text {
+  font-size: var(--font-size-sm);
+  color: #20231F;
+  line-height: 1.5;
+  padding: 3px 0;
 }
 
-.landing-footer {
-  border-top: 1px solid var(--landing-border);
-  color: #64748b;
+.ht-plan {
+  flex: 1;
+  background: #FFFFFF;
+  border: 1px solid #E2E5DE;
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
 }
 
-.landing-footer .landing-container {
+.ht-plan__label {
+  font-size: 10px;
+  color: #81877E;
+  letter-spacing: 0.08em;
+  margin-bottom: var(--space-2);
+}
+
+.ht-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ht-step {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  min-height: 64px;
-  gap: 24px;
-  font-size: 12px;
+  gap: var(--space-2);
+  font-size: var(--font-size-xs);
 }
 
-.font-mono {
+.ht-step__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ht-step__dot.done { background: #66956E; }
+.ht-step__dot.running {
+  background: #82A978;
+  box-shadow: 0 0 0 3px #EDF4E9;
+  animation: agent-breathe 1.5s ease-in-out infinite;
+}
+.ht-step__dot.pending { background: #BEC2BC; }
+
+.ht-step__name { color: #626860; }
+.ht-step--done .ht-step__name { color: #81877E; }
+.ht-step--running .ht-step__name { color: #20231F; font-weight: 600; }
+
+.ht-step__time {
+  margin-left: auto;
+  color: #9CA19A;
+  font-size: 10px;
+}
+
+.ht-step__spinner {
+  margin-left: auto;
+  color: #82A978;
+  font-size: 10px;
+}
+
+.ht-event {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: #F2F5EF;
+  border: 1px solid #E2E5DE;
+  border-radius: var(--radius-xs);
+  font-size: var(--font-size-xs);
+}
+
+.ht-event__tool {
+  color: #52735A;
+  font-weight: 600;
+}
+
+.ht-event__desc {
+  color: #626860;
+  flex: 1;
+}
+
+/* ── Sections ──────────────────────────────────────────────── */
+.landing-section {
+  padding: 80px 0;
+  border-top: 1px solid #EAECE6;
+}
+
+.section-label {
+  font-size: var(--font-size-xs);
+  color: #5D7E58;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-2);
+  font-weight: 700;
+}
+
+.section-title {
+  font-size: clamp(26px, 3.2vw, 38px);
+  font-weight: 800;
+  color: #20231F;
+  letter-spacing: -0.03em;
+  margin-bottom: var(--space-2);
+}
+
+.section-subtitle {
+  font-size: var(--font-size-md);
+  color: #626860;
+  margin-bottom: var(--space-8);
+  max-width: 560px;
+  line-height: 1.6;
+}
+
+/* ── Features Grid ─────────────────────────────────────────── */
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: var(--space-4);
+}
+
+.feature-card {
+  padding: var(--space-5);
+  background: #FFFFFF;
+  border: 1px solid #E2E5DE;
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 8px rgba(30, 40, 28, 0.03);
+  transition: all var(--transition-fast);
+}
+
+.feature-card:hover {
+  background: #FAFBF8;
+  border-color: #D4D9D1;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.feature-card__icon {
+  font-size: 24px;
+  margin-bottom: var(--space-3);
+}
+
+.feature-card__title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: #20231F;
+  margin-bottom: var(--space-2);
+}
+
+.feature-card__desc {
+  font-size: var(--font-size-xs);
+  color: #626860;
+  line-height: 1.6;
+}
+
+/* ── Workflow Steps ────────────────────────────────────────── */
+.workflow-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.workflow-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  background: #FFFFFF;
+  border: 1px solid #E2E5DE;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.workflow-step:hover {
+  background: #FAFBF8;
+  border-color: #D4D9D1;
+}
+
+.workflow-step__num {
+  width: 28px;
+  font-size: var(--font-size-xs);
+  color: #9CA19A;
+  flex-shrink: 0;
+  font-weight: 700;
+}
+
+.workflow-step__body {
+  flex: 1;
+}
+
+.workflow-step__name {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: #20231F;
+}
+
+.workflow-step__desc {
+  font-size: var(--font-size-xs);
+  color: #626860;
+  margin-top: 2px;
+}
+
+.workflow-step__badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
   font-family: var(--font-mono);
 }
 
-@media (max-width: 1100px) {
-  .hero-grid {
-    grid-template-columns: 1fr;
-  }
+.workflow-step__badge.auto {
+  color: #557651;
+  background: #EDF4E9;
+  border: 1px solid #D3E4CD;
 }
 
-@media (max-width: 768px) {
-  .hero-stats-banner {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-  .hero-stat-divider {
-    display: none;
-  }
-  .final-layout {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 24px;
-  }
-  .landing-footer .landing-container {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-    padding: 16px 0;
-  }
+.workflow-step__badge.hitl {
+  color: #8C6826;
+  background: #FBF4E7;
+  border: 1px solid #EFE0C2;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .landing-section,
-  .hero-anim-1,
-  .hero-anim-2,
-  .hero-anim-3,
-  .hero-anim-4,
-  .hero-anim-5,
-  .hero-anim-right {
-    animation: none !important;
-    transition: none !important;
-    transform: none !important;
-  }
+/* ── Benchmark Table ───────────────────────────────────────── */
+.benchmark-table {
+  border: 1px solid #E2E5DE;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  background: #FFFFFF;
+}
+
+.bm-header {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+  gap: 0;
+  background: #F7F8F5;
+  border-bottom: 1px solid #E2E5DE;
+}
+
+.bm-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+  background: #FFFFFF;
+  border-bottom: 1px solid #ECEEE9;
+}
+
+.bm-row:last-child { border-bottom: none; }
+
+.bm-row--highlight {
+  background: #FAFBF8;
+}
+
+.bm-cell {
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--font-size-sm);
+  color: #20231F;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.bm-header .bm-cell {
+  font-size: var(--font-size-xs);
+  color: #6B7168;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.bm-cell--num {
+  justify-content: flex-end;
+}
+
+.bm-strategy {
+  font-size: var(--font-size-sm);
+  color: #20231F;
+  font-weight: 500;
+}
+
+.bm-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: #52735A;
+  background: #EDF4E9;
+  border: 1px solid #D6E5D1;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+}
+
+/* ── HITL Demo ─────────────────────────────────────────────── */
+.hitl-demo {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: var(--space-8);
+  align-items: start;
+}
+
+.hitl-card {
+  border: 1px solid #E2E5DE;
+  border-left: 3px solid #B48A47;
+  background: #FFFDF7;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.hitl-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid #EFE0C2;
+}
+
+.hitl-card__icon {
+  width: 26px;
+  height: 26px;
+  background: #FBF4E7;
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #B48A47;
+  font-size: 13px;
+}
+
+.hitl-card__title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: #20231F;
+}
+
+.hitl-card__sub {
+  font-size: var(--font-size-xs);
+  color: #81877E;
+}
+
+.hitl-card__body {
+  padding: var(--space-4);
+  background: #FFFFFF;
+}
+
+.hitl-card__desc {
+  font-size: var(--font-size-xs);
+  color: #626860;
+  margin-bottom: var(--space-3);
+}
+
+.hitl-lag-row {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  background: #FAFBF8;
+  border: 1px solid #ECEEE9;
+  border-radius: var(--radius-xs);
+  margin-bottom: 4px;
+  font-size: var(--font-size-xs);
+  color: #20231F;
+}
+
+.hitl-lag-val {
+  color: #81877E;
+}
+
+.hitl-card__actions {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid #ECEEE9;
+  background: #FAFBF8;
+  justify-content: flex-end;
+}
+
+.hitl-btn-reject {
+  padding: 6px 14px;
+  background: #FFFFFF;
+  border: 1px solid #DDE1DA;
+  border-radius: var(--radius-sm);
+  color: #626860;
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.hitl-btn-reject:hover {
+  background: #F3F5F0;
+  color: #20231F;
+}
+
+.hitl-btn-approve {
+  padding: 6px 14px;
+  background: #82A978;
+  border: 1px solid #82A978;
+  border-radius: var(--radius-sm);
+  color: #FFFFFF;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hitl-btn-approve:hover {
+  background: #719967;
+}
+
+.hitl-desc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.hitl-desc__item {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.hitl-desc__num {
+  font-size: 20px;
+  font-weight: 800;
+  color: #BEC2BC;
+  flex-shrink: 0;
+  line-height: 1.2;
+}
+
+.hitl-desc__title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: #20231F;
+  margin-bottom: 4px;
+}
+
+.hitl-desc__text {
+  font-size: var(--font-size-xs);
+  color: #626860;
+  line-height: 1.6;
+}
+
+/* ── CTA ───────────────────────────────────────────────────── */
+.landing-cta {
+  padding: 96px 0;
+  border-top: 1px solid #EAECE6;
+  text-align: center;
+  background: var(--surface-2);
+}
+
+.cta-title {
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 800;
+  color: #20231F;
+  letter-spacing: -0.03em;
+  margin-bottom: var(--space-3);
+}
+
+.cta-sub {
+  font-size: var(--font-size-md);
+  color: #626860;
+  margin-bottom: var(--space-6);
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.6;
+}
+
+/* ── Footer ────────────────────────────────────────────────── */
+.landing-footer {
+  border-top: 1px solid #EAECE6;
+  padding: var(--space-5) 0;
+  background: var(--bg-sidebar);
+}
+
+.landing-footer__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.landing-footer__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.landing-footer__text {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
 }
 </style>

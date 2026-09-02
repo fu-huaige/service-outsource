@@ -1,17 +1,23 @@
 <template>
-  <div class="dataset-detail-view">
-    <div class="page-header" v-if="dataset">
-      <span class="page-eyebrow">数据资产</span>
-      <h2>{{ dataset.name }}</h2>
-      <p class="subtitle">
+  <div class="page-container dataset-detail-view">
+    <PageHeader
+      v-if="dataset"
+      eyebrow="PREPARE DATA / DATASET DETAILS"
+      :title="dataset.name"
+    >
+      <template #description>
         当前版本：<span class="code-inline">{{ shortIdentifier(dataset.version_id || dataset.latest_version_id) }}</span>
         <el-tooltip :content="dataset.version_id || dataset.latest_version_id" placement="top">
           <span class="version-id-help">查看完整 ID</span>
         </el-tooltip>
-        ·
-        来源：<el-tag size="small" type="info">{{ dataset.source || 'upload' }}</el-tag>
-      </p>
-    </div>
+        · 来源：<el-tag size="small" type="info">{{ dataset.source || 'upload' }}</el-tag>
+      </template>
+      <template #actions>
+        <el-button type="primary" size="default" icon="Opportunity" @click="openCleaning">
+          进入清洗实验室
+        </el-button>
+      </template>
+    </PageHeader>
 
     <el-tabs v-model="activeTab" type="card" class="detail-tabs">
       <!-- Tab 1: Overview & Time-Series Plot -->
@@ -354,7 +360,8 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { DataLine, Share, ArrowRight } from "@element-plus/icons-vue";
+import { DataLine, Share, ArrowRight, Opportunity } from "@element-plus/icons-vue";
+import PageHeader from "../components/common/PageHeader.vue";
 import StateView from "../components/StateView.vue";
 import { getDatasetDetail, getDatasetProfile, getDatasetVersions } from "../api/datasets";
 import type { DatasetItem, DatasetProfile, DatasetVersionNode } from "../types/api";
@@ -692,10 +699,8 @@ onMounted(() => {
 .dataset-detail-view {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: 100%;
   min-width: 0;
-  min-height: 0;
-  overflow: hidden;
 }
 
 .page-header {
@@ -718,14 +723,10 @@ onMounted(() => {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
 }
 
 .detail-tabs :deep(.overview-tab-pane) {
-  height: 100%;
   min-height: 0;
-  overflow: hidden;
 }
 
 .preview-tab-content {

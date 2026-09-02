@@ -1,5 +1,5 @@
 <template>
-  <div class="delay-view">
+  <div class="page-container delay-view">
     <!-- Top Stage Header Navigation -->
     <div class="pipeline-stage-nav">
       <div class="stage-badge font-mono">STAGE 04 · DELAY ALIGNMENT STUDIO</div>
@@ -221,7 +221,7 @@ import { ApiError } from "../api/client";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { useDatasetStore } from "../stores/datasetStore";
 
-const PALETTE = ["#2563eb", "#059669", "#d97706", "#dc2626", "#8b5cf6", "#0284c7"];
+const PALETTE = ["#6E9B69", "#7995A8", "#B28B50", "#96799F", "#B8746E", "#52735A"];
 
 const loading = ref(false);
 const applying = ref(false);
@@ -547,7 +547,8 @@ const formatInteger = (value: number | null | undefined) => {
 .delay-view {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--section-gap-md);
+  min-height: 100%;
 }
 
 /* Stage Nav */
@@ -901,9 +902,9 @@ const formatInteger = (value: number | null | undefined) => {
   justify-content: space-between;
   align-items: center;
   padding: 18px 22px;
-  background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
-  border: 1px solid #bfdbfe;
-  border-radius: 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
   margin-bottom: 0;
   gap: 20px;
   order: 3;
@@ -911,14 +912,14 @@ const formatInteger = (value: number | null | undefined) => {
 
 .apply-h {
   font-size: 12px;
-  font-weight: 800;
-  color: #1e3a8a;
+  font-weight: 700;
+  color: var(--text-primary);
   margin-bottom: 3px;
 }
 
 .apply-d {
   font-size: 12px;
-  color: #475569;
+  color: var(--text-secondary);
 }
 
 .studio-empty-card {
@@ -928,27 +929,28 @@ const formatInteger = (value: number | null | undefined) => {
   justify-content: center;
   padding: 80px 20px;
   text-align: center;
-  background: #ffffff;
-  border-radius: 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
 }
 
 .empty-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  background: var(--color-primary-light);
-  color: var(--color-primary);
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-tertiary);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 20px;
   margin-bottom: 12px;
 }
 
 .studio-empty-card h3 {
   margin: 0;
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--text-primary);
 }
 

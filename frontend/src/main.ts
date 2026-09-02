@@ -6,6 +6,9 @@ import * as ElementPlusIconsVue from "@element-plus/icons-vue";
 
 import App from "./App.vue";
 import router from "./router";
+
+// Design system (tokens first, then base styles)
+import "./assets/design-tokens.css";
 import "./assets/main.css";
 
 const app = createApp(App);

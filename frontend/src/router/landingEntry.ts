@@ -1,7 +1,8 @@
 import type { Router } from "vue-router";
 
 export const LANDING_SESSION_KEY = "indusopt.landing.entered";
-export const DEFAULT_LANDING_TARGET = "/dashboard";
+export const DEFAULT_LANDING_TARGET = "/home";
+
 
 export function hasEnteredLanding() {
   return window.sessionStorage.getItem(LANDING_SESSION_KEY) === "1";

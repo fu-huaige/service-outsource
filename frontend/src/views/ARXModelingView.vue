@@ -1,10 +1,10 @@
 <template>
-  <div class="arx-modeling-view">
-    <div class="page-header">
-      <span class="page-eyebrow">辨识与寻优</span>
-      <h2>ARX 系统辨识与模型评价</h2>
-      <p class="subtitle">在精选数据版本上求解离散时间 ARX 结构参数，验证 R²、FIT 拟合度与残差独立性</p>
-    </div>
+  <div class="page-container arx-view">
+    <PageHeader
+      eyebrow="SYSTEM IDENTIFICATION / ARX"
+      title="ARX 系统辨识与模型评价"
+      description="在精选数据版本上求解离散时间 ARX 结构参数，验证 R²、FIT 拟合度与残差独立性"
+    />
 
     <div class="modeling-layout">
       <!-- Target Dataset Info -->
@@ -173,6 +173,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from "vue";
 import { Cpu, VideoPlay, Trophy, TrendCharts, RefreshRight, FolderOpened } from "@element-plus/icons-vue";
+import PageHeader from "../components/common/PageHeader.vue";
 import ChartContainer from "../components/ChartContainer.vue";
 import { fitARXModel } from "../api/modeling";
 import type { ARXFitRequest, ARXFitResponse } from "../types/api";
@@ -293,14 +294,8 @@ const plotOptions = computed(() => {
 </script>
 
 <style scoped>
-.page-header {
-  margin-bottom: 20px;
-}
-
-.subtitle {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-top: 4px;
+.arx-view {
+  min-height: 100%;
 }
 
 .dataset-meta {
@@ -311,7 +306,7 @@ const plotOptions = computed(() => {
 .modeling-layout {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--space-6);
 }
 
 .metrics-grid {
@@ -329,7 +324,7 @@ const plotOptions = computed(() => {
 }
 
 .metric-box.warn {
-  border-color: #E76F51;
+  border-color: var(--danger);
 }
 
 .alert-gap {
@@ -341,8 +336,8 @@ const plotOptions = computed(() => {
 }
 
 .metric-box.highlight {
-  background: var(--color-primary-light);
-  border-color: var(--color-primary);
+  background: var(--surface-2);
+  border-color: var(--accent-border);
 }
 
 .metric-box .name {

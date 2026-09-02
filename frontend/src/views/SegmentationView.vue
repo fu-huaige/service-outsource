@@ -1,5 +1,5 @@
 <template>
-  <div class="segmentation-view">
+  <div class="page-container segmentation-view">
     <!-- Top Stage Header Navigation -->
     <div class="pipeline-stage-nav">
       <div class="stage-badge font-mono">STAGE 03 · D-OPTIMAL SEGMENTATION</div>
@@ -284,11 +284,11 @@ const chartOptions = computed(() => {
         name: form.output_column,
         type: "line",
         showSymbol: false,
-        color: "#2563eb",
+        color: "#6E9B69",
         lineStyle: { width: 2 },
         data: values,
         markArea: {
-          itemStyle: { color: "rgba(37, 99, 235, 0.15)", borderColor: "rgba(37, 99, 235, 0.4)", borderWidth: 1 },
+          itemStyle: { color: "rgba(130, 169, 120, 0.15)", borderColor: "rgba(130, 169, 120, 0.35)", borderWidth: 1 },
           data: marks,
         },
       },
@@ -312,7 +312,8 @@ const formatNumber = (value: number | null | undefined) => {
 .segmentation-view {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--section-gap-md);
+  min-height: 100%;
 }
 
 /* Stage Nav */
@@ -490,8 +491,9 @@ const formatNumber = (value: number | null | undefined) => {
 
 .detail-pane {
   padding: 18px;
-  background: #ffffff;
-  border-radius: 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
   margin-bottom: 0;
 }
 

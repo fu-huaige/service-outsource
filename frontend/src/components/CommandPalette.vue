@@ -435,7 +435,7 @@ defineExpose({
   padding: 6px 12px 4px;
   font-size: 10px;
   font-weight: 700;
-  color: var(--text-muted);
+  color: var(--text-tertiary);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -445,16 +445,16 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all var(--transition-fast);
   color: var(--text-primary);
   border: 1px solid transparent;
 }
 
 .cmd-item:hover, .cmd-item.active {
-  background: var(--color-primary-light);
-  border-color: var(--color-primary-border);
+  background: var(--surface-3);
+  border-color: var(--border-default);
 }
 
 .cmd-item-left {
@@ -467,20 +467,19 @@ defineExpose({
 .cmd-icon-box {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xs);
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: all 0.14s ease;
+  transition: all var(--transition-fast);
 }
 
 .cmd-item.active .cmd-icon-box {
-  background: #ffffff;
-  border-color: var(--color-primary-border);
-  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.15);
+  background: var(--surface-3);
+  border-color: var(--border-strong);
 }
 
 .cmd-item-icon {
@@ -488,12 +487,12 @@ defineExpose({
   height: 15px;
   max-width: 15px;
   max-height: 15px;
-  color: var(--text-secondary);
-  transition: color 0.14s ease;
+  color: var(--text-tertiary);
+  transition: color var(--transition-fast);
 }
 
 .cmd-item.active .cmd-item-icon {
-  color: var(--color-primary);
+  color: var(--accent);
 }
 
 .cmd-item-text {
@@ -505,7 +504,7 @@ defineExpose({
 
 .cmd-item-title {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -513,19 +512,19 @@ defineExpose({
 }
 
 .cmd-item.active .cmd-item-title {
-  color: var(--color-primary-hover);
+  color: var(--text-primary);
 }
 
 .cmd-item-sub {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--text-tertiary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .cmd-item.active .cmd-item-sub {
-  color: var(--color-primary);
+  color: var(--text-secondary);
 }
 
 .cmd-item-right {
@@ -537,22 +536,22 @@ defineExpose({
 
 .cmd-item-shortcut {
   font-size: 10px;
-  font-weight: 700;
-  color: var(--text-muted);
-  background: #ffffff;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  background: var(--surface-1);
   padding: 1px 6px;
-  border-radius: 4px;
-  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-subtle);
 }
 
 .cmd-enter-icon {
   width: 14px;
   height: 14px;
   font-size: 12px;
-  color: var(--color-primary);
+  color: var(--accent);
   opacity: 0;
   transform: translateX(-4px);
-  transition: all 0.14s ease;
+  transition: all var(--transition-fast);
 }
 
 .cmd-item.active .cmd-enter-icon {
@@ -575,8 +574,8 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   padding: 10px 18px;
-  background: var(--bg-subtle);
-  border-top: 1px solid var(--border-light);
+  background: var(--surface-1);
+  border-top: 1px solid var(--border-subtle);
   font-size: 11px;
   color: var(--text-muted);
 }
@@ -592,19 +591,18 @@ defineExpose({
   font-size: 10px;
   font-weight: 600;
   padding: 1px 5px;
-  background: #ffffff;
-  border: 1px solid var(--border-light);
-  border-radius: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
   color: var(--text-secondary);
   margin-right: 3px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .footer-brand {
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 
 .font-mono {

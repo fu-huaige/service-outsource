@@ -1,12 +1,10 @@
 <template>
-  <div class="deliverables-view">
-    <div class="page-header">
-      <span class="page-eyebrow">成果交付</span>
-      <h2>报告生成与数据交付</h2>
-      <p class="subtitle">
-        报告中的每一个数值都由运行记录解析而来；大模型只负责组织语言，不产生任何数字
-      </p>
-    </div>
+  <div class="page-container deliverables-view">
+    <PageHeader
+      eyebrow="DELIVERABLES & REPORTS / EXPORT"
+      title="报告生成与数据交付"
+      description="报告中的每一个数值都由可信运行记录解析而来；大模型只负责组织语言与工程洞察，不编造任何数字"
+    />
 
     <div class="deliverables-layout">
       <div class="industrial-card">
@@ -137,6 +135,7 @@
 <script setup lang="ts">
 import { reactive, ref } from "vue";
 import { Document, Download, Finished, Printer } from "@element-plus/icons-vue";
+import PageHeader from "../components/common/PageHeader.vue";
 import { exportDataset, generateReport } from "../api/delivery";
 import type { ExportDatasetResponse, ReportRequest, ReportResponse } from "../types/api";
 import { ApiError } from "../api/client";
@@ -211,20 +210,14 @@ const resolvedBody = (body: string) => {
 </script>
 
 <style scoped>
-.page-header {
-  margin-bottom: 20px;
-}
-
-.subtitle {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-top: 4px;
+.deliverables-view {
+  min-height: 100%;
 }
 
 .deliverables-layout {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--section-gap-md);
 }
 
 .alert-gap {
@@ -238,12 +231,12 @@ const resolvedBody = (body: string) => {
 
 .report-content h4 {
   margin: 16px 0 6px;
-  color: var(--color-primary);
+  color: var(--text-primary);
 }
 
 .fit-val {
   font-weight: 600;
-  color: var(--color-primary);
+  color: var(--accent);
   font-family: var(--font-mono);
 }
 

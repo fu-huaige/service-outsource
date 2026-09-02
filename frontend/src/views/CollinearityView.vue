@@ -1,5 +1,5 @@
 <template>
-  <div class="collinearity-view">
+  <div class="page-container collinearity-view">
     <!-- Top Stage Header Navigation -->
     <div class="pipeline-stage-nav">
       <div class="stage-badge font-mono">STAGE 05 · COLLINEARITY & FEATURE REDUCTION</div>
@@ -245,7 +245,7 @@ const heatmapOptions = computed(() => {
       orient: "vertical",
       right: "2%",
       top: "middle",
-      inRange: { color: ["#2563eb", "#ffffff", "#dc2626"] },
+      inRange: { color: ["#7995A8", "#FFFFFF", "#B8746E"] },
     },
     series: [
       {
@@ -274,13 +274,13 @@ const vifOptions = computed(() => {
           const value = result.value!.vif_scores[name] ?? 0;
           return {
             value: Number.isFinite(value) ? value : 0,
-            itemStyle: { color: value >= threshold ? "#dc2626" : "#2563eb" },
+            itemStyle: { color: value >= threshold ? "#B96560" : "#6E9B69" },
           };
         }),
         markLine: {
           symbol: "none",
           data: [{ yAxis: threshold, name: "VIF阈值" }],
-          lineStyle: { type: "dashed", color: "#d97706", width: 1.5 },
+          lineStyle: { type: "dashed", color: "#B48A47", width: 1.5 },
         },
       },
     ],
@@ -334,7 +334,8 @@ const handleApply = async () => {
 .collinearity-view {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--section-gap-md);
+  min-height: 100%;
 }
 
 /* Stage Nav */
@@ -530,10 +531,11 @@ const handleApply = async () => {
 
 .no-drops {
   font-size: 11px;
-  color: #059669;
+  color: var(--success);
   padding: 10px;
-  background: #ecfdf5;
-  border-radius: 6px;
+  background: var(--success-soft);
+  border: 1px solid var(--color-success-border);
+  border-radius: var(--radius-xs);
 }
 
 .decision-action-strip {
@@ -548,27 +550,28 @@ const handleApply = async () => {
   justify-content: center;
   padding: 80px 20px;
   text-align: center;
-  background: #ffffff;
-  border-radius: 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
 }
 
 .empty-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  background: var(--color-primary-light);
-  color: var(--color-primary);
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-tertiary);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 20px;
   margin-bottom: 12px;
 }
 
 .collin-empty-card h3 {
   margin: 0;
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--text-primary);
 }
 

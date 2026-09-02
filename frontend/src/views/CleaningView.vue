@@ -1,5 +1,5 @@
 <template>
-  <div class="cleaning-view">
+  <div class="page-container cleaning-view">
     <!-- Top Stage Header Navigation -->
     <div class="pipeline-stage-nav">
       <div class="stage-badge font-mono">STAGE 02 · DATA CLEANING LAB</div>
@@ -278,14 +278,14 @@ const compareChartOptions = computed(() => {
       {
         name: "原始序列 (Raw)",
         type: "line",
-        color: "#f43f5e",
+        color: "#B8746E",
         lineStyle: { type: "dashed", width: 1.5 },
         data: cleanedData.value.raw_series,
       },
       {
         name: "清洗后序列 (Cleaned)",
         type: "line",
-        color: "#2563eb",
+        color: "#6E9B69",
         lineStyle: { width: 2.2 },
         data: cleanedData.value.cleaned_series,
       },
@@ -321,7 +321,8 @@ onMounted(loadSourceVersion);
 .cleaning-view {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--section-gap-md);
+  min-height: 100%;
 }
 
 /* Stage Nav */
@@ -557,14 +558,15 @@ onMounted(loadSourceVersion);
 
 .next-triage-card {
   cursor: pointer;
-  border-color: var(--color-primary-border);
-  background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
+  border-color: var(--border-default);
+  background: var(--surface-1);
   transition: all 0.2s ease;
 }
 
 .next-triage-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.12);
+  background: var(--surface-2);
+  border-color: var(--border-strong);
 }
 
 .validation-issues {

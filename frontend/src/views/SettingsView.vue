@@ -1,12 +1,44 @@
 <template>
-  <div class="settings-view">
-    <div class="page-header">
-      <span class="page-eyebrow">运行环境</span>
-      <h2>系统设置</h2>
-      <p class="subtitle">检查服务连接状态，了解 Agent 当前采用的规划方式</p>
-    </div>
+  <div class="page-container settings-view">
+    <PageHeader
+      eyebrow="ENVIRONMENT / SETTINGS"
+      title="系统设置"
+      description="检查服务连接状态，管理 Agent 规划模型及本地/远程执行环境配置"
+    />
 
     <div class="settings-layout">
+      <!-- Theme Selection Card -->
+      <div class="industrial-card">
+        <div class="industrial-card-header">
+          <div class="industrial-card-title">
+            <el-icon><Sunny /></el-icon> 界面主题
+          </div>
+          <el-tag type="success" effect="plain">默认：Warm Light</el-tag>
+        </div>
+        <div class="theme-switch-row">
+          <div class="theme-option" :class="{ 'is-selected': currentTheme === 'light' }" @click="setTheme('light')">
+            <div class="theme-preview theme-preview--light">
+              <span class="tp-sidebar"></span>
+              <span class="tp-main"></span>
+            </div>
+            <div class="theme-info">
+              <div class="theme-name">Warm Light（推荐）</div>
+              <div class="theme-desc">柔暖明亮米白，现代 Agent 工作台</div>
+            </div>
+          </div>
+          <div class="theme-option" :class="{ 'is-selected': currentTheme === 'dark' }" @click="setTheme('dark')">
+            <div class="theme-preview theme-preview--dark">
+              <span class="tp-sidebar"></span>
+              <span class="tp-main"></span>
+            </div>
+            <div class="theme-info">
+              <div class="theme-name">Warm Graphite</div>
+              <div class="theme-desc">柔暖石墨暗色，弱光环境适用</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="industrial-card">
         <div class="industrial-card-header">
           <div class="industrial-card-title">
@@ -174,7 +206,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
-import { Connection, Refresh, Key } from "@element-plus/icons-vue";
+import { Connection, Refresh, Key, Sunny } from "@element-plus/icons-vue";
+import PageHeader from "../components/common/PageHeader.vue";
 import { useSystemStore } from "../stores/systemStore";
 import { getSystemInfo } from "../api/health";
 import {
@@ -185,6 +218,31 @@ import {
 } from "../api/agentSettings";
 import type { AgentLlmConfigData } from "../types/api";
 import { ElMessage, ElMessageBox } from "element-plus";
+
+const currentTheme = ref<'light' | 'dark'>('light');
+
+function initTheme() {
+  const saved = localStorage.getItem('indusopt_theme');
+  if (saved === 'dark') {
+    currentTheme.value = 'dark';
+    document.documentElement.setAttribute('data-theme', 'dark');
+  } else {
+    currentTheme.value = 'light';
+    document.documentElement.removeAttribute('data-theme');
+  }
+}
+
+function setTheme(theme: 'light' | 'dark') {
+  currentTheme.value = theme;
+  localStorage.setItem('indusopt_theme', theme);
+  if (theme === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    ElMessage.success('已切换至 Warm Graphite 深色模式');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+    ElMessage.success('已切换至 Warm Light 浅色模式');
+  }
+}
 
 const systemStore = useSystemStore();
 const agentConfig = ref<AgentLlmConfigData | null>(null);
@@ -346,6 +404,7 @@ const restoreEnvironment = async () => {
 };
 
 onMounted(async () => {
+  initTheme();
   await Promise.all([
     getSystemInfo()
       .then((info) => systemStore.setSystemInfo(info))
@@ -356,20 +415,91 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.page-header {
-  margin-bottom: 20px;
+.theme-switch-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 12px;
 }
 
-.subtitle {
-  font-size: 13px;
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.theme-option:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.theme-option.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.theme-preview {
+  width: 44px;
+  height: 32px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-default);
+  display: flex;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.theme-preview--light .tp-sidebar {
+  width: 14px;
+  background: #F8F9F6;
+  border-right: 1px solid #ECEEE9;
+}
+
+.theme-preview--light .tp-main {
+  flex: 1;
+  background: #FFFFFF;
+}
+
+.theme-preview--dark .tp-sidebar {
+  width: 14px;
+  background: #0E0F0D;
+  border-right: 1px solid rgba(242,240,232,0.06);
+}
+
+.theme-preview--dark .tp-main {
+  flex: 1;
+  background: #171815;
+}
+
+.theme-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.theme-name {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.theme-desc {
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
-  margin-top: 4px;
+}
+.settings-view {
+  min-height: 100%;
 }
 
 .settings-layout {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--space-6);
 }
 
 .config-list {
@@ -381,9 +511,9 @@ onMounted(async () => {
 
 .config-list > div {
   padding: 14px;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
 }
 
 .config-list dt {

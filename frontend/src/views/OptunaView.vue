@@ -1,13 +1,10 @@
 <template>
-  <div class="optuna-view">
-    <div class="page-header">
-      <span class="page-eyebrow">辨识与寻优</span>
-      <h2>闭环参数自动寻优</h2>
-      <p class="subtitle">
-        以<strong>验证集自由仿真 FIT</strong> 为反馈目标，自动迭代寻优质量门控阈值、优选预算与
-        ARX 模型结构；失败与被剪枝的试验一并保留展示
-      </p>
-    </div>
+  <div class="page-container optuna-view">
+    <PageHeader
+      eyebrow="CLOSED-LOOP OPTIMIZATION / OPTUNA"
+      title="闭环参数自动寻优"
+      description="以验证集自由仿真 FIT 为反馈目标，自动迭代寻优质量门控阈值、优选预算与 ARX 模型结构；保留完整试验轨迹与重要度分析"
+    />
 
     <div class="optuna-layout">
       <div class="industrial-card">
@@ -189,6 +186,7 @@ import {
   Trophy,
   VideoPlay,
 } from "@element-plus/icons-vue";
+import PageHeader from "../components/common/PageHeader.vue";
 import ChartContainer from "../components/ChartContainer.vue";
 import { getOptunaStatus, startOptunaStudy } from "../api/modeling";
 import type { OptunaStartRequest, OptunaStatusResponse } from "../types/api";
@@ -264,14 +262,14 @@ const convergenceOptions = computed(() => {
         name: "历史最佳目标值",
         type: "line",
         step: "end",
-        color: "#2A9D8F",
+        color: "#6E9B69",
         showSymbol: false,
         data: curve,
       },
       {
         name: "各 Trial 目标值",
         type: "scatter",
-        color: "#E76F51",
+        color: "#B8746E",
         symbolSize: 6,
         data: status.value.trials.map((trial) => trial.value),
       },
@@ -290,7 +288,7 @@ const importanceOptions = computed(() => {
     series: [
       {
         type: "bar",
-        color: "#1E6091",
+        color: "#7995A8",
         data: entries.map(([, value]) => value).reverse(),
       },
     ],
@@ -323,20 +321,14 @@ const pct = (value: number | null | undefined) =>
 </script>
 
 <style scoped>
-.page-header {
-  margin-bottom: 20px;
-}
-
-.subtitle {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-top: 4px;
+.optuna-view {
+  min-height: 100%;
 }
 
 .optuna-layout {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--section-gap-md);
 }
 
 .charts-grid {

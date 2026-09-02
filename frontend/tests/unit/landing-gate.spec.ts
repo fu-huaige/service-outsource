@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createMemoryHistory } from "vue-router";
-import DefaultLayout from "../../src/layouts/DefaultLayout.vue";
+import WorkspaceLayout from "../../src/layouts/WorkspaceLayout.vue";
 import { createAppRouter } from "../../src/router";
 import { LANDING_SESSION_KEY } from "../../src/router/landingEntry";
 
@@ -20,14 +20,14 @@ beforeEach(() => {
 });
 
 describe("formal landing gate", () => {
-  it("serves the accepted light landing at / without DefaultLayout", async () => {
+  it("serves the accepted light landing at / without WorkspaceLayout", async () => {
     const router = await navigate("/");
     const route = router.currentRoute.value;
 
     expect(route.name).toBe("Landing");
     expect(route.matched).toHaveLength(1);
-    expect(route.matched[0]?.props.default).toEqual({ theme: "light" });
-    expect(route.matched.some((record) => record.components?.default === DefaultLayout)).toBe(false);
+    // Landing route no longer passes static props (dark theme is set via CSS)
+    expect(route.matched.some((record) => record.components?.default === WorkspaceLayout)).toBe(false);
     expect(window.sessionStorage.getItem(LANDING_SESSION_KEY)).toBeNull();
 
     window.sessionStorage.setItem(LANDING_SESSION_KEY, "1");
@@ -35,11 +35,11 @@ describe("formal landing gate", () => {
     expect(enteredRouter.currentRoute.value.name).toBe("Landing");
   });
 
-  it("gates a fresh dashboard session and preserves its full target", async () => {
-    const router = await navigate("/dashboard");
+  it("gates a fresh /home session and preserves its full target", async () => {
+    const router = await navigate("/home");
 
     expect(router.currentRoute.value.name).toBe("Landing");
-    expect(router.currentRoute.value.query.next).toBe("/dashboard");
+    expect(router.currentRoute.value.query.next).toBe("/home");
   });
 
   it("preserves an Agent execution deep link including query and hash", async () => {
@@ -53,9 +53,10 @@ describe("formal landing gate", () => {
   it("allows business routes directly after entry, including across router instances", async () => {
     window.sessionStorage.setItem(LANDING_SESSION_KEY, "1");
 
-    const dashboardRouter = await navigate("/dashboard");
-    expect(dashboardRouter.currentRoute.value.path).toBe("/dashboard");
-    expect(dashboardRouter.currentRoute.value.matched[0]?.components?.default).toBe(DefaultLayout);
+    // /dashboard redirects to /home (which is under WorkspaceLayout)
+    const homeRouter = await navigate("/home");
+    expect(homeRouter.currentRoute.value.path).toBe("/home");
+    expect(homeRouter.currentRoute.value.matched.some((r) => r.components?.default === WorkspaceLayout)).toBe(true);
 
     const copilotRouter = await navigate("/copilot?execution_id=abc");
     expect(copilotRouter.currentRoute.value.fullPath).toBe("/copilot?execution_id=abc");
@@ -66,7 +67,7 @@ describe("formal landing gate", () => {
       const router = await navigate(path);
       expect(router.currentRoute.value.path).toBe("/404");
       expect(router.currentRoute.value.matched).toHaveLength(1);
-      expect(router.currentRoute.value.matched.some((record) => record.components?.default === DefaultLayout)).toBe(false);
+      expect(router.currentRoute.value.matched.some((record) => record.components?.default === WorkspaceLayout)).toBe(false);
       expect(window.sessionStorage.getItem(LANDING_SESSION_KEY)).toBeNull();
     }
   });

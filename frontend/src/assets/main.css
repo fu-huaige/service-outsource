@@ -1,116 +1,18 @@
-/* IndusOpt Industrial Workspace Theme - Glacier Slate & Blueprint Palette */
+/* ============================================================
+   IndusOpt — Industrial AI Agent Workspace
+   Application Base Styles & Theme Layer (WARM LIGHT DEFAULT)
+   ============================================================ */
 
-:root {
-  /* Brand & Industrial Precision Palette */
-  --color-primary: #2563eb;
-  --color-primary-hover: #1d4ed8;
-  --color-primary-active: #1e40af;
-  --color-primary-light: #eff6ff;
-  --color-primary-soft: rgba(37, 99, 235, 0.08);
-  --color-primary-border: #bfdbfe;
+@import './design-tokens.css';
+@import '../styles/layout.css';
 
-  --color-cyan: #0284c7;
-  --color-cyan-light: #f0f9ff;
-  --color-cyan-border: #bae6fd;
-
-  --color-success: #059669;
-  --color-success-hover: #047857;
-  --color-success-bg: #ecfdf5;
-  --color-success-border: #a7f3d0;
-
-  --color-warning: #d97706;
-  --color-warning-dark: #b45309;
-  --color-warning-bg: #fffbeb;
-  --color-warning-border: #fde68a;
-
-  --color-danger: #dc2626;
-  --color-danger-hover: #b91c1c;
-  --color-danger-bg: #fef2f2;
-  --color-danger-border: #fecaca;
-
-  /* Surfaces & Backgrounds */
-  --bg-app: #f8fafc;
-  --bg-surface: #ffffff;
-  --bg-surface-hover: #f8fafc;
-  --bg-sidebar: #0f172a;
-  --bg-sidebar-active: #1e293b;
-  --bg-header: rgba(255, 255, 255, 0.92);
-  --bg-subtle: #f1f5f9;
-  --bg-muted: #e2e8f0;
-
-  /* Typography */
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #64748b;
-  --text-faint: #94a3b8;
-
-  /* Borders & Dividers */
-  --border-light: #e2e8f0;
-  --border-strong: #cbd5e1;
-  --border-active: #2563eb;
-  --border-radius-sm: 4px;
-  --border-radius-base: 6px;
-  --border-radius-lg: 10px;
-  --border-radius-xl: 14px;
-
-  /* Engineering Blueprint Grid */
-  --workspace-grid: rgba(203, 213, 225, 0.45);
-
-  /* Element Plus Theme Token Overrides */
-  --el-color-primary: #2563eb;
-  --el-color-primary-light-3: #60a5fa;
-  --el-color-primary-light-5: #93c5fd;
-  --el-color-primary-light-7: #bfdbfe;
-  --el-color-primary-light-8: #dbeafe;
-  --el-color-primary-light-9: #eff6ff;
-  --el-color-primary-dark-2: #1d4ed8;
-
-  --el-color-success: #059669;
-  --el-color-success-light-9: #ecfdf5;
-  --el-color-warning: #d97706;
-  --el-color-warning-light-9: #fffbeb;
-  --el-color-danger: #dc2626;
-  --el-color-danger-light-9: #fef2f2;
-  --el-color-info: #64748b;
-  --el-color-info-light-9: #f1f5f9;
-
-  --el-bg-color: #ffffff;
-  --el-bg-color-page: #f8fafc;
-  --el-border-color: #e2e8f0;
-  --el-border-color-light: #f1f5f9;
-  --el-border-color-lighter: #f8fafc;
-  --el-border-radius-base: 6px;
-  --el-border-radius-small: 4px;
-  --el-text-color-primary: #0f172a;
-  --el-text-color-regular: #475569;
-  --el-text-color-secondary: #64748b;
-
-  --el-table-header-bg-color: #f8fafc;
-  --el-table-header-text-color: #475569;
-  --el-table-border-color: #e2e8f0;
-
-  /* Shadows */
-  --shadow-card: 0 1px 3px 0 rgba(15, 23, 42, 0.03), 0 6px 18px -4px rgba(15, 23, 42, 0.05);
-  --shadow-card-hover: 0 4px 6px -1px rgba(15, 23, 42, 0.05), 0 12px 28px -6px rgba(15, 23, 42, 0.09);
-  --shadow-floating: 0 20px 48px -8px rgba(15, 23, 42, 0.1);
-
-  /* Fonts */
-  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "JetBrains Mono", "Fira Code", Consolas, Monaco, monospace;
-}
-
-* {
+/* ── Global Reset ─────────────────────────────────────────── */
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-}
-
-body {
-  font-family: var(--font-family);
-  background-color: var(--bg-app);
-  color: var(--text-primary);
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
 }
 
 html,
@@ -118,6 +20,18 @@ body,
 #app {
   width: 100%;
   height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+  color: var(--text-primary);
+  background-color: var(--bg-app);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.01em;
 }
 
 button,
@@ -127,143 +41,309 @@ select {
   font: inherit;
 }
 
-/* Common Page Header */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ── Minimal Warm Light Scrollbars ─────────────────────────── */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.22);
+}
+
+/* ── Typography Utilities ─────────────────────────────────── */
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+.text-primary   { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-tertiary  { color: var(--text-tertiary); }
+.text-muted     { color: var(--text-muted); }
+.text-accent    { color: var(--accent-dark); }
+.text-success   { color: var(--success); }
+.text-warning   { color: var(--warning); }
+.text-error     { color: var(--danger); }
+
+/* Tabular numbers for industrial data */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  letter-spacing: -0.01em;
+}
+
+/* ── Surface Utilities (Warm Light Hierarchy) ─────────────── */
+.surface,
+.surface-1 {
+  background: var(--surface-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.surface-2,
+.surface-elevated {
+  background: var(--surface-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.surface-3 {
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+}
+
+/* ── Section / Panel ──────────────────────────────────────── */
+.panel,
+.industrial-card {
+  padding: var(--space-5);
+  background: var(--surface-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.panel:hover,
+.industrial-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.panel + .panel,
+.industrial-card + .industrial-card {
+  margin-top: var(--space-4);
+}
+
+.panel-header,
+.industrial-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.panel-title,
+.industrial-card-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-family: var(--font-mono);
+}
+
+/* ── Divider ──────────────────────────────────────────────── */
+.divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: var(--space-4) 0;
+}
+
+/* ── Label (Section Sub-label) ────────────────────────────── */
+.label {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-family: var(--font-mono);
+}
+
+/* ── Code / Inline Mono ───────────────────────────────────── */
+.code-inline {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+  background: var(--surface-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  padding: 1px 6px;
+}
+
+/* ── Page Header (Secondary Views) ────────────────────────── */
 .page-header {
-  margin-bottom: 22px;
+  margin-bottom: var(--space-5);
 }
 
 .page-eyebrow {
   display: inline-block;
   font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--color-primary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--accent-dark);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 .page-header h2 {
-  font-size: 24px;
-  font-weight: 800;
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
   color: var(--text-primary);
-  line-height: 1.25;
   letter-spacing: -0.02em;
 }
 
 .page-header .subtitle {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  margin-top: 4px;
-  line-height: 1.5;
+  margin-top: var(--space-1);
 }
 
-/* Industrial Card Structure */
-.industrial-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-light);
-  border-radius: var(--border-radius-lg);
-  padding: 22px;
-  margin-bottom: 20px;
-  box-shadow: var(--shadow-card);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
-}
-
-.industrial-card:hover {
-  border-color: var(--border-strong);
-}
-
-.industrial-card-header {
-  display: flex;
-  justify-content: space-between;
+/* ── Status Badges (Light-first Minimalist) ────────────────── */
+.status-badge {
+  display: inline-flex;
   align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border-light);
-}
-
-.industrial-card-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  letter-spacing: -0.01em;
-}
-
-.industrial-card-title .el-icon {
-  color: var(--color-primary);
-}
-
-.font-mono {
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
   font-family: var(--font-mono);
+  white-space: nowrap;
 }
 
-/* Element Plus Custom Polish */
+.status-badge.running {
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+}
+
+.status-badge.completed {
+  color: var(--success);
+  background: var(--success-soft);
+  border: 1px solid var(--color-success-border);
+}
+
+.status-badge.waiting {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border: 1px solid var(--color-warning-border);
+}
+
+.status-badge.failed {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid var(--color-error-border);
+}
+
+.status-badge.pending,
+.status-badge.cancelled {
+  color: var(--text-muted);
+  background: var(--surface-3);
+  border: 1px solid var(--border-default);
+}
+
+/* Status dot */
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.running   { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.status-dot.completed { background: var(--success); }
+.status-dot.waiting   { background: var(--warning); }
+.status-dot.failed    { background: var(--danger); }
+.status-dot.pending   { background: var(--text-disabled); }
+.status-dot.cancelled { background: var(--text-muted); }
+
+/* Agent working breathing indicator */
+.agent-working-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+  animation: agent-breathe 2s ease-in-out infinite;
+}
+
+@keyframes agent-breathe {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.85); }
+}
+
+/* ── Element Plus Overrides ───────────────────────────────── */
 .el-button--primary {
-  --el-button-bg-color: var(--color-primary);
-  --el-button-border-color: var(--color-primary);
-  --el-button-hover-bg-color: var(--color-primary-hover);
-  --el-button-hover-border-color: var(--color-primary-hover);
-  font-weight: 600;
-  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.15);
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #FFFFFF !important;
+  font-weight: 600 !important;
+  box-shadow: 0 2px 8px rgba(80, 110, 75, 0.12) !important;
 }
 
-.el-button {
-  border-radius: var(--border-radius-base);
-  font-weight: 600;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+.el-button--primary:hover {
+  background: var(--accent-hover) !important;
+  border-color: var(--accent-hover) !important;
+  color: #FFFFFF !important;
 }
 
-.el-card {
-  border-radius: var(--border-radius-lg);
-  border-color: var(--border-light);
-  box-shadow: var(--shadow-card);
+.el-button--primary:active {
+  background: var(--accent-active) !important;
+  border-color: var(--accent-active) !important;
+}
+
+.el-button--default {
+  background: var(--surface-1) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+
+.el-button--default:hover {
+  background: var(--surface-3) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-primary) !important;
+}
+
+.el-input__wrapper {
+  background-color: var(--surface-1) !important;
+  border: 1px solid var(--border-default) !important;
+  box-shadow: none !important;
+  transition: border-color var(--transition-fast) !important;
+}
+
+.el-input__wrapper:hover {
+  border-color: var(--border-strong) !important;
+}
+
+.el-input__wrapper.is-focus {
+  border-color: var(--border-focus) !important;
+  box-shadow: 0 0 0 3px var(--accent-soft) !important;
 }
 
 .el-table {
-  --el-table-header-bg-color: #f8fafc;
-  --el-table-row-hover-bg-color: #f1f5f9;
-  border-radius: var(--border-radius-base);
-  overflow: hidden;
-  border: 1px solid var(--border-light);
+  background-color: transparent !important;
+  --el-table-tr-bg-color: transparent !important;
 }
 
 .el-table th.el-table__cell {
-  font-weight: 700;
-  color: var(--text-secondary);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  background-color: var(--surface-3) !important;
+  color: var(--text-secondary) !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  font-size: var(--font-size-xs) !important;
 }
 
-.el-tag {
-  font-weight: 600;
-  border-radius: var(--border-radius-sm);
-}
-
-.el-tag--primary {
-  background: var(--color-primary-light);
-  border-color: var(--color-primary-border);
-  color: var(--color-primary);
-}
-
-/* Custom Scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 999px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
+.el-table td.el-table__cell {
+  border-bottom: 1px solid var(--border-subtle) !important;
 }

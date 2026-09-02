@@ -1,13 +1,10 @@
 <template>
-  <div class="benchmark-view">
-    <div class="page-header">
-      <span class="page-eyebrow">质量验证</span>
-      <h2>一键自评测基准</h2>
-      <p class="subtitle">
-        系统用带真值的仿真基准检验自己的技术主张。下表每个数字都在本次请求中实时计算，
-        不利的结果同样展示
-      </p>
-    </div>
+  <div class="page-container benchmark-view">
+    <PageHeader
+      eyebrow="VALIDATION / BENCHMARK"
+      title="一键自评测基准"
+      description="系统用带真值的仿真基准检验自己的技术主张。下表每个数字都在本次请求中实时计算，不利的结果同样如实展示"
+    />
 
     <div class="benchmark-layout">
       <div class="industrial-card">
@@ -107,6 +104,7 @@
 <script setup lang="ts">
 import { reactive, ref } from "vue";
 import { DataAnalysis, Odometer, VideoPlay } from "@element-plus/icons-vue";
+import PageHeader from "../components/common/PageHeader.vue";
 import apiClient, { ApiError } from "../api/client";
 import { ElMessage } from "element-plus";
 
@@ -210,20 +208,14 @@ const fmt = (value: number | undefined) => {
 </script>
 
 <style scoped>
-.page-header {
-  margin-bottom: 20px;
-}
-
-.subtitle {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-top: 4px;
+.benchmark-view {
+  min-height: 100%;
 }
 
 .benchmark-layout {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--section-gap-md);
 }
 
 .question {
