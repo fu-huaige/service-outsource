@@ -11,7 +11,7 @@ from typing import Any
 from uuid import UUID
 
 from app.models.dataset import Dataset, DatasetVersion
-from app.services.dataset_csv import DatasetCsvError, ParsedCsv, load_parsed_csv
+from app.services.dataset_csv import CsvPage, DatasetCsvError, ParsedCsv, load_csv_page, load_parsed_csv
 
 
 class DatasetVersionArtifactError(Exception):
@@ -41,6 +41,37 @@ def load_version_csv(
             relative_path=version.artifact_path,
             encoding=encoding,
             delimiter=delimiter,
+        )
+    except DatasetCsvError as error:
+        raise DatasetVersionArtifactError(error.code, error.message, error.details) from error
+
+
+def load_version_csv_page(
+    *,
+    dataset: Dataset,
+    version: DatasetVersion,
+    artifact_root: Path,
+    inferred_types: Mapping[str, str],
+    offset: int,
+    limit: int,
+) -> CsvPage:
+    """Read a bounded page from the exact immutable artifact registered by a version."""
+
+    encoding = _string_parameter(version.parameters, "csv_encoding") or dataset.encoding
+    delimiter = _string_parameter(version.parameters, "csv_delimiter") or dataset.delimiter
+    if encoding is None or delimiter is None:
+        raise DatasetVersionArtifactError(
+            "DATASET_ARTIFACT_MISSING", "数据版本缺少 CSV 解析元数据。"
+        )
+    try:
+        return load_csv_page(
+            artifact_root=artifact_root,
+            relative_path=version.artifact_path,
+            encoding=encoding,
+            delimiter=delimiter,
+            inferred_types=inferred_types,
+            offset=offset,
+            limit=limit,
         )
     except DatasetCsvError as error:
         raise DatasetVersionArtifactError(error.code, error.message, error.details) from error

@@ -3,11 +3,17 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia } from "pinia";
 import { ElMessage } from "element-plus";
 import DatasetDetailView from "../../src/views/DatasetDetailView.vue";
-import { getDatasetDetail, getDatasetProfile, getDatasetVersions } from "../../src/api/datasets";
+import {
+  getDatasetDetail,
+  getDatasetProfile,
+  getDatasetVersionPreview,
+  getDatasetVersions,
+} from "../../src/api/datasets";
 
 vi.mock("../../src/api/datasets", () => ({
   getDatasetDetail: vi.fn(),
   getDatasetProfile: vi.fn(),
+  getDatasetVersionPreview: vi.fn(),
   getDatasetVersions: vi.fn(),
 }));
 vi.mock("vue-router", () => ({
@@ -18,13 +24,22 @@ vi.mock("element-plus", () => ({ ElMessage: { success: vi.fn(), error: vi.fn() }
 
 const detailApi = vi.mocked(getDatasetDetail);
 const profileApi = vi.mocked(getDatasetProfile);
+const previewApi = vi.mocked(getDatasetVersionPreview);
 const versionsApi = vi.mocked(getDatasetVersions);
 
 const stubs = {
-  "el-tabs": { template: "<div><slot /></div>" },
+  "el-tabs": {
+    emits: ["update:modelValue"],
+    template: `<div>
+      <button class="tab-overview" @click="$emit('update:modelValue', 'overview')">概览</button>
+      <button class="tab-profile" @click="$emit('update:modelValue', 'profile')">质量</button>
+      <slot />
+    </div>`,
+  },
   "el-tab-pane": { template: "<section><slot /></section>" },
   "el-tag": { template: "<span><slot /></span>" },
   "el-icon": { template: "<span><slot /></span>" },
+  "el-tooltip": { template: "<span><slot /></span>" },
   "el-table": {
     props: ["data", "height"],
     template: "<div class=\"el-table-stub\" :data-row-count=\"data.length\" :data-height=\"height\" :data-json=\"JSON.stringify(data)\"><slot /></div>",
@@ -34,8 +49,22 @@ const stubs = {
   "el-col": { template: "<div><slot /></div>" },
   "el-divider": { template: "<hr />" },
   "el-empty": { props: ["description"], template: "<div>{{ description }}</div>" },
-  "el-button": { template: "<button @click=\"$emit('click')\"><slot /></button>" },
+  "el-button": {
+    emits: ["click"],
+    template: "<button @click=\"$emit('click')\"><slot /></button>",
+  },
   "el-alert": { props: ["title"], template: "<div>{{ title }}<slot /></div>" },
+  "el-pagination": {
+    props: ["currentPage", "pageSize", "pageSizes", "total", "disabled", "layout"],
+    emits: ["current-change", "size-change"],
+    template: `<div class="el-pagination-stub" :data-current-page="currentPage" :data-page-size="pageSize" :data-total="total">
+      <button class="page-two" @click="$emit('current-change', 2)">2</button>
+      <button class="page-three" @click="$emit('current-change', 3)">3</button>
+      <button class="page-last" @click="$emit('current-change', 12)">12</button>
+      <button class="size-fifty" @click="$emit('size-change', 50)">50</button>
+      <button class="size-two-hundred" @click="$emit('size-change', 200)">200</button>
+    </div>`,
+  },
   "el-collapse": { template: "<div><slot /></div>" },
   "el-collapse-item": { props: ["title"], template: "<details><summary>{{ title }}</summary><slot /></details>" },
   "el-timeline": { template: "<div><slot /></div>" },
@@ -68,6 +97,32 @@ const baseDetail = {
   },
 };
 
+const previewResponse = (
+  page = 1,
+  pageSize: 50 | 100 | 200 = 100,
+  total = 1200,
+  valueOffset = (page - 1) * pageSize
+) => {
+  const count = Math.max(0, Math.min(pageSize, total - valueOffset));
+  return {
+    dataset_id: "dataset-id",
+    version_id: "active-version-id",
+    columns: ["timestamp", "u1", "u2", "y"],
+    rows: Array.from({ length: count }, (_, index) => ({
+      timestamp: `row-${valueOffset + index + 1}`,
+      u1: valueOffset + index,
+      u2: valueOffset + index === 4 ? null : (valueOffset + index) * 2,
+      y: (valueOffset + index) * 3,
+    })),
+    page: {
+      page,
+      page_size: pageSize,
+      total,
+      total_pages: total === 0 ? 0 : Math.ceil(total / pageSize),
+    },
+  };
+};
+
 const profile = {
   dataset_id: "dataset-id",
   version_id: "active-version-id",
@@ -84,13 +139,20 @@ const profile = {
 };
 
 function mountView() {
-  return mount(DatasetDetailView, { global: { plugins: [createPinia()], stubs } });
+  return mount(DatasetDetailView, {
+    global: {
+      plugins: [createPinia()],
+      stubs,
+      directives: { loading: () => undefined },
+    },
+  });
 }
 
 describe("DatasetDetailView version audit and preview", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     profileApi.mockResolvedValue(profile as never);
+    previewApi.mockResolvedValue(previewResponse() as never);
     versionsApi.mockResolvedValue({
       dataset_id: "dataset-id",
       active_version_id: "active-version-id",
@@ -125,7 +187,7 @@ describe("DatasetDetailView version audit and preview", () => {
     } as never);
   });
 
-  it("renders the active bounded preview object and preserves explicit null values", async () => {
+  it("loads the first page for the explicit active version and preserves explicit null values", async () => {
     detailApi.mockResolvedValue(baseDetail as never);
     const wrapper = mountView();
     await flushPromises();
@@ -138,9 +200,13 @@ describe("DatasetDetailView version audit and preview", () => {
     expect(wrapper.get(".el-table-stub").attributes("data-row-count")).toBe("100");
     expect(wrapper.get(".el-table-stub").attributes("data-height")).toBeUndefined();
     expect(wrapper.find(".preview-table-region").exists()).toBe(true);
-    expect(wrapper.text()).toContain("当前预览 100 / 1200 行");
-    expect(wrapper.text()).toContain("仅展示前100行");
+    expect(wrapper.text()).toContain("第 1–100 行 / 共 1200 行");
+    expect(wrapper.text()).not.toContain("仅展示前100行");
     expect(detailApi).toHaveBeenCalledTimes(1);
+    expect(previewApi).toHaveBeenCalledWith("dataset-id", "active-version-id", {
+      page: 1,
+      page_size: 100,
+    });
   });
 
   it("keeps all preview rows after viewport changes without issuing another request", async () => {
@@ -154,6 +220,113 @@ describe("DatasetDetailView version audit and preview", () => {
     expect(wrapper.get(".el-table-stub").attributes("data-row-count")).toBe("100");
     expect(wrapper.get(".el-table-stub").attributes("data-height")).toBeUndefined();
     expect(detailApi).toHaveBeenCalledTimes(1);
+    expect(previewApi).toHaveBeenCalledTimes(1);
+  });
+
+  it("replaces the table rows and range label when the user changes page", async () => {
+    detailApi.mockResolvedValue(baseDetail as never);
+    const wrapper = mountView();
+    await flushPromises();
+
+    previewApi.mockResolvedValueOnce(previewResponse(2) as never);
+    await wrapper.get(".page-two").trigger("click");
+    await flushPromises();
+
+    expect(previewApi).toHaveBeenLastCalledWith("dataset-id", "active-version-id", {
+      page: 2,
+      page_size: 100,
+    });
+    expect(wrapper.text()).toContain("第 101–200 行 / 共 1200 行");
+    expect(wrapper.get(".el-table-stub").attributes("data-json")).toContain('"timestamp":"row-101"');
+    expect(wrapper.get(".el-table-stub").attributes("data-json")).not.toContain('"timestamp":"row-1"');
+  });
+
+  it("resets to page one when page size changes", async () => {
+    detailApi.mockResolvedValue(baseDetail as never);
+    const wrapper = mountView();
+    await flushPromises();
+
+    previewApi.mockResolvedValueOnce(previewResponse(2) as never);
+    await wrapper.get(".page-two").trigger("click");
+    await flushPromises();
+    previewApi.mockResolvedValueOnce(previewResponse(1, 50) as never);
+    await wrapper.get(".size-fifty").trigger("click");
+    await flushPromises();
+
+    expect(previewApi).toHaveBeenLastCalledWith("dataset-id", "active-version-id", {
+      page: 1,
+      page_size: 50,
+    });
+    expect(wrapper.text()).toContain("第 1–50 行 / 共 1200 行");
+    expect(wrapper.get(".el-pagination-stub").attributes("data-current-page")).toBe("1");
+    expect(wrapper.get(".el-pagination-stub").attributes("data-page-size")).toBe("50");
+  });
+
+  it("renders the actual range for the last page and a small dataset", async () => {
+    detailApi.mockResolvedValue(baseDetail as never);
+    previewApi.mockResolvedValueOnce(previewResponse(1, 100, 37, 0) as never);
+    const smallWrapper = mountView();
+    await flushPromises();
+    expect(smallWrapper.text()).toContain("第 1–37 行 / 共 37 行");
+
+    previewApi.mockResolvedValueOnce(previewResponse(12, 100, 1200, 1100) as never);
+    await smallWrapper.get(".page-last").trigger("click");
+    await flushPromises();
+    expect(smallWrapper.text()).toContain("第 1101–1200 行 / 共 1200 行");
+    expect(smallWrapper.get(".el-table-stub").attributes("data-row-count")).toBe("100");
+  });
+
+  it("keeps the latest page when overlapping preview requests resolve out of order", async () => {
+    detailApi.mockResolvedValue(baseDetail as never);
+    const wrapper = mountView();
+    await flushPromises();
+
+    let resolvePageTwo!: (value: ReturnType<typeof previewResponse>) => void;
+    let resolvePageThree!: (value: ReturnType<typeof previewResponse>) => void;
+    previewApi
+      .mockImplementationOnce(() => new Promise((resolve) => { resolvePageTwo = resolve; }) as never)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolvePageThree = resolve; }) as never);
+
+    await wrapper.get(".page-two").trigger("click");
+    await wrapper.get(".page-three").trigger("click");
+    resolvePageThree(previewResponse(3));
+    await flushPromises();
+    resolvePageTwo(previewResponse(2));
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("第 201–300 行 / 共 1200 行");
+    expect(wrapper.get(".el-table-stub").attributes("data-json")).toContain('"timestamp":"row-201"');
+    expect(wrapper.get(".el-table-stub").attributes("data-json")).not.toContain('"timestamp":"row-101"');
+  });
+
+  it("keeps the current page while switching tabs and back", async () => {
+    detailApi.mockResolvedValue(baseDetail as never);
+    const wrapper = mountView();
+    await flushPromises();
+
+    previewApi.mockResolvedValueOnce(previewResponse(2) as never);
+    await wrapper.get(".page-two").trigger("click");
+    await flushPromises();
+    await wrapper.get(".tab-profile").trigger("click");
+    await wrapper.get(".tab-overview").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("第 101–200 行 / 共 1200 行");
+    expect(previewApi).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the previous page visible when a page request fails", async () => {
+    detailApi.mockResolvedValue(baseDetail as never);
+    const wrapper = mountView();
+    await flushPromises();
+
+    previewApi.mockRejectedValueOnce({ code: "NETWORK_ERROR", message: "network down" });
+    await wrapper.get(".page-two").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("数据预览加载失败");
+    expect(wrapper.text()).toContain("第 1–100 行 / 共 1200 行");
+    expect(wrapper.get(".el-table-stub").attributes("data-json")).toContain('"timestamp":"row-1"');
   });
 
   it("keeps raw JSON out of the initial DAG and exposes a collapsed full audit entry", async () => {
@@ -172,6 +345,7 @@ describe("DatasetDetailView version audit and preview", () => {
 
   it("distinguishes loading, empty and error states and can retry an error", async () => {
     let resolveDetail: ((value: typeof baseDetail) => void) | undefined;
+    previewApi.mockResolvedValueOnce(previewResponse(1, 100, 0) as never);
     detailApi.mockImplementationOnce(() => new Promise((resolve) => { resolveDetail = resolve; }));
     const loadingWrapper = mountView();
     expect(loadingWrapper.text()).toContain("正在加载真实数据预览");
@@ -189,6 +363,7 @@ describe("DatasetDetailView version audit and preview", () => {
     const retry = errorWrapper.findAll("button").find((button) => button.text().includes("重新加载"));
     expect(retry).toBeDefined();
     await retry!.trigger("click");
+    await flushPromises();
     await flushPromises();
     expect(errorWrapper.text()).not.toContain("数据预览加载失败");
   });

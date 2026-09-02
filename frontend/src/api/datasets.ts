@@ -4,6 +4,8 @@ import type {
   DatasetListResponse,
   DatasetUploadResponse,
   DatasetProfile,
+  DatasetVersionPreviewParams,
+  DatasetVersionPreviewResponse,
   DatasetVersionsResponse,
   DelaySourceVersionsResponse,
   CollinearitySourceVersionsData,
@@ -29,6 +31,13 @@ export const listDatasets = (params: { page?: number; page_size?: number } = {})
 
 export const getDatasetDetail = (datasetId: string): Promise<DatasetItem> =>
   apiClient.get(`/datasets/${datasetId}`);
+
+export const getDatasetVersionPreview = (
+  datasetId: string,
+  versionId: string,
+  params: DatasetVersionPreviewParams
+): Promise<DatasetVersionPreviewResponse> =>
+  apiClient.get(`/datasets/${datasetId}/versions/${versionId}/preview`, { params });
 
 export const configureDataset = (
   datasetId: string,

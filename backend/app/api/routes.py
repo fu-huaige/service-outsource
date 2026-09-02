@@ -39,6 +39,8 @@ from app.schemas.datasets import (
     DatasetListData,
     DatasetProfile,
     DatasetUploadData,
+    DatasetVersionPreviewData,
+    DatasetVersionPreviewPageSize,
     DatasetVersionsData,
     DelaySourceVersionsData,
 )
@@ -123,6 +125,7 @@ from app.services.dataset_service import (
     delete_dataset_asset,
     get_dataset_detail,
     get_dataset_download,
+    get_dataset_version_preview,
     list_dataset_summaries,
     register_simulation_dataset,
     upload_csv_dataset,
@@ -718,6 +721,42 @@ async def get_latest_delay(
             dataset_id=dataset_id,
         )
     except AnalysisDomainError as error:
+        raise AppError(
+            error.code,
+            error.message,
+            status_code=error.status_code,
+            details=error.details,
+        ) from error
+    return success(request, data)
+
+
+@router.get(
+    "/datasets/{dataset_id}/versions/{version_id}/preview",
+    tags=["Datasets"],
+    summary="Get a paginated preview of one immutable dataset version",
+    response_model=SuccessEnvelope[DatasetVersionPreviewData],
+    responses=ERROR_RESPONSES,
+)
+async def get_dataset_version_preview_page(
+    request: Request,
+    dataset_id: DatasetId,
+    version_id: Annotated[UUID, Path(description="DatasetVersion UUID。")],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[
+        DatasetVersionPreviewPageSize, Query()
+    ] = DatasetVersionPreviewPageSize.ROWS_100,
+) -> SuccessEnvelope[DatasetVersionPreviewData]:
+    try:
+        data = await get_dataset_version_preview(
+            session,
+            dataset_id=dataset_id,
+            version_id=version_id,
+            page=page,
+            page_size=int(page_size),
+            artifact_root=get_settings().artifact_root,
+        )
+    except DatasetDomainError as error:
         raise AppError(
             error.code,
             error.message,

@@ -179,11 +179,33 @@ export interface DatasetItem {
   preview?: DatasetPreview | null;
 }
 
+export type DatasetPreviewRow = Record<string, string | number | boolean | null>;
+
 export interface DatasetPreview {
   columns: string[];
-  rows: Array<Record<string, string | number | boolean | null>>;
+  rows: DatasetPreviewRow[];
   truncated: boolean;
   recommended_downsample_factor: number;
+}
+
+export interface DatasetVersionPreviewPage {
+  page: number;
+  page_size: 50 | 100 | 200;
+  total: number;
+  total_pages: number;
+}
+
+export interface DatasetVersionPreviewResponse {
+  dataset_id: string;
+  version_id: string;
+  columns: string[];
+  rows: DatasetPreviewRow[];
+  page: DatasetVersionPreviewPage;
+}
+
+export interface DatasetVersionPreviewParams {
+  page: number;
+  page_size: 50 | 100 | 200;
 }
 
 export interface DatasetListResponse {

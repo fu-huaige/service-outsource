@@ -1696,6 +1696,113 @@
         }
       }
     },
+    "/api/v1/datasets/{dataset_id}/versions/{version_id}/preview": {
+      "get": {
+        "tags": [
+          "Datasets"
+        ],
+        "summary": "Get a paginated preview of one immutable dataset version",
+        "operationId": "get_dataset_version_preview_page_api_v1_datasets__dataset_id__versions__version_id__preview_get",
+        "parameters": [
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "数据集 UUID。",
+              "title": "Dataset Id"
+            },
+            "description": "数据集 UUID。"
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "DatasetVersion UUID。",
+              "title": "Version Id"
+            },
+            "description": "DatasetVersion UUID。"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DatasetVersionPreviewPageSize",
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_DatasetVersionPreviewData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数或领域规则无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "目标资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "请求体或路径参数未通过 Pydantic 校验。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期的服务端错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/preprocessing/delay/apply": {
       "post": {
         "tags": [
@@ -7108,6 +7215,106 @@
         ],
         "title": "DatasetUploadData"
       },
+      "DatasetVersionPreviewData": {
+        "properties": {
+          "dataset_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Dataset Id"
+          },
+          "version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Version Id"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "page": {
+            "$ref": "#/components/schemas/DatasetVersionPreviewPage"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "dataset_id",
+          "version_id",
+          "columns",
+          "rows",
+          "page"
+        ],
+        "title": "DatasetVersionPreviewData"
+      },
+      "DatasetVersionPreviewPage": {
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page",
+            "default": 1
+          },
+          "page_size": {
+            "$ref": "#/components/schemas/DatasetVersionPreviewPageSize",
+            "default": 100
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total",
+            "default": 0
+          },
+          "total_pages": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Pages"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "total_pages"
+        ],
+        "title": "DatasetVersionPreviewPage"
+      },
+      "DatasetVersionPreviewPageSize": {
+        "type": "integer",
+        "enum": [
+          50,
+          100,
+          200
+        ],
+        "title": "DatasetVersionPreviewPageSize"
+      },
       "DatasetVersionsData": {
         "properties": {
           "dataset_id": {
@@ -11684,6 +11891,35 @@
           "request_id"
         ],
         "title": "SuccessEnvelope[DatasetUploadData]"
+      },
+      "SuccessEnvelope_DatasetVersionPreviewData_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true,
+            "title": "Success",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/DatasetVersionPreviewData"
+          },
+          "error": {
+            "type": "null",
+            "title": "Error"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "SuccessEnvelope[DatasetVersionPreviewData]"
       },
       "SuccessEnvelope_DatasetVersionsData_": {
         "properties": {

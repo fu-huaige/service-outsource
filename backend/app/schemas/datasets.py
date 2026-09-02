@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import IntEnum
 from typing import Any, Literal
 from uuid import UUID
 
@@ -47,6 +48,25 @@ class DatasetPreview(Schema):
     rows: list[dict[str, str | float | int | bool | None]]
     truncated: bool
     recommended_downsample_factor: int = Field(ge=1)
+
+
+class DatasetVersionPreviewPageSize(IntEnum):
+    ROWS_50 = 50
+    ROWS_100 = 100
+    ROWS_200 = 200
+
+
+class DatasetVersionPreviewPage(PageInfo):
+    page_size: DatasetVersionPreviewPageSize = DatasetVersionPreviewPageSize.ROWS_100
+    total_pages: int = Field(ge=0)
+
+
+class DatasetVersionPreviewData(Schema):
+    dataset_id: UUID
+    version_id: UUID
+    columns: list[str]
+    rows: list[dict[str, str | float | int | bool | None]]
+    page: DatasetVersionPreviewPage
 
 
 class DatasetDetail(DatasetSummary):

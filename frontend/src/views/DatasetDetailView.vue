@@ -44,15 +44,29 @@
             <div class="industrial-card-title">
               <el-icon><DataLine /></el-icon> 多变量数据预览
             </div>
-            <div class="preview-row-status" aria-live="polite">
-              <strong>当前预览 {{ previewRows.length }} / {{ dataset.row_count }} 行</strong>
-              <el-tag v-if="dataset.preview?.truncated" size="small" type="info">
-                仅展示前{{ previewRows.length }}行
-              </el-tag>
-            </div>
           </div>
 
-          <div v-if="previewRows.length > 0" class="preview-table-region">
+          <el-alert
+            v-if="previewError"
+            class="preview-page-error"
+            type="error"
+            title="数据预览加载失败"
+            :description="previewError"
+            :closable="false"
+            show-icon
+          />
+          <StateView
+            v-if="previewLoading && previewRows.length === 0"
+            class="preview-state"
+            state="loading"
+            title="正在加载当前版本数据预览…"
+          />
+          <div
+            v-else-if="previewRows.length > 0"
+            v-loading="previewLoading"
+            class="preview-table-region"
+            :aria-busy="previewLoading"
+          >
             <el-table class="preview-table" :data="previewRows" stripe>
               <el-table-column v-for="col in previewColumns" :key="col" :prop="col" :label="col" min-width="130">
                 <template #default="scope">
@@ -63,8 +77,25 @@
               </el-table-column>
             </el-table>
           </div>
-          <div v-else class="preview-empty">
+          <div v-else-if="!previewError" class="preview-empty">
             该版本文件不包含可预览的数据行
+          </div>
+          <div
+            v-if="previewTotalItems > 0"
+            class="preview-pagination-bar"
+            :data-total-pages="previewTotalPages"
+          >
+            <strong class="preview-page-range" aria-live="polite">{{ previewRangeLabel }}</strong>
+            <el-pagination
+              :current-page="previewPage"
+              :page-size="previewPageSize"
+              :page-sizes="[50, 100, 200]"
+              :total="previewTotalItems"
+              :disabled="previewLoading"
+              layout="sizes, prev, pager, next"
+              @current-change="handlePreviewPageChange"
+              @size-change="handlePreviewPageSizeChange"
+            />
           </div>
         </div>
       </div>
@@ -452,8 +483,19 @@ import { useRoute, useRouter } from "vue-router";
 import { DataLine, Share, ArrowRight, Opportunity } from "@element-plus/icons-vue";
 import PageHeader from "../components/common/PageHeader.vue";
 import StateView from "../components/StateView.vue";
-import { getDatasetDetail, getDatasetProfile, getDatasetVersions } from "../api/datasets";
-import type { DatasetItem, DatasetProfile, DatasetVersionNode } from "../types/api";
+import {
+  getDatasetDetail,
+  getDatasetProfile,
+  getDatasetVersionPreview,
+  getDatasetVersions,
+} from "../api/datasets";
+import type {
+  DatasetItem,
+  DatasetPreviewRow,
+  DatasetProfile,
+  DatasetVersionNode,
+  DatasetVersionPreviewParams,
+} from "../types/api";
 import { ElMessage } from "element-plus";
 import { useDatasetStore } from "../stores/datasetStore";
 
@@ -466,20 +508,87 @@ const datasetId = (route.params.id as string) || "ds_s1";
 const dataset = ref<DatasetItem | null>(null);
 const detailLoading = ref(true);
 const detailError = ref("");
+const previewVersionId = ref("");
+const previewPage = ref(1);
+const previewPageSize = ref<DatasetVersionPreviewParams["page_size"]>(100);
+const previewRows = ref<DatasetPreviewRow[]>([]);
+const previewColumns = ref<string[]>([]);
+const previewTotalItems = ref(0);
+const previewTotalPages = ref(0);
+const previewLoading = ref(false);
+const previewError = ref("");
 const profile = ref<DatasetProfile | null>(null);
 const profileLoading = ref(false);
 const versionNodes = ref<DatasetVersionNode[]>([]);
 const expandedFreezePanels = ref<string[]>([]);
 const expandedAuditEvidence = ref<string[]>([]);
 const freezeSegmentDisplayLimit = 20;
+let previewRequestGeneration = 0;
+
+const previewRequestErrorMessage = (error: unknown) => {
+  if (error && typeof error === "object") {
+    const candidate = error as { code?: unknown; message?: unknown };
+    const code = typeof candidate.code === "string" ? candidate.code : "ERR";
+    const message = typeof candidate.message === "string" ? candidate.message : "未知错误";
+    return `获取版本数据预览失败 [${code}]：${message}`;
+  }
+  return "获取版本数据预览失败 [ERR]：未知错误";
+};
+
+const fetchPreviewPage = async (
+  requestedPage: number,
+  requestedPageSize: DatasetVersionPreviewParams["page_size"]
+) => {
+  const versionId = previewVersionId.value;
+  if (!versionId) return;
+  const generation = ++previewRequestGeneration;
+  previewLoading.value = true;
+  previewError.value = "";
+  try {
+    const response = await getDatasetVersionPreview(datasetId, versionId, {
+      page: requestedPage,
+      page_size: requestedPageSize,
+    });
+    if (generation !== previewRequestGeneration) return;
+    if (response.dataset_id !== datasetId || response.version_id !== versionId) {
+      throw new Error("预览响应与当前数据集版本不一致");
+    }
+    previewRows.value = response.rows;
+    previewColumns.value = response.columns;
+    previewPage.value = response.page.page;
+    previewPageSize.value = response.page.page_size;
+    previewTotalItems.value = response.page.total;
+    previewTotalPages.value = response.page.total_pages;
+  } catch (error: unknown) {
+    if (generation !== previewRequestGeneration) return;
+    previewError.value = previewRequestErrorMessage(error);
+    ElMessage.error(previewError.value);
+  } finally {
+    if (generation === previewRequestGeneration) {
+      previewLoading.value = false;
+    }
+  }
+};
 
 const fetchDetail = async () => {
+  previewRequestGeneration += 1;
   detailLoading.value = true;
   detailError.value = "";
+  previewVersionId.value = "";
+  previewPage.value = 1;
+  previewPageSize.value = 100;
+  previewRows.value = [];
+  previewColumns.value = [];
+  previewTotalItems.value = 0;
+  previewTotalPages.value = 0;
+  previewLoading.value = false;
+  previewError.value = "";
   try {
     const res = await getDatasetDetail(datasetId);
     dataset.value = res;
     datasetStore.setActiveDataset(res);
+    previewVersionId.value = res.version_id;
+    await fetchPreviewPage(1, 100);
   } catch (err: any) {
     dataset.value = null;
     detailError.value = `获取数据集详情失败 [${err.code || 'ERR'}]：${err.message || '未知错误'}`;
@@ -510,6 +619,15 @@ const fetchVersions = async () => {
   }
 };
 
+const handlePreviewPageChange = (page: number) => {
+  void fetchPreviewPage(page, previewPageSize.value);
+};
+
+const handlePreviewPageSizeChange = (pageSize: number) => {
+  if (pageSize !== 50 && pageSize !== 100 && pageSize !== 200) return;
+  void fetchPreviewPage(1, pageSize);
+};
+
 const formattedColStats = computed(() => {
   if (!profile.value || !profile.value.column_statistics) return [];
   return Object.entries(profile.value.column_statistics).map(([col, stat]) => ({
@@ -524,8 +642,14 @@ const formattedColStats = computed(() => {
 });
 
 const candidateFrozenSegments = computed(() => profile.value?.candidate_frozen_segments || []);
-const previewRows = computed(() => dataset.value?.preview?.rows || []);
-const previewColumns = computed(() => dataset.value?.preview?.columns || []);
+const previewRangeLabel = computed(() => {
+  if (previewTotalItems.value === 0 || previewRows.value.length === 0) {
+    return `第 0–0 行 / 共 ${previewTotalItems.value} 行`;
+  }
+  const start = (previewPage.value - 1) * previewPageSize.value + 1;
+  const end = Math.min(start + previewRows.value.length - 1, previewTotalItems.value);
+  return `第 ${start}–${end} 行 / 共 ${previewTotalItems.value} 行`;
+});
 const visibleCandidateFrozenSegments = computed(() =>
   candidateFrozenSegments.value.slice(0, freezeSegmentDisplayLimit)
 );
@@ -836,21 +960,6 @@ onMounted(() => {
   min-width: 0;
 }
 
-.preview-row-status {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 10px;
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
-.preview-row-status strong {
-  color: var(--text-primary);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
 .preview-table-region {
   min-width: 0;
 }
@@ -868,6 +977,32 @@ onMounted(() => {
 .preview-empty {
   padding: 20px 0;
   color: var(--text-secondary);
+}
+
+.preview-page-error {
+  margin-bottom: 16px;
+}
+
+.preview-pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding-top: 18px;
+}
+
+.preview-page-range {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .preview-pagination-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 .page-header {
   margin-bottom: 20px;

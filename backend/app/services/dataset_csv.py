@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -68,6 +68,12 @@ class ParsedCsv:
     timestamp_column: str
     timestamps: list[datetime]
     preview_rows: list[dict[str, str | float | int | bool | None]]
+
+
+@dataclass(frozen=True)
+class CsvPage:
+    headers: list[str]
+    rows: list[dict[str, str | float | int | bool | None]]
 
 
 async def stage_upload(upload: UploadFile, *, artifact_root: Path) -> StagedUpload:
@@ -214,6 +220,65 @@ def load_parsed_csv(
     )
 
 
+def load_csv_page(
+    *,
+    artifact_root: Path,
+    relative_path: str,
+    encoding: str,
+    delimiter: str,
+    inferred_types: Mapping[str, str],
+    offset: int,
+    limit: int,
+) -> CsvPage:
+    """Read one bounded page of logical CSV records without materialising the artifact."""
+
+    if offset < 0 or limit < 1:
+        raise ValueError("CSV page offset and limit must be positive")
+    raw_path = artifact_root / relative_path
+    if not raw_path.is_file():
+        raise DatasetCsvError("DATASET_ARTIFACT_MISSING", "数据集原始文件不存在。")
+    rows: list[dict[str, str | float | int | bool | None]] = []
+    logical_index = 0
+    try:
+        with raw_path.open("r", encoding=encoding, newline="") as source:
+            reader = csv.reader(source, delimiter=delimiter)
+            raw_headers = next(reader, None)
+            if raw_headers is None:
+                raise DatasetCsvError("INVALID_DATASET_SCHEMA", "CSV 缺少表头。")
+            headers = [header.strip().lstrip("\ufeff") for header in raw_headers]
+            _validate_headers(headers)
+            for line_number, values in enumerate(reader, start=2):
+                row = _row_from_values(values, headers, line_number=line_number)
+                if row is None:
+                    continue
+                if logical_index < offset:
+                    logical_index += 1
+                    continue
+                try:
+                    rows.append({
+                        header: _display_value(row[header], inferred_types.get(header, "string"))
+                        for header in headers
+                    })
+                except ValueError as error:
+                    raise DatasetCsvError(
+                        "INVALID_DATASET_SCHEMA",
+                        "CSV 数据与已登记的列类型不一致。",
+                        {"line": line_number},
+                    ) from error
+                logical_index += 1
+                if len(rows) == limit:
+                    break
+    except UnicodeDecodeError as error:
+        raise DatasetCsvError(
+            "CSV_ENCODING_UNSUPPORTED",
+            "无法按识别到的编码读取 CSV 文件。",
+            {"encoding": encoding},
+        ) from error
+    except csv.Error as error:
+        raise DatasetCsvError("INVALID_DATASET_SCHEMA", "CSV 语法无效。") from error
+    return CsvPage(headers=headers, rows=rows)
+
+
 def detect_encoding(sample: bytes) -> str:
     detected = chardet.detect(sample)
     candidate = str(detected.get("encoding") or "utf-8").lower().replace("_", "-")
@@ -305,20 +370,28 @@ def _validate_headers(headers: list[str]) -> None:
 def _read_rows(reader: Iterable[list[str]], headers: list[str]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for line_number, values in enumerate(reader, start=2):
-        if not values or all(not value.strip() for value in values):
-            continue
-        if len(values) != len(headers):
-            raise DatasetCsvError(
-                "INVALID_DATASET_SCHEMA",
-                "CSV 数据行字段数量与表头不一致。",
-                {
-                    "line": line_number,
-                    "expected_columns": len(headers),
-                    "actual_columns": len(values),
-                },
-            )
-        rows.append(dict(zip(headers, (value.strip() for value in values), strict=True)))
+        row = _row_from_values(values, headers, line_number=line_number)
+        if row is not None:
+            rows.append(row)
     return rows
+
+
+def _row_from_values(
+    values: list[str], headers: list[str], *, line_number: int
+) -> dict[str, str] | None:
+    if not values or all(not value.strip() for value in values):
+        return None
+    if len(values) != len(headers):
+        raise DatasetCsvError(
+            "INVALID_DATASET_SCHEMA",
+            "CSV 数据行字段数量与表头不一致。",
+            {
+                "line": line_number,
+                "expected_columns": len(headers),
+                "actual_columns": len(values),
+            },
+        )
+    return dict(zip(headers, (value.strip() for value in values), strict=True))
 
 
 def _resolve_timestamp_column(headers: list[str]) -> str:

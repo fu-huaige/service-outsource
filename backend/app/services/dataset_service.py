@@ -39,6 +39,8 @@ from app.schemas.datasets import (
     DatasetListData,
     DatasetProfile,
     DatasetSummary,
+    DatasetVersionPreviewData,
+    DatasetVersionPreviewPage,
     DatasetVersionsData,
     VersionEdge,
     VersionNode,
@@ -54,7 +56,11 @@ from app.services.dataset_csv import (
     parse_csv,
     stage_upload,
 )
-from app.services.dataset_version_io import DatasetVersionArtifactError, load_version_csv
+from app.services.dataset_version_io import (
+    DatasetVersionArtifactError,
+    load_version_csv,
+    load_version_csv_page,
+)
 
 
 class DatasetDomainError(Exception):
@@ -365,6 +371,54 @@ async def get_dataset_detail(
             "truncated": len(parsed.rows) > len(parsed.preview_rows),
             "recommended_downsample_factor": max(1, int((len(parsed.rows) + 9_999) / 10_000)),
         },
+    )
+
+
+async def get_dataset_version_preview(
+    session: AsyncSession,
+    *,
+    dataset_id: UUID,
+    version_id: UUID,
+    page: int,
+    page_size: int,
+    artifact_root: Path,
+) -> DatasetVersionPreviewData:
+    dataset = await _dataset_or_404(session, dataset_id)
+    version = await session.get(DatasetVersionModel, version_id)
+    if version is None or version.dataset_id != dataset.id:
+        raise DatasetDomainError(
+            "DATASET_VERSION_NOT_FOUND",
+            "请求的数据版本不存在。",
+            status_code=404,
+            details={"dataset_id": str(dataset_id), "version_id": str(version_id)},
+        )
+    columns = await _version_columns(session, version.id)
+    inferred_types = {column.name: column.inferred_type for column in columns}
+    try:
+        csv_page = load_version_csv_page(
+            dataset=dataset,
+            version=version,
+            artifact_root=artifact_root,
+            inferred_types=inferred_types,
+            offset=(page - 1) * page_size,
+            limit=page_size,
+        )
+    except DatasetVersionArtifactError as error:
+        raise DatasetDomainError(
+            error.code, error.message, status_code=404, details=error.details
+        ) from error
+    total = version.row_count
+    return DatasetVersionPreviewData(
+        dataset_id=dataset.id,
+        version_id=version.id,
+        columns=csv_page.headers,
+        rows=csv_page.rows,
+        page=DatasetVersionPreviewPage(
+            page=page,
+            page_size=page_size,
+            total=total,
+            total_pages=(total + page_size - 1) // page_size,
+        ),
     )
 
 
