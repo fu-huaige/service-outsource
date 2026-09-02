@@ -241,8 +241,39 @@
                         <div><dt>展示说明</dt><dd>用户请求与实际生效参数分层展示，原始字段保留在审计区。</dd></div>
                       </dl>
                     </section>
-                    <el-collapse class="audit-collapse structured-audit-collapse">
-                      <el-collapse-item title="用户请求参数" :name="`${node.id}-request`">
+                  </div>
+
+                  <div class="audit-evidence-chain" aria-label="审计证据链">
+                    <section
+                      v-if="node.tool === 'simulation_generate'"
+                      class="audit-evidence-card"
+                      :class="{ 'is-expanded': isAuditEvidenceExpanded(`${node.id}-request`) }"
+                      data-audit-evidence="request"
+                    >
+                      <button
+                        type="button"
+                        class="audit-evidence-card__trigger"
+                        :aria-expanded="isAuditEvidenceExpanded(`${node.id}-request`)"
+                        :aria-controls="`audit-evidence-panel-${node.id}-request`"
+                        @click="toggleAuditEvidence(`${node.id}-request`)"
+                      >
+                        <span class="audit-evidence-card__copy">
+                          <span class="audit-evidence-card__title">用户请求参数</span>
+                          <span class="audit-evidence-card__description">用户最初提交给系统的配置与目标</span>
+                        </span>
+                        <span class="audit-evidence-card__action">
+                          {{ isAuditEvidenceExpanded(`${node.id}-request`) ? '收起' : '查看详情' }}
+                          <span class="audit-evidence-card__action-icon" aria-hidden="true">
+                            {{ isAuditEvidenceExpanded(`${node.id}-request`) ? '↑' : '→' }}
+                          </span>
+                        </span>
+                      </button>
+                      <div
+                        v-show="isAuditEvidenceExpanded(`${node.id}-request`)"
+                        :id="`audit-evidence-panel-${node.id}-request`"
+                        class="audit-evidence-card__content"
+                        data-audit-evidence-panel="request"
+                      >
                         <div class="audit-structured request-parameters-view">
                           <p class="audit-section-note">以下为用户提交的原始请求值，最终结果以实际生效参数为准。</p>
                           <dl class="audit-list request-audit-list">
@@ -257,8 +288,39 @@
                             <div><dt>随机种子</dt><dd>{{ requestValue(node, 'seed') }}</dd></div>
                           </dl>
                         </div>
-                      </el-collapse-item>
-                      <el-collapse-item title="场景解析后实际生效参数" :name="`${node.id}-resolved`">
+                      </div>
+                    </section>
+
+                    <section
+                      v-if="node.tool === 'simulation_generate'"
+                      class="audit-evidence-card"
+                      :class="{ 'is-expanded': isAuditEvidenceExpanded(`${node.id}-resolved`) }"
+                      data-audit-evidence="resolved"
+                    >
+                      <button
+                        type="button"
+                        class="audit-evidence-card__trigger"
+                        :aria-expanded="isAuditEvidenceExpanded(`${node.id}-resolved`)"
+                        :aria-controls="`audit-evidence-panel-${node.id}-resolved`"
+                        @click="toggleAuditEvidence(`${node.id}-resolved`)"
+                      >
+                        <span class="audit-evidence-card__copy">
+                          <span class="audit-evidence-card__title">场景解析后实际生效参数</span>
+                          <span class="audit-evidence-card__description">系统解析、校验并最终采用的正式参数</span>
+                        </span>
+                        <span class="audit-evidence-card__action">
+                          {{ isAuditEvidenceExpanded(`${node.id}-resolved`) ? '收起' : '查看详情' }}
+                          <span class="audit-evidence-card__action-icon" aria-hidden="true">
+                            {{ isAuditEvidenceExpanded(`${node.id}-resolved`) ? '↑' : '→' }}
+                          </span>
+                        </span>
+                      </button>
+                      <div
+                        v-show="isAuditEvidenceExpanded(`${node.id}-resolved`)"
+                        :id="`audit-evidence-panel-${node.id}-resolved`"
+                        class="audit-evidence-card__content"
+                        data-audit-evidence-panel="resolved"
+                      >
                         <div class="audit-structured resolved-parameters-view">
                           <section class="audit-subsection" data-audit-section="basic">
                             <h6>基础配置</h6>
@@ -331,19 +393,46 @@
                             </dl>
                           </section>
                         </div>
-                      </el-collapse-item>
-                    </el-collapse>
-                  </div>
-
-                  <el-collapse class="audit-collapse raw-audit-collapse">
-                    <el-collapse-item title="查看原始审计参数" :name="`${node.id}-raw`">
-                      <div class="raw-audit-toolbar">
-                        <span>完整原始字段和值，未经翻译或改写。</span>
-                        <el-button size="small" plain @click="copyAuditJson(node)">复制 JSON</el-button>
                       </div>
-                      <pre class="audit-json raw-audit-json">{{ formatAuditJson(node.parameters) }}</pre>
-                    </el-collapse-item>
-                  </el-collapse>
+                    </section>
+
+                    <section
+                      class="audit-evidence-card"
+                      :class="{ 'is-expanded': isAuditEvidenceExpanded(`${node.id}-raw`) }"
+                      data-audit-evidence="raw"
+                    >
+                      <button
+                        type="button"
+                        class="audit-evidence-card__trigger"
+                        :aria-expanded="isAuditEvidenceExpanded(`${node.id}-raw`)"
+                        :aria-controls="`audit-evidence-panel-${node.id}-raw`"
+                        @click="toggleAuditEvidence(`${node.id}-raw`)"
+                      >
+                        <span class="audit-evidence-card__copy">
+                          <span class="audit-evidence-card__title">原始审计参数</span>
+                          <span class="audit-evidence-card__description">ProcessingRun / DatasetVersion 的原始审计记录</span>
+                        </span>
+                        <span class="audit-evidence-card__action">
+                          {{ isAuditEvidenceExpanded(`${node.id}-raw`) ? '收起' : '查看详情' }}
+                          <span class="audit-evidence-card__action-icon" aria-hidden="true">
+                            {{ isAuditEvidenceExpanded(`${node.id}-raw`) ? '↑' : '→' }}
+                          </span>
+                        </span>
+                      </button>
+                      <div
+                        v-show="isAuditEvidenceExpanded(`${node.id}-raw`)"
+                        :id="`audit-evidence-panel-${node.id}-raw`"
+                        class="audit-evidence-card__content audit-evidence-card__content--raw"
+                        data-audit-evidence-panel="raw"
+                      >
+                        <div class="raw-audit-toolbar">
+                          <span>完整原始字段和值，未经翻译或改写。</span>
+                          <el-button size="small" plain @click="copyAuditJson(node)">复制 JSON</el-button>
+                        </div>
+                        <pre class="audit-json raw-audit-json">{{ formatAuditJson(node.parameters) }}</pre>
+                      </div>
+                    </section>
+                  </div>
                 </div>
               </el-card>
             </el-timeline-item>
@@ -381,6 +470,7 @@ const profile = ref<DatasetProfile | null>(null);
 const profileLoading = ref(false);
 const versionNodes = ref<DatasetVersionNode[]>([]);
 const expandedFreezePanels = ref<string[]>([]);
+const expandedAuditEvidence = ref<string[]>([]);
 const freezeSegmentDisplayLimit = 20;
 
 const fetchDetail = async () => {
@@ -451,6 +541,14 @@ const candidateFreezeSummary = computed(() => {
 
 const formatPreviewValue = (value: unknown) => value === null || value === undefined ? "缺失" : String(value);
 const shortIdentifier = (value?: string) => value ? `${value.slice(0, 8)}…` : "尚未生成";
+
+const isAuditEvidenceExpanded = (panelId: string) => expandedAuditEvidence.value.includes(panelId);
+
+const toggleAuditEvidence = (panelId: string) => {
+  expandedAuditEvidence.value = isAuditEvidenceExpanded(panelId)
+    ? expandedAuditEvidence.value.filter((item) => item !== panelId)
+    : [...expandedAuditEvidence.value, panelId];
+};
 
 const formatDateTime = (value: string) => {
   const parsed = new Date(value);
@@ -898,11 +996,6 @@ onMounted(() => {
   color: var(--color-warning-dark);
 }
 
-.audit-collapse {
-  grid-column: 1 / -1;
-  margin-top: 14px;
-}
-
 .audit-json {
   max-width: 100%;
   max-height: 320px;
@@ -922,8 +1015,104 @@ onMounted(() => {
   grid-column: 1 / -1;
 }
 
-.structured-audit-collapse {
-  margin-top: 0;
+.audit-evidence-chain {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.audit-evidence-card {
+  min-width: 0;
+  background: var(--surface-1);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    transform 180ms ease;
+}
+
+.audit-evidence-card:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  transform: translateY(-1px);
+}
+
+.audit-evidence-card.is-expanded {
+  border-color: var(--accent-border);
+}
+
+.audit-evidence-card__trigger {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  width: 100%;
+  padding: 14px 16px;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+
+.audit-evidence-card__trigger:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.audit-evidence-card__copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.audit-evidence-card__title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.audit-evidence-card__description {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.audit-evidence-card__action {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.audit-evidence-card__action-icon {
+  display: inline-block;
+  transition: transform 180ms ease;
+}
+
+.audit-evidence-card:hover:not(.is-expanded) .audit-evidence-card__action-icon {
+  transform: translateX(3px);
+}
+
+.audit-evidence-card.is-expanded:hover .audit-evidence-card__action-icon {
+  transform: translateY(-2px);
+}
+
+.audit-evidence-card__content {
+  margin: 0 16px;
+  padding: 0 0 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.audit-evidence-card__content--raw {
+  padding-top: 14px;
 }
 
 .audit-structured {
@@ -1027,6 +1216,16 @@ onMounted(() => {
   .audit-list > div {
     grid-template-columns: 1fr;
     gap: 2px;
+  }
+
+  .audit-evidence-card__trigger {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px 12px;
+  }
+
+  .audit-evidence-card__action {
+    grid-column: 1;
+    justify-self: start;
   }
 
   .raw-audit-toolbar {

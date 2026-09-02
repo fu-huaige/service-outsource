@@ -164,7 +164,8 @@ describe("DatasetDetailView version audit and preview", () => {
     expect(wrapper.text()).toContain("历史恒值区段审计数");
     expect(wrapper.text()).toContain("候选异常冻结段");
     expect(wrapper.text()).toContain("缺失值填补");
-    expect(wrapper.text()).toContain("查看原始审计参数");
+    expect(wrapper.text()).toContain("原始审计参数");
+    expect(wrapper.get('[data-audit-evidence="raw"] button').attributes("aria-expanded")).toBe("false");
     expect(wrapper.text()).not.toContain("参数: {\"request\"");
     expect(wrapper.html()).toContain("unknown_evidence");
   });
@@ -272,8 +273,41 @@ describe("DatasetDetailView version audit and preview", () => {
     const wrapper = mountView();
     await flushPromises();
 
+    const evidenceCards = wrapper.findAll("[data-audit-evidence]");
+    expect(evidenceCards.map((card) => card.attributes("data-audit-evidence"))).toEqual([
+      "request",
+      "resolved",
+      "raw",
+    ]);
+    expect(wrapper.findAll(".audit-evidence-card__number")).toHaveLength(0);
+    expect(evidenceCards.map((card) => card.get(".audit-evidence-card__title").text())).toEqual([
+      "用户请求参数",
+      "场景解析后实际生效参数",
+      "原始审计参数",
+    ]);
+    expect(wrapper.findAll(".version-card")).toHaveLength(1);
+    expect(wrapper.get(".version-card").text()).toContain("V0 · 仿真原始数据");
+
+    for (const card of evidenceCards) {
+      const trigger = card.get("button");
+      const panel = card.get("[data-audit-evidence-panel]");
+      expect(trigger.attributes("aria-expanded")).toBe("false");
+      expect(trigger.text()).toContain("查看详情");
+      expect(panel.attributes("style")).toContain("display: none");
+
+      await trigger.trigger("click");
+      expect(trigger.attributes("aria-expanded")).toBe("true");
+      expect(trigger.text()).toContain("收起");
+      expect(card.classes()).toContain("is-expanded");
+      expect(panel.attributes("style") || "").not.toContain("display: none");
+
+      await trigger.trigger("click");
+      expect(trigger.attributes("aria-expanded")).toBe("false");
+      expect(card.classes()).not.toContain("is-expanded");
+      expect(panel.attributes("style")).toContain("display: none");
+    }
+
     const requestView = wrapper.get(".request-parameters-view");
-    expect(wrapper.findAll("summary").filter((summary) => summary.text() === "用户请求参数")).toHaveLength(1);
     expect(requestView.find(".audit-section-title").exists()).toBe(false);
     expect(requestView.text()).toContain("1200个采样点");
     expect(requestView.text()).toContain("2个变量");
@@ -281,7 +315,6 @@ describe("DatasetDetailView version audit and preview", () => {
     expect(requestView.text()).toContain("最终生效值见下方实际生效参数");
 
     const resolvedView = wrapper.get(".resolved-parameters-view");
-    expect(wrapper.findAll("summary").filter((summary) => summary.text() === "场景解析后实际生效参数")).toHaveLength(1);
     expect(resolvedView.find(".audit-section-title").exists()).toBe(false);
     expect(resolvedView.find("pre").exists()).toBe(false);
     expect(resolvedView.text()).toContain("基础配置");
@@ -308,6 +341,8 @@ describe("DatasetDetailView version audit and preview", () => {
     expect(rawBlocks).toHaveLength(1);
     expect(rawBlocks[0].text()).toContain('"unknown_evidence"');
     expect(rawBlocks[0].text()).toContain('"preserved": true');
+    expect(wrapper.find(".el-dialog").exists()).toBe(false);
+    expect(wrapper.find(".el-drawer").exists()).toBe(false);
   });
 
   it("distinguishes missing evidence from explicitly empty injection arrays", async () => {
