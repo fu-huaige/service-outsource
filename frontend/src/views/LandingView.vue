@@ -153,7 +153,7 @@
     </section>
 
     <!-- ── Features ────────────────────────────────────────── -->
-    <section class="landing-section scroll-reveal" id="features" data-scroll-reveal>
+    <section class="landing-section landing-section--capabilities scroll-reveal" id="features" data-scroll-reveal>
       <div class="landing-container">
         <div class="section-label font-mono">CAPABILITIES</div>
         <h2 class="section-title">专为流程工业建模设计</h2>
@@ -170,7 +170,7 @@
     </section>
 
     <!-- ── Workflow ─────────────────────────────────────────── -->
-    <section class="landing-section scroll-reveal" id="workflow" data-scroll-reveal>
+    <section class="landing-section landing-section--pipeline scroll-reveal" id="workflow" data-scroll-reveal>
       <div class="landing-container">
         <div class="section-label font-mono">8-STAGE PIPELINE</div>
         <h2 class="section-title">Agent 自动执行完整建模闭环</h2>
@@ -189,11 +189,57 @@
     </section>
 
     <!-- ── Benchmark ────────────────────────────────────────── -->
-    <section class="landing-section scroll-reveal" id="benchmark" data-scroll-reveal>
+    <section class="landing-section landing-section--benchmark scroll-reveal" id="benchmark" data-scroll-reveal>
       <div class="landing-container">
         <div class="section-label font-mono">ABLATION RESULTS</div>
         <h2 class="section-title">消融对照实测基准</h2>
         <p class="section-subtitle">S3 工况下四种策略对照，所有指标均来自保留测试集</p>
+
+        <div v-if="bestBenchmarkRow" class="benchmark-summary">
+          <div class="benchmark-summary__strategy">
+            <div class="section-label font-mono">RESULT SUMMARY</div>
+            <div class="benchmark-summary__strategy-label">最佳策略</div>
+            <div class="benchmark-summary__strategy-name">{{ bestBenchmarkRow.strategy }}</div>
+          </div>
+          <dl class="benchmark-summary__metrics">
+            <div class="benchmark-metric">
+              <dt class="benchmark-metric__label">FIT</dt>
+              <dd class="benchmark-metric__value font-mono">{{ bestBenchmarkRow.fit }}%</dd>
+              <div
+                class="benchmark-metric__bar"
+                role="img"
+                :aria-label="`FIT ${bestBenchmarkRow.fit} percent`"
+              >
+                <div
+                  class="benchmark-metric__bar-fill"
+                  :style="{ width: `${Number(bestBenchmarkRow.fit)}%` }"
+                />
+              </div>
+            </div>
+            <div class="benchmark-metric">
+              <dt class="benchmark-metric__label">R²</dt>
+              <dd class="benchmark-metric__value font-mono">{{ bestBenchmarkRow.r2 }}</dd>
+            </div>
+            <div class="benchmark-metric">
+              <dt class="benchmark-metric__label">RMSE</dt>
+              <dd class="benchmark-metric__value font-mono">{{ bestBenchmarkRow.rmse }}</dd>
+            </div>
+            <div class="benchmark-metric">
+              <dt class="benchmark-metric__label">Free-run FIT</dt>
+              <dd class="benchmark-metric__value font-mono">{{ bestBenchmarkRow.freeFit }}%</dd>
+              <div
+                class="benchmark-metric__bar"
+                role="img"
+                :aria-label="`Free-run FIT ${bestBenchmarkRow.freeFit} percent`"
+              >
+                <div
+                  class="benchmark-metric__bar-fill"
+                  :style="{ width: `${Number(bestBenchmarkRow.freeFit)}%` }"
+                />
+              </div>
+            </div>
+          </dl>
+        </div>
 
         <div class="benchmark-table">
           <div class="bm-header">
@@ -223,7 +269,7 @@
     </section>
 
     <!-- ── HITL Section ─────────────────────────────────────── -->
-    <section class="landing-section scroll-reveal" data-scroll-reveal>
+    <section class="landing-section landing-section--hitl scroll-reveal" data-scroll-reveal>
       <div class="landing-container">
         <div class="section-label font-mono">HUMAN-IN-THE-LOOP</div>
         <h2 class="section-title">高影响操作，人工审核确认</h2>
@@ -468,6 +514,8 @@ const benchmarkRows = [
   { strategy: '质量门控优选', fit: '83.9', r2: '0.921', rmse: '0.057', freeFit: '81.4', highlight: false },
   { strategy: 'D-最优 + VIF 筛选 + Optuna', fit: '89.0', r2: '0.962', rmse: '0.031', freeFit: '86.9', highlight: true },
 ];
+
+const bestBenchmarkRow = benchmarkRows.find((row) => row.highlight);
 </script>
 
 <style scoped>
@@ -595,7 +643,7 @@ const benchmarkRows = [
   padding: 0;
   cursor: pointer;
   font-size: var(--font-size-sm);
-  color: #626860;
+  color: #4F574E;
   font-weight: 500;
   transition: color var(--transition-fast);
 }
@@ -628,14 +676,14 @@ const benchmarkRows = [
   position: relative;
   padding: 96px 0 72px;
   text-align: center;
-  background: radial-gradient(circle at 50% 0%, rgba(130, 169, 120, 0.08), transparent 35%);
+  background: radial-gradient(circle at 50% 0%, rgba(130, 169, 120, 0.08), transparent 35%), #F5F7F4;
 }
 
 .hero-eyebrow {
   display: inline-block;
   font-size: 11px;
   font-weight: 600;
-  color: #5D7E58;
+  color: #52735A;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   margin-bottom: var(--space-4);
@@ -664,7 +712,7 @@ const benchmarkRows = [
 
 .hero-subtitle {
   font-size: var(--font-size-md);
-  color: #626860;
+  color: #4F574E;
   max-width: 620px;
   margin: 0 auto var(--space-6);
   line-height: 1.7;
@@ -759,7 +807,7 @@ const benchmarkRows = [
 
 .hero-stat__desc {
   font-size: 11px;
-  color: #8B9188;
+  color: #646E62;
   margin-top: 2px;
 }
 
@@ -786,7 +834,7 @@ const benchmarkRows = [
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
-  background: #F2F4EF;
+  background: #EEF2EC;
   border-bottom: 1px solid #E1E4DE;
 }
 
@@ -804,7 +852,7 @@ const benchmarkRows = [
 
 .hero-terminal__title {
   font-size: var(--font-size-xs);
-  color: #868C83;
+  color: #646E62;
   flex: 1;
   text-align: center;
 }
@@ -817,7 +865,7 @@ const benchmarkRows = [
 }
 
 .hero-terminal__body {
-  background: #FAFBF8;
+  background: #F8FAF7;
   padding: var(--space-5);
   display: flex;
   flex-direction: column;
@@ -876,7 +924,7 @@ const benchmarkRows = [
 
 .ht-plan__label {
   font-size: 10px;
-  color: #81877E;
+  color: #646E62;
   letter-spacing: 0.08em;
   margin-bottom: var(--space-2);
 }
@@ -909,13 +957,13 @@ const benchmarkRows = [
 }
 .ht-step__dot.pending { background: #BEC2BC; }
 
-.ht-step__name { color: #626860; }
-.ht-step--done .ht-step__name { color: #81877E; }
+.ht-step__name { color: #596258; }
+.ht-step--done .ht-step__name { color: #646E62; }
 .ht-step--running .ht-step__name { color: #20231F; font-weight: 600; }
 
 .ht-step__time {
   margin-left: auto;
-  color: #9CA19A;
+  color: #646E62;
   font-size: 10px;
 }
 
@@ -942,19 +990,34 @@ const benchmarkRows = [
 }
 
 .ht-event__desc {
-  color: #626860;
+  color: #596258;
   flex: 1;
 }
 
 /* ── Sections ──────────────────────────────────────────────── */
 .landing-section {
   padding: 80px 0;
-  border-top: 1px solid #EAECE6;
+}
+
+.landing-section--capabilities {
+  background: linear-gradient(180deg, #F5F7F4 0, #F4F5F2 88px, #F4F5F2 100%);
+}
+
+.landing-section--pipeline {
+  background: linear-gradient(180deg, #F4F5F2 0, #EEF1ED 88px, #EEF1ED 100%);
+}
+
+.landing-section--benchmark {
+  background: linear-gradient(180deg, #EEF1ED 0, #EAF2E8 88px, #EAF2E8 100%);
+}
+
+.landing-section--hitl {
+  background: linear-gradient(180deg, #EAF2E8 0, #F3F0EA 88px, #F3F0EA 100%);
 }
 
 .section-label {
   font-size: var(--font-size-xs);
-  color: #5D7E58;
+  color: #52735A;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   margin-bottom: var(--space-2);
@@ -972,7 +1035,7 @@ const benchmarkRows = [
 
 .section-subtitle {
   font-size: var(--font-size-md);
-  color: #626860;
+  color: #4F574E;
   margin-bottom: var(--space-8);
   max-width: 560px;
   line-height: 1.6;
@@ -1015,7 +1078,7 @@ const benchmarkRows = [
 
 .feature-card__desc {
   font-size: var(--font-size-xs);
-  color: #626860;
+  color: #596258;
   line-height: 1.6;
 }
 
@@ -1062,7 +1125,7 @@ const benchmarkRows = [
 
 .workflow-step__desc {
   font-size: var(--font-size-xs);
-  color: #626860;
+  color: #596258;
   margin-top: 2px;
 }
 
@@ -1086,9 +1149,77 @@ const benchmarkRows = [
   border: 1px solid #EFE0C2;
 }
 
-/* ── Benchmark Table ───────────────────────────────────────── */
+/* ── Benchmark Summary / Table ─────────────────────────────── */
+.benchmark-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 1.35fr);
+  gap: var(--space-8);
+  align-items: center;
+  padding: var(--space-6);
+  margin-bottom: var(--space-5);
+  background: #FFFFFF;
+  border: 1px solid #D6E2D2;
+  border-radius: var(--radius-md);
+}
+
+.benchmark-summary__strategy {
+  min-width: 0;
+}
+
+.benchmark-summary__strategy .section-label {
+  margin-bottom: var(--space-3);
+}
+
+.benchmark-summary__strategy-label {
+  color: #646E62;
+  margin-bottom: var(--space-1);
+}
+
+.benchmark-summary__strategy-name {
+  font-size: var(--font-size-lg);
+  color: #20231F;
+}
+
+.benchmark-summary__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4) var(--space-6);
+  min-width: 0;
+  margin: 0;
+}
+
+.benchmark-metric {
+  min-width: 0;
+}
+
+.benchmark-metric__label {
+  color: #646E62;
+  margin-bottom: var(--space-1);
+}
+
+.benchmark-metric__value {
+  margin: 0;
+  font-size: 20px;
+  color: #20231F;
+}
+
+.benchmark-metric__bar {
+  width: 100%;
+  height: 4px;
+  margin-top: var(--space-2);
+  overflow: hidden;
+  border-radius: 999px;
+  background: #DDE8DA;
+}
+
+.benchmark-metric__bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: #72956B;
+}
+
 .benchmark-table {
-  border: 1px solid #E2E5DE;
+  border: 1px solid #D6E2D2;
   border-radius: var(--radius-md);
   overflow: hidden;
   box-shadow: var(--shadow-sm);
@@ -1099,8 +1230,8 @@ const benchmarkRows = [
   display: grid;
   grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
   gap: 0;
-  background: #F7F8F5;
-  border-bottom: 1px solid #E2E5DE;
+  background: #F8F9F7;
+  border-bottom: 1px solid #D6E2D2;
 }
 
 .bm-row {
@@ -1113,7 +1244,12 @@ const benchmarkRows = [
 .bm-row:last-child { border-bottom: none; }
 
 .bm-row--highlight {
-  background: #FAFBF8;
+  background: #F1F6EF;
+  box-shadow: inset 3px 0 0 #7FA176;
+}
+
+.bm-row--highlight .bm-cell--num {
+  font-weight: 600;
 }
 
 .bm-cell {
@@ -1127,7 +1263,7 @@ const benchmarkRows = [
 
 .bm-header .bm-cell {
   font-size: var(--font-size-xs);
-  color: #6B7168;
+  color: #646E62;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -1146,9 +1282,9 @@ const benchmarkRows = [
 .bm-badge {
   font-size: 10px;
   font-weight: 600;
-  color: #52735A;
-  background: #EDF4E9;
-  border: 1px solid #D6E5D1;
+  color: #426340;
+  background: #DFECDD;
+  border: 1px solid #BFD4B9;
   padding: 1px 7px;
   border-radius: var(--radius-full);
 }
@@ -1198,7 +1334,7 @@ const benchmarkRows = [
 
 .hitl-card__sub {
   font-size: var(--font-size-xs);
-  color: #81877E;
+  color: #646E62;
 }
 
 .hitl-card__body {
@@ -1208,7 +1344,7 @@ const benchmarkRows = [
 
 .hitl-card__desc {
   font-size: var(--font-size-xs);
-  color: #626860;
+  color: #596258;
   margin-bottom: var(--space-3);
 }
 
@@ -1225,7 +1361,7 @@ const benchmarkRows = [
 }
 
 .hitl-lag-val {
-  color: #81877E;
+  color: #646E62;
 }
 
 .hitl-card__actions {
@@ -1242,7 +1378,7 @@ const benchmarkRows = [
   background: #FFFFFF;
   border: 1px solid #DDE1DA;
   border-radius: var(--radius-sm);
-  color: #626860;
+  color: #4F574E;
   font-size: var(--font-size-xs);
   cursor: pointer;
 }
@@ -1295,16 +1431,15 @@ const benchmarkRows = [
 
 .hitl-desc__text {
   font-size: var(--font-size-xs);
-  color: #626860;
+  color: #596258;
   line-height: 1.6;
 }
 
 /* ── CTA ───────────────────────────────────────────────────── */
 .landing-cta {
   padding: 96px 0;
-  border-top: 1px solid #EAECE6;
   text-align: center;
-  background: var(--surface-2);
+  background: linear-gradient(180deg, #F3F0EA 0, #EEF4EC 88px, #F5F7F3 100%);
 }
 
 .cta-title {
@@ -1318,7 +1453,7 @@ const benchmarkRows = [
 
 .cta-sub {
   font-size: var(--font-size-md);
-  color: #626860;
+  color: #4F574E;
   margin-bottom: var(--space-6);
   max-width: 480px;
   margin-left: auto;
@@ -1330,7 +1465,7 @@ const benchmarkRows = [
 .landing-footer {
   border-top: 1px solid #EAECE6;
   padding: var(--space-5) 0;
-  background: var(--bg-sidebar);
+  background: #F8F9F7;
 }
 
 .landing-footer__inner {
@@ -1347,12 +1482,29 @@ const benchmarkRows = [
 
 .landing-footer__text {
   font-size: var(--font-size-xs);
-  color: var(--text-muted);
+  color: #646E62;
 }
 
 .landing-footer__wordmark {
   font-size: var(--font-size-sm);
-  color: var(--text-muted);
+  color: #646E62;
+}
+
+@media (max-width: 800px) {
+  .benchmark-summary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-5);
+  }
+}
+
+@media (max-width: 560px) {
+  .benchmark-summary {
+    padding: var(--space-5);
+  }
+
+  .benchmark-summary__metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
