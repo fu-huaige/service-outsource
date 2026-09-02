@@ -53,7 +53,7 @@
           </div>
 
           <div v-if="previewRows.length > 0" class="preview-table-region">
-            <el-table class="preview-table" :data="previewRows" height="100%" stripe>
+            <el-table class="preview-table" :data="previewRows" stripe>
               <el-table-column v-for="col in previewColumns" :key="col" :prop="col" :label="col" min-width="130">
                 <template #default="scope">
                   <span :class="{ 'preview-null': scope.row[col] === null }">
@@ -709,10 +709,9 @@ onMounted(() => {
 
 .detail-tabs {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   flex-direction: column;
   min-width: 0;
-  min-height: 0;
 }
 
 .detail-tabs :deep(.el-tabs__header) {
@@ -720,30 +719,17 @@ onMounted(() => {
 }
 
 .detail-tabs :deep(.el-tabs__content) {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
-  min-height: 0;
-}
-
-.detail-tabs :deep(.overview-tab-pane) {
-  min-height: 0;
+  overflow: visible;
 }
 
 .preview-tab-content {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
   min-width: 0;
-  min-height: 0;
 }
 .preview-card {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
   min-width: 0;
-  min-height: 0;
   margin-bottom: 0;
-  overflow: hidden;
 }
 
 .preview-card .industrial-card-header {
@@ -768,22 +754,16 @@ onMounted(() => {
 }
 
 .preview-table-region {
-  flex: 1 1 auto;
   min-width: 0;
-  min-height: 0;
-  overflow: hidden;
 }
 
 .preview-table {
   width: 100%;
-  height: 100%;
 }
 
 .preview-empty,
 .preview-state {
   display: grid;
-  flex: 1 1 auto;
-  min-height: 0;
   place-items: center;
 }
 

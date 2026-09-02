@@ -136,7 +136,7 @@ describe("DatasetDetailView version audit and preview", () => {
     expect(wrapper.text()).toContain("y");
     expect(wrapper.text()).not.toContain("无数据行预览");
     expect(wrapper.get(".el-table-stub").attributes("data-row-count")).toBe("100");
-    expect(wrapper.get(".el-table-stub").attributes("data-height")).toBe("100%");
+    expect(wrapper.get(".el-table-stub").attributes("data-height")).toBeUndefined();
     expect(wrapper.find(".preview-table-region").exists()).toBe(true);
     expect(wrapper.text()).toContain("当前预览 100 / 1200 行");
     expect(wrapper.text()).toContain("仅展示前100行");
@@ -152,7 +152,7 @@ describe("DatasetDetailView version audit and preview", () => {
     await flushPromises();
 
     expect(wrapper.get(".el-table-stub").attributes("data-row-count")).toBe("100");
-    expect(wrapper.get(".el-table-stub").attributes("data-height")).toBe("100%");
+    expect(wrapper.get(".el-table-stub").attributes("data-height")).toBeUndefined();
     expect(detailApi).toHaveBeenCalledTimes(1);
   });
 
