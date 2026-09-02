@@ -14,7 +14,7 @@
       </div>
       <div class="ac-header__body">
         <div class="ac-header__title">需要你的确认</div>
-        <div class="ac-header__sub font-mono">{{ toolLabel }}</div>
+        <div class="ac-header__sub">{{ toolLabel }}</div>
       </div>
       <div :data-test="`confirm-actions-${stepRun.step_id}`" style="display: none" />
     </div>
@@ -61,18 +61,18 @@
         <p class="ac-desc">Agent 推荐了以下 ARX 模型阶次，可手动覆盖后确认：</p>
         <div class="ac-arx-grid">
           <div class="ac-arx-item">
-            <label class="ac-arx-label">na（输出阶）</label>
-            <span class="ac-arx-recommended font-mono">推荐: {{ arxRec.na }}</span>
+            <label class="ac-arx-label"><span class="font-mono">na</span>（输出阶）</label>
+            <span class="ac-arx-recommended">推荐: <span class="font-mono">{{ arxRec.na }}</span></span>
             <input v-model.number="arxOverride.na" type="number" min="1" max="20" class="ac-lag-input" />
           </div>
           <div class="ac-arx-item">
-            <label class="ac-arx-label">nb（输入阶）</label>
-            <span class="ac-arx-recommended font-mono">推荐: {{ arxRec.nb }}</span>
+            <label class="ac-arx-label"><span class="font-mono">nb</span>（输入阶）</label>
+            <span class="ac-arx-recommended">推荐: <span class="font-mono">{{ arxRec.nb }}</span></span>
             <input v-model.number="arxOverride.nb" type="number" min="1" max="20" class="ac-lag-input" />
           </div>
           <div class="ac-arx-item">
-            <label class="ac-arx-label">nk（纯延迟）</label>
-            <span class="ac-arx-recommended font-mono">推荐: {{ arxRec.nk }}</span>
+            <label class="ac-arx-label"><span class="font-mono">nk</span>（纯延迟）</label>
+            <span class="ac-arx-recommended">推荐: <span class="font-mono">{{ arxRec.nk }}</span></span>
             <input v-model.number="arxOverride.nk" type="number" min="0" max="20" class="ac-lag-input" />
           </div>
         </div>

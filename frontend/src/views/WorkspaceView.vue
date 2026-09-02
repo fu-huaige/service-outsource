@@ -46,9 +46,9 @@
           <div class="ws-sidebar__goal" :title="execution.plan?.goal">
             {{ execution.plan?.goal || '工业时序建模与优化任务' }}
           </div>
-          <div class="ws-sidebar__dataset-meta font-mono" v-if="execution?.dataset_id">
-            <span>数据集: {{ execution.dataset_id.slice(0, 8) }}…</span>
-            <span v-if="execution.current_version_id">v: {{ execution.current_version_id.slice(0, 6) }}</span>
+          <div class="ws-sidebar__dataset-meta" v-if="execution?.dataset_id">
+            <span>数据集: <span class="font-mono">{{ execution.dataset_id.slice(0, 8) }}…</span></span>
+            <span v-if="execution.current_version_id" class="font-mono">v: {{ execution.current_version_id.slice(0, 6) }}</span>
           </div>
 
           <!-- Step Progress -->
@@ -61,7 +61,7 @@
               @click="handleArtifactSelect(step.step_id)"
             >
               <span class="ws-progress-step__dot" />
-              <span class="ws-progress-step__name font-mono">{{ localizedStepName(step.tool) }}</span>
+              <span class="ws-progress-step__name">{{ localizedStepName(step.tool) }}</span>
             </div>
           </div>
         </div>
@@ -138,7 +138,7 @@
                 <span class="status-dot" :class="workflowClass(rec.workflow_status)" />
                 <span class="ws-recent-item__goal">{{ rec.plan?.goal || 'Agent Task' }}</span>
               </div>
-              <div class="ws-recent-item__bottom font-mono">
+              <div class="ws-recent-item__bottom">
                 <span class="ws-recent-item__status-text">{{ workflowLabel(rec.workflow_status) }}</span>
                 <span class="ws-recent-item__time">{{ formatRelativeTime(rec.created_at) }}</span>
               </div>

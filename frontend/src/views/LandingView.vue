@@ -1,5 +1,12 @@
 <template>
-  <div class="landing" ref="pageRoot">
+  <div
+    class="landing"
+    :class="{
+      'landing--reveals-ready': revealsReady,
+      'landing--hero-intro': heroIntro,
+    }"
+    ref="pageRoot"
+  >
     <!-- ── Header ─────────────────────────────────────────── -->
     <header class="landing-header">
       <div class="landing-container landing-header__inner">
@@ -24,7 +31,7 @@
     </header>
 
     <!-- ── Hero ───────────────────────────────────────────── -->
-    <section class="landing-hero">
+    <section class="landing-hero scroll-reveal scroll-reveal--hero scroll-reveal--visible" data-scroll-reveal>
       <div class="landing-container">
         <div class="hero-eyebrow font-mono">INDUSTRIAL AI AGENT WORKSPACE</div>
         <h1 class="hero-title">
@@ -146,7 +153,7 @@
     </section>
 
     <!-- ── Features ────────────────────────────────────────── -->
-    <section class="landing-section" id="features">
+    <section class="landing-section scroll-reveal" id="features" data-scroll-reveal>
       <div class="landing-container">
         <div class="section-label font-mono">CAPABILITIES</div>
         <h2 class="section-title">专为流程工业建模设计</h2>
@@ -163,7 +170,7 @@
     </section>
 
     <!-- ── Workflow ─────────────────────────────────────────── -->
-    <section class="landing-section" id="workflow">
+    <section class="landing-section scroll-reveal" id="workflow" data-scroll-reveal>
       <div class="landing-container">
         <div class="section-label font-mono">8-STAGE PIPELINE</div>
         <h2 class="section-title">Agent 自动执行完整建模闭环</h2>
@@ -182,7 +189,7 @@
     </section>
 
     <!-- ── Benchmark ────────────────────────────────────────── -->
-    <section class="landing-section" id="benchmark">
+    <section class="landing-section scroll-reveal" id="benchmark" data-scroll-reveal>
       <div class="landing-container">
         <div class="section-label font-mono">ABLATION RESULTS</div>
         <h2 class="section-title">消融对照实测基准</h2>
@@ -216,7 +223,7 @@
     </section>
 
     <!-- ── HITL Section ─────────────────────────────────────── -->
-    <section class="landing-section">
+    <section class="landing-section scroll-reveal" data-scroll-reveal>
       <div class="landing-container">
         <div class="section-label font-mono">HUMAN-IN-THE-LOOP</div>
         <h2 class="section-title">高影响操作，人工审核确认</h2>
@@ -228,18 +235,18 @@
               <div class="hitl-card__icon">⚠</div>
               <div>
                 <div class="hitl-card__title">需要你的确认</div>
-                <div class="hitl-card__sub font-mono">时滞补偿</div>
+                <div class="hitl-card__sub">时滞补偿</div>
               </div>
             </div>
             <div class="hitl-card__body">
               <p class="hitl-card__desc">Agent 估计了以下变量的时滞量，请审查后确认：</p>
               <div class="hitl-lag-row">
                 <span class="font-mono">u1</span>
-                <span class="font-mono hitl-lag-val">推荐: 4 采样点</span>
+                <span class="hitl-lag-val">推荐: <span class="font-mono">4</span> 采样点</span>
               </div>
               <div class="hitl-lag-row">
                 <span class="font-mono">u2</span>
-                <span class="font-mono hitl-lag-val">推荐: 2 采样点</span>
+                <span class="hitl-lag-val">推荐: <span class="font-mono">2</span> 采样点</span>
               </div>
             </div>
             <div class="hitl-card__actions">
@@ -275,7 +282,7 @@
     </section>
 
     <!-- ── CTA ─────────────────────────────────────────────── -->
-    <section class="landing-cta">
+    <section class="landing-cta scroll-reveal" data-scroll-reveal>
       <div class="landing-container">
         <h2 class="cta-title">准备好开始了吗？</h2>
         <p class="cta-sub">导入你的时序数据，让 Agent 完成从原始数据到经过验证的动态模型的全过程</p>
@@ -297,7 +304,7 @@
               <path d="M2 12l10 5 10-5"/>
             </svg>
           </div>
-          <span class="font-mono" style="font-size:12px;color:var(--text-muted)">IndusOpt 工模智优 A14</span>
+          <span class="landing-footer__wordmark"><span class="font-mono">IndusOpt</span> 工模智优 <span class="font-mono">A14</span></span>
         </div>
         <div class="landing-footer__text">Industrial AI Agent Workspace · 面向流程工业系统辨识</div>
       </div>
@@ -306,12 +313,88 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { markLandingEntered } from '../router/landingEntry';
 
 const router = useRouter();
 const pageRoot = ref<HTMLElement | null>(null);
+const revealsReady = ref(false);
+const heroIntro = ref(false);
+
+type ScrollDirection = 'up' | 'down';
+
+let revealObserver: IntersectionObserver | null = null;
+let scrollContainer: HTMLElement | null = null;
+let lastScrollTop = 0;
+let scrollDirection: ScrollDirection = 'down';
+let heroIntroTimer: number | undefined;
+
+function updateScrollDirection() {
+  if (!scrollContainer) return;
+
+  const nextScrollTop = scrollContainer.scrollTop;
+  if (Math.abs(nextScrollTop - lastScrollTop) > 2) {
+    scrollDirection = nextScrollTop > lastScrollTop ? 'down' : 'up';
+  }
+  lastScrollTop = nextScrollTop;
+}
+
+function setRevealDirection(element: HTMLElement, direction: ScrollDirection) {
+  element.dataset.scrollRevealDirection = direction;
+}
+
+onMounted(() => {
+  const root = pageRoot.value;
+  if (!root || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  const sections = Array.from(root.querySelectorAll<HTMLElement>('[data-scroll-reveal]'));
+  if (!sections.length) return;
+
+  scrollContainer = root;
+  lastScrollTop = root.scrollTop;
+  root.addEventListener('scroll', updateScrollDirection, { passive: true });
+
+  for (const section of sections) {
+    setRevealDirection(section, 'down');
+  }
+
+  heroIntro.value = true;
+  revealsReady.value = true;
+  heroIntroTimer = window.setTimeout(() => {
+    heroIntro.value = false;
+  }, 720);
+  revealObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        const section = entry.target as HTMLElement;
+        if (entry.isIntersecting) {
+          setRevealDirection(section, scrollDirection);
+          section.classList.add('scroll-reveal--visible');
+          continue;
+        }
+
+        section.classList.remove('scroll-reveal--visible');
+        setRevealDirection(section, entry.boundingClientRect.top < 0 ? 'up' : 'down');
+      }
+    },
+    {
+      root,
+      rootMargin: '-10% 0px -12% 0px',
+      threshold: 0.12,
+    },
+  );
+
+  for (const section of sections) revealObserver.observe(section);
+});
+
+onBeforeUnmount(() => {
+  if (heroIntroTimer !== undefined) window.clearTimeout(heroIntroTimer);
+  revealObserver?.disconnect();
+  revealObserver = null;
+  scrollContainer?.removeEventListener('scroll', updateScrollDirection);
+  scrollContainer = null;
+});
 
 function enterApp() {
   markLandingEntered();
@@ -401,6 +484,45 @@ const benchmarkRows = [
   position: relative;
 }
 
+.scroll-reveal {
+  --scroll-reveal-offset: 16px;
+}
+
+.landing--reveals-ready .scroll-reveal {
+  opacity: 0.08;
+  transform: translate3d(0, var(--scroll-reveal-offset), 0);
+  transition:
+    opacity 680ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 680ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.landing--reveals-ready .scroll-reveal[data-scroll-reveal-direction='up'] {
+  --scroll-reveal-offset: -16px;
+}
+
+.landing--reveals-ready .scroll-reveal.scroll-reveal--visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  will-change: auto;
+}
+
+.landing--reveals-ready.landing--hero-intro .scroll-reveal--hero.scroll-reveal--visible {
+  animation: landing-hero-reveal 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes landing-hero-reveal {
+  from {
+    opacity: 0.08;
+    transform: translate3d(0, 16px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
 .landing-container {
   max-width: 1120px;
   margin: 0 auto;
@@ -446,7 +568,7 @@ const benchmarkRows = [
 
 .landing-logo__name {
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 700;
   color: #20231F;
   letter-spacing: -0.02em;
 }
@@ -512,7 +634,7 @@ const benchmarkRows = [
 .hero-eyebrow {
   display: inline-block;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   color: #5D7E58;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -525,10 +647,10 @@ const benchmarkRows = [
 
 .hero-title {
   font-size: clamp(34px, 5.5vw, 60px);
-  font-weight: 800;
+  font-weight: 700;
   color: #20231F;
-  letter-spacing: -0.04em;
-  line-height: 1.12;
+  letter-spacing: normal;
+  line-height: 1.18;
   margin-bottom: var(--space-5);
   display: flex;
   flex-direction: column;
@@ -626,7 +748,7 @@ const benchmarkRows = [
 
 .hero-stat__num {
   font-size: 26px;
-  font-weight: 800;
+  font-weight: 600;
   color: #282C27;
   letter-spacing: -0.03em;
 }
@@ -836,14 +958,15 @@ const benchmarkRows = [
   letter-spacing: 0.1em;
   text-transform: uppercase;
   margin-bottom: var(--space-2);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .section-title {
   font-size: clamp(26px, 3.2vw, 38px);
-  font-weight: 800;
+  font-weight: 600;
   color: #20231F;
-  letter-spacing: -0.03em;
+  letter-spacing: normal;
+  line-height: 1.25;
   margin-bottom: var(--space-2);
 }
 
@@ -924,7 +1047,7 @@ const benchmarkRows = [
   font-size: var(--font-size-xs);
   color: #9CA19A;
   flex-shrink: 0;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .workflow-step__body {
@@ -945,7 +1068,7 @@ const benchmarkRows = [
 
 .workflow-step__badge {
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   padding: 3px 9px;
   border-radius: var(--radius-full);
   font-family: var(--font-mono);
@@ -1157,7 +1280,7 @@ const benchmarkRows = [
 
 .hitl-desc__num {
   font-size: 20px;
-  font-weight: 800;
+  font-weight: 600;
   color: #BEC2BC;
   flex-shrink: 0;
   line-height: 1.2;
@@ -1186,9 +1309,10 @@ const benchmarkRows = [
 
 .cta-title {
   font-size: clamp(28px, 4vw, 44px);
-  font-weight: 800;
+  font-weight: 600;
   color: #20231F;
-  letter-spacing: -0.03em;
+  letter-spacing: normal;
+  line-height: 1.25;
   margin-bottom: var(--space-3);
 }
 
@@ -1224,5 +1348,24 @@ const benchmarkRows = [
 .landing-footer__text {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
+}
+
+.landing-footer__wordmark {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing {
+    scroll-behavior: auto;
+  }
+
+  .landing--reveals-ready .scroll-reveal,
+  .landing--reveals-ready .scroll-reveal.scroll-reveal--visible {
+    opacity: 1;
+    transform: none;
+    transition: none;
+    animation: none;
+  }
 }
 </style>

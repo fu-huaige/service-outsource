@@ -53,8 +53,11 @@
         <!-- 1. Recent Tasks Mode -->
         <div v-if="recentExecutions.length > 0" class="home-recent">
           <div class="home-section-header">
-            <span class="home-section-label font-mono">RECENT TASKS · 最近任务</span>
-            <router-link to="/runs" class="home-section-more font-mono">全部记录 →</router-link>
+            <span class="home-section-label">
+              <span class="home-section-label__technical font-mono">RECENT TASKS</span>
+              <span class="home-section-label__localized"> · 最近任务</span>
+            </span>
+            <router-link to="/runs" class="home-section-more">全部记录 →</router-link>
           </div>
           <div class="recent-list">
             <router-link
@@ -68,8 +71,8 @@
               </div>
               <div class="recent-item__body">
                 <div class="recent-item__goal">{{ exec.plan?.goal || 'Agent Task' }}</div>
-                <div class="recent-item__meta font-mono">
-                  <span v-if="exec.dataset_id">Dataset: {{ exec.dataset_id.slice(0, 8) }}…</span>
+                <div class="recent-item__meta">
+                  <span v-if="exec.dataset_id" class="font-mono">Dataset: {{ exec.dataset_id.slice(0, 8) }}…</span>
                   <span class="recent-item__time">{{ formatRelativeTime(exec.created_at) }}</span>
                 </div>
               </div>
@@ -85,7 +88,10 @@
         <!-- 2. Suggested Workflows Mode -->
         <div v-else class="home-workflows">
           <div class="home-section-header">
-            <span class="home-section-label font-mono">SUGGESTED WORKFLOWS · 推荐场景</span>
+            <span class="home-section-label">
+              <span class="home-section-label__technical font-mono">SUGGESTED WORKFLOWS</span>
+              <span class="home-section-label__localized"> · 推荐场景</span>
+            </span>
           </div>
           <div class="workflow-grid">
             <div
@@ -263,7 +269,7 @@ onMounted(async () => {
   font-size: clamp(28px, 3vw, 34px);
   font-weight: 600;
   color: #171717;
-  letter-spacing: -0.02em;
+  letter-spacing: normal;
   line-height: 1.2;
 }
 
@@ -336,9 +342,16 @@ onMounted(async () => {
 .home-section-label {
   font-size: 11px;
   color: #8E8E93;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   font-weight: 600;
+}
+
+.home-section-label__technical {
+  letter-spacing: 0.08em;
+}
+
+.home-section-label__localized {
+  font-weight: 500;
+  letter-spacing: normal;
 }
 
 .home-section-more {

@@ -59,8 +59,8 @@
         </div>
 
         <div class="composer-footer__right">
-          <span class="composer-hint font-mono">
-            {{ isMac ? '↵ 发送 · ⇧↵ 换行' : '↵ 发送 · Shift+↵ 换行' }}
+          <span class="composer-hint">
+            <span class="font-mono">↵</span> 发送 · <span class="font-mono">{{ isMac ? '⇧↵' : 'Shift+↵' }}</span> 换行
           </span>
 
           <!-- Send / Stop Button -->
@@ -95,7 +95,7 @@
       class="dataset-picker"
     >
       <div class="dataset-picker__header">
-        <span class="label font-mono">选择挂载数据集</span>
+        <span class="label">选择挂载数据集</span>
         <input
           ref="pickerInputRef"
           v-model="datasetSearch"
@@ -113,8 +113,8 @@
           @click="attachDataset(ds)"
         >
           <span class="dataset-picker__name">{{ ds.name }}</span>
-          <span class="dataset-picker__meta font-mono">
-            {{ ds.row_count ? `${ds.row_count.toLocaleString()} 行` : '' }}
+          <span v-if="ds.row_count" class="dataset-picker__meta">
+            <span class="font-mono">{{ ds.row_count.toLocaleString() }}</span> 行
           </span>
         </button>
         <div v-if="filteredDatasets.length === 0" class="dataset-picker__empty">
@@ -441,6 +441,13 @@ const vClickOutside = {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.dataset-picker__header .label {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .dataset-picker__search {
