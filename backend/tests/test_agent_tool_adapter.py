@@ -21,12 +21,15 @@ from app.models.agent_execution import AgentExecutionSession
 from app.schemas.copilot import ExecutionPlan, ExecutionPlanStep
 from app.services import agent_service, agent_tool_adapter
 from app.services.agent_execution_service import (
+    approve_step,
     create_execution,
+    get_execution,
     mark_step_failed,
     mark_step_succeeded,
     start_step,
 )
 from app.services.agent_tool_adapter import execute_agent_tool
+from app.services.agent_arx_modeling_service import ArxStructureError
 from app.services.cleaning_service import CleaningDomainError
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
@@ -152,6 +155,17 @@ async def _create_and_start(
             plan=plan,
             compliance_proof=proof,  # type: ignore[arg-type]
         )
+        execution = await get_execution(session, execution_id=execution.id)
+        target = next(step for step in execution.step_runs if step.step_id == step_id)
+        for prerequisite in sorted(execution.step_runs, key=lambda item: item.sequence):
+            if prerequisite.sequence >= target.sequence:
+                break
+            execution = await start_step(
+                session, execution_id=execution.id, step_id=prerequisite.step_id
+            )
+            execution = await mark_step_succeeded(
+                session, execution_id=execution.id, step_id=prerequisite.step_id
+            )
         return await start_step(session, execution_id=execution.id, step_id=step_id)
 
 
@@ -182,7 +196,10 @@ def test_cleaning_adapter_uses_formal_service_and_preserves_source_version(
 ) -> None:
     dataset_id, v0 = _upload_controlled_version(adapter_harness)
     plan, proof = _plan(
-        ExecutionPlanStep(step_id="s1", tool="clean_data"), dataset_id=dataset_id
+        ExecutionPlanStep(step_id="p1", tool="profile_dataset"),
+        ExecutionPlanStep(step_id="p2", tool="detect_anomalies", depends_on=["p1"]),
+        ExecutionPlanStep(step_id="s1", tool="clean_data", depends_on=["p2"]),
+        dataset_id=dataset_id,
     )
     started = asyncio.run(
         _create_and_start(
@@ -199,7 +216,7 @@ def test_cleaning_adapter_uses_formal_service_and_preserves_source_version(
     async def run() -> tuple[UUID, object]:
         async with adapter_harness.session_factory() as session:
             execution = await _load_execution(adapter_harness, started.id)
-            step = execution.step_runs[0]
+            step = next(item for item in execution.step_runs if item.step_id == "s1")
             result = await execute_agent_tool(
                 session,
                 execution=execution,
@@ -224,7 +241,7 @@ def test_cleaning_adapter_uses_formal_service_and_preserves_source_version(
     assert result.result_version_id != v0
     assert result.processing_run_ids
     execution = asyncio.run(_load_execution(adapter_harness, execution_id))
-    step = execution.step_runs[0]
+    step = next(item for item in execution.step_runs if item.step_id == "s1")
     assert step.source_version_id == v0
     assert step.result_version_id == result.result_version_id
     assert execution.current_version_id == result.result_version_id
@@ -241,7 +258,9 @@ def test_delay_adapter_reads_cleaned_current_version_without_creating_another_ve
 ) -> None:
     dataset_id, v0 = _upload_controlled_version(adapter_harness)
     plan, proof = _plan(
-        ExecutionPlanStep(step_id="s1", tool="clean_data"),
+        ExecutionPlanStep(step_id="p1", tool="profile_dataset"),
+        ExecutionPlanStep(step_id="p2", tool="detect_anomalies", depends_on=["p1"]),
+        ExecutionPlanStep(step_id="s1", tool="clean_data", depends_on=["p2"]),
         ExecutionPlanStep(step_id="s2", tool="estimate_delays", depends_on=["s1"]),
         dataset_id=dataset_id,
     )
@@ -259,7 +278,7 @@ def test_delay_adapter_reads_cleaned_current_version_without_creating_another_ve
     async def run() -> AgentExecutionSession:
         async with adapter_harness.session_factory() as session:
             execution = await _load_execution(adapter_harness, started.id)
-            cleaning = execution.step_runs[0]
+            cleaning = next(item for item in execution.step_runs if item.step_id == "s1")
             cleaned = await execute_agent_tool(
                 session,
                 execution=execution,
@@ -296,7 +315,8 @@ def test_delay_adapter_reads_cleaned_current_version_without_creating_another_ve
             )
 
     execution = asyncio.run(run())
-    cleaning, delay = execution.step_runs
+    cleaning = next(item for item in execution.step_runs if item.step_id == "s1")
+    delay = next(item for item in execution.step_runs if item.step_id == "s2")
     assert cleaning.source_version_id == v0
     assert cleaning.result_version_id is not None
     assert delay.source_version_id == cleaning.result_version_id
@@ -310,7 +330,9 @@ def test_failed_formal_cleaning_keeps_current_version_and_stops_downstream(
 ) -> None:
     dataset_id, v0 = _upload_controlled_version(adapter_harness, numeric=False)
     plan, proof = _plan(
-        ExecutionPlanStep(step_id="s1", tool="clean_data"),
+        ExecutionPlanStep(step_id="p1", tool="profile_dataset"),
+        ExecutionPlanStep(step_id="p2", tool="detect_anomalies", depends_on=["p1"]),
+        ExecutionPlanStep(step_id="s1", tool="clean_data", depends_on=["p2"]),
         ExecutionPlanStep(step_id="s2", tool="estimate_delays", depends_on=["s1"]),
         dataset_id=dataset_id,
     )
@@ -328,7 +350,7 @@ def test_failed_formal_cleaning_keeps_current_version_and_stops_downstream(
     async def run() -> AgentExecutionSession:
         async with adapter_harness.session_factory() as session:
             execution = await _load_execution(adapter_harness, started.id)
-            step = execution.step_runs[0]
+            step = next(item for item in execution.step_runs if item.step_id == "s1")
             with pytest.raises(CleaningDomainError) as raised:
                 await execute_agent_tool(
                     session,
@@ -348,8 +370,8 @@ def test_failed_formal_cleaning_keeps_current_version_and_stops_downstream(
     execution = asyncio.run(run())
     assert execution.workflow_status == "FAILED"
     assert execution.current_version_id == v0
-    assert execution.step_runs[0].status == "FAILED"
-    assert execution.step_runs[1].status == "PENDING"
+    assert next(item for item in execution.step_runs if item.step_id == "s1").status == "FAILED"
+    assert next(item for item in execution.step_runs if item.step_id == "s2").status == "PENDING"
 
 
 def test_chat_cleaning_then_delay_persists_v1_as_delay_source(
@@ -612,9 +634,12 @@ def test_direct_lag_approve_creates_v2_once_and_duplicate_is_idempotent(
     assert persisted_lag.result_version_id == v2
     assert persisted_lag.processing_run_ids
     assert persisted.current_version_id == v2
+    fit = next(step for step in persisted.step_runs if step.tool_name == "fit_arx")
+    assert fit.status == "WAITING_CONFIRMATION"
+    assert fit.input_payload["arx_structure_recommendation"]["source_version_id"] == str(v2)
     assert next(
         step for step in persisted.step_runs if step.sequence > persisted_lag.sequence
-    ).status == "PENDING"
+    ).status == "SUCCEEDED"
     v2_node, _ = asyncio.run(_version_artifact(adapter_harness, v2))
     _, v1_bytes_after = asyncio.run(_version_artifact(adapter_harness, v1))
     assert v2_node.parent_version_id == v1
@@ -640,6 +665,80 @@ def test_direct_lag_approve_creates_v2_once_and_duplicate_is_idempotent(
     )
     assert changed.status_code == 409, changed.text
     assert asyncio.run(_counts(adapter_harness, execution.dataset_id)) == after_first
+
+
+def test_fit_adapter_rejects_raw_version_before_creating_model_run(
+    adapter_harness: AdapterHarness,
+) -> None:
+    dataset_id, v0 = _upload_controlled_version(adapter_harness)
+    plan = ExecutionPlan(
+        goal="direct adapter hard guard",
+        dataset_id=dataset_id,
+        steps=[
+            ExecutionPlanStep(step_id="p1", tool="profile_dataset"),
+            ExecutionPlanStep(
+                step_id="s1",
+                tool="fit_arx",
+                depends_on=["p1"],
+                parameters={
+                    "input_columns": ["u1"],
+                    "output_column": "y",
+                    "na": 1,
+                    "nb": {"u1": 1},
+                    "delays": {"u1": 0},
+                },
+                requires_confirmation=True,
+            ),
+        ],
+    )
+    proof = verify_plan(
+        [step.model_dump() for step in plan.steps],
+        code_version=agent_service.CODE_VERSION,
+        lag_ready=True,
+    )
+    assert proof.passed
+
+    async def run() -> tuple[str, int]:
+        async with adapter_harness.session_factory() as session:
+            execution = await create_execution(
+                session,
+                dataset_id=dataset_id,
+                initial_version_id=v0,
+                planner_source="test-bypass",
+                plan=plan,
+                compliance_proof=proof,
+            )
+            execution = await start_step(session, execution_id=execution.id, step_id="p1")
+            execution = await mark_step_succeeded(
+                session, execution_id=execution.id, step_id="p1"
+            )
+            execution = await start_step(session, execution_id=execution.id, step_id="s1")
+            execution = await approve_step(session, execution_id=execution.id, step_id="s1")
+            fit = next(step for step in execution.step_runs if step.step_id == "s1")
+            with pytest.raises(ArxStructureError) as raised:
+                await execute_agent_tool(
+                    session,
+                    execution=execution,
+                    step=fit,
+                    parameters=fit.input_payload["parameters"],
+                    artifact_root=adapter_harness.artifact_root,
+                )
+            run_count = int(
+                await session.scalar(
+                    select(func.count())
+                    .select_from(ProcessingRun)
+                    .where(
+                        ProcessingRun.dataset_id == dataset_id,
+                        ProcessingRun.run_type == "modeling.arx",
+                    )
+                )
+                or 0
+            )
+            return raised.value.code, run_count
+
+    error_code, run_count = asyncio.run(run())
+    assert error_code == "ARX_LAG_COMPENSATED_VERSION_REQUIRED"
+    assert run_count == 0
 
 
 def test_valid_partial_override_merges_with_recommendation(

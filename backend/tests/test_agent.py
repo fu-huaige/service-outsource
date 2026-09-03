@@ -96,7 +96,24 @@ class TestPlanning:
         order = [step.tool for step in steps]
         assert order.index("profile_dataset") < order.index("detect_anomalies")
         assert order.index("detect_anomalies") < order.index("clean_data")
+        assert order.index("estimate_delays") < order.index("apply_lag_compensation")
+        assert order.index("apply_lag_compensation") < order.index("fit_arx")
         assert order.index("fit_arx") < order.index("evaluate_model")
+
+    @pytest.mark.parametrize("message", ["ARX", "建模", "辨识", "动态模型", "完整建模流程"])
+    def test_model_goals_include_the_complete_lag_chain(self, message: str) -> None:
+        steps, _, _ = plan_for(message)
+        by_tool = {step.tool: step for step in steps}
+        order = [step.tool for step in steps]
+
+        assert order.index("estimate_delays") < order.index("apply_lag_compensation")
+        assert order.index("apply_lag_compensation") < order.index("fit_arx")
+        assert by_tool["apply_lag_compensation"].depends_on == (
+            by_tool["estimate_delays"].step_id,
+        )
+        assert by_tool["fit_arx"].depends_on == (
+            by_tool["apply_lag_compensation"].step_id,
+        )
 
     def test_optimization_modelling_uses_the_saved_model_producer_chain(self) -> None:
         steps, _, _ = plan_for("进行 ARX 建模并闭环寻优 2 次试验")
@@ -160,6 +177,55 @@ class TestCompliance:
         )
         assert not proof.passed
         assert any(check.name == "dependencies_resolved" for check in proof.failures)
+
+    def test_a_static_prerequisite_must_be_present_and_declared(self) -> None:
+        proof = verify_plan(
+            [
+                {"step_id": "s1", "tool": "profile_dataset", "depends_on": []},
+                {
+                    "step_id": "s2",
+                    "tool": "apply_lag_compensation",
+                    "depends_on": ["s1"],
+                },
+            ]
+        )
+
+        assert not proof.passed
+        ordering = next(check for check in proof.failures if check.name == "tool_ordering")
+        assert "缺少前置 estimate_delays" in ordering.detail
+
+    def test_fit_requires_plan_lag_chain_when_context_is_not_ready(self) -> None:
+        proof = verify_plan(
+            [
+                {"step_id": "s1", "tool": "profile_dataset", "depends_on": []},
+                {
+                    "step_id": "s2",
+                    "tool": "fit_arx",
+                    "depends_on": ["s1"],
+                    "requires_confirmation": True,
+                },
+            ],
+            lag_ready=False,
+        )
+
+        assert not proof.passed
+        assert any(check.name == "arx_lag_ready" for check in proof.failures)
+
+    def test_fit_accepts_server_verified_lag_ready_context_without_duplicate_lag(self) -> None:
+        proof = verify_plan(
+            [
+                {"step_id": "s1", "tool": "profile_dataset", "depends_on": []},
+                {
+                    "step_id": "s2",
+                    "tool": "fit_arx",
+                    "depends_on": ["s1"],
+                    "requires_confirmation": True,
+                },
+            ],
+            lag_ready=True,
+        )
+
+        assert proof.passed, [check.detail for check in proof.failures]
 
     def test_pointing_a_step_at_the_test_partition_is_rejected(self) -> None:
         proof = verify_plan(
@@ -356,6 +422,8 @@ class TestAgentApi:
         assert recommendation["lag_compensation_version_id"] == version_id
         assert recommendation["recommended_delays"] == {"u1": 0, "u2": 0}
         planned_steps = {step["tool"]: step["status"] for step in data["plan"]["steps"]}
+        assert "estimate_delays" not in planned_steps
+        assert "apply_lag_compensation" not in planned_steps
         assert planned_steps["evaluate_model"] == "pending"
     def test_high_impact_step_waits_for_confirmation_instead_of_running(
         self, client: TestClient

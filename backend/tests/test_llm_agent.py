@@ -35,11 +35,23 @@ GOOD_PLAN = json.dumps(
             {"step_id": "s1", "tool": "profile_dataset", "depends_on": [], "parameters": {}},
             {
                 "step_id": "s2",
+                "tool": "estimate_delays",
+                "depends_on": ["s1"],
+                "parameters": {},
+            },
+            {
+                "step_id": "s3",
+                "tool": "apply_lag_compensation",
+                "depends_on": ["s2"],
+                "parameters": {},
+            },
+            {
+                "step_id": "s4",
                 "tool": "detect_dynamic_segments",
                 "depends_on": ["s1"],
                 "parameters": {"window_size": 80},
             },
-            {"step_id": "s3", "tool": "fit_arx", "depends_on": ["s2"], "parameters": {}},
+            {"step_id": "s5", "tool": "fit_arx", "depends_on": ["s3", "s4"], "parameters": {}},
         ],
         "assumptions": ["按工程师要求提取动态段后直接建模。"],
     },
@@ -94,11 +106,29 @@ class TestLlmPlanning:
         assert outcome.llm_authored
         assert [step.tool for step in outcome.steps] == [
             "profile_dataset",
+            "estimate_delays",
+            "apply_lag_compensation",
             "detect_dynamic_segments",
             "fit_arx",
         ]
-        assert outcome.steps[1].parameters["window_size"] == 80
+        assert outcome.steps[3].parameters["window_size"] == 80
         assert outcome.fallback_reason is None
+
+    def test_a_model_plan_without_the_lag_chain_is_rejected(self) -> None:
+        missing_lag = json.dumps(
+            {
+                "steps": [
+                    {"step_id": "s1", "tool": "profile_dataset", "depends_on": []},
+                    {"step_id": "s2", "tool": "fit_arx", "depends_on": ["s1"]},
+                ]
+            }
+        )
+
+        outcome = plan_with(missing_lag)
+
+        assert not outcome.llm_authored
+        assert "lag-ready" in (outcome.fallback_reason or "")
+        assert "apply_lag_compensation" in [step.tool for step in outcome.steps]
 
     def test_an_invented_tool_is_refused(self) -> None:
         """The model does not get to expand its own capability surface."""

@@ -45,17 +45,25 @@ from app.schemas.copilot import (
 from app.schemas.modeling import ArxFitRequest
 from app.schemas.optimization import OptimizationStartRequest
 from app.schemas.preprocessing import SegmentRequest
-from app.services.agent_arx_modeling_service import prepare_arx_confirmation
+from app.services.agent_arx_modeling_service import (
+    ArxStructureError,
+    prepare_arx_confirmation,
+    resolve_arx_lag_provenance,
+)
 from app.services.agent_execution_service import (
     claim_approved_optimization_step,
     create_execution,
     get_execution,
     mark_step_failed,
+    mark_step_preparation_failed,
     mark_step_succeeded,
     start_step,
 )
-from app.services.agent_feature_selection_service import prepare_feature_confirmation
-from app.services.agent_lag_apply_service import prepare_lag_confirmation
+from app.services.agent_feature_selection_service import (
+    FeatureSelectionError,
+    prepare_feature_confirmation,
+)
+from app.services.agent_lag_apply_service import LagOverrideError, prepare_lag_confirmation
 from app.services.agent_tool_adapter import AgentToolAdapterError, execute_agent_tool
 from app.services.cleaning_service import CleaningDomainError
 from app.services.contract_stubs import completed_task
@@ -217,14 +225,52 @@ async def run_copilot(
 ) -> CopilotChatData:
     """Plan, verify, execute once, and mirror real outcomes into durable workflow state."""
 
+    series: VersionSeries | None = None
+    lag_ready: bool | None = None
+    if payload.active_version_id is not None:
+        try:
+            series = await load_version_series(
+                session,
+                version_id=payload.active_version_id,
+                artifact_root=artifact_root,
+                dataset_id=payload.dataset_id,
+            )
+            input_columns, _ = series.resolve_columns(input_columns=None, output_column=None)
+            try:
+                await resolve_arx_lag_provenance(
+                    session,
+                    version_id=series.version_id,
+                    input_columns=input_columns,
+                )
+            except ArxStructureError as error:
+                if error.code not in {
+                    "ARX_LAG_COMPENSATED_VERSION_REQUIRED",
+                    "ARX_LAG_PROVENANCE_INCOMPLETE",
+                }:
+                    raise
+                lag_ready = False
+            else:
+                lag_ready = True
+        except VersionDataError as error:
+            raise AgentDomainError(
+                error.code, error.message, status_code=error.status_code, details=error.details
+            ) from error
+
     intent = parse_intent(payload.message)
     planner = LlmPlanner(provider or _resolve_provider(), code_version=CODE_VERSION)
-    outcome: PlanOutcome = planner.plan(payload.message, intent)
+    outcome: PlanOutcome = planner.plan(payload.message, intent, lag_ready=lag_ready)
     steps, assumptions, stop_conditions = (
         outcome.steps,
         list(outcome.assumptions),
         outcome.stop_conditions,
     )
+    steps, lag_steps_removed = _normalize_plan_for_lag_context(
+        steps, lag_ready=lag_ready
+    )
+    if lag_steps_removed:
+        assumptions.append(
+            "当前 DatasetVersion 已由服务器验证为时滞补偿就绪，计划已跳过重复的时滞估计与补偿。"
+        )
     if outcome.fallback_reason:
         assumptions.append(f"未采用大模型计划：{outcome.fallback_reason}")
 
@@ -241,7 +287,12 @@ async def run_copilot(
         }
         for step in steps
     ]
-    proof = verify_plan(raw_steps, code_version=CODE_VERSION, confirmed_steps=confirmed)
+    proof = verify_plan(
+        raw_steps,
+        code_version=CODE_VERSION,
+        confirmed_steps=confirmed,
+        lag_ready=lag_ready,
+    )
     execution_plan = ExecutionPlan(
         goal=payload.message,
         dataset_id=payload.dataset_id,
@@ -261,22 +312,10 @@ async def run_copilot(
 
     run_id = uuid4()
     executions: list[StepExecution] = []
-    series: VersionSeries | None = None
     persistent_execution: AgentExecutionSession | None = None
 
     if proof.passed and payload.active_version_id is not None:
-        try:
-            series = await load_version_series(
-                session,
-                version_id=payload.active_version_id,
-                artifact_root=artifact_root,
-                dataset_id=payload.dataset_id,
-            )
-        except VersionDataError as error:
-            raise AgentDomainError(
-                error.code, error.message, status_code=error.status_code, details=error.details
-            ) from error
-
+        assert series is not None
         persistent_execution = await create_execution(
             session,
             dataset_id=series.dataset_id,
@@ -381,8 +420,96 @@ _FORMAL_ADAPTER_TOOLS = frozenset(
 _DEFERRED_TOOLS = frozenset({"generate_report", "export_dataset"})
 
 
+def _normalize_plan_for_lag_context(
+    steps: list[PlannedStep], *, lag_ready: bool | None
+) -> tuple[list[PlannedStep], bool]:
+    """Remove redundant lag work only when immutable server lineage proves readiness."""
+
+    if lag_ready is not True or not any(step.tool == "fit_arx" for step in steps):
+        return steps, False
+    removed_ids = {
+        step.step_id
+        for step in steps
+        if step.tool in {"estimate_delays", "apply_lag_compensation"}
+    }
+    if not removed_ids:
+        return steps, False
+
+    by_id = {step.step_id: step for step in steps}
+
+    def retained_dependencies(step_id: str) -> list[str]:
+        if step_id not in removed_ids:
+            return [step_id]
+        expanded: list[str] = []
+        for dependency in by_id[step_id].depends_on:
+            for retained in retained_dependencies(dependency):
+                if retained not in expanded:
+                    expanded.append(retained)
+        return expanded
+
+    kept = [step for step in steps if step.step_id not in removed_ids]
+    new_ids = {step.step_id: f"s{index}" for index, step in enumerate(kept, start=1)}
+    normalized: list[PlannedStep] = []
+    for step in kept:
+        dependencies: list[str] = []
+        for dependency in step.depends_on:
+            for retained in retained_dependencies(dependency):
+                mapped = new_ids[retained]
+                if mapped not in dependencies:
+                    dependencies.append(mapped)
+        normalized.append(
+            PlannedStep(
+                step_id=new_ids[step.step_id],
+                tool=step.tool,
+                depends_on=tuple(dependencies),
+                parameters=dict(step.parameters),
+                requires_confirmation=step.requires_confirmation,
+            )
+        )
+    return normalized, True
+
+
 def _uses_formal_tool_adapter(steps: list[PlannedStep]) -> bool:
     return any(step.tool in _FORMAL_ADAPTER_TOOLS for step in steps)
+
+
+async def continue_agent_execution(
+    session: AsyncSession,
+    *,
+    execution_id: UUID,
+    artifact_root: Path,
+) -> AgentExecutionSession:
+    """Resume pending ordinary steps until the next persisted workflow boundary."""
+
+    execution = await get_execution(session, execution_id=execution_id)
+    if execution.workflow_status in {"SUCCEEDED", "FAILED", "CANCELLED", "WAITING_CONFIRMATION"}:
+        return execution
+    series = await load_version_series(
+        session,
+        version_id=execution.current_version_id,
+        dataset_id=execution.dataset_id,
+        artifact_root=artifact_root,
+    )
+    plan = ExecutionPlan.model_validate(execution.plan_json)
+    steps = [
+        PlannedStep(
+            step_id=step.step_id,
+            tool=step.tool,
+            depends_on=tuple(step.depends_on),
+            parameters=dict(step.parameters),
+            requires_confirmation=step.requires_confirmation,
+        )
+        for step in plan.steps
+    ]
+    execution, _ = await _execute_with_formal_tools(
+        session,
+        execution=execution,
+        series=series,
+        steps=steps,
+        hints={},
+        artifact_root=artifact_root,
+    )
+    return execution
 
 
 async def _execute_with_formal_tools(
@@ -396,15 +523,19 @@ async def _execute_with_formal_tools(
 ) -> tuple[AgentExecutionSession, list[StepExecution]]:
     """Run a mixed plan once while formal tools resolve the latest persisted Version."""
 
+    current = await get_execution(session, execution_id=execution.id)
     try:
         input_columns, output_column = series.resolve_columns(
             input_columns=None, output_column=None
         )
     except VersionDataError as error:
-        first = steps[0] if steps else None
+        pending_ids = {
+            step.step_id for step in current.step_runs if step.status == "PENDING"
+        }
+        first = next((step for step in steps if step.step_id in pending_ids), None)
         if first is None:
-            return execution, []
-        current = await start_step(session, execution_id=execution.id, step_id=first.step_id)
+            return current, []
+        current = await start_step(session, execution_id=current.id, step_id=first.step_id)
         current = await mark_step_failed(
             session,
             execution_id=current.id,
@@ -431,10 +562,16 @@ async def _execute_with_formal_tools(
         "na": 2,
         "nb": 2,
     }
-    current = execution
     executions: list[StepExecution] = []
 
     for step in steps:
+        persisted_step = next(item for item in current.step_runs if item.step_id == step.step_id)
+        if persisted_step.status in {"SUCCEEDED", "SKIPPED"}:
+            continue
+        if persisted_step.status != "PENDING":
+            break
+        if step.tool == "evaluate_model":
+            break
         if step.tool in _DEFERRED_TOOLS:
             executions.append(
                 StepExecution(
@@ -449,19 +586,46 @@ async def _execute_with_formal_tools(
             break
 
         confirmation_input: dict[str, Any] | None = None
-        if step.tool == "apply_lag_compensation":
-            confirmation_input = await prepare_lag_confirmation(current, step_id=step.step_id)
-        elif step.tool == "select_variables":
-            confirmation_input = await prepare_feature_confirmation(
-                current, step_id=step.step_id
-            )
-        elif step.tool == "fit_arx":
-            confirmation_input = await prepare_arx_confirmation(
+        try:
+            if step.tool == "apply_lag_compensation":
+                confirmation_input = await prepare_lag_confirmation(
+                    current, step_id=step.step_id
+                )
+            elif step.tool == "select_variables":
+                confirmation_input = await prepare_feature_confirmation(
+                    current, step_id=step.step_id
+                )
+            elif step.tool == "fit_arx":
+                confirmation_input = await prepare_arx_confirmation(
+                    session,
+                    current,
+                    step_id=step.step_id,
+                    artifact_root=artifact_root,
+                )
+        except (
+            LagOverrideError,
+            FeatureSelectionError,
+            ArxStructureError,
+            VersionDataError,
+        ) as error:
+            current = await mark_step_preparation_failed(
                 session,
-                current,
+                execution_id=current.id,
                 step_id=step.step_id,
-                artifact_root=artifact_root,
+                error_code=error.code,
+                error_message=error.message,
             )
+            executions.append(
+                StepExecution(
+                    step_id=step.step_id,
+                    tool=step.tool,
+                    status="failed",
+                    parameters=dict(step.parameters),
+                    summary=error.message,
+                    error_code=error.code,
+                )
+            )
+            break
 
         current = await start_step(
             session,
@@ -536,8 +700,12 @@ async def _execute_with_formal_tools(
                 )
             )
         except (
+            AgentDomainError,
             AgentToolAdapterError,
+            ArxStructureError,
             CleaningDomainError,
+            FeatureSelectionError,
+            LagOverrideError,
             SegmentDomainError,
             ModelingDomainError,
             AnalysisDomainError,

@@ -257,13 +257,11 @@ import AgentStream from '../components/workspace/AgentStream.vue';
 import ArtifactWorkbench from '../components/artifact/ArtifactWorkbench.vue';
 import { chatWithCopilot, getCopilotExecution, confirmCopilotStep, executeModelEvaluation, executePipelineOptimization } from '../api/copilot';
 import { useCopilotExecutionStore } from '../stores/copilotExecution';
-import { useDatasetStore } from '../stores/datasetStore';
 import type { CopilotExecutionSnapshot, CopilotConfirmRequest } from '../types/api';
 
 const route = useRoute();
 const router = useRouter();
 const executionStore = useCopilotExecutionStore();
-const datasetStore = useDatasetStore();
 
 const execution = ref<CopilotExecutionSnapshot | null>(null);
 const recentExecutions = ref<CopilotExecutionSnapshot[]>([]);
@@ -381,6 +379,10 @@ function stopPolling() {
 }
 
 async function handleNewTask(payload: { message: string; datasetId?: string | null; versionId?: string | null }) {
+  if (!payload.datasetId || !payload.versionId) {
+    ElMessage.warning('请先挂载数据集后再发起 Agent 任务。');
+    return;
+  }
   isSending.value = true;
   try {
     const res = await chatWithCopilot({

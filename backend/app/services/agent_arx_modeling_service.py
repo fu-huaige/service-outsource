@@ -77,7 +77,7 @@ async def prepare_arx_confirmation(
         input_columns=None,
         output_column=None,
     )
-    delays, lag_version_id = await _lag_compensated_delays(
+    delays, lag_version_id = await resolve_arx_lag_provenance(
         session,
         version_id=execution.current_version_id,
         input_columns=input_columns,
@@ -432,7 +432,7 @@ async def _validate(
     )
 
 
-async def _lag_compensated_delays(
+async def resolve_arx_lag_provenance(
     session: AsyncSession,
     *,
     version_id: UUID,
@@ -447,10 +447,16 @@ async def _lag_compensated_delays(
             break
         if version.operation_name == "preprocessing.lag_compensation":
             lag_map = version.parameters.get("lag_map")
-            if not isinstance(lag_map, dict) or any(column not in lag_map for column in input_columns):
+            if not isinstance(lag_map, dict) or any(
+                column not in lag_map
+                or isinstance(lag_map[column], bool)
+                or not isinstance(lag_map[column], int)
+                or lag_map[column] < 0
+                for column in input_columns
+            ):
                 raise ArxStructureError(
                     "ARX_LAG_PROVENANCE_INCOMPLETE",
-                    "时滞补偿版本没有覆盖当前全部输入变量。",
+                    "时滞补偿版本没有使用合法非负整数覆盖当前全部输入变量。",
                 )
             return dict.fromkeys(input_columns, 0), version.id
         if version.operation_name != "preprocessing.feature_selection":

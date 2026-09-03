@@ -1,13 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
-import { createPinia } from "pinia";
+import { createPinia, setActivePinia } from "pinia";
 import AgentComposer from "../../src/components/composer/AgentComposer.vue";
+import { useDatasetStore } from "../../src/stores/datasetStore";
 import type { DatasetItem } from "../../src/types/api";
 
 const listDatasetsApi = vi.hoisted(() => vi.fn());
+const messageApi = vi.hoisted(() => ({ warning: vi.fn(), error: vi.fn() }));
 
 vi.mock("../../src/api/datasets", () => ({
   listDatasets: listDatasetsApi,
+}));
+
+vi.mock("element-plus", () => ({
+  ElMessage: messageApi,
 }));
 
 const makeDataset = (index: number): DatasetItem => ({
@@ -40,12 +46,55 @@ const rect = (values: Partial<DOMRect>): DOMRect =>
 describe("AgentComposer dataset picker viewport positioning", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setActivePinia(createPinia());
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 800 });
     Object.defineProperty(window, "innerHeight", { configurable: true, value: 600 });
     Object.defineProperty(window, "visualViewport", { configurable: true, value: undefined });
     listDatasetsApi.mockResolvedValue({
       items: Array.from({ length: 40 }, (_, index) => makeDataset(index + 1)),
     });
+  });
+
+  it("preserves an explicitly active dataset without loading a default", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useDatasetStore().setActiveDataset(makeDataset(7));
+
+    const wrapper = mount(AgentComposer, { global: { plugins: [pinia] } });
+    await flushPromises();
+
+    expect(wrapper.get(".attachment-name").text()).toBe("数据集 7");
+    expect(listDatasetsApi).not.toHaveBeenCalled();
+  });
+
+  it("does not silently attach the first dataset on mount", async () => {
+    const wrapper = mount(AgentComposer, { global: { plugins: [createPinia()] } });
+    await flushPromises();
+
+    expect(wrapper.find(".composer-attachments").exists()).toBe(false);
+    expect(listDatasetsApi).not.toHaveBeenCalled();
+  });
+
+  it("loads datasets only after the picker is opened and allows an explicit choice", async () => {
+    const wrapper = mount(AgentComposer, { global: { plugins: [createPinia()] } });
+
+    await wrapper.get(".composer-btn--dataset").trigger("click");
+    await flushPromises();
+    expect(listDatasetsApi).toHaveBeenCalledWith({ page: 1, page_size: 50 });
+
+    await wrapper.get(".dataset-picker__item").trigger("click");
+    expect(wrapper.get(".attachment-name").text()).toBe("数据集 1");
+    expect(useDatasetStore().activeDataset?.id).toBe("dataset-1");
+  });
+
+  it("warns and does not submit when no dataset is attached", async () => {
+    const wrapper = mount(AgentComposer, { global: { plugins: [createPinia()] } });
+    await wrapper.get(".composer-textarea").setValue("建立 ARX 模型");
+
+    await wrapper.get(".composer-submit").trigger("click");
+
+    expect(messageApi.warning).toHaveBeenCalledOnce();
+    expect(wrapper.emitted("submit")).toBeUndefined();
   });
 
   afterEach(() => {

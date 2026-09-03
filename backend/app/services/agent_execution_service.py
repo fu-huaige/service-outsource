@@ -300,6 +300,37 @@ async def mark_step_failed(
     return execution
 
 
+async def mark_step_preparation_failed(
+    session: AsyncSession,
+    *,
+    execution_id: UUID,
+    step_id: str,
+    error_code: str,
+    error_message: str,
+) -> AgentExecutionSession:
+    """Persist a failure raised before a pending confirmation step can start."""
+
+    execution = await _load_execution(session, execution_id)
+    step = _step(execution, step_id)
+    _require_startable(execution, step)
+    _require_declared_dependencies_satisfied(execution, step)
+
+    now = datetime.now(UTC)
+    step.status = "FAILED"
+    step.error_code = error_code
+    step.error_message = error_message
+    step.finished_at = now
+    execution.workflow_status = "FAILED"
+    execution.error_code = error_code
+    execution.error_message = error_message
+    execution.current_step_id = step.step_id
+    execution.pending_confirmation_step_id = None
+    execution.finished_at = now
+
+    await _commit(session)
+    return execution
+
+
 async def approve_step(
     session: AsyncSession, *, execution_id: UUID, step_id: str
 ) -> AgentExecutionSession:

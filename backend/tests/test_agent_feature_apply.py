@@ -90,7 +90,19 @@ def _upload(feature_harness: FeatureHarness) -> tuple[UUID, UUID]:
         },
     )
     assert configured.status_code == 200, configured.text
-    return dataset_id, version_id
+    lagged = feature_harness.client.post(
+        "/api/v1/preprocessing/delay/apply",
+        json={
+            "dataset_id": str(dataset_id),
+            "version_id": str(version_id),
+            "lag_map": {"u1": 0, "u2": 0, "u3": 0},
+            "user_confirmed": True,
+            "recommendation_source": "manual",
+            "evidence_summary": {"fixture": "already_time_aligned"},
+        },
+    )
+    assert lagged.status_code == 201, lagged.text
+    return dataset_id, UUID(lagged.json()["data"]["result_version_id"])
 
 
 async def _load_execution(harness: FeatureHarness, execution_id: UUID) -> AgentExecutionSession:
@@ -235,7 +247,7 @@ def test_feature_recommendation_is_formal_and_validation_is_authoritative(
         assert invalid.json()["data"]["overall_status"] == "INVALID"
 
 
-def test_recommendation_approve_creates_v3_once_and_keeps_downstream_pending(
+def test_recommendation_approve_creates_v3_once_and_resumes_to_arx_confirmation(
     feature_harness: FeatureHarness,
 ) -> None:
     execution, _ = _chat_to_feature_confirmation(feature_harness)
@@ -258,7 +270,10 @@ def test_recommendation_approve_creates_v3_once_and_keeps_downstream_pending(
     assert applied.source_version_id == source
     assert applied.result_version_id == result
     assert applied.processing_run_ids
-    assert downstream.status == "PENDING"
+    assert downstream.status == "WAITING_CONFIRMATION"
+    assert downstream.input_payload["arx_structure_recommendation"]["source_version_id"] == str(
+        result
+    )
     result_node, _ = asyncio.run(_version_artifact(feature_harness, result))
     _, source_bytes_after = asyncio.run(_version_artifact(feature_harness, source))
     assert result_node.parent_version_id == source

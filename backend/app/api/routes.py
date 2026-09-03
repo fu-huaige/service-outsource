@@ -110,6 +110,7 @@ from app.services.agent_lag_apply_service import (
 )
 from app.services.agent_service import (
     AgentDomainError,
+    continue_agent_execution,
     execute_approved_optimization_step,
     execute_pending_evaluation_step,
     run_copilot,
@@ -1184,6 +1185,7 @@ async def copilot_confirm(
     validation: LagOverrideValidationData | None = None
     feature_validation: FeatureSelectionValidationData | None = None
     arx_validation: ArxStructureValidationData | None = None
+    resume_after_confirmation = False
     try:
         if not payload.approved:
             execution = await reject_step(
@@ -1201,6 +1203,7 @@ async def copilot_confirm(
                 artifact_root=get_settings().artifact_root,
             )
             execution, validation = outcome.execution, outcome.validation
+            resume_after_confirmation = True
         elif await is_feature_apply_step(
             session, execution_id=payload.execution_id, step_id=payload.step_id
         ):
@@ -1213,6 +1216,7 @@ async def copilot_confirm(
             )
             execution = feature_outcome.execution
             feature_validation = feature_outcome.validation
+            resume_after_confirmation = True
         elif await is_arx_fit_step(
             session, execution_id=payload.execution_id, step_id=payload.step_id
         ):
@@ -1225,9 +1229,16 @@ async def copilot_confirm(
             )
             execution = arx_outcome.execution
             arx_validation = arx_outcome.validation
+            resume_after_confirmation = True
         else:
             execution = await approve_step(
                 session, execution_id=payload.execution_id, step_id=payload.step_id
+            )
+        if resume_after_confirmation:
+            execution = await continue_agent_execution(
+                session,
+                execution_id=execution.id,
+                artifact_root=get_settings().artifact_root,
             )
     except ExecutionStateError as error:
         raise AppError(

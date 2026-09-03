@@ -83,6 +83,7 @@ def verify_plan(
     confirmed_steps: frozenset[str] = frozenset(),
     train_ratio: float = 0.6,
     validation_ratio: float = 0.2,
+    lag_ready: bool | None = None,
 ) -> ComplianceProof:
     """Check a plan against every frozen rule and return the proof.
 
@@ -95,7 +96,9 @@ def verify_plan(
         _check_whitelist(steps),
         _check_acyclic(steps),
         _check_dependencies_complete(steps),
+        _check_profile_first(steps),
         _check_ordering(steps),
+        _check_arx_lag_semantics(steps, lag_ready=lag_ready),
         _check_no_test_partition(steps),
         _check_fitted_transforms_use_train(steps, train_ratio, validation_ratio),
         _check_no_cross_boundary_interpolation(steps, train_ratio),
@@ -171,23 +174,109 @@ def _check_dependencies_complete(steps: Sequence[Mapping[str, Any]]) -> ProofChe
 def _check_ordering(steps: Sequence[Mapping[str, Any]]) -> ProofCheck:
     """Every tool's prerequisites must appear before it, transitively."""
 
-    position = {str(step.get("step_id")): index for index, step in enumerate(steps)}
-    by_tool: dict[str, int] = {}
+    by_tool: dict[str, tuple[int, str]] = {}
     for index, step in enumerate(steps):
-        by_tool.setdefault(str(step.get("tool")), index)
+        by_tool.setdefault(str(step.get("tool")), (index, str(step.get("step_id"))))
 
     violations: list[str] = []
     for index, step in enumerate(steps):
         tool = str(step.get("tool"))
-        for prerequisite in TOOL_PREREQUISITES.get(tool, ()):
-            if prerequisite in by_tool and by_tool[prerequisite] > index:
+        prerequisites = TOOL_PREREQUISITES.get(tool, ())
+        if tool == "evaluate_model" and "optimize_pipeline" not in by_tool:
+            prerequisites = ("fit_arx",)
+        for prerequisite in prerequisites:
+            if prerequisite not in by_tool:
+                violations.append(f"{tool} 缺少前置 {prerequisite}")
+                continue
+            prerequisite_index, prerequisite_step_id = by_tool[prerequisite]
+            if prerequisite_index > index:
                 violations.append(f"{tool} 早于其前置 {prerequisite}")
-    _ = position
+                continue
+            if not _depends_transitively_on(
+                steps,
+                step_id=str(step.get("step_id")),
+                prerequisite_step_id=prerequisite_step_id,
+            ):
+                violations.append(f"{tool} 未声明依赖其前置 {prerequisite}")
     return ProofCheck(
         name="tool_ordering",
         passed=not violations,
         detail="工具顺序满足前置约束" if not violations else "；".join(violations),
     )
+
+
+def _check_profile_first(steps: Sequence[Mapping[str, Any]]) -> ProofCheck:
+    passed = not steps or str(steps[0].get("tool")) == "profile_dataset"
+    return ProofCheck(
+        name="profile_first",
+        passed=passed,
+        detail="计划第一步为数据画像" if passed else "非空计划的第一步必须是 profile_dataset",
+    )
+
+
+def _check_arx_lag_semantics(
+    steps: Sequence[Mapping[str, Any]], *, lag_ready: bool | None
+) -> ProofCheck:
+    fit_steps = [step for step in steps if str(step.get("tool")) == "fit_arx"]
+    if not fit_steps:
+        return ProofCheck(
+            name="arx_lag_ready",
+            passed=True,
+            detail="计划不包含 ARX 拟合，无需检查时滞来源",
+        )
+    if lag_ready is True:
+        return ProofCheck(
+            name="arx_lag_ready",
+            passed=True,
+            detail="当前 DatasetVersion 已由服务器验证为 ARX lag-ready",
+        )
+
+    by_tool = {str(step.get("tool")): step for step in steps}
+    estimate = by_tool.get("estimate_delays")
+    apply = by_tool.get("apply_lag_compensation")
+    valid = estimate is not None and apply is not None
+    if valid:
+        estimate_id = str(estimate.get("step_id"))
+        apply_id = str(apply.get("step_id"))
+        valid = _depends_transitively_on(
+            steps, step_id=apply_id, prerequisite_step_id=estimate_id
+        ) and all(
+            _depends_transitively_on(
+                steps,
+                step_id=str(fit.get("step_id")),
+                prerequisite_step_id=apply_id,
+            )
+            for fit in fit_steps
+        )
+    return ProofCheck(
+        name="arx_lag_ready",
+        passed=valid,
+        detail=(
+            "ARX 拟合由计划内 estimate_delays → apply_lag_compensation 链保护"
+            if valid
+            else "ARX 拟合缺少可信 lag-ready 版本或完整时滞估计与补偿依赖链"
+        ),
+    )
+
+
+def _depends_transitively_on(
+    steps: Sequence[Mapping[str, Any]], *, step_id: str, prerequisite_step_id: str
+) -> bool:
+    dependencies = {
+        str(step.get("step_id")): tuple(str(item) for item in step.get("depends_on") or [])
+        for step in steps
+    }
+    pending = list(dependencies.get(step_id, ()))
+    visited: set[str] = set()
+    while pending:
+        current = pending.pop()
+        if current == prerequisite_step_id:
+            return True
+        if current in visited:
+            continue
+        visited.add(current)
+        pending.extend(dependencies.get(current, ()))
+    return False
 
 
 def _check_no_test_partition(steps: Sequence[Mapping[str, Any]]) -> ProofCheck:

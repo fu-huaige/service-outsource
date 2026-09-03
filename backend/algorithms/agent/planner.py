@@ -174,6 +174,8 @@ class RuleBasedPlanner:
             prerequisites = TOOL_PREREQUISITES.get(tool, ())
             if tool == "evaluate_model" and "optimize_pipeline" not in emitted:
                 prerequisites = ("fit_arx",)
+            if tool == "fit_arx" and "apply_lag_compensation" in emitted:
+                prerequisites = ("apply_lag_compensation",)
             depends = tuple(
                 emitted[prerequisite]
                 for prerequisite in prerequisites
@@ -204,7 +206,7 @@ class RuleBasedPlanner:
                 "detect_dynamic_segments",
                 _subset(intent.parameters, ("window_size", "max_segments")),
             )
-        if intent.wants("delay"):
+        if intent.wants("delay") or wants_model:
             emit("estimate_delays", _subset(intent.parameters, ("max_lag",)))
             emit("apply_lag_compensation")
         if intent.wants("collinearity"):

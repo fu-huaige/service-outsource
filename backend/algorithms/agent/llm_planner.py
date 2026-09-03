@@ -105,7 +105,13 @@ class LlmPlanner:
         self._code_version = code_version
         self._fallback = RuleBasedPlanner()
 
-    def plan(self, message: str, intent: ParsedIntent) -> PlanOutcome:
+    def plan(
+        self,
+        message: str,
+        intent: ParsedIntent,
+        *,
+        lag_ready: bool | None = None,
+    ) -> PlanOutcome:
         steps, assumptions, stop_conditions = self._fallback.plan(intent)
         baseline = PlanOutcome(
             steps=steps,
@@ -151,6 +157,7 @@ class LlmPlanner:
                 for step in candidate
             ],
             code_version=self._code_version,
+            lag_ready=lag_ready,
         )
         if not proof.passed:
             # The model proposed something the rules forbid. Falling back is the safe

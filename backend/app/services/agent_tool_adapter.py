@@ -586,6 +586,23 @@ async def _fit_arx(
     except ValidationError as error:
         raise AgentToolAdapterError("INVALID_AGENT_TOOL_PARAMETERS", str(error)) from error
 
+    from app.services.agent_arx_modeling_service import resolve_arx_lag_provenance
+
+    series = await load_version_series(
+        session,
+        version_id=execution.current_version_id,
+        dataset_id=execution.dataset_id,
+        artifact_root=artifact_root,
+    )
+    input_columns, _ = series.resolve_columns(
+        input_columns=payload.input_columns or None,
+        output_column=payload.output_column,
+    )
+    await resolve_arx_lag_provenance(
+        session,
+        version_id=execution.current_version_id,
+        input_columns=input_columns,
+    )
     data = await fit_arx_on_version(session, payload=payload, artifact_root=artifact_root)
     if data.version_id is None:
         raise AgentToolAdapterError(

@@ -11,23 +11,31 @@ from uuid import UUID, uuid4
 
 import numpy as np
 import pytest
+from algorithms.agent.compliance import verify_plan
 from algorithms.agent.llm import NullProvider
-from algorithms.agent.planner import RuleBasedPlanner, parse_intent
+from algorithms.agent.planner import PlannedStep, RuleBasedPlanner, parse_intent
 from app.core.config import Settings
 from app.core.db import get_session
 from app.main import create_app
 from app.models import Base, DatasetVersion, ProcessingRun
 from app.models.agent_execution import AgentExecutionSession, AgentStepRun
+from app.schemas.copilot import ExecutionPlan, ExecutionPlanStep
 from app.services import agent_service
+from app.services.agent_arx_modeling_service import (
+    ArxStructureError,
+    resolve_arx_lag_provenance,
+)
 from app.services.agent_execution_service import (
     ExecutionStateError,
     approve_step,
+    create_execution,
     mark_step_failed,
     mark_step_succeeded,
     start_step,
 )
 from app.services.agent_tool_adapter import AgentToolAdapterError, execute_agent_tool
 from app.services.modeling_service import ModelingDomainError
+from app.services.version_data import load_version_series
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -441,6 +449,115 @@ def test_planner_requires_confirmation_for_arx_modeling() -> None:
     assert "evaluate_model" not in agent_service._DEFERRED_TOOLS
 
 
+def test_unified_lag_provenance_accepts_lag_and_feature_descendant_only(
+    arx_harness: ArxHarness,
+) -> None:
+    _, feature_version_id = _upload_and_build_v3(arx_harness)
+
+    async def resolve() -> tuple[UUID, UUID]:
+        async with arx_harness.session_factory() as session:
+            feature = await session.get(DatasetVersion, feature_version_id)
+            assert feature is not None and feature.parent_version_id is not None
+            lag_version_id = feature.parent_version_id
+            lag = await session.get(DatasetVersion, lag_version_id)
+            assert lag is not None and lag.parent_version_id is not None
+            cleaning_version_id = lag.parent_version_id
+
+            feature_delays, feature_lag_id = await resolve_arx_lag_provenance(
+                session,
+                version_id=feature_version_id,
+                input_columns=["u1", "u2"],
+            )
+            lag_delays, direct_lag_id = await resolve_arx_lag_provenance(
+                session,
+                version_id=lag_version_id,
+                input_columns=["u1", "u2", "u3"],
+            )
+            assert feature_delays == {"u1": 0, "u2": 0}
+            assert lag_delays == {"u1": 0, "u2": 0, "u3": 0}
+            assert feature_lag_id == direct_lag_id == lag_version_id
+
+            with pytest.raises(ArxStructureError) as raised:
+                await resolve_arx_lag_provenance(
+                    session,
+                    version_id=cleaning_version_id,
+                    input_columns=["u1", "u2", "u3"],
+                )
+            assert raised.value.code == "ARX_LAG_COMPENSATED_VERSION_REQUIRED"
+            return lag_version_id, feature_lag_id
+
+    lag_version_id, feature_lag_id = asyncio.run(resolve())
+    assert feature_lag_id == lag_version_id
+
+
+def test_arx_preparation_failure_is_persisted_on_step_and_execution(
+    arx_harness: ArxHarness,
+) -> None:
+    dataset_id, feature_version_id = _upload_and_build_v3(arx_harness)
+    planned_steps = [
+        PlannedStep("s1", "profile_dataset", (), {}, False),
+        PlannedStep("s2", "fit_arx", ("s1",), {}, True),
+    ]
+    plan = ExecutionPlan(
+        goal="persist ARX preparation failure",
+        dataset_id=dataset_id,
+        steps=[
+            ExecutionPlanStep(
+                step_id=step.step_id,
+                tool=step.tool,
+                depends_on=list(step.depends_on),
+                parameters=step.parameters,
+                requires_confirmation=step.requires_confirmation,
+            )
+            for step in planned_steps
+        ],
+    )
+    proof = verify_plan(
+        [step.model_dump() for step in plan.steps],
+        code_version=agent_service.CODE_VERSION,
+        lag_ready=True,
+    )
+    assert proof.passed
+
+    async def run() -> AgentExecutionSession:
+        async with arx_harness.session_factory() as session:
+            feature = await session.get(DatasetVersion, feature_version_id)
+            assert feature is not None and feature.parent_version_id is not None
+            lag = await session.get(DatasetVersion, feature.parent_version_id)
+            assert lag is not None and lag.parent_version_id is not None
+            cleaning_version_id = lag.parent_version_id
+            series = await load_version_series(
+                session,
+                version_id=cleaning_version_id,
+                dataset_id=dataset_id,
+                artifact_root=arx_harness.artifact_root,
+            )
+            execution = await create_execution(
+                session,
+                dataset_id=dataset_id,
+                initial_version_id=cleaning_version_id,
+                planner_source="test-bypass",
+                plan=plan,
+                compliance_proof=proof,
+            )
+            execution, _ = await agent_service._execute_with_formal_tools(
+                session,
+                execution=execution,
+                series=series,
+                steps=planned_steps,
+                hints={},
+                artifact_root=arx_harness.artifact_root,
+            )
+            return execution
+
+    execution = asyncio.run(run())
+    fit = next(step for step in execution.step_runs if step.step_id == "s2")
+    assert fit.status == "FAILED"
+    assert fit.error_code == "ARX_LAG_COMPENSATED_VERSION_REQUIRED"
+    assert execution.workflow_status == "FAILED"
+    assert execution.error_code == "ARX_LAG_COMPENSATED_VERSION_REQUIRED"
+
+
 def test_recommendation_is_validation_only_and_derived_from_lagged_v3(
     arx_harness: ArxHarness,
 ) -> None:
@@ -464,6 +581,70 @@ def test_recommendation_is_validation_only_and_derived_from_lagged_v3(
     assert recommendation["candidate_summary"]
     assert all("test" not in item for item in recommendation["candidate_summary"])
     assert evaluate.status == "PENDING"
+
+
+def test_feature_confirmation_resumes_arx_from_the_new_feature_version(
+    arx_harness: ArxHarness,
+) -> None:
+    dataset_id, existing_feature_version_id = _upload_and_build_v3(arx_harness)
+
+    async def lag_source() -> UUID:
+        async with arx_harness.session_factory() as session:
+            feature = await session.get(DatasetVersion, existing_feature_version_id)
+            assert feature is not None and feature.parent_version_id is not None
+            return feature.parent_version_id
+
+    source_version_id = asyncio.run(lag_source())
+    response = arx_harness.client.post(
+        "/api/v1/copilot/chat",
+        json={
+            "message": "分析共线性、选择变量，然后进行 ARX 建模",
+            "dataset_id": str(dataset_id),
+            "active_version_id": str(source_version_id),
+        },
+    )
+    assert response.status_code == 200, response.text
+    execution = asyncio.run(
+        _load_execution(arx_harness, UUID(response.json()["data"]["execution_id"]))
+    )
+    feature = next(step for step in execution.step_runs if step.tool_name == "select_variables")
+    assert feature.status == "WAITING_CONFIRMATION"
+
+    confirmed_feature = arx_harness.client.post(
+        "/api/v1/copilot/confirm",
+        json={
+            "copilot_run_id": str(execution.copilot_run_id),
+            "confirmation_id": feature.step_id,
+            "execution_id": str(execution.id),
+            "step_id": feature.step_id,
+            "approved": True,
+            "feature_drop_columns": ["u3"],
+        },
+    )
+    assert confirmed_feature.status_code == 200, confirmed_feature.text
+    after_feature = asyncio.run(_load_execution(arx_harness, execution.id))
+    applied = next(
+        step for step in after_feature.step_runs if step.tool_name == "select_variables"
+    )
+    fit = next(step for step in after_feature.step_runs if step.tool_name == "fit_arx")
+    assert applied.source_version_id == source_version_id
+    assert applied.result_version_id is not None
+    assert after_feature.current_version_id == applied.result_version_id
+    assert fit.status == "WAITING_CONFIRMATION"
+    assert fit.input_payload["arx_structure_recommendation"]["source_version_id"] == str(
+        applied.result_version_id
+    )
+
+    confirmed_fit = _confirm(
+        arx_harness,
+        execution_id=after_feature.id,
+        step_id=fit.step_id,
+    )
+    assert confirmed_fit.status_code == 200, confirmed_fit.text
+    completed = asyncio.run(_load_execution(arx_harness, after_feature.id))
+    fitted = next(step for step in completed.step_runs if step.tool_name == "fit_arx")
+    assert fitted.status == "SUCCEEDED"
+    assert fitted.source_version_id == applied.result_version_id
 
 
 def test_recommendation_does_not_use_held_out_test_partition(
@@ -1148,15 +1329,7 @@ def test_optimized_model_is_the_only_new_dag_evaluation_predecessor(
     assert confirmed_fit.status_code == 200, confirmed_fit.text
     source_version_id = execution.current_version_id
 
-    async def start_optimization() -> AgentExecutionSession:
-        async with arx_harness.session_factory() as session:
-            return await start_step(
-                session,
-                execution_id=execution.id,
-                step_id=optimization.step_id,
-            )
-
-    waiting = asyncio.run(start_optimization())
+    waiting = asyncio.run(_load_execution(arx_harness, execution.id))
     pending_optimization = next(
         step for step in waiting.step_runs if step.step_id == optimization.step_id
     )
@@ -1323,15 +1496,12 @@ def test_optimized_artifact_source_mismatch_fails_evaluation_without_refit(
     assert confirmed_fit.status_code == 200, confirmed_fit.text
     source_version_id = execution.current_version_id
 
-    async def start_and_corrupt_optimization_source() -> None:
-        async with arx_harness.session_factory() as session:
-            await start_step(
-                session,
-                execution_id=execution.id,
-                step_id=optimization.step_id,
-            )
-
-    asyncio.run(start_and_corrupt_optimization_source())
+    waiting = asyncio.run(_load_execution(arx_harness, execution.id))
+    optimization = next(
+        step for step in waiting.step_runs if step.tool_name == "optimize_pipeline"
+    )
+    assert waiting.workflow_status == "WAITING_CONFIRMATION"
+    assert optimization.status == "WAITING_CONFIRMATION"
     approved = _confirm(
         arx_harness,
         execution_id=execution.id,
