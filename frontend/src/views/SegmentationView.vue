@@ -35,6 +35,7 @@
         <div class="param-item">
           <label>数据版本 ID</label>
           <el-input v-model="form.version_id" placeholder="version_id" size="small" />
+          <span class="param-hint" v-if="activeDataset">来自当前数据集：{{ activeDataset.name }}</span>
         </div>
         <div class="param-item">
           <label>输入变量 (u)</label>
@@ -199,13 +200,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { Crop, DataLine, Filter, TrendCharts } from "@element-plus/icons-vue";
 import ChartContainer from "../components/ChartContainer.vue";
 import { segmentDataset } from "../api/preprocessing";
 import type { SegmentRequest, SegmentResponse } from "../types/api";
 import { ApiError } from "../api/client";
 import { ElMessage } from "element-plus";
+import { useDatasetStore } from "../stores/datasetStore";
 
 const REASON_LABELS: Record<string, string> = {
   missing_ratio_exceeded: "缺失率超限",
@@ -215,6 +217,7 @@ const REASON_LABELS: Record<string, string> = {
   no_input_excitation: "输入无激励",
 };
 
+const datasetStore = useDatasetStore();
 const loading = ref(false);
 const result = ref<SegmentResponse | null>(null);
 const errorMessage = ref("");
@@ -230,6 +233,21 @@ const form = reactive<SegmentRequest>({
   max_missing_ratio: 0.2,
   max_anomaly_ratio: 0.1,
 });
+
+// Same pattern as ARXModelingView/DelayView: auto-fill the version_id from
+// the currently active dataset in the shared store, instead of requiring the
+// user to manually paste it in. The input stays editable so the user can
+// still see and override the value.
+const activeDataset = computed(() => datasetStore.activeDataset);
+
+const syncFormWithStore = () => {
+  const dataset = activeDataset.value;
+  if (dataset) {
+    form.version_id = dataset.version_id || dataset.latest_version_id || form.version_id;
+  }
+};
+
+watch(activeDataset, syncFormWithStore, { immediate: true });
 
 const handleSegment = async () => {
   errorMessage.value = "";
@@ -398,6 +416,11 @@ const formatNumber = (value: number | null | undefined) => {
   font-weight: 500;
   color: var(--text-muted);
   letter-spacing: normal;
+}
+
+.param-hint {
+  font-size: 11px;
+  color: var(--text-faint);
 }
 
 .alert-gap {

@@ -1,11 +1,17 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
+import { ElMessage } from "element-plus";
 import { getHealthLive, getHealthReady } from "../api/health";
 import type { LivenessData, ReadinessData, SystemInfoData } from "../types/api";
 
 export type SystemStatus = "connecting" | "ready" | "offline";
 
 const HEALTH_POLL_INTERVAL_MS = 5_000;
+// Number of consecutive failed health checks before we interrupt the user
+// with a toast. The status dot in AppHeader already reflects every failure
+// passively; this only covers the case where polling has been silently
+// broken for a while and the user hasn't noticed the dot.
+const HEALTH_CHECK_FAILURE_WARNING_THRESHOLD = 3;
 
 export const useSystemStore = defineStore("system", () => {
   const liveness = ref<LivenessData | null>(null);
@@ -14,6 +20,8 @@ export const useSystemStore = defineStore("system", () => {
   const status = ref<SystemStatus>("connecting");
   const isChecking = ref(false);
   let pollingTimer: ReturnType<typeof setInterval> | null = null;
+  let consecutiveHealthCheckFailures = 0;
+  let hasWarnedForCurrentOutage = false;
 
   function isReady(live: LivenessData, ready: ReadinessData): boolean {
     return (
@@ -36,10 +44,20 @@ export const useSystemStore = defineStore("system", () => {
       liveness.value = live;
       readiness.value = ready;
       status.value = isReady(live, ready) ? "ready" : "offline";
+      consecutiveHealthCheckFailures = 0;
+      hasWarnedForCurrentOutage = false;
     } catch {
       liveness.value = null;
       readiness.value = null;
       status.value = "offline";
+      consecutiveHealthCheckFailures += 1;
+      if (
+        consecutiveHealthCheckFailures >= HEALTH_CHECK_FAILURE_WARNING_THRESHOLD &&
+        !hasWarnedForCurrentOutage
+      ) {
+        hasWarnedForCurrentOutage = true;
+        ElMessage.warning("与后端服务的连接持续异常，请检查网络或服务状态");
+      }
     } finally {
       isChecking.value = false;
     }

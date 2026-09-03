@@ -616,6 +616,7 @@ const fetchVersions = async () => {
     versionNodes.value = res.nodes || [];
   } catch (err: any) {
     // Keep empty array
+    ElMessage.error(`获取版本历史失败 [${err.code || 'ERR'}]：${err.message || '未知错误'}`);
   }
 };
 

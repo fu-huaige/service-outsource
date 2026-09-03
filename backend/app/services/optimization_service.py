@@ -37,8 +37,9 @@ from algorithms.pipeline.fingerprint import (
     fingerprint_distance,
 )
 from optuna.samplers import TPESampler
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.models.dataset import ProcessingRun
 from app.models.operation_log import OperationLog
@@ -932,7 +933,15 @@ async def _execute_study(
     )
 
     try:
-        outcome = run_study(
+        # run_study is a synchronous, CPU-bound Optuna loop (it never touches the
+        # AsyncSession — see its signature above). Calling it inline here would block the
+        # whole ASGI event loop for the duration of the search, freezing every other
+        # request this process is serving (including unrelated users' health checks).
+        # Both callers of _execute_study reach this line synchronously today (the inline
+        # fallback when no RQ worker is available, and the Agent's direct optimize_pipeline
+        # tool), so the thread hand-off has to live here rather than in each caller.
+        outcome = await run_in_threadpool(
+            run_study,
             series,
             payload,
             input_columns=input_columns,
@@ -1196,11 +1205,20 @@ async def _retrieve_warm_start(
     the leakage the evaluation protocol forbids.
     """
 
-    entries = list((await session.scalars(select(StrategyMemory))).all())
+    # Push the "not this dataset" exclusion into SQL instead of pulling the whole table
+    # into Python to filter it there: strategy_memory grows with every study ever run, and
+    # this function used to fetch all of it on every single warm-start lookup regardless of
+    # how many rows it could actually use. `!=` alone would silently drop legitimate
+    # dataset_id IS NULL rows under SQL's three-valued logic (NULL != x is NULL, not true),
+    # so those are kept explicitly to match the original Python `==` comparison exactly.
+    query = select(StrategyMemory)
+    if series.dataset_id is not None:
+        query = query.where(
+            or_(StrategyMemory.dataset_id.is_(None), StrategyMemory.dataset_id != series.dataset_id)
+        )
+    entries = list((await session.scalars(query)).all())
     scored: list[tuple[float, StrategyMemory]] = []
     for entry in entries:
-        if series.dataset_id is not None and entry.dataset_id == series.dataset_id:
-            continue
         distance = fingerprint_distance(fingerprint.vector, list(entry.fingerprint_vector))
         if distance <= WARM_START_MAX_DISTANCE:
             scored.append((distance, entry))
