@@ -129,6 +129,7 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, onBeforeUnmount, watch, type CSSProperties } from 'vue';
+import { ElMessage } from 'element-plus';
 import { useDatasetStore } from '../../stores/datasetStore';
 import { listDatasets } from '../../api/datasets';
 import type { DatasetItem } from '../../types/api';
@@ -291,7 +292,7 @@ watch(showDatasetPicker, async (v) => {
         const res = await listDatasets({ page: 1, page_size: 50 });
         datasets.value = res.items;
       } catch {
-        // ignore
+        ElMessage.error('数据集列表加载失败');
       }
     }
   } else {

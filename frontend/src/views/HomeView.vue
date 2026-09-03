@@ -119,6 +119,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
+import { ElMessage } from 'element-plus';
 import AgentComposer from '../components/composer/AgentComposer.vue';
 
 const router = useRouter();
@@ -214,7 +215,7 @@ onMounted(async () => {
       recentExecutions.value = JSON.parse(cached).slice(0, 5);
     }
   } catch {
-    // ignore
+    ElMessage.warning('最近执行记录读取失败');
   }
 });
 </script>

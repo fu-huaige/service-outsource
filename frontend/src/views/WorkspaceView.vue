@@ -251,6 +251,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { ElMessage } from 'element-plus';
 import AgentComposer from '../components/composer/AgentComposer.vue';
 import AgentStream from '../components/workspace/AgentStream.vue';
 import ArtifactWorkbench from '../components/artifact/ArtifactWorkbench.vue';
@@ -274,6 +275,8 @@ const activeArtifactStepId = ref<string | null>(null);
 
 // Polling
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+let pollFailureCount = 0;
+const POLL_FAILURE_WARNING_THRESHOLD = 3;
 
 const isCompleted = computed(() => {
   const s = execution.value?.workflow_status;
@@ -349,17 +352,25 @@ function startPollingIfNeeded() {
   stopPolling();
   const status = execution.value?.workflow_status;
   if (status === 'RUNNING' || status === 'WAITING_ASYNC_TASK' || status === 'WAITING_CONFIRMATION') {
+    pollFailureCount = 0;
     pollTimer = setInterval(async () => {
       if (!execution.value) return;
       try {
         const updated = await getCopilotExecution(execution.value.execution_id);
+        pollFailureCount = 0;
         execution.value = updated;
         if (updated.workflow_status === 'SUCCEEDED' || updated.workflow_status === 'FAILED' || updated.workflow_status === 'CANCELLED') {
           stopPolling();
           cacheRecentExecution(updated);
         }
       } catch {
-        // ignore poll errors
+        // Poll errors are expected to be transient, so don't interrupt the
+        // user on every tick — but if it keeps failing, let them know
+        // instead of leaving the UI silently stuck.
+        pollFailureCount += 1;
+        if (pollFailureCount === POLL_FAILURE_WARNING_THRESHOLD) {
+          ElMessage.warning('执行状态刷新持续失败，请检查网络连接');
+        }
       }
     }, 2000);
   }
@@ -443,7 +454,9 @@ function cacheRecentExecution(exec: CopilotExecutionSnapshot) {
     const updated = [exec, ...filtered].slice(0, 10);
     localStorage.setItem('indusopt.recent_executions', JSON.stringify(updated));
     recentExecutions.value = updated;
-  } catch { /* ignore */ }
+  } catch {
+    ElMessage.warning('最近执行记录缓存失败');
+  }
 }
 
 // Route handling

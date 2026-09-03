@@ -408,7 +408,10 @@ onMounted(async () => {
   await Promise.all([
     getSystemInfo()
       .then((info) => systemStore.setSystemInfo(info))
-      .catch(() => undefined),
+      .catch(() => {
+        ElMessage.error("获取系统信息失败");
+        return undefined;
+      }),
     loadAgentConfig(),
   ]);
 });
