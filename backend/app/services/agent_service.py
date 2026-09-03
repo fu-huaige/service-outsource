@@ -29,6 +29,7 @@ from algorithms.agent.llm import LlmProvider
 from algorithms.agent.llm_planner import LlmPlanner, PlanOutcome
 from algorithms.agent.planner import PlannedStep, parse_intent
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.models.agent_execution import AgentExecutionSession
 from app.models.dataset import ProcessingRun
@@ -295,7 +296,11 @@ async def run_copilot(
                 artifact_root=artifact_root,
             )
         else:
-            executions = _execute(series, steps, intent.parameters)
+            # _execute (and the _dispatch it drives) is synchronous and can run a full
+            # Optuna closed-loop search (optimize_pipeline) inline. Off the event loop via
+            # a worker thread so one chat turn can't freeze every other request this
+            # process is serving.
+            executions = await run_in_threadpool(_execute, series, steps, intent.parameters)
             persistent_execution = await _sync_execution_state(
                 session,
                 execution=persistent_execution,
@@ -500,7 +505,10 @@ async def _execute_with_formal_tools(
                     processing_run_ids=tool_result.processing_run_ids,
                 )
             else:
-                summary, result = _dispatch(step, series, context, hints)
+                # See the comment on the sibling _execute() call site: _dispatch can run
+                # optimize_pipeline's synchronous Optuna search, so it must not run on the
+                # event loop thread.
+                summary, result = await run_in_threadpool(_dispatch, step, series, context, hints)
                 if result.get("deferred"):
                     raise AgentDomainError(
                         "UNEXPECTED_DEFERRED_AGENT_TOOL",

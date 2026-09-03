@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -14,6 +15,7 @@ from uuid import UUID, uuid4
 from algorithms.cleaning.quality import build_quality_profile, enrich_freeze_diagnostics
 from fastapi import UploadFile
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dataset import (
@@ -183,6 +185,24 @@ async def upload_csv_dataset(
         await session.commit()
         await session.refresh(dataset)
         return UploadedDataset(summary=await _dataset_summary(session, dataset), deduplicated=False)
+    except IntegrityError:
+        # Two uploads of byte-identical content raced the "already exists" check above:
+        # this request's own INSERT is the one that loses, and hits the raw_sha256 unique
+        # constraint at commit rather than ever seeing `existing is not None`. Recover the
+        # same way that check would have — return the winner's summary as a normal
+        # duplicate — instead of surfacing this as an unmapped 500 to the client.
+        await session.rollback()
+        if "raw_path" in locals():
+            (artifact_root / raw_path).unlink(missing_ok=True)
+        winner = await session.scalar(
+            select(DatasetModel).where(DatasetModel.raw_sha256 == staged.sha256)
+        )
+        if winner is None:
+            # Unreachable in principle (the constraint only fires because a matching row
+            # exists) — if it ever happens, surface the original failure rather than
+            # fabricate a summary.
+            raise
+        return UploadedDataset(summary=await _dataset_summary(session, winner), deduplicated=True)
     except Exception:
         await session.rollback()
         # A transaction failure after the move must not leave a mutable orphan in uploads/.
@@ -335,7 +355,7 @@ async def list_dataset_summaries(
         ).all()
     )
     return DatasetListData(
-        items=[await _dataset_summary(session, record) for record in records],
+        items=await _dataset_summaries_batch(session, records),
         page=PageInfo(page=page, page_size=page_size, total=total),
     )
 
@@ -789,13 +809,20 @@ async def _dataset_summary(
     resolved_columns = (
         list(columns) if columns is not None else await _version_columns(session, active_version.id)
     )
-    time_column = next(
-        (column.name for column in resolved_columns if column.role == "timestamp"), None
-    )
-    input_columns = [column.name for column in resolved_columns if column.role == "input"]
-    output_column = next(
-        (column.name for column in resolved_columns if column.role == "output"), None
-    )
+    return _build_dataset_summary(dataset, active_version, resolved_columns)
+
+
+def _build_dataset_summary(
+    dataset: DatasetModel,
+    active_version: DatasetVersionModel,
+    columns: Sequence[DatasetColumnModel],
+) -> DatasetSummary:
+    """Pure field mapping, shared by the single-record and batch-list code paths so the
+    two can never drift apart on which columns feed which summary field."""
+
+    time_column = next((column.name for column in columns if column.role == "timestamp"), None)
+    input_columns = [column.name for column in columns if column.role == "input"]
+    output_column = next((column.name for column in columns if column.role == "output"), None)
     return DatasetSummary(
         id=dataset.id,
         name=dataset.name,
@@ -813,6 +840,54 @@ async def _dataset_summary(
         input_columns=input_columns,
         output_column=output_column,
     )
+
+
+async def _dataset_summaries_batch(
+    session: AsyncSession, records: Sequence[DatasetModel]
+) -> list[DatasetSummary]:
+    """Same result as awaiting ``_dataset_summary`` once per record, without the N+1: one
+    query for every active version in the page and one for every version's columns,
+    instead of two round trips per dataset (this is what makes a 100-item page of
+    /datasets do ~200 sequential database round trips today)."""
+
+    if not records:
+        return []
+    for record in records:
+        if record.active_version_id is None:
+            raise DatasetDomainError(
+                "DATASET_VERSION_NOT_FOUND", "数据集没有激活版本。", status_code=404
+            )
+    version_ids = [record.active_version_id for record in records]
+    versions_by_id = {
+        version.id: version
+        for version in (
+            await session.scalars(
+                select(DatasetVersionModel).where(DatasetVersionModel.id.in_(version_ids))
+            )
+        ).all()
+    }
+    columns_by_version: dict[UUID, list[DatasetColumnModel]] = defaultdict(list)
+    for column in (
+        await session.scalars(
+            select(DatasetColumnModel)
+            .where(DatasetColumnModel.version_id.in_(version_ids))
+            .order_by(DatasetColumnModel.position)
+        )
+    ).all():
+        columns_by_version[column.version_id].append(column)
+
+    summaries: list[DatasetSummary] = []
+    for record in records:
+        active_version_id = record.active_version_id
+        version = versions_by_id.get(active_version_id) if active_version_id is not None else None
+        if version is None or version.dataset_id != record.id:
+            raise DatasetDomainError(
+                "DATASET_VERSION_NOT_FOUND", "数据集激活版本不存在。", status_code=404
+            )
+        summaries.append(
+            _build_dataset_summary(record, version, columns_by_version.get(version.id, []))
+        )
+    return summaries
 
 
 async def _dataset_or_404(session: AsyncSession, dataset_id: UUID) -> DatasetModel:
