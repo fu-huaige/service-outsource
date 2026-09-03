@@ -180,9 +180,18 @@ a {
   font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--text-secondary);
+}
+
+.panel-title {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-family: var(--font-mono);
+}
+
+.industrial-card-title {
+  font-family: var(--font-sans);
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 /* ── Divider ──────────────────────────────────────────────── */
@@ -197,9 +206,9 @@ a {
   font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-family: var(--font-mono);
+  text-transform: none;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
 }
 
 /* ── Code / Inline Mono ───────────────────────────────────── */

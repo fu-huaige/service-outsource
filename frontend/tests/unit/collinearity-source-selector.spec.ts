@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { flushPromises, mount } from "@vue/test-utils";
+import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { defineComponent, h } from "vue";
 import CollinearityView from "../../src/views/CollinearityView.vue";
@@ -75,30 +75,40 @@ const ElOptionStub = defineComponent({
 
 const ElInputStub = defineComponent({
   name: "ElInput",
+  inheritAttrs: false,
   props: { modelValue: { type: String, default: "" } },
   emits: ["update:modelValue"],
-  setup(props, { emit }) {
-    return () =>
-      h("input", {
+  setup(props, { attrs, emit }) {
+    return () => {
+      const inputAttrs = { ...attrs };
+      delete inputAttrs.size;
+      return h("input", {
+        ...inputAttrs,
         value: props.modelValue,
         onInput: (event: Event) =>
           emit("update:modelValue", (event.target as HTMLInputElement).value),
       });
+    };
   },
 });
 
 const ElInputNumberStub = defineComponent({
   name: "ElInputNumber",
+  inheritAttrs: false,
   props: { modelValue: Number },
   emits: ["update:modelValue"],
-  setup(props, { emit }) {
-    return () =>
-      h("input", {
+  setup(props, { attrs, emit }) {
+    return () => {
+      const inputAttrs = { ...attrs };
+      delete inputAttrs.size;
+      return h("input", {
+        ...inputAttrs,
         type: "number",
         value: props.modelValue,
         onInput: (event: Event) =>
           emit("update:modelValue", Number((event.target as HTMLInputElement).value)),
       });
+    };
   },
 });
 
@@ -135,6 +145,23 @@ const ElAlertStub = defineComponent({
   },
 });
 
+const ChartContainerStub = defineComponent({
+  name: "ChartContainer",
+  inheritAttrs: false,
+  props: {
+    options: { type: Object, required: true },
+    height: String,
+  },
+  setup(props, { attrs }) {
+    return () =>
+      h("div", {
+        ...attrs,
+        class: "chart-container-stub",
+        "data-height": props.height,
+      });
+  },
+});
+
 const simpleSlotStub = { template: "<span><slot /></span>" };
 const stubs = {
   "el-select": ElSelectStub,
@@ -145,7 +172,7 @@ const stubs = {
   "el-alert": ElAlertStub,
   "el-icon": simpleSlotStub,
   "el-tag": simpleSlotStub,
-  ChartContainer: { template: '<div class="chart-container-stub" />' },
+  ChartContainer: ChartContainerStub,
 };
 
 const dataset = (id: string, name = id): DatasetItem => ({
@@ -281,6 +308,32 @@ const mountView = (activeDataset: DatasetItem | null = null) => {
   return { wrapper, store };
 };
 
+const chartOptions = <T,>(wrapper: VueWrapper, testId: string): T => {
+  const chart = wrapper
+    .findAllComponents(ChartContainerStub)
+    .find((candidate) => candidate.attributes("data-test") === testId);
+  if (!chart) throw new Error(`Missing chart ${testId}`);
+  return chart.props("options") as T;
+};
+
+interface CorrelationChartOptions {
+  tooltip: { formatter: (params: { value: [number, number, number] }) => string };
+  series: Array<{ data: Array<[number, number, number]> }>;
+}
+
+interface VifChartOptions {
+  tooltip: {
+    formatter: (params: Array<{ axisValue: string }>) => string;
+  };
+  xAxis: { axisLabel: { formatter: (name: string) => string } };
+  series: Array<{
+    data: Array<{
+      value: number | null;
+      label: { show: boolean; formatter?: string };
+    }>;
+  }>;
+}
+
 describe("CollinearityView dataset and Lag Compensation source context", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -320,6 +373,142 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
       params: { version_id: "lag-a", dataset_id: "dataset-a" },
     });
     expect(wrapper.find(".collin-tri-grid").exists()).toBe(true);
+  });
+
+  it("switches the rehydrated heatmap between Pearson and Spearman without analyzing again", async () => {
+    const active = dataset("dataset-a");
+    datasetsResponse = [active];
+    detailResponses.set("dataset-a", active);
+    sourceResponses.set("dataset-a", [
+      sourceData("dataset-a", [source("lag-a", "complete")], "lag-a"),
+    ]);
+    latestResponses.set("lag-a", analysisResult("lag-a", "dataset-a"));
+
+    const { wrapper } = mountView(active);
+    await flushPromises();
+
+    expect(wrapper.get('[data-test="correlation-title"]').text()).toBe(
+      "Pearson 相关系数矩阵"
+    );
+    expect(wrapper.get('[data-test="correlation-mode-pearson"]').attributes("aria-pressed")).toBe(
+      "true"
+    );
+    let options = chartOptions<CorrelationChartOptions>(wrapper, "correlation-chart");
+    expect(options.series[0].data).toContainEqual([1, 0, 0.2]);
+    expect(options.tooltip.formatter({ value: [1, 0, 0.2] })).toContain("Pearson r");
+
+    await wrapper.get('[data-test="correlation-mode-spearman"]').trigger("click");
+    expect(wrapper.get('[data-test="correlation-title"]').text()).toBe(
+      "Spearman 秩相关系数矩阵"
+    );
+    options = chartOptions<CorrelationChartOptions>(wrapper, "correlation-chart");
+    expect(options.series[0].data).toContainEqual([1, 0, 0.18]);
+    expect(options.tooltip.formatter({ value: [1, 0, 0.18] })).toContain(
+      "Spearman correlation"
+    );
+    expect(apiMocks.post).not.toHaveBeenCalled();
+
+    await wrapper.get('[data-test="correlation-mode-pearson"]').trigger("click");
+    options = chartOptions<CorrelationChartOptions>(wrapper, "correlation-chart");
+    expect(options.series[0].data).toContainEqual([1, 0, 0.2]);
+    expect(apiMocks.post).not.toHaveBeenCalled();
+  });
+
+  it("shows an explicit unavailable state when a historical result has no Spearman matrix", async () => {
+    const active = dataset("dataset-a");
+    const legacyResult = {
+      ...analysisResult("lag-a", "dataset-a"),
+      spearman_matrix: undefined,
+    } as unknown as CollinearityResponse;
+    datasetsResponse = [active];
+    detailResponses.set("dataset-a", active);
+    sourceResponses.set("dataset-a", [
+      sourceData("dataset-a", [source("lag-a", "complete")], "lag-a"),
+    ]);
+    latestResponses.set("lag-a", legacyResult);
+
+    const { wrapper } = mountView(active);
+    await flushPromises();
+    expect(wrapper.find('[data-test="correlation-chart"]').exists()).toBe(true);
+
+    await wrapper.get('[data-test="correlation-mode-spearman"]').trigger("click");
+    expect(wrapper.find('[data-test="correlation-chart"]').exists()).toBe(false);
+    expect(wrapper.get('[data-test="matrix-unavailable"]').text()).toContain("N/A");
+    expect(wrapper.get('[data-test="matrix-unavailable"]').text()).toContain(
+      "当前历史结果没有可用的 Spearman 秩相关系数矩阵"
+    );
+    expect(apiMocks.post).not.toHaveBeenCalled();
+  });
+
+  it("renders nullable VIF as N/A without creating a zero-height value", async () => {
+    const active = dataset("dataset-a");
+    const persisted = analysisResult("lag-a", "dataset-a");
+    persisted.recommendations[1] = {
+      variable: "u2",
+      action: "drop",
+      reason: "backend recommendation",
+      related_variables: ["u1"],
+    };
+    datasetsResponse = [active];
+    detailResponses.set("dataset-a", active);
+    sourceResponses.set("dataset-a", [
+      sourceData("dataset-a", [source("lag-a", "complete")], "lag-a"),
+    ]);
+    latestResponses.set("lag-a", persisted);
+
+    const { wrapper } = mountView(active);
+    await flushPromises();
+
+    const options = chartOptions<VifChartOptions>(wrapper, "vif-chart");
+    expect(options.series[0].data[0].value).toBe(1.1);
+    expect(options.series[0].data[1].value).toBeNull();
+    expect(options.series[0].data[1].value).not.toBe(0);
+    expect(options.series[0].data[1].label).toMatchObject({
+      show: true,
+      formatter: "N/A",
+    });
+    expect(options.xAxis.axisLabel.formatter("u2")).toContain("N/A");
+    expect(options.tooltip.formatter([{ axisValue: "u1" }])).toContain("VIF: 1.10");
+    expect(options.tooltip.formatter([{ axisValue: "u2" }])).toContain("VIF: N/A");
+    expect(options.tooltip.formatter([{ axisValue: "u2" }])).toContain("无法可靠计算 VIF");
+    expect(wrapper.text()).toContain("VIF = N/A");
+  });
+
+  it("resets correlation mode to Pearson when the source or Dataset changes", async () => {
+    const firstDataset = dataset("dataset-a");
+    const secondDataset = dataset("dataset-b");
+    datasetsResponse = [firstDataset, secondDataset];
+    detailResponses.set("dataset-a", firstDataset);
+    detailResponses.set("dataset-b", secondDataset);
+    sourceResponses.set("dataset-a", [
+      sourceData(
+        "dataset-a",
+        [source("lag-a", "complete", 2), source("lag-a-next", "complete", 3)],
+        "lag-a"
+      ),
+    ]);
+    sourceResponses.set("dataset-b", [
+      sourceData("dataset-b", [source("lag-b", "complete")], "lag-b"),
+    ]);
+    latestResponses.set("lag-a", analysisResult("lag-a", "dataset-a"));
+    latestResponses.set("lag-a-next", analysisResult("lag-a-next", "dataset-a"));
+    latestResponses.set("lag-b", analysisResult("lag-b", "dataset-b"));
+
+    const { wrapper } = mountView(firstDataset);
+    await flushPromises();
+    await wrapper.get('[data-test="correlation-mode-spearman"]').trigger("click");
+    await wrapper.get('[data-test="source-select"]').setValue("lag-a-next");
+    await flushPromises();
+    expect(wrapper.get('[data-test="correlation-title"]').text()).toBe(
+      "Pearson 相关系数矩阵"
+    );
+
+    await wrapper.get('[data-test="correlation-mode-spearman"]').trigger("click");
+    await wrapper.get('[data-test="dataset-select"]').setValue("dataset-b");
+    await flushPromises();
+    expect(wrapper.get('[data-test="correlation-title"]').text()).toBe(
+      "Pearson 相关系数矩阵"
+    );
   });
 
   it("does not treat a stale active DatasetVersion ID as a Dataset ID", async () => {
@@ -527,5 +716,13 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
     );
     expect(wrapper.text()).toContain("已完成，可恢复");
     expect(wrapper.find(".collin-tri-grid").exists()).toBe(true);
+    expect(wrapper.get('[data-test="correlation-title"]').text()).toBe(
+      "Pearson 相关系数矩阵"
+    );
+
+    await wrapper.get('[data-test="correlation-mode-spearman"]').trigger("click");
+    const options = chartOptions<CorrelationChartOptions>(wrapper, "correlation-chart");
+    expect(options.series[0].data).toContainEqual([1, 0, 0.18]);
+    expect(apiMocks.post).toHaveBeenCalledTimes(1);
   });
 });

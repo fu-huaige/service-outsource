@@ -37,7 +37,7 @@
         v-for="art in availableArtifacts"
         :key="art.stepId"
         type="button"
-        class="aw-tab font-mono"
+        class="aw-tab"
         :class="{ 'is-active': activeTab === art.stepId }"
         @click="activeTab = art.stepId"
       >
@@ -51,7 +51,7 @@
       <template v-if="activeArtifact.type === 'model' || activeArtifact.type === 'evaluation'">
         <MetricStrip :metrics="modelMetrics(activeArtifact)" />
         <div class="aw-section">
-          <div class="aw-section__label font-mono">模型结构 (Model Structure)</div>
+          <div class="aw-section__label">模型结构 (Model Structure)</div>
           <div class="aw-kv-list">
             <div v-if="activeArtifact.payload.na !== undefined" class="aw-kv">
               <span class="aw-kv__key font-mono">输出阶数 na</span>
@@ -77,7 +77,7 @@
       <template v-else-if="activeArtifact.type === 'optimization'">
         <MetricStrip :metrics="optimizationMetrics(activeArtifact)" />
         <div class="aw-section">
-          <div class="aw-section__label font-mono">最优参数 (Best Parameters)</div>
+          <div class="aw-section__label">最优参数 (Best Parameters)</div>
           <div class="aw-kv-list">
             <div v-for="(val, key) in activeArtifact.payload.best_params" :key="key" class="aw-kv">
               <span class="aw-kv__key font-mono">{{ key }}</span>
@@ -90,7 +90,7 @@
       <!-- Delay Artifact -->
       <template v-else-if="activeArtifact.type === 'delay'">
         <div class="aw-section">
-          <div class="aw-section__label font-mono">估计纯时滞 (Estimated Delays)</div>
+          <div class="aw-section__label">估计纯时滞 (Estimated Delays)</div>
           <div class="aw-kv-list">
             <div v-for="(val, key) in activeArtifact.payload.estimated_delays" :key="key" class="aw-kv">
               <span class="aw-kv__key font-mono">{{ key }}</span>
@@ -103,13 +103,13 @@
       <!-- Feature / Collinearity Artifact -->
       <template v-else-if="activeArtifact.type === 'feature'">
         <div class="aw-section">
-          <div class="aw-section__label font-mono">保留特征列 (Kept Features)</div>
+          <div class="aw-section__label">保留特征列 (Kept Features)</div>
           <div class="aw-tag-list">
             <span v-for="col in activeArtifact.payload.kept_columns" :key="col" class="aw-tag kept">{{ col }}</span>
           </div>
         </div>
         <div class="aw-section" v-if="activeArtifact.payload.removed_columns?.length">
-          <div class="aw-section__label font-mono">剔除冗余列 (Removed Features)</div>
+          <div class="aw-section__label">剔除冗余列 (Removed Features)</div>
           <div class="aw-tag-list">
             <span v-for="col in activeArtifact.payload.removed_columns" :key="col" class="aw-tag removed">{{ col }}</span>
           </div>
@@ -119,7 +119,7 @@
       <!-- Cleaning / Segmentation / Generic -->
       <template v-else>
         <div class="aw-section">
-          <div class="aw-section__label font-mono">工件详细数据 (Payload Details)</div>
+          <div class="aw-section__label">工件详细数据 (Payload Details)</div>
           <pre class="aw-json font-mono">{{ JSON.stringify(activeArtifact.payload, null, 2) }}</pre>
         </div>
       </template>
@@ -292,6 +292,7 @@ function optimizationMetrics(art: ArtifactDef) {
   border: 1px solid transparent;
   border-radius: 6px;
   color: #666666;
+  font-family: var(--font-sans);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -329,10 +330,11 @@ function optimizationMetrics(art: ArtifactDef) {
 }
 
 .aw-section__label {
+  font-family: var(--font-sans);
   font-size: 11px;
   color: #8E8E93;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: normal;
+  text-transform: none;
   font-weight: 600;
 }
 

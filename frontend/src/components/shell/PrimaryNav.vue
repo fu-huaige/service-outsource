@@ -166,7 +166,7 @@ const primaryNavItems: NavItemDef[] = [
   {
     name: 'assets',
     path: '/assets',
-    label: '资产中心',
+    label: '功能中心',
     icon: 'assets',
   },
 ];

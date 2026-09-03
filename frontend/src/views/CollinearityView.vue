@@ -162,16 +162,51 @@
 
     <!-- FORMAT 4: 3-Panel Tri-View Studio Grid (三联视窗工作台) -->
     <div class="collin-tri-grid" v-if="result">
-      <!-- Panel A: Pearson Heatmap Matrix -->
+      <!-- Panel A: Correlation Heatmap Matrix -->
       <div class="industrial-card tri-panel">
-        <div class="industrial-card-header">
+        <div class="industrial-card-header correlation-card-header">
           <div class="industrial-card-title">
             <el-icon><Grid /></el-icon>
-            <span>Pearson 相关性矩阵</span>
+            <span data-test="correlation-title">{{ correlationMatrixTitle }}</span>
           </div>
-          <span class="card-tag font-mono">HEATMAP</span>
+          <div class="correlation-header-actions">
+            <span class="card-tag font-mono">HEATMAP</span>
+            <div class="correlation-mode-switch" role="group" aria-label="相关矩阵显示方式">
+              <button
+                type="button"
+                class="correlation-mode-button font-mono"
+                :class="{ 'is-active': correlationMode === 'pearson' }"
+                :aria-pressed="correlationMode === 'pearson'"
+                data-test="correlation-mode-pearson"
+                title="Pearson：线性相关"
+                @click="correlationMode = 'pearson'"
+              >
+                Pearson
+              </button>
+              <button
+                type="button"
+                class="correlation-mode-button font-mono"
+                :class="{ 'is-active': correlationMode === 'spearman' }"
+                :aria-pressed="correlationMode === 'spearman'"
+                data-test="correlation-mode-spearman"
+                title="Spearman：秩相关"
+                @click="correlationMode = 'spearman'"
+              >
+                Spearman
+              </button>
+            </div>
+          </div>
         </div>
-        <ChartContainer :options="heatmapOptions" height="340px" />
+        <div v-if="!displayedCorrelationMatrix" class="matrix-unavailable" data-test="matrix-unavailable">
+          <strong class="font-mono">N/A</strong>
+          <span>当前历史结果没有可用的 {{ correlationMatrixTitle }} 数据。</span>
+        </div>
+        <ChartContainer
+          v-else
+          data-test="correlation-chart"
+          :options="heatmapOptions"
+          height="340px"
+        />
       </div>
 
       <!-- Panel B: VIF Bar Chart Radar -->
@@ -185,7 +220,7 @@
             阈值: <span class="font-mono">{{ form.vif_threshold || 10 }}</span>
           </span>
         </div>
-        <ChartContainer :options="vifOptions" height="340px" />
+        <ChartContainer data-test="vif-chart" :options="vifOptions" height="340px" />
       </div>
 
       <!-- Panel C: Elimination & Human Approval Board -->
@@ -242,7 +277,7 @@
               class="rec-item"
             >
               <span class="rec-var font-mono">{{ item.variable }}</span>
-              <span class="rec-vif font-mono">VIF = {{ formatNumber(result.vif_scores[item.variable]) }}</span>
+              <span class="rec-vif font-mono">VIF = {{ formatVifValue(result.vif_scores[item.variable]) }}</span>
             </div>
           </div>
           <div class="no-drops" v-else>
@@ -304,6 +339,8 @@ const errorMessage = ref("");
 const datasetError = ref("");
 const sourceError = ref("");
 const inputColumnsText = ref("");
+type CorrelationMode = "pearson" | "spearman";
+const correlationMode = ref<CorrelationMode>("pearson");
 const datasetStore = useDatasetStore();
 const datasetOptions = ref<DatasetItem[]>([]);
 const selectedDatasetId = ref<string | null>(null);
@@ -399,6 +436,7 @@ const invalidateSourceRequests = () => {
 
 const clearSourceContext = () => {
   invalidateSourceRequests();
+  correlationMode.value = "pearson";
   collinearitySources.value = [];
   selectedSourceVersionId.value = null;
   form.version_id = "";
@@ -457,6 +495,7 @@ const selectCollinearitySource = async (versionId: string | null, datasetId: str
   analysisRequest += 1;
   restoringResult.value = false;
   loading.value = false;
+  correlationMode.value = "pearson";
   result.value = null;
   errorMessage.value = "";
   selectedSourceVersionId.value = source?.version_id ?? null;
@@ -655,17 +694,69 @@ const conditionSeverity = computed(() => {
   return "success";
 });
 
+const correlationMatrixTitle = computed(() =>
+  correlationMode.value === "pearson"
+    ? "Pearson 相关系数矩阵"
+    : "Spearman 秩相关系数矩阵"
+);
+
+const isUsableCorrelationMatrix = (
+  matrix: number[][] | null | undefined,
+  variables: string[]
+): matrix is number[][] =>
+  Array.isArray(matrix) &&
+  variables.length > 0 &&
+  matrix.length === variables.length &&
+  matrix.every(
+    (row) =>
+      Array.isArray(row) &&
+      row.length === variables.length &&
+      row.every((value) => typeof value === "number" && Number.isFinite(value))
+  );
+
+const displayedCorrelationMatrix = computed<number[][] | null>(() => {
+  if (!result.value) return null;
+  const matrix =
+    correlationMode.value === "pearson"
+      ? result.value.matrix
+      : result.value.spearman_matrix;
+  return isUsableCorrelationMatrix(matrix, result.value.variables) ? matrix : null;
+});
+
+interface HeatmapTooltipParams {
+  value: [number, number, number];
+}
+
+interface VifTooltipParams {
+  axisValue?: string | number;
+  name?: string;
+}
+
+const formatNumber = (value: number | null | undefined) => {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  if (Math.abs(value) >= 10000) return value.toExponential(2);
+  return value.toFixed(2);
+};
+
+const isFiniteVif = (value: number | null | undefined): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+
+const formatVifValue = (value: number | null | undefined) =>
+  isFiniteVif(value) ? formatNumber(value) : "N/A";
+
 const heatmapOptions = computed(() => {
-  if (!result.value) return {};
+  if (!result.value || !displayedCorrelationMatrix.value) return {};
   const names = result.value.variables;
   const data: [number, number, number][] = [];
-  result.value.matrix.forEach((row, i) => {
+  displayedCorrelationMatrix.value.forEach((row, i) => {
     row.forEach((value, j) => data.push([j, i, Number(value.toFixed(3))]));
   });
+  const coefficientLabel =
+    correlationMode.value === "pearson" ? "Pearson r" : "Spearman correlation";
   return {
     tooltip: {
-      formatter: (params: any) =>
-        `${names[params.value[1]]} × ${names[params.value[0]]}<br/>r = ${params.value[2]}`,
+      formatter: (params: HeatmapTooltipParams) =>
+        `${names[params.value[1]]} × ${names[params.value[0]]}<br/>${coefficientLabel}: ${params.value[2]}`,
     },
     grid: { left: "12%", right: "12%", bottom: "12%", top: "6%", containLabel: true },
     xAxis: { type: "category", data: names, splitArea: { show: true } },
@@ -693,20 +784,53 @@ const heatmapOptions = computed(() => {
 const vifOptions = computed(() => {
   if (!result.value) return {};
   const names = result.value.variables;
+  const scores = result.value.vif_scores;
   const threshold = form.vif_threshold ?? 10;
   return {
-    tooltip: { trigger: "axis" },
+    tooltip: {
+      trigger: "axis",
+      formatter: (params: VifTooltipParams | VifTooltipParams[]) => {
+        const first = Array.isArray(params) ? params[0] : params;
+        const name = String(first?.axisValue ?? first?.name ?? "");
+        const value = scores[name];
+        const detail = isFiniteVif(value)
+          ? ""
+          : "<br/>当前数据条件下无法可靠计算 VIF";
+        return `${name}<br/>VIF: ${formatVifValue(value)}${detail}`;
+      },
+    },
     grid: { left: "3%", right: "4%", bottom: "10%", top: "8%", containLabel: true },
-    xAxis: { type: "category", data: names },
+    xAxis: {
+      type: "category",
+      data: names,
+      axisLabel: {
+        formatter: (name: string) =>
+          isFiniteVif(scores[name]) ? name : `${name}\nN/A`,
+      },
+    },
     yAxis: { type: "value", name: "VIF" },
     series: [
       {
         type: "bar",
         data: names.map((name) => {
-          const value = result.value!.vif_scores[name] ?? 0;
+          const value = scores[name];
+          if (!isFiniteVif(value)) {
+            return {
+              value: null,
+              itemStyle: { color: "#A7ADA8" },
+              label: {
+                show: true,
+                position: "top",
+                formatter: "N/A",
+                color: "#7C847E",
+                fontSize: 11,
+              },
+            };
+          }
           return {
-            value: Number.isFinite(value) ? value : 0,
+            value,
             itemStyle: { color: value >= threshold ? "#B96560" : "#6E9B69" },
+            label: { show: false },
           };
         }),
         markLine: {
@@ -718,12 +842,6 @@ const vifOptions = computed(() => {
     ],
   };
 });
-
-const formatNumber = (value: number | null | undefined) => {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
-  if (Math.abs(value) >= 10000) return value.toExponential(2);
-  return value.toFixed(2);
-};
 
 const handleApply = async () => {
   if (!result.value || !dropCandidates.value.length) return;
@@ -1015,6 +1133,73 @@ const handleApply = async () => {
   font-size: 10px;
   font-weight: 700;
   color: var(--text-muted);
+}
+
+.correlation-card-header {
+  gap: 12px;
+}
+
+.correlation-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.correlation-mode-switch {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border-default);
+  border-radius: 7px;
+  background: var(--surface-2);
+}
+
+.correlation-mode-button {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.3;
+  transition: color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.correlation-mode-button:hover {
+  color: var(--text-primary);
+}
+
+.correlation-mode-button.is-active {
+  color: var(--color-primary);
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(46, 63, 50, 0.1);
+}
+
+.correlation-mode-button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.matrix-unavailable {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  min-height: 340px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.matrix-unavailable strong {
+  color: var(--text-secondary);
+  font-size: 18px;
+}
+
+.matrix-unavailable span {
+  max-width: 260px;
+  font-family: var(--font-sans);
+  font-size: 12px;
 }
 
 .localized-card-tag {

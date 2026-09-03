@@ -89,6 +89,7 @@ export interface SimulationGenerateRequest {
   scenario: "S1" | "S2" | "S3" | "S4" | "S5" | "S6";
   dataset_name: string;
   num_samples?: number;
+  input_count?: number;
   noise_level?: number;
   seed?: number;
 }

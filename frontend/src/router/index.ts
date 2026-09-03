@@ -64,7 +64,28 @@ const routes: RouteRecordRaw[] = [
         path: "/assets",
         name: "Assets",
         component: () => import("../views/AssetsView.vue"),
-        meta: { title: "Assets" },
+        meta: { title: "功能中心" },
+      },
+      {
+        path: "/assets/preprocessing",
+        name: "AssetPreprocessing",
+        component: () => import("../views/AssetCategoryView.vue"),
+        props: { category: "preprocessing" },
+        meta: { title: "预处理与优选" },
+      },
+      {
+        path: "/assets/modeling",
+        name: "AssetModeling",
+        component: () => import("../views/AssetCategoryView.vue"),
+        props: { category: "modeling" },
+        meta: { title: "建模与寻优" },
+      },
+      {
+        path: "/assets/delivery",
+        name: "AssetDelivery",
+        component: () => import("../views/AssetCategoryView.vue"),
+        props: { category: "delivery" },
+        meta: { title: "分析与交付" },
       },
 
       // Data Management

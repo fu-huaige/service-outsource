@@ -323,7 +323,7 @@
 
     <!-- Takeaway Summary Bar -->
     <div class="playground-summary">
-      <div class="summary-chip font-mono">实测结论</div>
+      <div class="summary-chip">实测结论</div>
       <div class="summary-text">{{ metrics.insight }}</div>
     </div>
   </div>
@@ -1055,8 +1055,10 @@ const hoverData = computed(() => {
 }
 
 .summary-chip {
+  font-family: var(--font-sans);
   font-size: 10px;
   font-weight: 700;
+  letter-spacing: normal;
   padding: 2px 6px;
   border-radius: 3px;
   background: #e2e8f0;

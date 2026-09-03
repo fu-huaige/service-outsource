@@ -200,9 +200,9 @@ const activePath = computed(() => route.path);
   color: #475569;
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  font-family: var(--font-mono);
+  letter-spacing: normal;
+  text-transform: none;
+  font-family: var(--font-sans);
 }
 
 .collapsed :deep(.el-menu-item-group__title) {

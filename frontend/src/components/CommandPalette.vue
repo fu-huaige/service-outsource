@@ -27,7 +27,7 @@
         <div class="cmd-list" ref="listRef">
           <template v-if="groupedItems.length > 0">
             <div v-for="group in groupedItems" :key="group.category" class="cmd-group">
-              <div class="cmd-group-title font-mono">{{ group.category }}</div>
+              <div class="cmd-group-title">{{ group.category }}</div>
               <div
                 v-for="item in group.items"
                 :key="item.id"
@@ -95,7 +95,7 @@ import {
 
 interface CommandItem {
   id: string;
-  category: "常用导航" | "预处理与优选" | "建模与寻优" | "分析与交付";
+  category: "常用导航" | "预处理与优选" | "建模与寻优" | "分析与交付" | "系统环境设置";
   title: string;
   sub?: string;
   shortcut?: string;
@@ -131,11 +131,19 @@ const allCommands: CommandItem[] = [
     icon: ChatDotSquare,
   },
   {
+    id: "assets",
+    category: "常用导航",
+    title: "功能中心",
+    sub: "集中访问数据、预处理、建模与分析交付能力",
+    shortcut: "G A",
+    path: "/assets",
+    icon: FolderOpened,
+  },
+  {
     id: "datasets",
     category: "常用导航",
-    title: "数据资产中心 (Datasets)",
+    title: "数据集与版本 (Datasets)",
     sub: "管理已上传工业 CSV 与版本血缘",
-    shortcut: "G A",
     path: "/datasets",
     icon: FolderOpened,
   },
@@ -214,7 +222,7 @@ const allCommands: CommandItem[] = [
   },
   {
     id: "settings",
-    category: "分析与交付",
+    category: "系统环境设置",
     title: "系统环境设置 (Settings)",
     sub: "大模型 Provider 运行时配置与网络测试",
     path: "/settings",
@@ -240,6 +248,7 @@ const groupedItems = computed(() => {
     "预处理与优选",
     "建模与寻优",
     "分析与交付",
+    "系统环境设置",
   ];
   return categories
     .map((cat) => ({
@@ -433,11 +442,12 @@ defineExpose({
 
 .cmd-group-title {
   padding: 6px 12px 4px;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--text-tertiary);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .cmd-item {

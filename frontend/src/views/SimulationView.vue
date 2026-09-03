@@ -35,12 +35,40 @@
             <el-input-number v-model="form.num_samples" :min="500" :max="50000" :step="500" />
           </el-form-item>
 
+          <el-form-item label="输入变量数量">
+            <div class="input-count-field">
+              <el-select
+                v-model="form.input_count"
+                clearable
+                :disabled="isFixedInputScenario"
+                :placeholder="inputCountPlaceholder"
+                data-test="input-count"
+              >
+                <el-option
+                  v-for="count in supportedInputCounts"
+                  :key="count"
+                  :label="`${count} 个输入变量`"
+                  :value="count"
+                />
+              </el-select>
+              <span class="input-count-help">
+                {{ isFixedInputScenario ? "S1 固定为 1 个输入变量" : "可选；留空时使用系统默认值（2 个输入变量）" }}
+              </span>
+            </div>
+          </el-form-item>
+
           <el-form-item label="噪声水平 σ" class="form-span-2">
             <el-slider v-model="form.noise_level" :min="0" :max="1" :step="0.05" show-input />
           </el-form-item>
 
           <el-form-item label="随机种子 Seed">
-            <el-input-number v-model="form.seed" :min="1" :max="9999" />
+            <el-input-number
+              v-model="form.seed"
+              :min="0"
+              :max="2147483647"
+              :step="1"
+              data-test="simulation-seed"
+            />
           </el-form-item>
 
           <el-form-item class="parameter-form-actions">
@@ -101,7 +129,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from "vue";
+import { computed, ref, reactive } from "vue";
 import { Setting, Check, Download, Cpu, View } from "@element-plus/icons-vue";
 import PageHeader from "../components/common/PageHeader.vue";
 import { generateSimulationDataset } from "../api/simulation";
@@ -128,6 +156,7 @@ const SCENARIO_DEFAULT_DATASET_NAMES: Record<SimulationScenario, string> = {
 
 const initialScenario: SimulationScenario = "S1";
 const isDatasetNameDirty = ref(false);
+const supportedInputCounts = [2, 3, 4] as const;
 
 const form = reactive<SimulationGenerateRequest>({
   scenario: initialScenario,
@@ -137,12 +166,20 @@ const form = reactive<SimulationGenerateRequest>({
   seed: 42,
 });
 
+const isFixedInputScenario = computed(() => form.scenario === "S1");
+const inputCountPlaceholder = computed(() =>
+  isFixedInputScenario.value ? "该场景固定为 1" : "使用系统默认值"
+);
+
 const isSimulationScenario = (value: unknown): value is SimulationScenario =>
   typeof value === "string" && Object.prototype.hasOwnProperty.call(SCENARIO_DEFAULT_DATASET_NAMES, value);
 
 const handleScenarioChange = (value: unknown) => {
   if (!isSimulationScenario(value)) return;
   form.scenario = value;
+  if (value === "S1") {
+    form.input_count = undefined;
+  }
   if (!isDatasetNameDirty.value) {
     form.dataset_name = SCENARIO_DEFAULT_DATASET_NAMES[value];
   }
@@ -153,9 +190,27 @@ const handleDatasetNameInput = () => {
 };
 
 const handleGenerate = async () => {
+  const selectedInputCount = form.input_count;
+  if (
+    !isFixedInputScenario.value &&
+    selectedInputCount != null &&
+    !supportedInputCounts.some((count) => count === selectedInputCount)
+  ) {
+    ElMessage.error("输入变量数量必须为 2、3 或 4");
+    return;
+  }
+
+  const { input_count: _inputCount, ...basePayload } = form;
+  const payload: SimulationGenerateRequest = {
+    ...basePayload,
+    ...(!isFixedInputScenario.value && selectedInputCount != null
+      ? { input_count: selectedInputCount }
+      : {}),
+  };
+
   loading.value = true;
   try {
-    const res = await generateSimulationDataset(form);
+    const res = await generateSimulationDataset(payload);
     result.value = res;
     datasetStore.setActiveDataset({
       id: res.dataset_id,
@@ -196,6 +251,28 @@ const handleGoToARX = () => {
   display: flex;
   flex-direction: column;
   gap: var(--section-gap-md);
+}
+
+.simulation-view .industrial-card-title {
+  font-family: var(--font-sans);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.input-count-field {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.input-count-help {
+  color: var(--text-tertiary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1.4;
 }
 
 .gt-params-box {
