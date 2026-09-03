@@ -391,9 +391,14 @@ async function handleNewTask(payload: { message: string; datasetId?: string | nu
     if (res.execution_id) {
       executionStore.setActiveExecutionId(res.execution_id);
       await router.push(`/workspace/${res.execution_id}`);
+    } else {
+      ElMessage.warning(
+        res.conclusion || '计划已生成！请点击输入框左下角的「📎 挂载数据」选择数据集，Agent 将自动执行全流程任务。'
+      );
     }
   } catch (err: any) {
     console.error('Failed to start task', err);
+    ElMessage.error(err.message || '任务发起失败，请检查服务状态');
   } finally {
     isSending.value = false;
   }

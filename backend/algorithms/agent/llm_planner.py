@@ -52,7 +52,8 @@ PLANNER_SYSTEM_PROMPT = f"""你是流程工业建模数据预处理系统的调�
 2. clean_data 必须在 detect_anomalies 之后；evaluate_model 必须在 fit_arx 之后。
 3. select_variables、optimize_pipeline、export_dataset 属于高影响操作。
 4. parameters 只填工程师明确给出的数值（如窗口长度、最大滞后、试验次数），不要臆造。
-5. 不得引用测试集，不得让任何拟合型变换使用训练集以外的数据。"""
+5. 不得引用测试集，不得让任何拟合型变换使用训练集以外的数据。
+6. 若工作流包含 fit_arx（ARX 辨识），必须在其前面安排 estimate_delays（估计时滞）与 apply_lag_compensation（时滞补偿），因为工业时序 ARX 建模必须基于已完成时滞补偿对齐的数据版本。"""
 
 NARRATOR_SYSTEM_PROMPT = """你是工业过程辨识专家，负责撰写建模数据优选与辨识报告的结论段落。
 

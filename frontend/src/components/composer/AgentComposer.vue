@@ -128,7 +128,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onBeforeUnmount, watch, type CSSProperties } from 'vue';
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch, type CSSProperties } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useDatasetStore } from '../../stores/datasetStore';
 import { listDatasets } from '../../api/datasets';
@@ -191,6 +191,10 @@ function autoResize() {
 
 async function handleSubmit() {
   if (!canSubmit.value) return;
+  if (!attachedDataset.value) {
+    ElMessage.warning('请先点击输入框左下角「📎 挂载数据」选择数据集，Agent 将基于该数据集执行全流程建模任务。');
+    return;
+  }
   isSubmitting.value = true;
   try {
     emit('submit', {
@@ -205,6 +209,27 @@ async function handleSubmit() {
     isSubmitting.value = false;
   }
 }
+
+onMounted(async () => {
+  if (!attachedDataset.value) {
+    if (datasetStore.activeDataset) {
+      attachedDataset.value = datasetStore.activeDataset;
+    } else {
+      try {
+        const res = await listDatasets({ page: 1, page_size: 10 });
+        if (res.items.length > 0) {
+          const defaultDs = res.items.find((d) => d.status === 'ready') || res.items[0];
+          if (defaultDs) {
+            attachedDataset.value = defaultDs;
+            datasetStore.setActiveDataset(defaultDs);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+});
 
 function attachDataset(ds: DatasetItem) {
   attachedDataset.value = ds;
