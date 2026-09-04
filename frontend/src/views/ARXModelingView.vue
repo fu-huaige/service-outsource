@@ -7,19 +7,84 @@
     />
 
     <div class="modeling-layout">
-      <!-- Target Dataset Info -->
-      <div class="industrial-card" v-if="activeDataset">
-        <div class="industrial-card-header">
-          <div class="industrial-card-title">
-            <el-icon><FolderOpened /></el-icon> 当前辨识目标数据集: {{ activeDataset.name }}
+      <section class="industrial-card source-context-card" aria-labelledby="arx-source-title">
+        <div class="source-context-header">
+          <div>
+            <span class="source-context-eyebrow font-mono">MODELING CONTEXT</span>
+            <h3 id="arx-source-title">ARX 建模上下文</h3>
           </div>
-          <el-tag type="primary">ID: {{ activeDataset.id }} (版本: {{ activeDataset.version_id }})</el-tag>
+          <p>仅可信时滞补偿版本，或其特征优选后代，可进入 ARX 辨识。</p>
         </div>
-        <p class="dataset-meta">
+
+        <div class="source-control-grid">
+          <div class="source-control">
+            <label for="arx-dataset">数据集</label>
+            <el-select
+              id="arx-dataset"
+              v-model="selectedDatasetId"
+              data-test="arx-dataset-select"
+              placeholder="选择数据集"
+              :loading="loadingDatasets"
+              filterable
+              @change="handleDatasetChange"
+            >
+              <el-option
+                v-for="dataset in datasetOptions"
+                :key="dataset.id"
+                :label="dataset.name"
+                :value="dataset.id"
+              >
+                <div class="dataset-option">
+                  <span>{{ dataset.name }}</span>
+                  <small>{{ dataset.row_count }} rows · {{ dataset.col_count }} cols</small>
+                </div>
+              </el-option>
+            </el-select>
+          </div>
+
+          <div class="source-control">
+            <label>建模源版本</label>
+            <VersionLineagePicker
+              data-test="arx-source-picker"
+              :dataset-name="selectedDataset?.name ?? ''"
+              :versions="versionNodes"
+              :selected-version-id="selectedVersionId"
+              :loading="loadingVersions"
+              context-label="具备可信时滞补偿血缘的版本可用于 ARX 建模"
+              eligible-label="可用于 ARX 建模"
+              empty-state-text="暂无可用于 ARX 建模的数据版本。"
+              empty-state-hint="请先完成时滞补偿。"
+              placeholder="选择 ARX 建模源版本"
+              :is-eligible="isArxEligibleVersion"
+              :disabled-reason="arxDisabledReason"
+              @select="handleVersionSelect"
+            />
+          </div>
+        </div>
+
+        <el-alert
+          v-if="contextError"
+          type="error"
+          :title="contextError"
+          :closable="false"
+          show-icon
+          class="context-alert"
+        />
+
+        <div v-if="selectedVersion" class="source-summary" data-test="arx-source-summary">
+          <div><span>当前建模源</span><strong>{{ versionDisplayName(selectedVersion) }}</strong></div>
+          <div><span>数据集</span><strong>{{ selectedDataset?.name }}</strong></div>
+          <div><span>创建时间</span><strong>{{ formatVersionDate(selectedVersion.created_at) }}</strong></div>
+          <div><span>来源</span><strong>{{ selectedParent ? versionDisplayName(selectedParent) : "初始版本" }}</strong></div>
+          <div><span>版本 ID</span><strong class="font-mono">{{ shortVersionId(selectedVersion.id) }}</strong></div>
+          <div><span>ARX 状态</span><strong class="source-ready">{{ arxReadyLabel(selectedVersion) }}</strong></div>
+        </div>
+
+        <p v-if="selectedVersion" class="dataset-meta">
           过程输入：<span class="code-inline">{{ inputCols.join(", ") }}</span> |
-          目标输出：<span class="code-inline">{{ activeDataset.output_column }}</span>
+          目标输出：<span class="code-inline">{{ selectedDataset?.output_column }}</span>
         </p>
-      </div>
+      </section>
 
       <!-- Model Config Card -->
       <div class="industrial-card">
@@ -62,7 +127,14 @@
           </el-form-item>
 
           <el-form-item class="parameter-form-actions">
-            <el-button type="primary" :loading="loading" icon="VideoPlay" @click="handleFit">
+            <el-button
+              data-test="arx-fit-button"
+              type="primary"
+              :loading="loading"
+              :disabled="!selectedVersion || loadingVersions || loading"
+              icon="VideoPlay"
+              @click="handleFit"
+            >
               运行 ARX 辨识
             </el-button>
           </el-form-item>
@@ -171,31 +243,112 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted } from "vue";
-import { Cpu, VideoPlay, Trophy, TrendCharts, RefreshRight, FolderOpened } from "@element-plus/icons-vue";
+import { ref, reactive, computed, onMounted } from "vue";
+import { Cpu, VideoPlay, Trophy, TrendCharts, RefreshRight } from "@element-plus/icons-vue";
 import PageHeader from "../components/common/PageHeader.vue";
 import ChartContainer from "../components/ChartContainer.vue";
+import VersionLineagePicker from "../components/versioning/VersionLineagePicker.vue";
 import { fitARXModel } from "../api/modeling";
-import type { ARXFitRequest, ARXFitResponse } from "../types/api";
+import { getDatasetDetail, getDatasetVersions, listDatasets } from "../api/datasets";
+import type {
+  ARXFitRequest,
+  ARXFitResponse,
+  DatasetItem,
+  DatasetVersionNode,
+} from "../types/api";
 import { useDatasetStore } from "../stores/datasetStore";
 import { ElMessage } from "element-plus";
+import { ApiError } from "../api/client";
+import {
+  formatVersionDate,
+  shortVersionId,
+  versionDisplayName,
+} from "../utils/versionOperation";
 
 const datasetStore = useDatasetStore();
 const loading = ref(false);
+const loadingDatasets = ref(false);
+const loadingVersions = ref(false);
 const fitResult = ref<ARXFitResponse | null>(null);
+const contextError = ref("");
+const datasetOptions = ref<DatasetItem[]>([]);
+const selectedDatasetId = ref<string | null>(null);
+const selectedDataset = ref<DatasetItem | null>(null);
+const versionNodes = ref<DatasetVersionNode[]>([]);
+const selectedVersionId = ref<string | null>(null);
+const rememberedSourceByDataset = new Map<string, string>();
+let contextRequestId = 0;
 
-const activeDataset = computed(() => datasetStore.activeDataset);
+const selectedVersion = computed(
+  () => versionNodes.value.find((node) => node.id === selectedVersionId.value) ?? null
+);
+const selectedParent = computed(() => {
+  const parentId = selectedVersion.value?.parent_version_id;
+  return parentId
+    ? versionNodes.value.find((node) => node.id === parentId) ?? null
+    : null;
+});
+
+const isLagDescendantFeature = (version: DatasetVersionNode) => {
+  if (version.tool !== "preprocessing.feature_selection") return false;
+  const byId = new Map(versionNodes.value.map((node) => [node.id, node]));
+  const visited = new Set<string>();
+  let current: DatasetVersionNode | undefined = version;
+  while (current?.parent_version_id && !visited.has(current.id)) {
+    visited.add(current.id);
+    const parent = byId.get(current.parent_version_id);
+    if (!parent) return false;
+    if (parent.tool === "preprocessing.lag_compensation") return true;
+    if (parent.tool !== "preprocessing.feature_selection") return false;
+    current = parent;
+  }
+  return false;
+};
+
+const isArxEligibleVersion = (version: DatasetVersionNode) =>
+  version.tool === "preprocessing.lag_compensation" || isLagDescendantFeature(version);
+
+const arxDisabledReason = (version: DatasetVersionNode) => {
+  if (version.tool === "simulation_generate" || version.tool === "raw_upload") {
+    return "需先完成清洗与时滞补偿";
+  }
+  if (version.tool === "preprocessing.clean") return "需先完成时滞补偿";
+  if (version.tool === "preprocessing.feature_selection") return "缺少可信时滞补偿来源";
+  return "该处理阶段不符合 ARX 建模源要求";
+};
+
+const arxReadyLabel = (version: DatasetVersionNode) =>
+  version.tool === "preprocessing.feature_selection"
+    ? "特征优选后，可用于 ARX 建模"
+    : "可用于 ARX 建模";
+
+const stringArray = (value: unknown): string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === "string") ? value : [];
+
+const versionInputColumns = (version: DatasetVersionNode | null) => {
+  if (!version) return [];
+  if (version.tool === "preprocessing.feature_selection") {
+    const kept = stringArray(version.parameters?.kept_input_columns);
+    if (kept.length) return kept;
+  }
+  if (version.tool === "preprocessing.lag_compensation") {
+    const lagMap = version.parameters?.lag_map;
+    if (lagMap && typeof lagMap === "object" && !Array.isArray(lagMap)) {
+      const columns = Object.keys(lagMap);
+      if (columns.length) return columns;
+    }
+  }
+  return selectedDataset.value?.input_columns ?? [];
+};
 
 const inputCols = computed(() => {
-  if (activeDataset.value && activeDataset.value.input_columns.length > 0) {
-    return activeDataset.value.input_columns;
-  }
-  return ["u1"];
+  const columns = versionInputColumns(selectedVersion.value);
+  return columns.length ? columns : ["u1"];
 });
 
 const form = reactive<ARXFitRequest>({
-  dataset_id: "ds_s1",
-  version_id: "V0_Original",
+  dataset_id: "",
+  version_id: "",
   na: 2,
   nb: [2],
   delays: [3],
@@ -204,25 +357,110 @@ const form = reactive<ARXFitRequest>({
   evaluate_test: false,
 });
 
-const syncFormWithStore = () => {
-  if (activeDataset.value) {
-    form.dataset_id = activeDataset.value.id;
-    form.version_id = activeDataset.value.version_id;
-    const count = inputCols.value.length;
-    form.nb = Array(count).fill(2);
-    form.delays = Array(count).fill(3);
+const clearSourceContext = () => {
+  versionNodes.value = [];
+  selectedVersionId.value = null;
+  form.dataset_id = "";
+  form.version_id = "";
+  fitResult.value = null;
+};
+
+const syncFormWithSource = () => {
+  form.dataset_id = selectedDataset.value?.id ?? "";
+  form.version_id = selectedVersion.value?.id ?? "";
+  const count = inputCols.value.length;
+  form.nb = Array(count).fill(2);
+  form.delays = Array(count).fill(3);
+};
+
+const handleVersionSelect = (versionId: string) => {
+  const version = versionNodes.value.find((node) => node.id === versionId);
+  if (!version || !isArxEligibleVersion(version) || !selectedDatasetId.value) return;
+  selectedVersionId.value = versionId;
+  rememberedSourceByDataset.set(selectedDatasetId.value, versionId);
+  fitResult.value = null;
+  contextError.value = "";
+  syncFormWithSource();
+};
+
+const chooseDefaultVersion = (dataset: DatasetItem, nodes: DatasetVersionNode[]) => {
+  const eligible = nodes.filter(isArxEligibleVersion);
+  const rememberedId = rememberedSourceByDataset.get(dataset.id);
+  const activeVersionId = datasetStore.activeDataset?.id === dataset.id
+    ? datasetStore.activeDataset.version_id || datasetStore.activeDataset.latest_version_id
+    : dataset.version_id || dataset.latest_version_id;
+  const preferred = eligible.find((node) => node.id === rememberedId)
+    ?? eligible.find((node) => node.id === activeVersionId)
+    ?? [...eligible].sort(
+      (left, right) => Date.parse(right.created_at) - Date.parse(left.created_at)
+    )[0];
+  if (preferred) handleVersionSelect(preferred.id);
+};
+
+const loadDatasetContext = async (datasetId: string) => {
+  const requestId = ++contextRequestId;
+  clearSourceContext();
+  contextError.value = "";
+  loadingVersions.value = true;
+  try {
+    const [dataset, versions] = await Promise.all([
+      getDatasetDetail(datasetId),
+      getDatasetVersions(datasetId),
+    ]);
+    if (requestId !== contextRequestId) return;
+    selectedDataset.value = dataset;
+    versionNodes.value = versions.nodes;
+    datasetStore.setActiveDataset(dataset);
+    chooseDefaultVersion(dataset, versions.nodes);
+  } catch (error) {
+    if (requestId !== contextRequestId) return;
+    selectedDataset.value = null;
+    contextError.value = error instanceof ApiError ? error.message : String(error);
+  } finally {
+    if (requestId === contextRequestId) loadingVersions.value = false;
   }
 };
 
-watch(activeDataset, () => {
-  syncFormWithStore();
-}, { immediate: true });
+const handleDatasetChange = (datasetId: string) => {
+  if (!datasetId) {
+    ++contextRequestId;
+    selectedDataset.value = null;
+    clearSourceContext();
+    return;
+  }
+  void loadDatasetContext(datasetId);
+};
+
+const initializeDatasets = async () => {
+  loadingDatasets.value = true;
+  contextError.value = "";
+  try {
+    const response = await listDatasets({ page: 1, page_size: 100 });
+    datasetOptions.value = response.items;
+    datasetStore.setDatasetsList(response.items);
+    const active = datasetStore.activeDataset;
+    if (active && response.items.some((dataset) => dataset.id === active.id)) {
+      selectedDatasetId.value = active.id;
+      await loadDatasetContext(active.id);
+    }
+  } catch (error) {
+    contextError.value = error instanceof ApiError ? error.message : String(error);
+  } finally {
+    loadingDatasets.value = false;
+  }
+};
 
 onMounted(() => {
-  syncFormWithStore();
+  void initializeDatasets();
 });
 
 const handleFit = async () => {
+  if (!selectedDataset.value || !selectedVersion.value || !isArxEligibleVersion(selectedVersion.value)) {
+    ElMessage.error("请先选择具备可信时滞补偿血缘的 ARX 建模源版本。");
+    return;
+  }
+  form.dataset_id = selectedDataset.value.id;
+  form.version_id = selectedVersion.value.id;
   loading.value = true;
   try {
     const res = await fitARXModel({ ...form, evaluate_test: false });
@@ -298,7 +536,118 @@ const plotOptions = computed(() => {
   min-height: 100%;
 }
 
+.source-context-card {
+  padding: 20px 24px;
+  background: #ffffff;
+}
+
+.source-context-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.source-context-header h3,
+.source-context-header p {
+  margin: 0;
+}
+
+.source-context-header h3 {
+  margin-top: 5px;
+  font-size: 16px;
+}
+
+.source-context-header p {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.source-context-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--color-primary);
+}
+
+.source-control-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(320px, 1.2fr);
+  gap: 16px;
+  padding-top: 16px;
+}
+
+.source-control {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.source-control > label {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.source-control :deep(.el-select) {
+  width: 100%;
+}
+
+.dataset-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dataset-option small {
+  color: var(--text-faint);
+}
+
+.context-alert {
+  margin-top: 14px;
+}
+
+.source-summary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+  padding: 13px 14px;
+  border: 1px solid #dce7da;
+  border-radius: 8px;
+  background: #f7faf6;
+}
+
+.source-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.source-summary span {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.source-summary strong {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-summary .source-ready {
+  color: #466f43;
+}
+
 .dataset-meta {
+  margin: 12px 0 0;
   font-size: 13px;
   color: var(--text-secondary);
 }
@@ -359,5 +708,21 @@ const plotOptions = computed(() => {
   border-radius: 6px;
   font-size: 13px;
   color: var(--text-primary);
+}
+
+@media (max-width: 1000px) {
+  .source-context-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .source-control-grid,
+  .source-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 </style>

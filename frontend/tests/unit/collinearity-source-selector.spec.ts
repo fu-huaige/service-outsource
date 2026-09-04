@@ -7,6 +7,7 @@ import { useDatasetStore } from "../../src/stores/datasetStore";
 import type {
   CollinearityResponse,
   CollinearitySourceStatus,
+  CollinearitySourceVersionItem,
   CollinearitySourceVersionsData,
   DatasetItem,
 } from "../../src/types/api";
@@ -145,6 +146,13 @@ const ElAlertStub = defineComponent({
   },
 });
 
+const ElPopoverStub = defineComponent({
+  name: "ElPopover",
+  setup(_props, { slots }) {
+    return () => h("div", [slots.reference?.(), slots.default?.()]);
+  },
+});
+
 const ChartContainerStub = defineComponent({
   name: "ChartContainer",
   inheritAttrs: false,
@@ -170,9 +178,11 @@ const stubs = {
   "el-input-number": ElInputNumberStub,
   "el-button": ElButtonStub,
   "el-alert": ElAlertStub,
+  "el-popover": ElPopoverStub,
   "el-icon": simpleSlotStub,
   "el-tag": simpleSlotStub,
   ChartContainer: ChartContainerStub,
+  ArrowDown: true,
 };
 
 const dataset = (id: string, name = id): DatasetItem => ({
@@ -192,14 +202,16 @@ const dataset = (id: string, name = id): DatasetItem => ({
 const source = (
   versionId: string,
   status: CollinearitySourceStatus,
-  index = 2
-) => ({
+  index = 2,
+  inputColumns = ["u1", "u2"]
+): CollinearitySourceVersionItem => ({
   version_id: versionId,
   version_index: index,
   name: `V${index} · 时滞补偿`,
   operation_name: "preprocessing.lag_compensation",
   parent_version_id: `${versionId}-parent`,
   created_at: "2026-09-01T02:00:00Z",
+  input_columns: inputColumns,
   collinearity_status: status,
   latest_complete_collinearity_run_id: status === "complete" ? `${versionId}-run` : null,
 });
@@ -230,6 +242,12 @@ const analysisResult = (
     action: "keep" as const,
     reason: "stable",
     related_variables: [],
+  })),
+  input_diagnostics: variables.map((column) => ({
+    column,
+    status: "analyzable" as const,
+    reason: "数值方差充足，可参与相关性、VIF 与条件数诊断。",
+    variance: 1,
   })),
 });
 
@@ -262,6 +280,43 @@ let sourceResponses: Map<
 let sourceCallCounts: Map<string, number>;
 let latestResponses: Map<string, CollinearityResponse | Promise<CollinearityResponse>>;
 
+const lineageResponse = (data: CollinearitySourceVersionsData) => ({
+  dataset_id: data.dataset_id,
+  active_version_id: `${data.dataset_id}-active-version`,
+  nodes: [
+    {
+      id: `${data.dataset_id}-raw`,
+      name: "V0 · 仿真原始数据",
+      tool: "simulation_generate",
+      parent_version_id: null,
+      created_at: "2026-09-01T00:00:00Z",
+      row_count: 120,
+      column_count: 3,
+      artifact_path: "raw.csv",
+    },
+    {
+      id: `${data.dataset_id}-clean`,
+      name: "V1 · 清洗规整",
+      tool: "preprocessing.clean",
+      parent_version_id: `${data.dataset_id}-raw`,
+      created_at: "2026-09-01T01:00:00Z",
+      row_count: 120,
+      column_count: 3,
+      artifact_path: "clean.csv",
+    },
+    ...data.sources.map((item, index) => ({
+      id: item.version_id,
+      name: item.name,
+      tool: item.operation_name,
+      parent_version_id: `${data.dataset_id}-clean`,
+      created_at: new Date(Date.parse(item.created_at) + index * 60_000).toISOString(),
+      row_count: 120,
+      column_count: 3,
+      artifact_path: `${item.version_id}.csv`,
+    })),
+  ],
+});
+
 const installApiBehavior = () => {
   apiMocks.get.mockImplementation((url: string, config?: { params?: Record<string, string> }) => {
     if (url === "/datasets?page=1&page_size=100") {
@@ -272,6 +327,15 @@ const installApiBehavior = () => {
       const response = latestResponses.get(versionId);
       if (!response) return Promise.reject(new Error(`Missing latest response for ${versionId}`));
       return response instanceof Promise ? response : Promise.resolve(response);
+    }
+    const versionsMatch = url.match(/^\/datasets\/([^/]+)\/versions$/);
+    if (versionsMatch) {
+      const datasetId = versionsMatch[1];
+      const response = sourceResponses.get(datasetId)?.[0];
+      if (!response) return Promise.reject(new Error(`Missing versions response for ${datasetId}`));
+      return response instanceof Promise
+        ? response.then(lineageResponse)
+        : Promise.resolve(lineageResponse(response));
     }
     const sourceMatch = url.match(/^\/datasets\/([^/]+)\/collinearity-sources$/);
     if (sourceMatch) {
@@ -317,8 +381,8 @@ const chartOptions = <T,>(wrapper: VueWrapper, testId: string): T => {
 };
 
 interface CorrelationChartOptions {
-  tooltip: { formatter: (params: { value: [number, number, number] }) => string };
-  series: Array<{ data: Array<[number, number, number]> }>;
+  tooltip: { formatter: (params: { value: [number, number] | [number, number, number]; data?: { unavailable?: boolean; reason?: string } }) => string };
+  series: Array<{ data: any[] }>;
 }
 
 interface VifChartOptions {
@@ -362,9 +426,14 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
     expect(wrapper.get<HTMLSelectElement>('[data-test="dataset-select"]').element.value).toBe(
       "dataset-a"
     );
-    expect(wrapper.get<HTMLSelectElement>('[data-test="source-select"]').element.value).toBe(
-      "lag-a"
-    );
+    expect(wrapper.get('[data-test="source-select"]').attributes("data-selected-version-id")).toBe("lag-a");
+    const lineageNodes = wrapper.findAll("[data-test='lineage-node']");
+    expect(lineageNodes[0]?.text()).toContain("V0 · 仿真原始数据");
+    expect(lineageNodes[0]?.attributes("aria-disabled")).toBe("true");
+    expect(lineageNodes[1]?.text()).toContain("V1 · 清洗规整");
+    expect(lineageNodes[1]?.attributes("aria-disabled")).toBe("true");
+    expect(wrapper.get("[data-version-id='lag-a']").text()).toContain("可用于共线性诊断");
+    expect(wrapper.get("[data-version-id='lag-a']").attributes("aria-disabled")).toBe("false");
     expect(apiMocks.get).toHaveBeenCalledWith("/datasets/dataset-a/collinearity-sources");
     expect(apiMocks.get).not.toHaveBeenCalledWith(
       "/datasets/version-not-a-dataset/collinearity-sources"
@@ -475,7 +544,7 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
   });
 
   it("resets correlation mode to Pearson when the source or Dataset changes", async () => {
-    const firstDataset = dataset("dataset-a");
+    const firstDataset = { ...dataset("dataset-a"), version_id: "lag-a" };
     const secondDataset = dataset("dataset-b");
     datasetsResponse = [firstDataset, secondDataset];
     detailResponses.set("dataset-a", firstDataset);
@@ -497,7 +566,7 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
     const { wrapper } = mountView(firstDataset);
     await flushPromises();
     await wrapper.get('[data-test="correlation-mode-spearman"]').trigger("click");
-    await wrapper.get('[data-test="source-select"]').setValue("lag-a-next");
+    await wrapper.get("[data-version-id='lag-a-next']").trigger("click");
     await flushPromises();
     expect(wrapper.get('[data-test="correlation-title"]').text()).toBe(
       "Pearson 相关系数矩阵"
@@ -524,7 +593,7 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
   });
 
   it("clears a complete result when switching sources and never auto-POSTs not_analyzed or unrehydratable sources", async () => {
-    const active = dataset("dataset-a");
+    const active = { ...dataset("dataset-a"), version_id: "lag-complete" };
     const sources = [
       source("lag-complete", "complete", 2),
       source("lag-new", "not_analyzed", 3),
@@ -539,7 +608,7 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
     await flushPromises();
     expect(wrapper.find(".collin-tri-grid").exists()).toBe(true);
 
-    await wrapper.get('[data-test="source-select"]').setValue("lag-new");
+    await wrapper.get("[data-version-id='lag-new']").trigger("click");
     await flushPromises();
     expect(wrapper.find(".collin-tri-grid").exists()).toBe(false);
     expect(wrapper.text()).toContain("该时滞补偿版本尚未进行共线性分析。");
@@ -548,7 +617,7 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
       apiMocks.get.mock.calls.filter(([url]) => url === "/preprocessing/collinearity/latest")
     ).toHaveLength(1);
 
-    await wrapper.get('[data-test="source-select"]').setValue("lag-legacy");
+    await wrapper.get("[data-version-id='lag-legacy']").trigger("click");
     await flushPromises();
     expect(wrapper.text()).toContain(
       "该版本存在历史分析记录，但结果无法按当前格式完整恢复，可重新执行分析。"
@@ -580,6 +649,58 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
     expect(apiMocks.post).not.toHaveBeenCalled();
   });
 
+  it("keeps Dataset-detail inputs and Analyze available for a not_analyzed source from the older selector contract", async () => {
+    const active = { ...dataset("dataset-a"), input_columns: ["u1", "u2", "u3", "u4"] };
+    const oldSelectorSource = {
+      ...source("lag-a", "not_analyzed", 2, ["u1", "u2", "u3", "u4"]),
+      input_columns: undefined,
+    };
+    datasetsResponse = [active];
+    detailResponses.set("dataset-a", active);
+    sourceResponses.set("dataset-a", [
+      sourceData("dataset-a", [oldSelectorSource], "lag-a"),
+    ]);
+
+    const { wrapper } = mountView(active);
+    await flushPromises();
+
+    expect(wrapper.get('[data-test="input-columns"]').text()).toContain("u4");
+    expect(wrapper.text()).toContain("该时滞补偿版本尚未进行共线性分析。");
+    expect(wrapper.get<HTMLButtonElement>('[data-test="analyze-button"]').element.disabled).toBe(false);
+    expect(wrapper.find('[data-test="legacy-qualification-warning"]').exists()).toBe(false);
+    expect(apiMocks.get).not.toHaveBeenCalledWith(
+      "/preprocessing/collinearity/latest",
+      expect.anything()
+    );
+    expect(apiMocks.post).not.toHaveBeenCalled();
+  });
+
+  it("shows a reanalyze warning rather than crashing when a legacy persisted result lacks input diagnostics", async () => {
+    const active = dataset("dataset-a");
+    const legacy = {
+      ...analysisResult("lag-a", "dataset-a"),
+      input_diagnostics: undefined,
+      recommendations: [],
+    };
+    datasetsResponse = [active];
+    detailResponses.set("dataset-a", active);
+    sourceResponses.set("dataset-a", [
+      sourceData("dataset-a", [source("lag-a", "complete")], "lag-a"),
+    ]);
+    latestResponses.set("lag-a", legacy);
+
+    const { wrapper } = mountView(active);
+    await flushPromises();
+
+    expect(wrapper.find('.collin-tri-grid').exists()).toBe(true);
+    expect(wrapper.get('[data-test="legacy-qualification-warning"]').text()).toContain(
+      "该历史分析结果缺少输入资格诊断信息，建议重新执行分析"
+    );
+    expect(wrapper.find('[data-test="input-qualification"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("无重度共线性特征");
+    expect(apiMocks.post).not.toHaveBeenCalled();
+  });
+
   it("clears Dataset A results immediately, requests Dataset B sources, and updates the SPA context", async () => {
     const active = dataset("dataset-a", "数据集 A");
     const next = dataset("dataset-b", "数据集 B");
@@ -601,14 +722,12 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
 
     await wrapper.get('[data-test="dataset-select"]').setValue("dataset-b");
     expect(wrapper.find(".collin-tri-grid").exists()).toBe(false);
-    expect(wrapper.get<HTMLSelectElement>('[data-test="source-select"]').element.value).toBe("");
+    expect(wrapper.get('[data-test="source-select"]').attributes("data-selected-version-id")).toBe("");
 
     nextDetail.resolve(next);
     await flushPromises();
     expect(apiMocks.get).toHaveBeenCalledWith("/datasets/dataset-b/collinearity-sources");
-    expect(wrapper.get<HTMLSelectElement>('[data-test="source-select"]').element.value).toBe(
-      "lag-b"
-    );
+    expect(wrapper.get('[data-test="source-select"]').attributes("data-selected-version-id")).toBe("lag-b");
     expect(store.activeDataset?.id).toBe("dataset-b");
   });
 
@@ -635,22 +754,23 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
     expect(wrapper.get<HTMLSelectElement>('[data-test="dataset-select"]').element.value).toBe(
       "dataset-b"
     );
-    expect(wrapper.get<HTMLSelectElement>('[data-test="source-select"]').element.value).toBe(
-      "lag-b"
-    );
+    expect(wrapper.get('[data-test="source-select"]').attributes("data-selected-version-id")).toBe("lag-b");
     expect(store.activeDataset?.id).toBe("dataset-b");
     expect(apiMocks.get).not.toHaveBeenCalledWith("/datasets/dataset-a/collinearity-sources");
   });
 
   it("ignores an older complete-result rehydrate after the user selects a newer source", async () => {
-    const active = dataset("dataset-a");
+    const active = { ...dataset("dataset-a"), version_id: "lag-old" };
     const firstLatest = deferred<CollinearityResponse>();
     datasetsResponse = [active];
     detailResponses.set("dataset-a", active);
     sourceResponses.set("dataset-a", [
       sourceData(
         "dataset-a",
-        [source("lag-old", "complete", 2), source("lag-new", "complete", 3)],
+        [
+          source("lag-old", "complete", 2, ["old-u1", "old-u2"]),
+          source("lag-new", "complete", 3, ["new-u1", "new-u2"]),
+        ],
         "lag-old"
       ),
     ]);
@@ -662,26 +782,21 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
 
     const { wrapper } = mountView(active);
     await flushPromises();
-    await wrapper.get('[data-test="source-select"]').setValue("lag-new");
+    await wrapper.get("[data-version-id='lag-new']").trigger("click");
     await flushPromises();
-    expect(wrapper.get<HTMLInputElement>('[data-test="input-columns"]').element.value).toBe(
-      "new-u1,new-u2"
-    );
+    expect(wrapper.get('[data-test="input-columns"]').text()).toContain("u1");
 
     firstLatest.resolve(analysisResult("lag-old", "dataset-a", ["old-u1", "old-u2"]));
     await flushPromises();
-    expect(wrapper.get<HTMLSelectElement>('[data-test="source-select"]').element.value).toBe(
-      "lag-new"
-    );
-    expect(wrapper.get<HTMLInputElement>('[data-test="input-columns"]').element.value).toBe(
-      "new-u1,new-u2"
-    );
+    expect(wrapper.get('[data-test="source-select"]').attributes("data-selected-version-id")).toBe("lag-new");
+    expect(wrapper.get('[data-test="input-columns"]').text()).toContain("u1");
   });
 
   it("POSTs Analyze with the selected source version, refreshes its status, and exposes no manual version input", async () => {
     const active = dataset("dataset-a");
-    const pendingSource = source("lag-selected", "not_analyzed");
-    const completeSource = source("lag-selected", "complete");
+    const sourceInputs = ["u1", "u2", "u3", "u4"];
+    const pendingSource = source("lag-selected", "not_analyzed", 2, sourceInputs);
+    const completeSource = source("lag-selected", "complete", 2, sourceInputs);
     datasetsResponse = [active];
     detailResponses.set("dataset-a", active);
     sourceResponses.set("dataset-a", [
@@ -698,7 +813,8 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
     const { wrapper } = mountView(active);
     await flushPromises();
     expect(apiMocks.post).not.toHaveBeenCalled();
-    expect(wrapper.text()).not.toContain("数据版本 ID");
+    expect(wrapper.find('input[data-test="input-columns"]').exists()).toBe(false);
+    expect(wrapper.get('[data-test="input-columns"]').text()).toContain("u4");
 
     await wrapper.get('[data-test="analyze-button"]').trigger("click");
     await flushPromises();
@@ -706,14 +822,12 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
     expect(apiMocks.post).toHaveBeenCalledWith("/preprocessing/collinearity", {
       version_id: "lag-selected",
       dataset_id: "dataset-a",
-      input_columns: ["u1", "u2"],
+      input_columns: sourceInputs,
       correlation_threshold: 0.85,
       vif_threshold: 10,
     });
     expect(sourceCallCounts.get("dataset-a")).toBe(2);
-    expect(wrapper.get<HTMLSelectElement>('[data-test="source-select"]').element.value).toBe(
-      "lag-selected"
-    );
+    expect(wrapper.get('[data-test="source-select"]').attributes("data-selected-version-id")).toBe("lag-selected");
     expect(wrapper.text()).toContain("已完成，可恢复");
     expect(wrapper.find(".collin-tri-grid").exists()).toBe(true);
     expect(wrapper.get('[data-test="correlation-title"]').text()).toBe(
@@ -724,5 +838,111 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
     const options = chartOptions<CorrelationChartOptions>(wrapper, "correlation-chart");
     expect(options.series[0].data).toContainEqual([1, 0, 0.18]);
     expect(apiMocks.post).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Feature Apply bound to the selected Lag source and its persisted result provenance", async () => {
+    const active = { ...dataset("dataset-a"), version_id: "lag-a" };
+    const persisted = {
+      ...analysisResult("lag-a", "dataset-a"),
+      recommendations: [
+        { variable: "u1", action: "keep" as const, reason: "stable", related_variables: [] },
+        { variable: "u2", action: "drop" as const, reason: "redundant", related_variables: ["u1"] },
+      ],
+    };
+    datasetsResponse = [active];
+    detailResponses.set("dataset-a", active);
+    sourceResponses.set("dataset-a", [
+      sourceData("dataset-a", [source("lag-a", "complete")], "lag-a"),
+    ]);
+    latestResponses.set("lag-a", persisted);
+    apiMocks.confirm.mockResolvedValue(true);
+    apiMocks.post.mockResolvedValue({
+      source_version_id: "lag-a",
+      result_version_id: "feature-v3",
+      dataset_id: "dataset-a",
+      processing_run_id: "feature-run",
+      operation: "preprocessing.feature_selection",
+      summary: {},
+    });
+
+    const { wrapper } = mountView(active);
+    await flushPromises();
+    await wrapper.get("[data-test='feature-apply-button']").trigger("click");
+    await flushPromises();
+
+    expect(apiMocks.post).toHaveBeenCalledWith("/preprocessing/features/apply", expect.objectContaining({
+      version_id: "lag-a",
+      dataset_id: "dataset-a",
+      drop_columns: ["u2"],
+      user_confirmed: true,
+      recommendation_source: "collinearity_analysis",
+    }));
+    expect(wrapper.get("[data-test='source-select']").attributes("data-selected-version-id")).toBe("lag-a");
+  });
+
+  it("rehydrates a constant formal input as N/A without issuing a new Analyze POST", async () => {
+    const active = dataset("dataset-a");
+    const sourceInputs = ["u1", "u2", "u3", "u4"];
+    const persisted: CollinearityResponse = {
+      ...analysisResult("lag-a", "dataset-a"),
+      variables: sourceInputs,
+      matrix: [
+        [1, 0.2, 0.1, null],
+        [0.2, 1, 0.3, null],
+        [0.1, 0.3, 1, null],
+        [null, null, null, null],
+      ],
+      spearman_matrix: [
+        [1, 0.18, 0.08, null],
+        [0.18, 1, 0.25, null],
+        [0.08, 0.25, 1, null],
+        [null, null, null, null],
+      ],
+      vif_scores: { u1: 1.1, u2: 1.2, u3: 1.3, u4: null },
+      recommendations: [
+        { variable: "u1", action: "keep", reason: "stable", related_variables: [] },
+        { variable: "u2", action: "keep", reason: "stable", related_variables: [] },
+        { variable: "u3", action: "keep", reason: "stable", related_variables: [] },
+        { variable: "u4", action: "drop", reason: "常量/近常量特征，信息量不足", related_variables: [] },
+      ],
+      input_diagnostics: [
+        ...sourceInputs.slice(0, 3).map((column) => ({
+          column,
+          status: "analyzable" as const,
+          reason: "可参与诊断",
+          variance: 1,
+        })),
+        {
+          column: "u4",
+          status: "constant_or_near_constant",
+          reason: "常量或近常量特征，方差不足。",
+          variance: 0,
+        },
+      ],
+    };
+    datasetsResponse = [active];
+    detailResponses.set("dataset-a", active);
+    sourceResponses.set("dataset-a", [
+      sourceData("dataset-a", [source("lag-a", "complete", 2, sourceInputs)], "lag-a"),
+    ]);
+    latestResponses.set("lag-a", persisted);
+
+    const { wrapper } = mountView(active);
+    await flushPromises();
+
+    expect(wrapper.get('[data-test="input-columns"]').text()).toContain("u4");
+    expect(wrapper.get('[data-test="input-qualification"]').text()).toContain("常量 / 近常量 · N/A");
+    const heatmap = chartOptions<CorrelationChartOptions>(wrapper, "correlation-chart");
+    expect(heatmap.series[0].data).not.toContainEqual([3, 3, 0]);
+    expect(heatmap.series[1].data).toContainEqual(
+      expect.objectContaining({ value: [3, 3], unavailable: true })
+    );
+    expect(
+      heatmap.tooltip.formatter({
+        value: [3, 3],
+        data: { unavailable: true, reason: "常量或近常量特征，方差不足。" },
+      })
+    ).toContain("N/A");
+    expect(apiMocks.post).not.toHaveBeenCalled();
   });
 });

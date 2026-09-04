@@ -196,6 +196,7 @@ class DelaySourceVersion(Schema):
     operation_name: str
     parent_version_id: UUID | None = None
     created_at: datetime
+    input_columns: list[str] = Field(default_factory=list)
     delay_status: DelaySourceStatus
     latest_complete_delay_run_id: UUID | None = None
 
@@ -220,6 +221,7 @@ class CollinearitySourceVersion(Schema):
     operation_name: str
     parent_version_id: UUID | None = None
     created_at: datetime
+    input_columns: list[str] = Field(default_factory=list)
     collinearity_status: CollinearitySourceStatus
     latest_complete_collinearity_run_id: UUID | None = None
 

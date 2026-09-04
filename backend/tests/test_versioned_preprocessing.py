@@ -141,3 +141,42 @@ def test_feature_apply_refuses_target_or_all_inputs(client: TestClient) -> None:
         json={"version_id": generated["version_id"], "drop_columns": ["u1", "u2"], "user_confirmed": True},
     )
     assert all_inputs.status_code == 400
+
+
+def test_lag_apply_requires_every_source_input_and_creates_a_version_in_postgres_safe_order(
+    client: TestClient,
+) -> None:
+    generated = client.post(
+        "/api/v1/simulation/generate",
+        json={"scenario": "S6", "n_steps": 1200, "seed": 20260903, "input_count": 4},
+    )
+    assert generated.status_code == 201, generated.text
+    data = generated.json()["data"]
+
+    incomplete = client.post(
+        "/api/v1/preprocessing/delay/apply",
+        json={
+            "dataset_id": data["dataset_id"],
+            "version_id": data["version_id"],
+            "lag_map": {"u1": 3, "u2": 8, "u3": 5},
+            "user_confirmed": True,
+            "recommendation_source": "manual",
+        },
+    )
+    assert incomplete.status_code == 400, incomplete.text
+    assert incomplete.json()["error"]["code"] == "INCOMPLETE_LAG_MAP"
+    assert incomplete.json()["error"]["details"] == {"missing": ["u4"]}
+
+    complete = client.post(
+        "/api/v1/preprocessing/delay/apply",
+        json={
+            "dataset_id": data["dataset_id"],
+            "version_id": data["version_id"],
+            "lag_map": {"u1": 3, "u2": 8, "u3": 5, "u4": 11},
+            "user_confirmed": True,
+            "recommendation_source": "manual",
+            "evidence_summary": {"u4": "human specified without Delay Analyze recommendation"},
+        },
+    )
+    assert complete.status_code == 201, complete.text
+    assert complete.json()["data"]["summary"]["lag_map"] == {"u1": 3, "u2": 8, "u3": 5, "u4": 11}

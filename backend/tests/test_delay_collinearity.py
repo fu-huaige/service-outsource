@@ -29,6 +29,12 @@ from app.core.db import get_session
 from app.main import create_app
 from app.models import Base, DatasetVersion, ProcessingRun
 from app.models.operation_log import OperationLog
+from app.services.preprocessing_analysis_service import (
+    AnalysisDomainError,
+    _collinearity_data_from_payload,
+    _qualify_collinearity_inputs,
+)
+from app.services.version_data import VersionSeries
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -246,6 +252,55 @@ class TestCollinearity:
 
         assert normalized["vif"] == {"u1": None, "u2": None}
         assert normalized["condition_number"] is None
+
+    def test_qualification_keeps_constant_formal_inputs_out_of_numeric_algorithm(self) -> None:
+        generator = np.random.default_rng(91)
+        series = VersionSeries(
+            dataset_id=uuid4(),
+            version_id=uuid4(),
+            dataset_name="qualification",
+            origin="simulation",
+            timestamps=[],
+            values={
+                "u1": generator.normal(size=120),
+                "u2": generator.normal(size=120),
+                "u3": generator.normal(size=120),
+                "u4": np.zeros(120),
+                "y": generator.normal(size=120),
+            },
+            declared_inputs=("u1", "u2", "u3", "u4"),
+            declared_output="y",
+            sample_period_seconds=1.0,
+            available_columns=("u1", "u2", "u3", "u4", "y"),
+        )
+        diagnostics, analyzable = _qualify_collinearity_inputs(
+            series, ["u1", "u2", "u3", "u4"]
+        )
+
+        assert analyzable == ["u1", "u2", "u3"]
+        assert diagnostics[-1].status == "constant_or_near_constant"
+        assert diagnostics[-1].variance == 0.0
+
+    def test_qualification_rejects_missing_and_true_non_numeric_inputs(self) -> None:
+        series = VersionSeries(
+            dataset_id=uuid4(),
+            version_id=uuid4(),
+            dataset_name="qualification",
+            origin="dataset",
+            timestamps=[],
+            values={"u1": np.arange(20, dtype=float), "u2": np.arange(20, dtype=float)},
+            declared_inputs=("u1", "u2"),
+            declared_output=None,
+            sample_period_seconds=None,
+            available_columns=("u1", "u2", "tag"),
+        )
+        with pytest.raises(AnalysisDomainError, match="不存在") as missing:
+            _qualify_collinearity_inputs(series, ["u1", "absent"])
+        assert missing.value.code == "MISSING_INPUT"
+
+        with pytest.raises(AnalysisDomainError, match="不是可用于数值诊断") as non_numeric:
+            _qualify_collinearity_inputs(series, ["u1", "tag"])
+        assert non_numeric.value.code == "NON_NUMERIC_INPUT"
         json.dumps(normalized, allow_nan=False)
 
     def test_spearman_catches_a_monotone_nonlinear_pair_that_pearson_understates(self) -> None:
@@ -498,6 +553,112 @@ class TestPhase6Api:
         assert data["correlated_groups"], "S5's redundant input pair must be grouped"
         assert abs(data["matrix"][0][1]) > 0.9
         assert {item["action"] for item in data["recommendations"]} & {"keep", "drop"}
+
+    def test_collinearity_endpoint_returns_null_diagnostics_for_constant_formal_input(
+        self, api_client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.services import preprocessing_analysis_service
+
+        generator = np.random.default_rng(311)
+        version_id = uuid4()
+        dataset_id = uuid4()
+        persisted: dict[str, object] = {}
+        series = VersionSeries(
+            dataset_id=dataset_id,
+            version_id=version_id,
+            dataset_name="constant-input",
+            origin="dataset",
+            timestamps=[],
+            values={
+                "u1": generator.normal(size=160),
+                "u2": generator.normal(size=160),
+                "u3": generator.normal(size=160),
+                "u4": np.zeros(160),
+                "y": generator.normal(size=160),
+            },
+            declared_inputs=("u1", "u2", "u3", "u4"),
+            declared_output="y",
+            sample_period_seconds=1.0,
+            available_columns=("u1", "u2", "u3", "u4", "y"),
+        )
+
+        async def fake_load(*_: object, **__: object) -> VersionSeries:
+            return series
+
+        async def fake_persist(*_: object, result: dict[str, object], **__: object) -> UUID:
+            persisted.update(result)
+            return uuid4()
+
+        monkeypatch.setattr(preprocessing_analysis_service, "_load", fake_load)
+        monkeypatch.setattr(preprocessing_analysis_service, "_persist", fake_persist)
+
+        response = api_client.post(
+            "/api/v1/preprocessing/collinearity",
+            json={
+                "version_id": str(version_id),
+                "dataset_id": str(dataset_id),
+                "input_columns": ["u1", "u2", "u3", "u4"],
+            },
+        )
+        assert response.status_code == 202, response.text
+        data = response.json()["data"]
+        assert data["variables"] == ["u1", "u2", "u3", "u4"]
+        assert all(data["matrix"][3][index] is None for index in range(4))
+        assert all(data["spearman_matrix"][index][3] is None for index in range(4))
+        assert data["vif_scores"]["u4"] is None
+        assert data["input_diagnostics"][-1]["status"] == "constant_or_near_constant"
+        assert any(
+            item["variable"] == "u4" and item["action"] == "drop" and "信息量不足" in item["reason"]
+            for item in data["recommendations"]
+        )
+        assert "input_diagnostics" in persisted
+        restored = _collinearity_data_from_payload(
+            source_version_id=version_id,
+            processing_run_id=uuid4(),
+            dataset_id=dataset_id,
+            result=persisted,
+            message="rehydrate",
+        )
+        assert restored is not None
+        assert restored.input_diagnostics[-1].status == "constant_or_near_constant"
+        assert restored.matrix[3][3] is None
+
+    def test_collinearity_endpoint_keeps_missing_and_non_numeric_errors_distinct(
+        self, api_client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.services import preprocessing_analysis_service
+
+        series = VersionSeries(
+            dataset_id=uuid4(),
+            version_id=uuid4(),
+            dataset_name="input-errors",
+            origin="dataset",
+            timestamps=[],
+            values={"u1": np.arange(30, dtype=float), "u2": np.arange(30, dtype=float)},
+            declared_inputs=("u1", "u2"),
+            declared_output=None,
+            sample_period_seconds=None,
+            available_columns=("u1", "u2", "tag"),
+        )
+
+        async def fake_load(*_: object, **__: object) -> VersionSeries:
+            return series
+
+        monkeypatch.setattr(preprocessing_analysis_service, "_load", fake_load)
+
+        missing = api_client.post(
+            "/api/v1/preprocessing/collinearity",
+            json={"version_id": str(series.version_id), "input_columns": ["u1", "absent"]},
+        )
+        assert missing.status_code == 400
+        assert missing.json()["error"]["code"] == "MISSING_INPUT"
+
+        non_numeric = api_client.post(
+            "/api/v1/preprocessing/collinearity",
+            json={"version_id": str(series.version_id), "input_columns": ["u1", "tag"]},
+        )
+        assert non_numeric.status_code == 400
+        assert non_numeric.json()["error"]["code"] == "NON_NUMERIC_INPUT"
 
     def test_collinearity_persists_canonical_result_and_rehydrates_without_writes(
         self, api_client: TestClient

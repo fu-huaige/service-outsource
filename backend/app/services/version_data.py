@@ -65,6 +65,7 @@ class VersionSeries:
     declared_inputs: tuple[str, ...]
     declared_output: str | None
     sample_period_seconds: float | None
+    available_columns: tuple[str, ...] = ()
 
     @property
     def n_samples(self) -> int:
@@ -180,11 +181,21 @@ async def _load_persisted_version(
     )
     # The CSV parser labels columns "integer"/"float", not "numeric"; matching the wrong
     # token silently rejected every uploaded dataset as having no modellable signal.
+    declared_input_names = {column.name for column in columns if column.role == "input"}
     numeric_names = [
         name
         for name in parsed.headers
         if name != parsed.timestamp_column
-        and parsed.inferred_types.get(name) in NUMERIC_COLUMN_TYPES
+        and (
+            parsed.inferred_types.get(name) in NUMERIC_COLUMN_TYPES
+            # A formal 0/1 engineering input can be inferred as boolean even when it is
+            # intended for numeric diagnostics. Keep it available so the analysis stage
+            # can classify a constant signal instead of reporting it as a missing column.
+            or (
+                name in declared_input_names
+                and parsed.inferred_types.get(name) == "boolean"
+            )
+        )
     ]
     values = {name: _column_array(parsed.rows, name) for name in numeric_names}
     if not values:
@@ -210,6 +221,7 @@ async def _load_persisted_version(
         declared_inputs=declared_inputs,
         declared_output=declared_output,
         sample_period_seconds=_median_period(parsed.timestamps),
+        available_columns=tuple(parsed.headers),
     )
 
 
@@ -247,6 +259,7 @@ def _load_simulation_version(
         declared_inputs=inputs,
         declared_output=output,
         sample_period_seconds=None,
+        available_columns=tuple(values),
     )
 
 

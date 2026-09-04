@@ -23,20 +23,88 @@
       </div>
 
       <div class="top-segment-trigger">
-        <el-button type="primary" size="large" :loading="loading" icon="Search" @click="handleSegment">
+        <el-button
+          type="primary"
+          size="large"
+          :loading="loading"
+          :disabled="!selectedVersion || loadingVersions"
+          icon="Search"
+          @click="handleSegment"
+        >
           执行门控与 D-最优区间剪辑
         </el-button>
       </div>
     </div>
 
+    <section class="industrial-card source-context-card" aria-labelledby="source-context-title">
+      <div class="source-context-header">
+        <div>
+          <span class="source-context-eyebrow font-mono">ANALYSIS CONTEXT</span>
+          <h3 id="source-context-title">Stage 03 分析上下文</h3>
+        </div>
+        <p>仅清洗规整完成后的版本可作为 D-最优正式分析源。</p>
+      </div>
+
+      <div class="source-control-grid">
+        <div class="source-control">
+          <label for="segmentation-dataset">数据集</label>
+          <el-select
+            id="segmentation-dataset"
+            v-model="selectedDatasetId"
+            placeholder="选择数据集"
+            :loading="loadingDatasets"
+            filterable
+            @change="handleDatasetChange"
+          >
+            <el-option
+              v-for="dataset in datasetOptions"
+              :key="dataset.id"
+              :label="dataset.name"
+              :value="dataset.id"
+            >
+              <div class="dataset-option">
+                <span>{{ dataset.name }}</span>
+                <small>{{ dataset.row_count }} rows · {{ dataset.col_count }} cols</small>
+              </div>
+            </el-option>
+          </el-select>
+        </div>
+
+        <div class="source-control">
+          <label>分析源版本</label>
+          <VersionLineagePicker
+            :dataset-name="selectedDataset?.name ?? ''"
+            :versions="versionNodes"
+            :selected-version-id="selectedVersionId"
+            :loading="loadingVersions"
+            context-label="清洗规整版本可用于 Stage 03"
+            eligible-label="可用于 D-最优"
+            empty-state-text="暂无可用于 D-最优分析的清洗规整版本。"
+            empty-state-hint="请先完成 Stage 02 时间清洗。"
+            :is-eligible="isEligibleVersion"
+            :disabled-reason="ineligibleReason"
+            @select="handleVersionSelect"
+          />
+        </div>
+      </div>
+
+      <el-alert v-if="contextError" type="error" :closable="false" show-icon class="context-alert">
+        <template #title>{{ contextError }}</template>
+      </el-alert>
+
+      <div v-if="selectedVersion" class="source-summary" data-test="source-summary">
+        <div><span>当前分析源</span><strong>{{ versionDisplayName(selectedVersion) }}</strong></div>
+        <div><span>数据集</span><strong>{{ selectedDataset?.name }}</strong></div>
+        <div><span>创建时间</span><strong>{{ formatVersionDate(selectedVersion.created_at) }}</strong></div>
+        <div><span>来源</span><strong>{{ selectedParent ? versionDisplayName(selectedParent) : "初始版本" }}</strong></div>
+        <div><span>版本 ID</span><strong class="font-mono">{{ shortVersionId(selectedVersion.id) }}</strong></div>
+        <div><span>Stage 03</span><strong class="source-ready">可执行 D-最优区间优选</strong></div>
+      </div>
+    </section>
+
     <!-- FORMAT 2: Collapsible Top Parameter Bar with Badges -->
     <div class="industrial-card segment-param-bar">
       <div class="param-grid-row">
-        <div class="param-item">
-          <label>数据版本 ID</label>
-          <el-input v-model="form.version_id" placeholder="version_id" size="small" />
-          <span class="param-hint" v-if="activeDataset">来自当前数据集：{{ activeDataset.name }}</span>
-        </div>
         <div class="param-item">
           <label>输入变量 (u)</label>
           <el-input v-model="inputColumnsText" placeholder="u1,u2,u3" size="small" />
@@ -200,14 +268,26 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { Crop, DataLine, Filter, TrendCharts } from "@element-plus/icons-vue";
 import ChartContainer from "../components/ChartContainer.vue";
+import VersionLineagePicker from "../components/versioning/VersionLineagePicker.vue";
+import { getDatasetDetail, getDatasetVersions, listDatasets } from "../api/datasets";
 import { segmentDataset } from "../api/preprocessing";
-import type { SegmentRequest, SegmentResponse } from "../types/api";
+import type {
+  DatasetItem,
+  DatasetVersionNode,
+  SegmentRequest,
+  SegmentResponse,
+} from "../types/api";
 import { ApiError } from "../api/client";
 import { ElMessage } from "element-plus";
 import { useDatasetStore } from "../stores/datasetStore";
+import {
+  formatVersionDate,
+  shortVersionId,
+  versionDisplayName,
+} from "../utils/versionOperation";
 
 const REASON_LABELS: Record<string, string> = {
   missing_ratio_exceeded: "缺失率超限",
@@ -217,11 +297,23 @@ const REASON_LABELS: Record<string, string> = {
   no_input_excitation: "输入无激励",
 };
 
+const STAGE_03_SOURCE_OPERATION = "preprocessing.clean";
+
 const datasetStore = useDatasetStore();
 const loading = ref(false);
+const loadingDatasets = ref(false);
+const loadingVersions = ref(false);
 const result = ref<SegmentResponse | null>(null);
 const errorMessage = ref("");
+const contextError = ref("");
 const inputColumnsText = ref("u1,u2,u3");
+const datasetOptions = ref<DatasetItem[]>([]);
+const selectedDatasetId = ref<string | null>(null);
+const selectedDataset = ref<DatasetItem | null>(null);
+const versionNodes = ref<DatasetVersionNode[]>([]);
+const selectedVersionId = ref<string | null>(null);
+const rememberedSourceByDataset = new Map<string, string>();
+let contextRequestId = 0;
 
 const form = reactive<SegmentRequest>({
   version_id: "",
@@ -234,27 +326,132 @@ const form = reactive<SegmentRequest>({
   max_anomaly_ratio: 0.1,
 });
 
-// Same pattern as ARXModelingView/DelayView: auto-fill the version_id from
-// the currently active dataset in the shared store, instead of requiring the
-// user to manually paste it in. The input stays editable so the user can
-// still see and override the value.
 const activeDataset = computed(() => datasetStore.activeDataset);
+const selectedVersion = computed(
+  () => versionNodes.value.find((node) => node.id === selectedVersionId.value) ?? null
+);
+const selectedParent = computed(() => {
+  const parentId = selectedVersion.value?.parent_version_id;
+  if (!parentId) return null;
+  return versionNodes.value.find((node) => node.id === parentId) ?? null;
+});
+function isEligibleVersion(node: DatasetVersionNode) {
+  return node.tool === STAGE_03_SOURCE_OPERATION;
+}
 
-const syncFormWithStore = () => {
-  const dataset = activeDataset.value;
-  if (dataset) {
-    form.version_id = dataset.version_id || dataset.latest_version_id || form.version_id;
+const ineligibleReason = (node: DatasetVersionNode) => {
+  if (node.tool === "simulation_generate" || node.tool === "raw_upload") {
+    return "需先完成清洗规整";
+  }
+  if (
+    node.tool === "preprocessing.lag_compensation" ||
+    node.tool === "preprocessing.feature_selection"
+  ) {
+    return "已进入后续阶段，不作为 D-最优正式分析源";
+  }
+  return "该处理阶段不符合 D-最优分析源要求";
+};
+
+const clearSourceContext = () => {
+  versionNodes.value = [];
+  selectedVersionId.value = null;
+  form.version_id = "";
+  result.value = null;
+  errorMessage.value = "";
+};
+
+const handleVersionSelect = (versionId: string) => {
+  const node = versionNodes.value.find((version) => version.id === versionId);
+  if (!node || !isEligibleVersion(node) || !selectedDatasetId.value) return;
+  selectedVersionId.value = versionId;
+  form.version_id = versionId;
+  rememberedSourceByDataset.set(selectedDatasetId.value, versionId);
+  result.value = null;
+  errorMessage.value = "";
+};
+
+const chooseDefaultVersion = (nodes: DatasetVersionNode[], dataset: DatasetItem) => {
+  const eligible = nodes.filter(isEligibleVersion);
+  if (!eligible.length) return;
+
+  const rememberedId = rememberedSourceByDataset.get(dataset.id);
+  const activeVersionId = activeDataset.value?.id === dataset.id
+    ? activeDataset.value.version_id || activeDataset.value.latest_version_id
+    : null;
+  const preferred = eligible.find((node) => node.id === rememberedId)
+    ?? eligible.find((node) => node.id === activeVersionId)
+    ?? [...eligible].sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))[0];
+
+  if (preferred) handleVersionSelect(preferred.id);
+};
+
+const loadDatasetContext = async (datasetId: string) => {
+  const requestId = ++contextRequestId;
+  clearSourceContext();
+  contextError.value = "";
+  loadingVersions.value = true;
+  try {
+    const [dataset, versions] = await Promise.all([
+      getDatasetDetail(datasetId),
+      getDatasetVersions(datasetId),
+    ]);
+    if (requestId !== contextRequestId) return;
+
+    selectedDataset.value = dataset;
+    datasetStore.setActiveDataset(dataset);
+    inputColumnsText.value = dataset.input_columns.join(",");
+    form.output_column = dataset.output_column ?? "y";
+    versionNodes.value = versions.nodes;
+    chooseDefaultVersion(versions.nodes, dataset);
+  } catch (err) {
+    if (requestId !== contextRequestId) return;
+    selectedDataset.value = null;
+    contextError.value = err instanceof ApiError ? err.message : String(err);
+  } finally {
+    if (requestId === contextRequestId) loadingVersions.value = false;
   }
 };
 
-watch(activeDataset, syncFormWithStore, { immediate: true });
+const handleDatasetChange = (datasetId: string) => {
+  if (!datasetId) {
+    ++contextRequestId;
+    selectedDataset.value = null;
+    clearSourceContext();
+    return;
+  }
+  void loadDatasetContext(datasetId);
+};
+
+const initializeDatasets = async () => {
+  loadingDatasets.value = true;
+  contextError.value = "";
+  try {
+    const response = await listDatasets({ page: 1, page_size: 100 });
+    datasetOptions.value = response.items;
+    datasetStore.setDatasetsList(response.items);
+    const current = activeDataset.value;
+    if (current && response.items.some((dataset) => dataset.id === current.id)) {
+      selectedDatasetId.value = current.id;
+      await loadDatasetContext(current.id);
+    }
+  } catch (err) {
+    contextError.value = err instanceof ApiError ? err.message : String(err);
+  } finally {
+    loadingDatasets.value = false;
+  }
+};
+
+onMounted(() => {
+  void initializeDatasets();
+});
 
 const handleSegment = async () => {
   errorMessage.value = "";
-  if (!form.version_id) {
-    errorMessage.value = "请先填写数据版本 ID。";
+  if (!selectedVersion.value || !isEligibleVersion(selectedVersion.value)) {
+    errorMessage.value = "请先选择可用于 D-最优的清洗规整版本。";
     return;
   }
+  form.version_id = selectedVersion.value.id;
   form.input_columns = inputColumnsText.value
     .split(",")
     .map((name) => name.trim())
@@ -390,6 +587,118 @@ const formatNumber = (value: number | null | undefined) => {
   flex-wrap: wrap;
 }
 
+.source-context-card {
+  padding: 20px;
+  background: #ffffff;
+  border-radius: 12px;
+}
+
+.source-context-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.source-context-header h3 {
+  margin: 3px 0 0;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.source-context-header p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.source-context-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--color-primary);
+}
+
+.source-control-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(320px, 1.2fr);
+  gap: 16px;
+  padding-top: 16px;
+}
+
+.source-control {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.source-control > label {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.source-control :deep(.el-select) {
+  width: 100%;
+}
+
+.dataset-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dataset-option small {
+  color: var(--text-faint);
+}
+
+.context-alert {
+  margin-top: 14px;
+}
+
+.source-summary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+  padding: 13px 14px;
+  border: 1px solid #dce7da;
+  border-radius: 8px;
+  background: #f7faf6;
+}
+
+.source-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.source-summary span {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.source-summary strong {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-summary .source-ready {
+  color: #466f43;
+}
+
 /* Format 2: Parameter Bar */
 .segment-param-bar {
   padding: 14px 18px;
@@ -400,7 +709,7 @@ const formatNumber = (value: number | null | undefined) => {
 
 .param-grid-row {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 14px;
 }
 
@@ -416,11 +725,6 @@ const formatNumber = (value: number | null | undefined) => {
   font-weight: 500;
   color: var(--text-muted);
   letter-spacing: normal;
-}
-
-.param-hint {
-  font-size: 11px;
-  color: var(--text-faint);
 }
 
 .alert-gap {
@@ -551,6 +855,9 @@ const formatNumber = (value: number | null | undefined) => {
 }
 
 @media (max-width: 1100px) {
+  .source-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
   .param-grid-row {
     grid-template-columns: repeat(3, 1fr);
   }
@@ -560,6 +867,14 @@ const formatNumber = (value: number | null | undefined) => {
 }
 
 @media (max-width: 680px) {
+  .source-context-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .source-control-grid,
+  .source-summary {
+    grid-template-columns: 1fr;
+  }
   .param-grid-row {
     grid-template-columns: 1fr;
   }

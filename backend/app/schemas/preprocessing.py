@@ -230,18 +230,34 @@ class VariableRecommendation(Schema):
     related_variables: list[str] = Field(default_factory=list)
 
 
+InputDiagnosticStatus = Literal[
+    "analyzable",
+    "constant_or_near_constant",
+    "non_numeric",
+    "missing",
+]
+
+
+class InputDiagnostic(Schema):
+    column: str
+    status: InputDiagnosticStatus
+    reason: str
+    variance: float | None = None
+
+
 class CollinearityData(Schema):
     source_version_id: UUID
     processing_run_id: UUID
     task: TaskResource
     variables: list[str]
-    matrix: list[list[float]]
+    matrix: list[list[float | None]]
     vif_scores: dict[str, float | None]
     condition_number: float | None = None
     recommendations: list[VariableRecommendation]
     dataset_id: UUID | None = None
-    spearman_matrix: list[list[float]] = Field(default_factory=list)
+    spearman_matrix: list[list[float | None]] = Field(default_factory=list)
     correlated_groups: list[list[str]] = Field(default_factory=list)
+    input_diagnostics: list[InputDiagnostic] = Field(default_factory=list)
 
 
 class FeatureSelectionApplyRequest(Schema):

@@ -62,6 +62,13 @@ async def apply_lag_compensation(
         raise VersionedPreprocessingError(
             "INVALID_LAG_COLUMNS", "lag_map 只能包含当前版本的输入变量。", details={"invalid": invalid}
         )
+    missing = sorted(inputs - set(payload.lag_map))
+    if missing:
+        raise VersionedPreprocessingError(
+            "INCOMPLETE_LAG_MAP",
+            "lag_map 必须覆盖当前版本的全部输入变量。",
+            details={"missing": missing},
+        )
     if any(value < 0 for value in payload.lag_map.values()):
         raise VersionedPreprocessingError("INVALID_LAG", "当前 ARX nk 语义只支持非负时滞补偿。")
     trim = max(payload.lag_map.values(), default=0)
@@ -226,6 +233,10 @@ async def _create_derived_version(
             artifact_path=artifact_path, sha256=checksum, row_count=len(timestamps), column_count=len(headers),
             time_range_start=min(timestamps), time_range_end=max(timestamps), created_at=now,
         )
+        # PostgreSQL enforces the DatasetColumn.version_id foreign key immediately.
+        # Flush the immutable version before staging its dependent columns and profile.
+        session.add(version)
+        await session.flush()
         parsed = load_version_csv(dataset=dataset, version=version, artifact_root=artifact_root)
         profile_payload = build_quality_profile(
             dataset_id=str(dataset.id), version_id=str(version_id), headers=parsed.headers, rows=parsed.rows,
@@ -248,7 +259,7 @@ async def _create_derived_version(
             quality_score=float(profile_payload["quality_score"]), profile=profile_payload,
             created_at=now, updated_at=now,
         )
-        session.add_all([version, *copied_columns, profile, run])
+        session.add_all([*copied_columns, profile, run])
         dataset.active_version_id, dataset.updated_at = version_id, now
         session.add(OperationLog(
             id=uuid4(), event_type=f"{operation}.completed", subject_id=str(dataset.id),

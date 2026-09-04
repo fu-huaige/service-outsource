@@ -20,11 +20,9 @@
       <p class="subtitle">预白化去除输入慢变自相关伪峰，并结合自由仿真 FIT 精修各通道物理纯滞后 \(n_k\)</p>
     </div>
 
-    <!-- FORMAT 3: Left-Rail Control Dock + Right Channel Grid Studio -->
-    <div class="delay-studio-layout">
-      <!-- Left Rail Control Dock -->
-      <aside class="delay-rail-dock">
-        <div class="industrial-card rail-card">
+    <div class="delay-primary-workspace" data-test="delay-primary-workspace">
+      <aside class="delay-parameters-panel" data-test="delay-parameters-column">
+        <div class="industrial-card rail-card" data-test="delay-parameters-card">
           <div class="industrial-card-header">
             <div class="industrial-card-title">
               <el-icon><Timer /></el-icon>
@@ -33,52 +31,55 @@
           </div>
 
           <el-form :model="form" label-position="top" class="rail-form">
-            <el-form-item label="Delay Source Version">
-              <el-select
-                v-model="selectedSourceVersionId"
+            <el-form-item class="source-form-item">
+              <template #label>
+                <span data-test="delay-source-label">可用时滞源版本</span>
+              </template>
+              <VersionLineagePicker
+                data-test="delay-source-picker"
+                :dataset-name="datasetStore.activeDataset?.name ?? ''"
+                :versions="versionNodes"
+                :selected-version-id="selectedSourceVersionId"
                 :loading="loadingSources"
-                :disabled="loadingSources || !delaySources.length"
-                placeholder="选择 Cleaning 历史版本"
-                style="width: 100%"
-                @change="handleSourceChange"
-              >
-                <el-option
-                  v-for="source in delaySources"
-                  :key="source.version_id"
-                  :label="source.name"
-                  :value="source.version_id"
-                >
-                  <div class="source-option">
-                    <div class="source-option-main">
-                      <span>{{ source.name }}</span>
-                      <span class="source-status" :class="source.delay_status">
-                        {{ delayStatusLabel(source.delay_status) }}
-                      </span>
-                    </div>
-                    <div class="source-option-meta">
-                      {{ formatSourceDate(source.created_at) }} · {{ shortVersionId(source.version_id) }}
-                    </div>
-                  </div>
-                </el-option>
-              </el-select>
+                context-label="清洗规整版本可用于时滞分析"
+                eligible-label="可用于时滞分析"
+                empty-state-text="当前数据集尚无可用于时滞分析的清洗规整版本。"
+                empty-state-hint="请先完成 Stage 02 时间清洗。"
+                placeholder="选择清洗规整版本"
+                :is-eligible="isDelayEligibleVersion"
+                :disabled-reason="delayDisabledReason"
+                @select="handleSourceChange"
+              />
+              <p class="source-helper" data-test="delay-source-helper">
+                完整版本血缘可见；仅清洗规整版本可进入时滞分析。
+              </p>
             </el-form-item>
 
-            <div v-if="selectedSource" class="selected-source-detail">
-              <div class="selected-source-status" :class="selectedSource.delay_status">
-                {{ delayStatusLabel(selectedSource.delay_status) }}
+            <div v-if="selectedSource" class="selected-source-detail" data-test="current-delay-source">
+              <div class="selected-source-kicker">当前分析源</div>
+              <div class="selected-source-name">{{ selectedSource.name }}</div>
+              <dl class="selected-source-facts">
+                <div>
+                  <dt>Delay 状态</dt>
+                  <dd>
+                    <span class="selected-source-status" :class="selectedSource.delay_status">
+                      {{ delayStatusLabel(selectedSource.delay_status) }}
+                    </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt>版本 ID</dt>
+                  <dd class="font-mono">{{ shortVersionId(selectedSource.version_id) }}</dd>
+                </div>
+                <div>
+                  <dt>创建时间</dt>
+                  <dd>{{ formatSourceDate(selectedSource.created_at) }}</dd>
+                </div>
+              </dl>
+              <div class="selected-source-description">
+                {{ delayStatusDescription(selectedSource.delay_status) }}
               </div>
-              <div>{{ delayStatusDescription(selectedSource.delay_status) }}</div>
-              <div class="selected-source-id font-mono">UUID · {{ selectedSource.version_id }}</div>
             </div>
-
-            <el-alert
-              v-else-if="!loadingSources && activeDatasetId"
-              title="当前数据集尚无可用于时滞分析的 Cleaning 版本。"
-              type="info"
-              :closable="false"
-              show-icon
-              class="source-alert"
-            />
 
             <el-form-item label="输入变量 (u)">
               <el-input v-model="inputColumnsText" placeholder="u1,u2" />
@@ -104,16 +105,15 @@
           <el-alert v-if="errorMessage" type="error" :closable="false" show-icon class="alert-gap">
             <template #title>时滞分析提示：{{ errorMessage }}</template>
           </el-alert>
-        </div>
 
-        <div class="industrial-card rail-card theory-box">
-          <div class="t-title">⚡ 为什么必须预白化？</div>
-          <p class="t-p">工业慢信号自相关严重，直接互相关会导致峰值严重展宽和虚假偏移。系统先通过 AR 模型滤除自相关残差，再与输出互相关求得真实物理延迟。</p>
+          <div class="theory-box" data-test="prewhitening-note">
+            <div class="t-title">为什么必须预白化？</div>
+            <p class="t-p">工业慢信号自相关严重，直接互相关会导致峰值严重展宽和虚假偏移。系统先通过 AR 模型滤除自相关残差，再与输出互相关求得真实物理延迟。</p>
+          </div>
         </div>
       </aside>
 
-      <!-- Right Main Studio -->
-      <main class="delay-main-studio">
+      <main class="delay-spectrum-panel" data-test="delay-analysis-column">
         <el-alert
           v-if="restoringResult && !result"
           title="正在读取最近一次已持久化的时滞分析结果…"
@@ -123,47 +123,7 @@
           class="restore-alert"
         />
         <template v-if="result">
-          <!-- Top Multi-Channel Card Array (多通道卡阵列) -->
-          <div class="channel-cards-grid">
-            <div
-              v-for="row in delayRows"
-              :key="row.column"
-              class="channel-tile industrial-card"
-              :class="{ uncertain: row.uncertain }"
-            >
-              <div class="channel-top">
-                <span class="channel-name font-mono">{{ row.column }}</span>
-                <span class="channel-status-pill font-mono" :class="{ uncertain: row.uncertain }">
-                  {{ row.uncertain ? "UNCERTAIN" : "CONFIRMED" }}
-                </span>
-              </div>
-              <div class="channel-main-lag">
-                <span class="lag-label font-mono">VALIDATION-REFINED BEST LAG \(n_k\)</span>
-                <span class="lag-num font-mono">{{ row.refined }} <span class="lag-unit">steps</span></span>
-              </div>
-              <div class="channel-candidates">
-                <span class="c-label font-mono">CORRELATION CANDIDATE PEAKS (TOP-K)</span>
-                <div v-if="row.candidates.length" class="c-chips">
-                  <span
-                    v-for="(peak, index) in row.candidates"
-                    :key="peak.lag"
-                    class="c-chip font-mono"
-                    :class="{ 'matches-refined': peak.lag === row.refined }"
-                  >
-                    #{{ index + 1 }} · lag {{ peak.lag }} · r={{ formatNumber(peak.correlation) }}
-                  </span>
-                </div>
-                <span v-else class="c-unavailable font-mono">N/A</span>
-              </div>
-              <div class="channel-evidence">
-                <span class="evidence-label font-mono">PREWHITENING ORDER</span>
-                <strong class="evidence-value font-mono">{{ formatInteger(row.prewhiteningOrder) }}</strong>
-              </div>
-            </div>
-          </div>
-
-          <!-- Central Spectrum Waveform -->
-          <div class="industrial-card studio-spectrum-card">
+          <div class="industrial-card studio-spectrum-card" data-test="delay-spectrum-card">
             <div class="industrial-card-header">
               <div class="industrial-card-title">
                 <el-icon><DataLine /></el-icon>
@@ -181,23 +141,47 @@
             <ChartContainer :options="chartOptions" height="380px" />
           </div>
 
-          <!-- Bottom 1-Click Apply Action Strip -->
-          <div class="industrial-card studio-apply-strip">
-            <div class="apply-left">
-              <div class="apply-h">APPLY DELAY COMPENSATION · 创建移位版本</div>
-              <div class="apply-d">
-                {{ result.uncertain_columns.length
-                  ? "存在 UNCERTAIN 通道，请先复核 correlation candidate peaks 后再应用。"
-                  : "保持 y 与时间轴不变，将各输入特征按 \\(u(t - n_k)\\) 移位对齐，并派生全新版本。" }}
+          <section class="delay-results-section" data-test="delay-results-section">
+            <div class="channel-cards-grid">
+              <div
+                v-for="row in delayRows"
+                :key="row.column"
+                class="channel-tile industrial-card"
+                :class="{ uncertain: row.uncertain }"
+              >
+                <div class="channel-top">
+                  <span class="channel-name font-mono">{{ row.column }}</span>
+                  <span class="channel-status-pill font-mono" :class="{ uncertain: row.uncertain }">
+                    {{ row.uncertain ? "UNCERTAIN" : "CONFIRMED" }}
+                  </span>
+                </div>
+                <div class="channel-main-lag">
+                  <span class="lag-label font-mono">VALIDATION-REFINED BEST LAG \(n_k\)</span>
+                  <span class="lag-num font-mono">{{ row.refined }} <span class="lag-unit">steps</span></span>
+                </div>
+                <div class="channel-candidates">
+                  <span class="c-label font-mono">CORRELATION CANDIDATE PEAKS (TOP-K)</span>
+                  <div v-if="row.candidates.length" class="c-chips">
+                    <span
+                      v-for="(peak, index) in row.candidates"
+                      :key="peak.lag"
+                      class="c-chip font-mono"
+                      :class="{ 'matches-refined': peak.lag === row.refined }"
+                    >
+                      #{{ index + 1 }} · lag {{ peak.lag }} · r={{ formatNumber(peak.correlation) }}
+                    </span>
+                  </div>
+                  <span v-else class="c-unavailable font-mono">N/A</span>
+                </div>
+                <div class="channel-evidence">
+                  <span class="evidence-label font-mono">PREWHITENING ORDER</span>
+                  <strong class="evidence-value font-mono">{{ formatInteger(row.prewhiteningOrder) }}</strong>
+                </div>
               </div>
             </div>
-            <el-button type="primary" size="large" :loading="applying" :disabled="!!result.uncertain_columns.length" @click="handleApply">
-              确认应用并生成时滞补偿版本 →
-            </el-button>
-          </div>
+          </section>
         </template>
 
-        <!-- Empty Placeholder -->
         <div class="industrial-card studio-empty-card" v-else>
           <div class="empty-icon">
             <el-icon><Timer /></el-icon>
@@ -207,6 +191,91 @@
         </div>
       </main>
     </div>
+
+    <template v-if="result">
+      <section class="industrial-card hitl-review-card" data-test="delay-hitl-review">
+        <div class="industrial-card-header">
+          <div class="industrial-card-title">
+            <el-icon><Timer /></el-icon>
+            <span>时滞参数复核 / HITL</span>
+          </div>
+          <span class="hitl-review-note">UNCERTAIN 通道需由工程师确认最终采用值</span>
+        </div>
+        <div class="hitl-review-head" aria-hidden="true">
+          <span>变量</span>
+          <span>算法推荐</span>
+          <span>分析状态</span>
+          <span>最终采用值</span>
+          <span>参数来源</span>
+          <span>复核</span>
+        </div>
+        <div v-for="row in hitlRows" :key="row.column" class="hitl-review-row" :class="{ uncertain: row.requiresManualReview }">
+          <strong class="font-mono">{{ row.column }}</strong>
+          <span class="font-mono">{{ row.hasRecommendation ? row.refined : "N/A" }}</span>
+          <span class="hitl-status" :class="{ uncertain: row.requiresManualReview }">
+            {{ row.unavailable ? "UNAVAILABLE · 无可靠估计" : row.uncertain ? "UNCERTAIN · 需人工复核" : "CONFIRMED" }}
+          </span>
+          <el-input-number
+            v-if="row.requiresManualReview"
+            :model-value="finalLagByColumn[row.column]"
+            :min="0"
+            :step="1"
+            :precision="0"
+            controls-position="right"
+            class="review-lag-input"
+            :data-test="`final-lag-${row.column}`"
+            @update:model-value="setFinalLag(row.column, $event)"
+          />
+          <span v-else class="font-mono">{{ finalLagByColumn[row.column] }}</span>
+          <span :class="{ 'manual-source': row.requiresManualReview }" :data-test="`lag-source-${row.column}`">
+            {{ lagSourceLabel(row) }}
+          </span>
+          <el-button
+            v-if="row.requiresManualReview"
+            size="small"
+            :type="reviewedUncertain[row.column] ? 'success' : 'warning'"
+            :disabled="!isValidLag(finalLagByColumn[row.column])"
+            :data-test="`review-lag-${row.column}`"
+            @click="confirmUncertainLag(row.column)"
+          >
+            {{ reviewedUncertain[row.column] ? "已复核" : "确认采用该值" }}
+          </el-button>
+          <span v-else class="reviewed-algorithm">算法确认</span>
+        </div>
+        <div v-if="hitlRows.some((row) => row.requiresManualReview)" class="hitl-review-hint">
+          输入框中的推荐值不是自动确认；未获得可靠估计的通道默认采用 0 作为系统建议（暂不补偿），工程师可确认或基于工艺先验进行覆盖。
+        </div>
+      </section>
+
+      <div class="industrial-card studio-apply-strip" data-test="delay-apply-strip">
+        <div class="apply-left">
+          <div class="apply-h">APPLY DELAY COMPENSATION · 创建移位版本</div>
+          <div class="apply-d">
+            {{ applySummary }}
+          </div>
+        </div>
+        <el-button
+          type="primary"
+          size="large"
+          :loading="applying || confirmingApply"
+          :disabled="!applyReady || confirmingApply"
+          data-test="apply-delay-button"
+          @click="handleApply"
+        >
+          确认应用并生成时滞补偿版本 →
+        </el-button>
+      </div>
+      <el-alert
+        v-if="appliedVersionId"
+        type="success"
+        :closable="false"
+        show-icon
+        class="apply-success-alert"
+        data-test="apply-success"
+      >
+        <template #title>已成功生成时滞补偿版本：{{ appliedVersionId }}</template>
+      </el-alert>
+    </template>
   </div>
 </template>
 
@@ -214,17 +283,26 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { DataLine, Search, Timer } from "@element-plus/icons-vue";
 import ChartContainer from "../components/ChartContainer.vue";
+import VersionLineagePicker from "../components/versioning/VersionLineagePicker.vue";
 import { applyLagCompensation, calculateDelay, getLatestDelay } from "../api/preprocessing";
-import { getDelaySourceVersions } from "../api/datasets";
-import type { DelayRequest, DelayResponse, DelaySourceStatus, DelaySourceVersion } from "../types/api";
+import { getDatasetVersions, getDelaySourceVersions } from "../api/datasets";
+import type {
+  DatasetVersionNode,
+  DelayRequest,
+  DelayResponse,
+  DelaySourceStatus,
+  DelaySourceVersion,
+} from "../types/api";
 import { ApiError } from "../api/client";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { useDatasetStore } from "../stores/datasetStore";
+import { formatVersionDate, shortVersionId } from "../utils/versionOperation";
 
 const PALETTE = ["#6E9B69", "#7995A8", "#B28B50", "#96799F", "#B8746E", "#52735A"];
 
 const loading = ref(false);
 const applying = ref(false);
+const confirmingApply = ref(false);
 const loadingSources = ref(false);
 const restoringResult = ref(false);
 const result = ref<DelayResponse | null>(null);
@@ -232,7 +310,14 @@ const errorMessage = ref("");
 const inputColumnsText = ref("u1,u2");
 const datasetStore = useDatasetStore();
 const delaySources = ref<DelaySourceVersion[]>([]);
+const versionNodes = ref<DatasetVersionNode[]>([]);
 const selectedSourceVersionId = ref<string | null>(null);
+const rememberedSourceByDataset = new Map<string, string>();
+const sourceInputColumns = ref<string[]>([]);
+const finalLagByColumn = ref<Record<string, number | null>>({});
+const reviewedUncertain = ref<Record<string, boolean>>({});
+const unavailableFallbackOverridden = ref<Record<string, boolean>>({});
+const appliedVersionId = ref<string | null>(null);
 let rehydrationRequest = 0;
 let delaySourcesRequest = 0;
 
@@ -249,11 +334,122 @@ const selectedSource = computed(
   () => delaySources.value.find((source) => source.version_id === selectedSourceVersionId.value) ?? null
 );
 
+const isDelayEligibleVersion = (version: DatasetVersionNode) =>
+  version.tool === "preprocessing.clean" &&
+  delaySources.value.some((source) => source.version_id === version.id);
+
+const delayDisabledReason = (version: DatasetVersionNode) => {
+  if (version.tool === "simulation_generate" || version.tool === "raw_upload") {
+    return "需先完成清洗规整";
+  }
+  if (
+    version.tool === "preprocessing.lag_compensation" ||
+    version.tool === "preprocessing.feature_selection"
+  ) {
+    return "已完成时滞补偿，不作为新的时滞分析源";
+  }
+  if (version.tool === "preprocessing.clean") return "该版本尚未进入可用时滞源列表";
+  return "该处理阶段不符合时滞分析源要求";
+};
+
+const isValidLag = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value >= 0;
+
+const hasManualReview = computed(() => hitlRows.value.some((row) => row.requiresManualReview));
+const allFinalLagsValid = computed(
+  () => hitlRows.value.length > 0 && hitlRows.value.every((row) => isValidLag(finalLagByColumn.value[row.column]))
+);
+const allManualRowsReviewed = computed(() =>
+  hitlRows.value
+    .filter((row) => row.requiresManualReview)
+    .every((row) => reviewedUncertain.value[row.column])
+);
+const applyReady = computed(
+  () =>
+    !!result.value &&
+    !!activeDatasetId.value &&
+    !!selectedSource.value &&
+    form.version_id === selectedSource.value.version_id &&
+    form.dataset_id === activeDatasetId.value &&
+    !appliedVersionId.value &&
+    !applying.value &&
+    allFinalLagsValid.value &&
+    allManualRowsReviewed.value
+);
+
+const lagSourceLabel = (row: {
+  column: string;
+  refined: number | null;
+  uncertain: boolean;
+  unavailable: boolean;
+  requiresManualReview: boolean;
+}) => {
+  if (!row.requiresManualReview) return "算法确认";
+  if (row.unavailable) {
+    if (!reviewedUncertain.value[row.column]) {
+      return unavailableFallbackOverridden.value[row.column]
+        ? "待人工复核（将覆盖系统建议 0）"
+        : "系统建议 · 暂不补偿";
+    }
+    return finalLagByColumn.value[row.column] === 0
+      ? "人工确认系统建议（暂不补偿）"
+      : "人工覆盖（原系统建议 0）";
+  }
+  if (!reviewedUncertain.value[row.column]) return "待人工复核";
+  return finalLagByColumn.value[row.column] === row.refined ? "人工确认算法值" : "人工覆盖";
+};
+
+const applySummary = computed(() => {
+  if (!result.value) return "";
+  if (!allFinalLagsValid.value) return "请为全部输入变量提供合法的非负整数时滞。";
+  if (!allManualRowsReviewed.value) return "存在需人工复核或指定的通道，请逐项确认最终采用值后再应用。";
+  return hitlRows.value
+    .map((row) => `${row.column} = ${finalLagByColumn.value[row.column]} · ${lagSourceLabel(row)}`)
+    .join("；");
+});
+
+const resetHitlReview = (delayResult: DelayResponse | null) => {
+  appliedVersionId.value = null;
+  if (!delayResult) {
+    finalLagByColumn.value = {};
+    reviewedUncertain.value = {};
+    unavailableFallbackOverridden.value = {};
+    return;
+  }
+  finalLagByColumn.value = Object.fromEntries(
+    hitlRows.value.map((row) => [row.column, row.hasRecommendation ? row.refined : 0])
+  );
+  reviewedUncertain.value = Object.fromEntries(
+    hitlRows.value
+      .filter((row) => row.requiresManualReview)
+      .map((row) => [row.column, false])
+  );
+  unavailableFallbackOverridden.value = Object.fromEntries(
+    hitlRows.value.filter((row) => row.unavailable).map((row) => [row.column, false])
+  );
+};
+
+const setFinalLag = (column: string, value: number | null | undefined) => {
+  finalLagByColumn.value[column] = typeof value === "number" ? value : null;
+  if (hitlRows.value.find((row) => row.column === column)?.unavailable) {
+    unavailableFallbackOverridden.value[column] = finalLagByColumn.value[column] !== 0;
+  }
+  reviewedUncertain.value[column] = false;
+};
+
+const confirmUncertainLag = (column: string) => {
+  if (!isValidLag(finalLagByColumn.value[column])) {
+    ElMessage.error("最终采用时滞必须是非负整数。");
+    return;
+  }
+  reviewedUncertain.value[column] = true;
+};
+
 const delayStatusLabel = (status: DelaySourceStatus) =>
   ({
-    complete: "已完成，可恢复",
-    not_analyzed: "尚无成功可用分析",
-    unrehydratable: "历史结果无法恢复",
+    complete: "已完成 · 可恢复",
+    not_analyzed: "尚未分析",
+    unrehydratable: "历史结果不可恢复",
   })[status];
 
 const delayStatusDescription = (status: DelaySourceStatus) =>
@@ -263,14 +459,7 @@ const delayStatusDescription = (status: DelaySourceStatus) =>
     unrehydratable: "历史分析存在，但无法恢复完整频谱；可重新执行分析生成新的完整结果。",
   })[status];
 
-const shortVersionId = (versionId: string) => `${versionId.slice(0, 8)}…`;
-
-const formatSourceDate = (value: string) => {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" }).format(date);
-};
+const formatSourceDate = formatVersionDate;
 
 const emptyStateTitle = computed(() => {
   if (loadingSources.value) return "正在读取 Delay Source 历史版本…";
@@ -327,6 +516,7 @@ const selectDelaySource = async (versionId: string | null, datasetId: string) =>
   result.value = null;
   errorMessage.value = "";
   selectedSourceVersionId.value = source?.version_id ?? null;
+  sourceInputColumns.value = source?.input_columns ?? [];
   form.version_id = source?.version_id ?? "";
   form.dataset_id = source ? datasetId : null;
 
@@ -337,7 +527,24 @@ const selectDelaySource = async (versionId: string | null, datasetId: string) =>
 
 const handleSourceChange = (versionId: string) => {
   const datasetId = activeDatasetId.value;
-  if (datasetId) void selectDelaySource(versionId, datasetId);
+  if (!datasetId) return;
+  rememberedSourceByDataset.set(datasetId, versionId);
+  void selectDelaySource(versionId, datasetId);
+};
+
+const chooseDefaultDelaySource = (
+  datasetId: string,
+  activeVersionId: string | undefined,
+  nodes: DatasetVersionNode[]
+) => {
+  const eligible = nodes.filter(isDelayEligibleVersion);
+  const rememberedId = rememberedSourceByDataset.get(datasetId);
+  return eligible.find((version) => version.id === rememberedId)?.id
+    ?? eligible.find((version) => version.id === activeVersionId)?.id
+    ?? [...eligible].sort(
+      (left, right) => Date.parse(right.created_at) - Date.parse(left.created_at)
+    )[0]?.id
+    ?? null;
 };
 
 const initializeFromActiveDataset = async () => {
@@ -347,7 +554,9 @@ const initializeFromActiveDataset = async () => {
   loadingSources.value = false;
   restoringResult.value = false;
   delaySources.value = [];
+  versionNodes.value = [];
   selectedSourceVersionId.value = null;
+  sourceInputColumns.value = [];
   result.value = null;
   errorMessage.value = "";
 
@@ -365,10 +574,19 @@ const initializeFromActiveDataset = async () => {
   if (activeDataset.output_column) form.output_column = activeDataset.output_column;
   loadingSources.value = true;
   try {
-    const data = await getDelaySourceVersions(activeDataset.id);
+    const [data, versions] = await Promise.all([
+      getDelaySourceVersions(activeDataset.id),
+      getDatasetVersions(activeDataset.id),
+    ]);
     if (request !== delaySourcesRequest) return;
     delaySources.value = data.sources;
-    await selectDelaySource(data.default_source_version_id, activeDataset.id);
+    versionNodes.value = versions.nodes;
+    const defaultVersionId = chooseDefaultDelaySource(
+      activeDataset.id,
+      activeDataset.version_id || activeDataset.latest_version_id,
+      versions.nodes
+    );
+    await selectDelaySource(defaultVersionId, activeDataset.id);
   } catch (error) {
     if (request !== delaySourcesRequest) return;
     errorMessage.value = error instanceof ApiError ? error.message : String(error);
@@ -414,31 +632,67 @@ const handleEstimate = async () => {
 };
 
 const handleApply = async () => {
-  if (!result.value) return;
+  if (!result.value || !applyReady.value || applying.value || confirmingApply.value) {
+    if (result.value && !applyReady.value) {
+      ElMessage.error("请先完成所有 UNCERTAIN 通道的人工复核，并确认最终时滞为非负整数。");
+    }
+    return;
+  }
+  const datasetId = form.dataset_id ?? activeDatasetId.value;
+  if (!datasetId) return;
+  const sourceVersionId = form.version_id;
+  const lagMap = Object.fromEntries(
+    hitlRows.value.map((row) => [row.column, finalLagByColumn.value[row.column]!])
+  );
+  const recommendationSource = hasManualReview.value ? "manual" : "delay_analysis";
+  const evidenceSummary = Object.fromEntries(
+    hitlRows.value.map((row) => {
+      const finalLag = lagMap[row.column];
+      if (row.unavailable) {
+        return finalLag === 0
+          ? [row.column, "No reliable Delay Analyze recommendation; system recommendation = 0 (no compensation); user confirmed system recommendation."]
+          : [row.column, `No reliable Delay Analyze recommendation; system recommendation = 0; manual override final = ${finalLag}.`];
+      }
+      if (!row.uncertain) {
+        return [row.column, `Delay Analyze validation-refined recommendation = ${row.refined}; algorithm confirmed.`];
+      }
+      return finalLag === row.refined
+        ? [row.column, `UNCERTAIN; human reviewed and adopted Delay Analyze validation-refined recommendation = ${row.refined}.`]
+        : [row.column, `UNCERTAIN; human override: Delay Analyze validation-refined recommendation = ${row.refined}; adopted = ${finalLag}.`];
+    })
+  );
+
+  confirmingApply.value = true;
   try {
     await ElMessageBox.confirm(
-      "将创建新的不可变 DatasetVersion，源版本不会被覆盖。是否继续？",
+      `将按以下最终时滞方案创建新的不可变 DatasetVersion：\n${applySummary.value}\n\n源版本不会被覆盖。是否继续？`,
       "确认时滞补偿",
       { type: "warning" }
     );
+    if (
+      !applyReady.value ||
+      form.version_id !== sourceVersionId ||
+      (form.dataset_id ?? activeDatasetId.value) !== datasetId
+    ) {
+      ElMessage.error("应用前的 Dataset 或时滞来源已变化，请重新复核后再提交。");
+      return;
+    }
     applying.value = true;
     const applied = await applyLagCompensation({
-      version_id: form.version_id,
-      lag_map: result.value.best_delays,
+      version_id: sourceVersionId,
+      dataset_id: datasetId,
+      lag_map: lagMap,
       user_confirmed: true,
-      recommendation_source: "delay_analysis",
-      evidence_summary: Object.fromEntries(
-        Object.entries(result.value.best_delays).map(([column, lag]) => [
-          column,
-          `validation-refined nk=${lag}`,
-        ])
-      ),
+      recommendation_source: recommendationSource,
+      evidence_summary: evidenceSummary,
     });
+    appliedVersionId.value = applied.result_version_id;
     ElMessage.success(`已创建时滞补偿版本：${applied.result_version_id}`);
   } catch (err) {
     if (err !== "cancel") ElMessage.error(err instanceof ApiError ? err.message : String(err));
   } finally {
     applying.value = false;
+    confirmingApply.value = false;
   }
 };
 
@@ -452,6 +706,25 @@ const delayRows = computed(() => {
       candidates,
       uncertain: result.value?.uncertain_columns.includes(column) ?? false,
       prewhiteningOrder: result.value?.prewhitening_orders[column],
+    };
+  });
+});
+
+const hitlRows = computed(() => {
+  if (!result.value) return [];
+  const columns = sourceInputColumns.value.length ? sourceInputColumns.value : form.input_columns;
+  return columns.map((column) => {
+    const hasRecommendation = Object.prototype.hasOwnProperty.call(result.value!.best_delays, column);
+    const refined = hasRecommendation ? result.value!.best_delays[column] : null;
+    const uncertain = hasRecommendation && result.value!.uncertain_columns.includes(column);
+    const unavailable = !hasRecommendation;
+    return {
+      column,
+      refined,
+      hasRecommendation,
+      uncertain,
+      unavailable,
+      requiresManualReview: uncertain || unavailable,
     };
   });
 });
@@ -530,6 +803,8 @@ const formatNumber = (value: number | null | undefined) => {
 
 onMounted(() => void initializeFromActiveDataset());
 
+watch(result, (nextResult) => resetHitlReview(nextResult));
+
 watch(
   () => datasetStore.activeDataset?.id,
   (datasetId, previousDatasetId) => {
@@ -599,18 +874,17 @@ const formatInteger = (value: number | null | undefined) => {
   color: var(--text-faint);
 }
 
-/* FORMAT 3: Studio Layout */
-.delay-studio-layout {
+/* Primary analysis workspace: parameters beside the spectrum only. */
+.delay-primary-workspace {
   display: grid;
-  grid-template-columns: 310px 1fr;
+  grid-template-columns: minmax(300px, 28%) minmax(0, 1fr);
   gap: 20px;
   align-items: start;
 }
 
-.delay-rail-dock {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+.delay-parameters-panel,
+.delay-spectrum-panel {
+  min-width: 0;
 }
 
 .rail-card {
@@ -621,8 +895,11 @@ const formatInteger = (value: number | null | undefined) => {
 }
 
 .theory-box {
+  margin-top: 16px;
+  padding: 12px;
   background: var(--bg-subtle);
   border: 1px solid var(--border-light);
+  border-radius: 8px;
 }
 
 .t-title {
@@ -657,6 +934,18 @@ const formatInteger = (value: number | null | undefined) => {
   margin: -2px 0 10px;
 }
 
+.source-form-item :deep(.el-form-item__content) {
+  width: 100%;
+}
+
+.source-helper {
+  width: 100%;
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .source-option {
   display: flex;
   flex-direction: column;
@@ -673,10 +962,18 @@ const formatInteger = (value: number | null | undefined) => {
   font-weight: 700;
 }
 
-.source-option-meta,
-.selected-source-id {
+.source-option-meta {
   color: var(--text-muted);
   font-size: 10px;
+  font-family: var(--font-mono);
+}
+
+:global(.delay-source-select-popper .el-select-dropdown__item) {
+  height: auto;
+  min-height: 48px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  line-height: normal;
 }
 
 .source-status,
@@ -712,9 +1009,9 @@ const formatInteger = (value: number | null | undefined) => {
 .selected-source-detail {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
   margin: -2px 0 12px;
-  padding: 10px;
+  padding: 12px;
   border: 1px solid var(--border-light);
   border-radius: 8px;
   background: var(--bg-subtle);
@@ -723,21 +1020,74 @@ const formatInteger = (value: number | null | undefined) => {
   line-height: 1.45;
 }
 
+.selected-source-kicker {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.selected-source-name {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.selected-source-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 1px 0 0;
+}
+
+.selected-source-facts > div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.selected-source-facts dt,
+.selected-source-facts dd {
+  margin: 0;
+}
+
+.selected-source-facts dt {
+  color: var(--text-muted);
+}
+
+.selected-source-facts dd {
+  min-width: 0;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.selected-source-description {
+  padding-top: 7px;
+  border-top: 1px solid var(--border-light);
+}
+
 .restore-alert {
   margin: 0;
 }
 
-/* Right Main Studio */
-.delay-main-studio {
+/* Right analysis column keeps the Spectrum and channel result cards together. */
+.delay-spectrum-panel {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  align-self: start;
+  width: 100%;
+  gap: 14px;
+}
+
+.delay-results-section {
+  min-width: 0;
+  width: 100%;
 }
 
 /* Channel Tiles Array */
 .channel-cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 14px;
 }
 
@@ -872,11 +1222,6 @@ const formatInteger = (value: number | null | undefined) => {
   background: #ffffff;
   border-radius: 12px;
   margin-bottom: 0;
-  order: 1;
-}
-
-.channel-cards-grid {
-  order: 2;
 }
 
 .spectrum-metrics {
@@ -906,6 +1251,74 @@ const formatInteger = (value: number | null | undefined) => {
   color: var(--text-primary);
 }
 
+/* Human review between the immutable analysis result and Delay Apply. */
+.hitl-review-card {
+  padding: 20px;
+  background: #ffffff;
+  border-radius: 12px;
+  margin-bottom: 0;
+}
+
+.hitl-review-note,
+.hitl-review-hint {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.hitl-review-head,
+.hitl-review-row {
+  display: grid;
+  grid-template-columns: minmax(64px, 0.65fr) minmax(88px, 0.9fr) minmax(138px, 1.4fr) minmax(108px, 1fr) minmax(118px, 1.25fr) minmax(116px, 1.15fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.hitl-review-head {
+  margin-top: 12px;
+  padding: 0 10px 7px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.hitl-review-row {
+  min-height: 52px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.hitl-review-row.uncertain {
+  background: #fffbeb;
+}
+
+.hitl-status {
+  color: #047857;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.hitl-status.uncertain,
+.manual-source {
+  color: #b45309;
+}
+
+.review-lag-input {
+  width: 100%;
+}
+
+.reviewed-algorithm {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.hitl-review-hint {
+  margin-top: 10px;
+}
+
 /* Studio Apply Strip */
 .studio-apply-strip {
   display: flex;
@@ -917,7 +1330,6 @@ const formatInteger = (value: number | null | undefined) => {
   border-radius: var(--radius-md);
   margin-bottom: 0;
   gap: 20px;
-  order: 3;
 }
 
 .apply-h {
@@ -974,12 +1386,19 @@ const formatInteger = (value: number | null | undefined) => {
 }
 
 @media (max-width: 960px) {
-  .delay-studio-layout {
+  .delay-primary-workspace {
     grid-template-columns: 1fr;
   }
   .studio-apply-strip {
     flex-direction: column;
     align-items: stretch;
+  }
+  .hitl-review-head {
+    display: none;
+  }
+  .hitl-review-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 14px;
   }
   .studio-spectrum-card .industrial-card-header {
     align-items: flex-start;

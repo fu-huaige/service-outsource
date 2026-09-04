@@ -885,13 +885,14 @@ async def fit_arx(
     payload: ArxFitRequest,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SuccessEnvelope[ArxFitData]:
-    """Identify ARX on any version and accept it on free-run FIT, stability and priors."""
+    """Identify ARX only on trusted Lag lineage and apply the formal model checks."""
 
     try:
         data = await fit_arx_on_version(
             session,
             payload=payload,
             artifact_root=get_settings().artifact_root,
+            require_lag_provenance=True,
         )
     except ModelingDomainError as error:
         raise AppError(

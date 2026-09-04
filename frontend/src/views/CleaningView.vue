@@ -14,28 +14,93 @@
       </div>
     </div>
 
-    <!-- Page Header with Inline Dataset Pill -->
+    <!-- Page Header -->
     <div class="cleaning-hero-bar">
       <div>
         <span class="page-eyebrow font-mono">EQUISPACED RESAMPLING & 3-SIGMA TRIAGE</span>
         <h2>时间规整与清洗实验室</h2>
         <p class="subtitle">消除采样不均匀、补全缺失值并过滤尖峰异常点，派生可信基准版本 V1_Cleaned</p>
       </div>
-
-      <div class="source-hero-badge" v-if="sourceVersion">
-        <div class="badge-top">
-          <span class="badge-dot"></span>
-          <span>源数据版本 (SOURCE)</span>
-          <el-tag size="small" type="primary" effect="light">本次清洗输入</el-tag>
-        </div>
-        <div class="badge-name">{{ sourceVersion.name }}</div>
-        <div class="badge-hash font-mono">{{ sourceVersion.id }}</div>
-      </div>
-      <div class="source-hero-badge pending" v-else>
-        <span>源数据版本</span>
-        <p>{{ sourceLoadMessage }}</p>
-      </div>
     </div>
+
+    <section class="industrial-card source-context-card" aria-labelledby="cleaning-source-title">
+      <div class="source-context-header">
+        <div>
+          <span class="source-context-eyebrow font-mono">CLEANING CONTEXT</span>
+          <h3 id="cleaning-source-title">清洗规整上下文</h3>
+        </div>
+        <p>原始版本与清洗规整版本可作为新的清洗输入。</p>
+      </div>
+
+      <div class="source-control-grid">
+        <div class="source-control">
+          <label for="cleaning-dataset">数据集</label>
+          <el-select
+            id="cleaning-dataset"
+            v-model="selectedDatasetId"
+            data-test="cleaning-dataset-select"
+            placeholder="选择数据集"
+            :loading="loadingDatasets"
+            filterable
+            @change="handleDatasetChange"
+          >
+            <el-option
+              v-for="dataset in datasetOptions"
+              :key="dataset.id"
+              :label="dataset.name"
+              :value="dataset.id"
+            >
+              <div class="dataset-option">
+                <span>{{ dataset.name }}</span>
+                <small>{{ dataset.row_count }} rows · {{ dataset.col_count }} cols</small>
+              </div>
+            </el-option>
+          </el-select>
+        </div>
+
+        <div class="source-control">
+          <label>源数据版本</label>
+          <VersionLineagePicker
+            data-test="cleaning-source-picker"
+            :dataset-name="sourceDataset?.name ?? ''"
+            :versions="versionNodes"
+            :selected-version-id="selectedVersionId"
+            :loading="loadingVersions"
+            context-label="原始或清洗规整版本可作为清洗输入"
+            eligible-label="可用于清洗规整"
+            empty-state-text="暂无可用于清洗规整的数据版本。"
+            empty-state-hint="请先上传数据或生成仿真数据。"
+            placeholder="选择清洗源版本"
+            :is-eligible="isCleaningEligibleVersion"
+            :disabled-reason="cleaningDisabledReason"
+            @select="handleVersionSelect"
+          />
+        </div>
+      </div>
+
+      <el-alert
+        v-if="contextError"
+        type="error"
+        :title="contextError"
+        :closable="false"
+        show-icon
+        class="context-alert"
+      />
+
+      <div v-if="sourceVersion" class="source-summary" data-test="cleaning-source-summary">
+        <div><span>当前清洗源</span><strong>{{ versionDisplayName(sourceVersion) }}</strong></div>
+        <div><span>数据集</span><strong>{{ sourceDataset?.name }}</strong></div>
+        <div><span>创建时间</span><strong>{{ formatVersionDate(sourceVersion.created_at) }}</strong></div>
+        <div><span>来源</span><strong>{{ selectedParent ? versionDisplayName(selectedParent) : "初始版本" }}</strong></div>
+        <div><span>版本 ID</span><strong class="font-mono">{{ shortVersionId(sourceVersion.id) }}</strong></div>
+        <div>
+          <span>清洗状态</span>
+          <strong class="source-ready">
+            {{ sourceVersion.tool === "preprocessing.clean" ? "可再次执行清洗规整" : "可执行清洗规整" }}
+          </strong>
+        </div>
+      </div>
+    </section>
 
     <!-- FORMAT 1: Horizontal High-Density Control Strip (横向参数控制中枢) -->
     <section class="cleaning-toolbar industrial-card">
@@ -75,6 +140,7 @@
 
       <div class="tb-actions">
         <el-button
+          data-test="clean-submit"
           type="primary"
           size="default"
           :loading="loading"
@@ -159,12 +225,18 @@ import { ref, reactive, computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import { Operation, MagicStick, DataAnalysis } from "@element-plus/icons-vue";
 import ChartContainer from "../components/ChartContainer.vue";
+import VersionLineagePicker from "../components/versioning/VersionLineagePicker.vue";
 import { cleanDataset } from "../api/preprocessing";
-import { getDatasetDetail, getDatasetVersions } from "../api/datasets";
+import { getDatasetDetail, getDatasetVersions, listDatasets } from "../api/datasets";
 import { useDatasetStore } from "../stores/datasetStore";
 import { ApiError } from "../api/client";
 import type { CleanRequest, CleanResponse, DatasetItem, DatasetVersionNode } from "../types/api";
 import { ElMessage } from "element-plus";
+import {
+  formatVersionDate,
+  shortVersionId,
+  versionDisplayName,
+} from "../utils/versionOperation";
 
 type CleaningForm = Pick<
   CleanRequest,
@@ -174,12 +246,19 @@ type CleaningForm = Pick<
 const route = useRoute();
 const datasetStore = useDatasetStore();
 const loading = ref(false);
+const loadingDatasets = ref(false);
+const loadingVersions = ref(false);
 const cleanedData = ref<CleanResponse | null>(null);
 const sourceDataset = ref<DatasetItem | null>(null);
-const sourceVersion = ref<DatasetVersionNode | null>(null);
-const sourceLoadMessage = ref("正在加载源数据版本…");
+const datasetOptions = ref<DatasetItem[]>([]);
+const selectedDatasetId = ref<string | null>(null);
+const versionNodes = ref<DatasetVersionNode[]>([]);
+const selectedVersionId = ref<string | null>(null);
+const rememberedSourceByDataset = new Map<string, string>();
+const contextError = ref("");
 const errorMessage = ref("");
 const validationIssues = ref<string[]>([]);
+let contextRequestId = 0;
 
 const form = reactive<CleaningForm>({
   target_sample_period_seconds: 1.0,
@@ -193,35 +272,121 @@ const queryValue = (name: "dataset_id" | "version_id") => {
   return typeof value === "string" && value ? value : undefined;
 };
 
-const loadSourceVersion = async () => {
-  const selectedDataset = datasetStore.activeDataset;
-  const datasetId = queryValue("dataset_id") || selectedDataset?.id;
-  const versionId =
-    queryValue("version_id") ||
-    selectedDataset?.version_id ||
-    selectedDataset?.latest_version_id;
-  if (!datasetId || !versionId) {
-    sourceLoadMessage.value = "请从数据资产中心或数据集详情页选择源数据版本。";
-    return;
+const sourceVersion = computed(
+  () => versionNodes.value.find((node) => node.id === selectedVersionId.value) ?? null
+);
+const selectedParent = computed(() => {
+  const parentId = sourceVersion.value?.parent_version_id;
+  return parentId
+    ? versionNodes.value.find((node) => node.id === parentId) ?? null
+    : null;
+});
+
+const CLEANING_SOURCE_OPERATIONS = new Set([
+  "raw_upload",
+  "simulation_generate",
+  "preprocessing.clean",
+]);
+
+const isCleaningEligibleVersion = (version: DatasetVersionNode) =>
+  CLEANING_SOURCE_OPERATIONS.has(version.tool);
+
+const cleaningDisabledReason = (version: DatasetVersionNode) => {
+  if (
+    version.tool === "preprocessing.lag_compensation" ||
+    version.tool === "preprocessing.feature_selection"
+  ) {
+    return "已进入后续处理阶段，不作为新的清洗源";
   }
+  return "该处理阶段不符合清洗规整源要求";
+};
+
+const clearSourceContext = () => {
+  versionNodes.value = [];
+  selectedVersionId.value = null;
+  cleanedData.value = null;
+  errorMessage.value = "";
+  validationIssues.value = [];
+};
+
+const handleVersionSelect = (versionId: string) => {
+  const version = versionNodes.value.find((node) => node.id === versionId);
+  if (!version || !isCleaningEligibleVersion(version) || !selectedDatasetId.value) return;
+  selectedVersionId.value = versionId;
+  rememberedSourceByDataset.set(selectedDatasetId.value, versionId);
+  cleanedData.value = null;
+  errorMessage.value = "";
+  validationIssues.value = [];
+};
+
+const chooseDefaultVersion = (dataset: DatasetItem, nodes: DatasetVersionNode[]) => {
+  const eligible = nodes.filter(isCleaningEligibleVersion);
+  const rememberedId = rememberedSourceByDataset.get(dataset.id);
+  const routeVersionId = queryValue("dataset_id") === dataset.id ? queryValue("version_id") : undefined;
+  const activeVersionId = datasetStore.activeDataset?.id === dataset.id
+    ? datasetStore.activeDataset.version_id || datasetStore.activeDataset.latest_version_id
+    : dataset.version_id || dataset.latest_version_id;
+  const preferred = eligible.find((node) => node.id === rememberedId)
+    ?? eligible.find((node) => node.id === routeVersionId)
+    ?? eligible.find((node) => node.id === activeVersionId)
+    ?? [...eligible].sort(
+      (left, right) => Date.parse(right.created_at) - Date.parse(left.created_at)
+    )[0];
+  if (preferred) handleVersionSelect(preferred.id);
+};
+
+const loadDatasetContext = async (datasetId: string) => {
+  const requestId = ++contextRequestId;
+  clearSourceContext();
+  contextError.value = "";
+  loadingVersions.value = true;
   try {
     const [dataset, versions] = await Promise.all([
       getDatasetDetail(datasetId),
       getDatasetVersions(datasetId),
     ]);
-    const version = versions.nodes.find((node) => node.id === versionId);
-    if (!version) {
-      sourceLoadMessage.value = "指定的源数据版本不存在于当前数据集。";
-      return;
-    }
+    if (requestId !== contextRequestId) return;
     sourceDataset.value = dataset;
-    sourceVersion.value = version;
+    versionNodes.value = versions.nodes;
     datasetStore.setActiveDataset(dataset);
+    chooseDefaultVersion(dataset, versions.nodes);
   } catch (error) {
-    sourceLoadMessage.value =
-      error instanceof ApiError
-        ? `源版本加载失败 [${error.code}]：${error.message}`
-        : "源版本加载失败，请确认后端服务和数据资产状态。";
+    if (requestId !== contextRequestId) return;
+    sourceDataset.value = null;
+    contextError.value = error instanceof ApiError
+      ? `源版本加载失败 [${error.code}]：${error.message}`
+      : "源版本加载失败，请确认后端服务和数据资产状态。";
+  } finally {
+    if (requestId === contextRequestId) loadingVersions.value = false;
+  }
+};
+
+const handleDatasetChange = (datasetId: string) => {
+  if (!datasetId) {
+    ++contextRequestId;
+    sourceDataset.value = null;
+    clearSourceContext();
+    return;
+  }
+  void loadDatasetContext(datasetId);
+};
+
+const initializeDatasets = async () => {
+  loadingDatasets.value = true;
+  contextError.value = "";
+  try {
+    const response = await listDatasets({ page: 1, page_size: 100 });
+    datasetOptions.value = response.items;
+    datasetStore.setDatasetsList(response.items);
+    const initialDatasetId = queryValue("dataset_id") || datasetStore.activeDataset?.id;
+    if (initialDatasetId && response.items.some((dataset) => dataset.id === initialDatasetId)) {
+      selectedDatasetId.value = initialDatasetId;
+      await loadDatasetContext(initialDatasetId);
+    }
+  } catch (error) {
+    contextError.value = error instanceof ApiError ? error.message : String(error);
+  } finally {
+    loadingDatasets.value = false;
   }
 };
 
@@ -314,7 +479,9 @@ const cleaningResultSummary = computed(() => {
   return `共修复 ${changes.unique_changed_cells ?? cleanedData.value.total_cleaned_points} 个唯一数据单元格：${parts.join("、")}；另有${rowOperations.join("、")}。${overlap}`;
 });
 
-onMounted(loadSourceVersion);
+onMounted(() => {
+  void initializeDatasets();
+});
 </script>
 
 <style scoped>
@@ -382,49 +549,114 @@ onMounted(loadSourceVersion);
   flex-wrap: wrap;
 }
 
-.source-hero-badge {
-  padding: 10px 16px;
+.source-context-card {
+  padding: 20px 24px;
   background: #ffffff;
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
+}
+
+.source-context-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.source-context-header h3,
+.source-context-header p {
+  margin: 0;
+}
+
+.source-context-header h3 {
+  margin-top: 5px;
+  font-size: 16px;
+}
+
+.source-context-header p {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.source-context-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--color-primary);
+}
+
+.source-control-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(320px, 1.2fr);
+  gap: 16px;
+  padding-top: 16px;
+}
+
+.source-control {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  min-width: 260px;
+  gap: 7px;
+  min-width: 0;
 }
 
-.badge-top {
+.source-control > label {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.source-control :deep(.el-select) {
+  width: 100%;
+}
+
+.dataset-option {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-family: var(--font-sans);
-  font-size: 11px;
-  font-weight: 500;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dataset-option small {
+  color: var(--text-faint);
+}
+
+.context-alert {
+  margin-top: 14px;
+}
+
+.source-summary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+  padding: 13px 14px;
+  border: 1px solid #dce7da;
+  border-radius: 8px;
+  background: #f7faf6;
+}
+
+.source-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.source-summary span {
+  font-size: 10px;
   color: var(--text-muted);
-  letter-spacing: normal;
 }
 
-.badge-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #059669;
-}
-
-.badge-name {
-  font-size: 13px;
-  font-weight: 700;
+.source-summary strong {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 600;
   color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.badge-hash {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.source-hero-badge.pending {
-  color: var(--text-secondary);
-  font-size: 12px;
+.source-summary .source-ready {
+  color: #466f43;
 }
 
 /* Format 1: Horizontal Toolbar */
@@ -587,6 +819,14 @@ onMounted(loadSourceVersion);
 }
 
 @media (max-width: 1000px) {
+  .source-context-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .source-control-grid,
+  .source-summary {
+    grid-template-columns: 1fr;
+  }
   .cleaning-toolbar {
     flex-direction: column;
     align-items: stretch;

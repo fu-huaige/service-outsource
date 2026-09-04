@@ -65,6 +65,10 @@ from app.schemas.modeling import (
 )
 from app.services.contract_stubs import completed_task
 from app.services.version_data import VersionDataError, VersionSeries, load_version_series
+from app.services.version_provenance_service import (
+    VersionProvenanceError,
+    resolve_arx_lag_provenance,
+)
 
 MAX_PLOT_POINTS = 6_000
 
@@ -259,8 +263,9 @@ async def fit_arx_on_version(
     *,
     payload: ArxFitRequest,
     artifact_root: Path,
+    require_lag_provenance: bool = False,
 ) -> ArxFitData:
-    """Load any version, identify, validate against priors and persist the run."""
+    """Load one version, optionally enforce Lag provenance, fit, and persist the run."""
 
     try:
         series = await load_version_series(
@@ -277,6 +282,21 @@ async def fit_arx_on_version(
         raise ModelingDomainError(
             error.code, error.message, status_code=error.status_code, details=error.details
         ) from error
+
+    if require_lag_provenance:
+        try:
+            await resolve_arx_lag_provenance(
+                session,
+                version_id=series.version_id,
+                input_columns=input_columns,
+            )
+        except VersionProvenanceError as error:
+            raise ModelingDomainError(
+                error.code,
+                error.message,
+                status_code=error.status_code,
+                details=error.details,
+            ) from error
 
     resolved = payload.model_copy(update={"input_columns": input_columns, "output_column": output_column})
     result = fit_arx_core(

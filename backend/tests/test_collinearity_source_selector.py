@@ -12,7 +12,7 @@ import pytest
 from app.core.config import Settings
 from app.core.db import get_session
 from app.main import create_app
-from app.models import Base, Dataset, DatasetVersion, ProcessingRun
+from app.models import Base, Dataset, DatasetColumn, DatasetVersion, ProcessingRun
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -106,6 +106,21 @@ async def _create_version(
     return version
 
 
+async def _create_input_columns(session: AsyncSession, version: DatasetVersion) -> None:
+    for position, name in enumerate(("u1", "u2", "u3", "u4")):
+        session.add(
+            DatasetColumn(
+                id=uuid4(),
+                dataset_id=version.dataset_id,
+                version_id=version.id,
+                name=name,
+                role="input",
+                position=position,
+                inferred_type="float",
+            )
+        )
+
+
 async def _create_collinearity_run(
     session: AsyncSession,
     *,
@@ -169,6 +184,8 @@ class TestCollinearitySourceSelectorApi:
                     created_at=now + timedelta(seconds=8),
                     parent_version_id=clean.id,
                 )
+                for lag_version in (complete_lag, latest_lag, incomplete_lag):
+                    await _create_input_columns(session, lag_version)
                 await _create_version(
                     session,
                     dataset=dataset,
@@ -299,9 +316,11 @@ class TestCollinearitySourceSelectorApi:
             "operation_name",
             "parent_version_id",
             "created_at",
+            "input_columns",
             "collinearity_status",
             "latest_complete_collinearity_run_id",
         }
+        assert by_id[str(ids["complete_lag"])]["input_columns"] == ["u1", "u2", "u3", "u4"]
         assert by_id[str(ids["latest_lag"])]["collinearity_status"] == "not_analyzed"
         assert by_id[str(ids["complete_lag"])]["collinearity_status"] == "complete"
         assert by_id[str(ids["complete_lag"])][

@@ -60,34 +60,21 @@
 
         <div class="context-field">
           <label>时滞补偿版本</label>
-          <el-select
-            v-model="selectedSourceVersionId"
+          <VersionLineagePicker
             data-test="source-select"
+            :dataset-name="selectedDataset?.name ?? ''"
+            :versions="versionNodes"
+            :selected-version-id="selectedSourceVersionId"
             :loading="loadingSources"
-            :disabled="loadingSources || !collinearitySources.length"
+            context-label="时滞补偿版本可用于共线性诊断"
+            eligible-label="可用于共线性诊断"
+            empty-state-text="该数据集暂无可用于共线性分析的时滞补偿版本。"
+            empty-state-hint="请先完成时滞补偿后再进行共线性分析。"
             placeholder="选择时滞补偿版本"
-            style="width: 100%"
-            @change="handleSourceChange"
-          >
-            <el-option
-              v-for="source in collinearitySources"
-              :key="source.version_id"
-              :label="source.name"
-              :value="source.version_id"
-            >
-              <div class="selector-option source-selector-option">
-                <div class="selector-option-line">
-                  <span class="selector-option-name">{{ source.name }}</span>
-                  <span class="source-status" :class="source.collinearity_status">
-                    {{ sourceStatusLabel(source.collinearity_status) }}
-                  </span>
-                </div>
-                <span class="selector-option-meta font-mono">
-                  V{{ source.version_index }} · {{ formatSourceDate(source.created_at) }} · {{ shortId(source.version_id) }}
-                </span>
-              </div>
-            </el-option>
-          </el-select>
+            :is-eligible="isCollinearityEligibleVersion"
+            :disabled-reason="collinearityDisabledReason"
+            @select="handleSourceChange"
+          />
         </div>
       </div>
 
@@ -99,21 +86,12 @@
         show-icon
         class="context-alert"
       />
-      <el-alert
-        v-else-if="selectedDatasetId && !loadingSources && !collinearitySources.length"
-        title="该数据集暂无可用于共线性分析的时滞补偿版本。"
-        description="请先完成时滞补偿后再进行共线性分析。"
-        type="info"
-        :closable="false"
-        show-icon
-        class="context-alert"
-      />
       <div v-else-if="selectedSource" class="selected-source-detail">
         <span class="source-status" :class="selectedSource.collinearity_status">
           {{ sourceStatusLabel(selectedSource.collinearity_status) }}
         </span>
         <span>{{ sourceStatusDescription(selectedSource.collinearity_status) }}</span>
-        <span class="selected-source-id font-mono">UUID · {{ selectedSource.version_id }}</span>
+        <span class="selected-source-id font-mono">UUID · {{ shortVersionId(selectedSource.version_id) }}</span>
       </div>
       <div v-else-if="!loadingDatasets && !selectedDatasetId" class="context-prompt">
         请选择数据集以读取可用于共线性分析的时滞补偿版本。
@@ -124,13 +102,13 @@
     <div class="industrial-card collin-control-strip">
       <div class="cs-row">
         <div class="cs-item">
-          <label>输入特征候选 (u)</label>
-          <el-input
-            v-model="inputColumnsText"
-            data-test="input-columns"
-            placeholder="u1,u2,u3,u4"
-            size="small"
-          />
+          <label>正式输入变量 (u)</label>
+          <div class="input-column-chips" data-test="input-columns">
+            <span v-for="column in form.input_columns" :key="column" class="input-column-chip font-mono">
+              {{ column }}
+            </span>
+            <span v-if="!form.input_columns.length" class="input-column-placeholder">选择时滞补偿版本后自动读取</span>
+          </div>
         </div>
         <div class="cs-item">
           <label>相关报警阈值</label>
@@ -159,6 +137,29 @@
     <el-alert v-if="errorMessage" type="error" :closable="false" show-icon class="alert-gap">
       <template #title>诊断失败：{{ errorMessage }}</template>
     </el-alert>
+
+    <div v-if="hasInputDiagnostics" class="industrial-card qualification-card" data-test="input-qualification">
+      <div>
+        <span class="context-eyebrow font-mono">INPUT QUALIFICATION</span>
+        <h3>输入资格判定</h3>
+      </div>
+      <div class="qualification-list">
+        <div v-for="diagnostic in inputDiagnostics" :key="diagnostic.column" class="qualification-item">
+          <span class="qualification-column font-mono">{{ diagnostic.column }}</span>
+          <span class="qualification-status" :class="diagnostic.status">{{ qualificationStatusLabel(diagnostic.status) }}</span>
+          <span class="qualification-reason">{{ diagnostic.reason }}</span>
+        </div>
+      </div>
+    </div>
+    <el-alert
+      v-else-if="legacyResult"
+      data-test="legacy-qualification-warning"
+      title="该历史分析结果缺少输入资格诊断信息，建议重新执行分析以获得完整诊断。"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="legacy-qualification-warning"
+    />
 
     <!-- FORMAT 4: 3-Panel Tri-View Studio Grid (三联视窗工作台) -->
     <div class="collin-tri-grid" v-if="result">
@@ -239,25 +240,25 @@
           <div class="stat-mini-box">
             <div>
               <span class="s-l">总特征数</span>
-              <strong class="s-v">{{ result.variables.length }}</strong>
+              <strong class="s-v">{{ resultVariables.length }}</strong>
             </div>
             <div class="s-div"></div>
             <div>
-              <span class="s-l">高相关组</span>
-              <strong class="s-v text-cyan">{{ result.correlated_groups.length }}</strong>
+              <span class="s-l">有效特征</span>
+              <strong class="s-v text-cyan">{{ analyzableInputCount }}</strong>
             </div>
             <div class="s-div"></div>
             <div>
-              <span class="s-l">建议剔除</span>
+              <span class="s-l">低方差 / 建议剔除</span>
               <strong class="s-v text-danger">{{ dropCount }}</strong>
             </div>
           </div>
 
-          <div v-if="result.correlated_groups.length" class="correlated-list">
+          <div v-if="correlatedGroups.length" class="correlated-list">
             <div class="cl-title">强相关共线性通道组：</div>
             <div class="cl-chips">
               <el-tag
-                v-for="(group, index) in result.correlated_groups"
+              v-for="(group, index) in correlatedGroups"
                 :key="index"
                 type="warning"
                 effect="plain"
@@ -277,7 +278,7 @@
               class="rec-item"
             >
               <span class="rec-var font-mono">{{ item.variable }}</span>
-              <span class="rec-vif font-mono">VIF = {{ formatVifValue(result.vif_scores[item.variable]) }}</span>
+              <span class="rec-vif font-mono">VIF = {{ formatVifValue(vifScores[item.variable]) }}</span>
             </div>
           </div>
           <div class="no-drops" v-else>
@@ -285,7 +286,7 @@
           </div>
 
           <div class="decision-action-strip" v-if="dropCandidates.length">
-            <el-button type="danger" size="default" :loading="applying" @click="handleApply" style="width: 100%">
+            <el-button data-test="feature-apply-button" type="danger" size="default" :loading="applying" @click="handleApply" style="width: 100%">
               确认剔除并生成 V3_FeatureSet →
             </el-button>
           </div>
@@ -308,6 +309,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { Grid, Histogram, Share, TrendCharts } from "@element-plus/icons-vue";
 import ChartContainer from "../components/ChartContainer.vue";
+import VersionLineagePicker from "../components/versioning/VersionLineagePicker.vue";
 import {
   applyFeatureSelection,
   calculateCollinearity,
@@ -316,6 +318,7 @@ import {
 import {
   getCollinearitySourceVersions,
   getDatasetDetail,
+  getDatasetVersions,
   listDatasets,
 } from "../api/datasets";
 import type {
@@ -324,10 +327,12 @@ import type {
   CollinearitySourceStatus,
   CollinearitySourceVersionItem,
   DatasetItem,
+  DatasetVersionNode,
 } from "../types/api";
 import { ApiError } from "../api/client";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { useDatasetStore } from "../stores/datasetStore";
+import { shortVersionId } from "../utils/versionOperation";
 
 const loading = ref(false);
 const applying = ref(false);
@@ -338,14 +343,15 @@ const result = ref<CollinearityResponse | null>(null);
 const errorMessage = ref("");
 const datasetError = ref("");
 const sourceError = ref("");
-const inputColumnsText = ref("");
 type CorrelationMode = "pearson" | "spearman";
 const correlationMode = ref<CorrelationMode>("pearson");
 const datasetStore = useDatasetStore();
 const datasetOptions = ref<DatasetItem[]>([]);
 const selectedDatasetId = ref<string | null>(null);
 const collinearitySources = ref<CollinearitySourceVersionItem[]>([]);
+const versionNodes = ref<DatasetVersionNode[]>([]);
 const selectedSourceVersionId = ref<string | null>(null);
+const rememberedSourceByDataset = new Map<string, string>();
 let datasetListRequest = 0;
 let datasetContextRequest = 0;
 let sourceListRequest = 0;
@@ -364,6 +370,52 @@ const selectedSource = computed(
     collinearitySources.value.find(
       (source) => source.version_id === selectedSourceVersionId.value
     ) ?? null
+);
+const selectedDataset = computed(
+  () => datasetOptions.value.find((dataset) => dataset.id === selectedDatasetId.value) ?? null
+);
+
+const isCollinearityEligibleVersion = (version: DatasetVersionNode) =>
+  version.tool === "preprocessing.lag_compensation" &&
+  collinearitySources.value.some((source) => source.version_id === version.id);
+
+const collinearityDisabledReason = (version: DatasetVersionNode) => {
+  if (version.tool === "simulation_generate" || version.tool === "raw_upload") {
+    return "需先完成清洗与时滞补偿";
+  }
+  if (version.tool === "preprocessing.clean") return "需先完成时滞补偿";
+  if (version.tool === "preprocessing.feature_selection") return "已进入后续特征版本";
+  if (version.tool === "preprocessing.lag_compensation") {
+    return "该版本尚未进入可用共线性源列表";
+  }
+  return "该处理阶段不符合共线性诊断源要求";
+};
+
+const sourceInputColumns = (source: CollinearitySourceVersionItem | null) =>
+  Array.isArray(source?.input_columns) ? source.input_columns : [];
+
+const resultVariables = computed(() =>
+  Array.isArray(result.value?.variables) ? result.value.variables : []
+);
+const inputDiagnostics = computed(() =>
+  Array.isArray(result.value?.input_diagnostics) ? result.value.input_diagnostics : []
+);
+const hasInputDiagnostics = computed(
+  () =>
+    resultVariables.value.length > 0 &&
+    inputDiagnostics.value.length === resultVariables.value.length
+);
+const legacyResult = computed(() => result.value !== null && !hasInputDiagnostics.value);
+const correlatedGroups = computed(() =>
+  Array.isArray(result.value?.correlated_groups) ? result.value.correlated_groups : []
+);
+const recommendations = computed(() =>
+  Array.isArray(result.value?.recommendations) ? result.value.recommendations : []
+);
+const vifScores = computed<Record<string, number | null>>(() =>
+  result.value?.vif_scores && typeof result.value.vif_scores === "object"
+    ? result.value.vif_scores
+    : {}
 );
 
 const hasValidLagCompensationSource = computed(
@@ -399,13 +451,6 @@ const sourceStatusDescription = (status: CollinearitySourceStatus) =>
 
 const shortId = (value: string) => `${value.slice(0, 8)}…`;
 
-const formatSourceDate = (value: string) => {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" }).format(date);
-};
-
 const emptyStateTitle = computed(() => {
   if (loadingDatasets.value) return "正在读取数据集…";
   if (!selectedDatasetId.value) return "请先选择数据集";
@@ -438,11 +483,11 @@ const clearSourceContext = () => {
   invalidateSourceRequests();
   correlationMode.value = "pearson";
   collinearitySources.value = [];
+  versionNodes.value = [];
   selectedSourceVersionId.value = null;
   form.version_id = "";
   form.dataset_id = null;
   form.input_columns = [];
-  inputColumnsText.value = "";
   result.value = null;
   errorMessage.value = "";
   sourceError.value = "";
@@ -468,9 +513,9 @@ const hydratePersistedResult = async (versionId: string, datasetId: string) => {
     result.value = persisted;
     form.version_id = versionId;
     form.dataset_id = datasetId;
-    if (persisted.variables.length) {
-      form.input_columns = [...persisted.variables];
-      inputColumnsText.value = persisted.variables.join(",");
+    const persistedVariables = Array.isArray(persisted.variables) ? persisted.variables : [];
+    if (!form.input_columns.length && persistedVariables.length) {
+      form.input_columns = [...persistedVariables];
     }
   } catch (error) {
     if (request !== rehydrationRequest) return;
@@ -501,6 +546,10 @@ const selectCollinearitySource = async (versionId: string | null, datasetId: str
   selectedSourceVersionId.value = source?.version_id ?? null;
   form.version_id = source?.version_id ?? "";
   form.dataset_id = datasetId;
+  const sourceInputs = sourceInputColumns(source);
+  if (sourceInputs.length) {
+    form.input_columns = [...sourceInputs];
+  }
 
   if (source?.collinearity_status === "complete") {
     await hydratePersistedResult(source.version_id, datasetId);
@@ -509,7 +558,24 @@ const selectCollinearitySource = async (versionId: string | null, datasetId: str
 
 const handleSourceChange = (versionId: string) => {
   const datasetId = selectedDatasetId.value;
-  if (datasetId) void selectCollinearitySource(versionId, datasetId);
+  if (!datasetId) return;
+  rememberedSourceByDataset.set(datasetId, versionId);
+  void selectCollinearitySource(versionId, datasetId);
+};
+
+const chooseDefaultCollinearitySource = (
+  datasetId: string,
+  activeVersionId: string | undefined,
+  nodes: DatasetVersionNode[]
+) => {
+  const eligible = nodes.filter(isCollinearityEligibleVersion);
+  const rememberedId = rememberedSourceByDataset.get(datasetId);
+  return eligible.find((version) => version.id === rememberedId)?.id
+    ?? eligible.find((version) => version.id === activeVersionId)?.id
+    ?? [...eligible].sort(
+      (left, right) => Date.parse(right.created_at) - Date.parse(left.created_at)
+    )[0]?.id
+    ?? null;
 };
 
 const loadDatasetContext = async (datasetId: string) => {
@@ -527,10 +593,12 @@ const loadDatasetContext = async (datasetId: string) => {
     }
     datasetStore.setActiveDataset(detail);
     form.input_columns = [...detail.input_columns];
-    inputColumnsText.value = detail.input_columns.join(",");
 
     const sourceRequest = ++sourceListRequest;
-    const data = await getCollinearitySourceVersions(datasetId);
+    const [data, versions] = await Promise.all([
+      getCollinearitySourceVersions(datasetId),
+      getDatasetVersions(datasetId),
+    ]);
     if (
       contextRequest !== datasetContextRequest ||
       sourceRequest !== sourceListRequest ||
@@ -539,8 +607,14 @@ const loadDatasetContext = async (datasetId: string) => {
       return;
     }
     collinearitySources.value = data.sources;
+    versionNodes.value = versions.nodes;
     loadingSources.value = false;
-    await selectCollinearitySource(data.default_source_version_id, datasetId);
+    const defaultVersionId = chooseDefaultCollinearitySource(
+      datasetId,
+      detail.version_id || detail.latest_version_id,
+      versions.nodes
+    );
+    await selectCollinearitySource(defaultVersionId, datasetId);
   } catch (error) {
     if (contextRequest !== datasetContextRequest) return;
     sourceError.value = error instanceof ApiError ? error.message : String(error);
@@ -631,10 +705,7 @@ const handleAnalyze = async () => {
     errorMessage.value = "请先选择数据集和时滞补偿版本。";
     return;
   }
-  const inputColumns = inputColumnsText.value
-    .split(",")
-    .map((name) => name.trim())
-    .filter(Boolean);
+  const inputColumns = [...form.input_columns];
   if (inputColumns.length < 2) {
     errorMessage.value = "共线性诊断需要至少两个输入变量。";
     return;
@@ -680,10 +751,16 @@ onMounted(() => {
 });
 
 const dropCount = computed(
-  () => (result.value?.recommendations ?? []).filter((item) => item.action === "drop").length
+  () => recommendations.value.filter((item) => item.action === "drop").length
 );
 const dropCandidates = computed(
-  () => (result.value?.recommendations ?? []).filter((item) => item.action === "drop")
+  () => recommendations.value.filter((item) => item.action === "drop")
+);
+const analyzableInputCount = computed(
+  () =>
+    hasInputDiagnostics.value
+      ? inputDiagnostics.value.filter((item) => item.status === "analyzable").length
+      : resultVariables.value.length
 );
 
 const conditionSeverity = computed(() => {
@@ -700,10 +777,18 @@ const correlationMatrixTitle = computed(() =>
     : "Spearman 秩相关系数矩阵"
 );
 
+const qualificationStatusLabel = (status: string) =>
+  ({
+    analyzable: "可分析",
+    constant_or_near_constant: "常量 / 近常量 · N/A",
+    non_numeric: "非数值",
+    missing: "缺失",
+  })[status] ?? status;
+
 const isUsableCorrelationMatrix = (
-  matrix: number[][] | null | undefined,
+  matrix: Array<Array<number | null>> | null | undefined,
   variables: string[]
-): matrix is number[][] =>
+): matrix is Array<Array<number | null>> =>
   Array.isArray(matrix) &&
   variables.length > 0 &&
   matrix.length === variables.length &&
@@ -711,20 +796,21 @@ const isUsableCorrelationMatrix = (
     (row) =>
       Array.isArray(row) &&
       row.length === variables.length &&
-      row.every((value) => typeof value === "number" && Number.isFinite(value))
+      row.every((value) => value === null || (typeof value === "number" && Number.isFinite(value)))
   );
 
-const displayedCorrelationMatrix = computed<number[][] | null>(() => {
+const displayedCorrelationMatrix = computed<Array<Array<number | null>> | null>(() => {
   if (!result.value) return null;
   const matrix =
     correlationMode.value === "pearson"
       ? result.value.matrix
       : result.value.spearman_matrix;
-  return isUsableCorrelationMatrix(matrix, result.value.variables) ? matrix : null;
+  return isUsableCorrelationMatrix(matrix, resultVariables.value) ? matrix : null;
 });
 
 interface HeatmapTooltipParams {
-  value: [number, number, number];
+  value: [number, number] | [number, number, number];
+  data?: { unavailable?: boolean; reason?: string };
 }
 
 interface VifTooltipParams {
@@ -746,17 +832,35 @@ const formatVifValue = (value: number | null | undefined) =>
 
 const heatmapOptions = computed(() => {
   if (!result.value || !displayedCorrelationMatrix.value) return {};
-  const names = result.value.variables;
-  const data: [number, number, number][] = [];
+  const names = resultVariables.value;
+  const data: Array<[number, number, number]> = [];
+  const unavailableData: Array<{ value: [number, number]; unavailable: true; reason: string }> = [];
   displayedCorrelationMatrix.value.forEach((row, i) => {
-    row.forEach((value, j) => data.push([j, i, Number(value.toFixed(3))]));
+    row.forEach((value, j) => {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        data.push([j, i, Number(value.toFixed(3))]);
+        return;
+      }
+      const rowDiagnostic = inputDiagnostics.value.find((item) => item.column === names[i]);
+      const columnDiagnostic = inputDiagnostics.value.find((item) => item.column === names[j]);
+      unavailableData.push({
+        value: [j, i],
+        unavailable: true,
+        reason: rowDiagnostic?.reason ?? columnDiagnostic?.reason ?? "当前数据条件下无法可靠计算相关系数。",
+      });
+    });
   });
   const coefficientLabel =
     correlationMode.value === "pearson" ? "Pearson r" : "Spearman correlation";
   return {
     tooltip: {
-      formatter: (params: HeatmapTooltipParams) =>
-        `${names[params.value[1]]} × ${names[params.value[0]]}<br/>${coefficientLabel}: ${params.value[2]}`,
+      formatter: (params: HeatmapTooltipParams) => {
+        const [columnIndex, rowIndex] = params.value;
+        const prefix = `${names[rowIndex]} × ${names[columnIndex]}<br/>${coefficientLabel}: `;
+        return params.data?.unavailable
+          ? `${prefix}N/A<br/>${params.data.reason}`
+          : `${prefix}${params.value[2]}`;
+      },
     },
     grid: { left: "12%", right: "12%", bottom: "12%", top: "6%", containLabel: true },
     xAxis: { type: "category", data: names, splitArea: { show: true } },
@@ -777,14 +881,37 @@ const heatmapOptions = computed(() => {
         label: { show: names.length <= 8 },
         emphasis: { itemStyle: { shadowBlur: 10 } },
       },
+      {
+        type: "custom",
+        data: unavailableData,
+        silent: false,
+        renderItem: (params: unknown, api: { value: (index: number) => number; coord: (value: number[]) => number[]; size: (value: number[]) => number[] }) => {
+          const point = api.coord([api.value(0), api.value(1)]);
+          const size = api.size([1, 1]);
+          return {
+            type: "group",
+            children: [
+              {
+                type: "rect",
+                shape: { x: point[0] - size[0] * 0.46, y: point[1] - size[1] * 0.46, width: size[0] * 0.92, height: size[1] * 0.92 },
+                style: { fill: "#EEF1ED" },
+              },
+              {
+                type: "text",
+                style: { x: point[0], y: point[1], text: "N/A", textAlign: "center", textVerticalAlign: "middle", fill: "#66716A", fontSize: 11 },
+              },
+            ],
+          };
+        },
+      },
     ],
   };
 });
 
 const vifOptions = computed(() => {
   if (!result.value) return {};
-  const names = result.value.variables;
-  const scores = result.value.vif_scores;
+  const names = resultVariables.value;
+  const scores = vifScores.value;
   const threshold = form.vif_threshold ?? 10;
   return {
     tooltip: {
@@ -844,7 +971,12 @@ const vifOptions = computed(() => {
 });
 
 const handleApply = async () => {
-  if (!result.value || !dropCandidates.value.length) return;
+  const source = selectedSource.value;
+  if (!result.value || !source || !dropCandidates.value.length) return;
+  if (result.value.source_version_id !== source.version_id) {
+    ElMessage.error("当前共线性结果与所选时滞补偿版本不一致，请重新选择或恢复分析结果。");
+    return;
+  }
   const names = dropCandidates.value.map((item) => item.variable);
   try {
     await ElMessageBox.confirm(
@@ -854,7 +986,8 @@ const handleApply = async () => {
     );
     applying.value = true;
     const applied = await applyFeatureSelection({
-      version_id: form.version_id,
+      version_id: source.version_id,
+      dataset_id: selectedDatasetId.value ?? undefined,
       drop_columns: names,
       user_confirmed: true,
       recommendation_source: "collinearity_analysis",
@@ -864,14 +997,13 @@ const handleApply = async () => {
           {
             reason: item.reason,
             related_variables: item.related_variables,
-            vif: result.value!.vif_scores[item.variable],
+            vif: vifScores.value[item.variable] ?? null,
             threshold: form.vif_threshold ?? 10,
           },
         ])
       ),
     });
     ElMessage.success(`已创建变量筛选版本：${applied.result_version_id}`);
-    form.version_id = applied.result_version_id;
   } catch (err) {
     if (err !== "cancel") ElMessage.error(err instanceof ApiError ? err.message : String(err));
   } finally {
@@ -1097,6 +1229,32 @@ const handleApply = async () => {
   align-items: flex-end;
 }
 
+.input-column-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 4px 7px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--surface-1);
+}
+
+.input-column-chip {
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: #edf4eb;
+  color: var(--text-primary);
+  font-size: 11px;
+}
+
+.input-column-placeholder {
+  color: var(--text-disabled);
+  font-family: var(--font-sans);
+  font-size: 11px;
+}
+
 .cs-actions :deep(.el-button--primary.is-disabled),
 .cs-actions :deep(.el-button--primary.is-disabled:hover),
 .cs-actions :deep(.el-button--primary.is-disabled:active),
@@ -1111,6 +1269,68 @@ const handleApply = async () => {
 
 .alert-gap {
   margin-top: 4px;
+}
+
+.qualification-card {
+  display: grid;
+  grid-template-columns: minmax(145px, 0.45fr) minmax(0, 1.55fr);
+  gap: 16px;
+  margin-top: 16px;
+  margin-bottom: 16px;
+  padding: 14px 18px;
+  background: #ffffff;
+}
+
+.qualification-card h3 {
+  margin: 4px 0 0;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.qualification-list {
+  display: grid;
+  gap: 6px;
+}
+
+.qualification-item {
+  display: grid;
+  grid-template-columns: 58px minmax(122px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: var(--surface-1);
+}
+
+.qualification-column {
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.qualification-status {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.qualification-status.constant_or_near_constant {
+  color: #9a6b2f;
+}
+
+.qualification-status.non_numeric,
+.qualification-status.missing {
+  color: var(--color-danger);
+}
+
+.qualification-reason {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 /* FORMAT 4: Tri-Grid */

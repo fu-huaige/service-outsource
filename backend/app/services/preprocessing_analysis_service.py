@@ -15,7 +15,7 @@ from algorithms.identifiability.regressor import IdentifiabilityError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.dataset import Dataset, DatasetVersion, ProcessingRun
+from app.models.dataset import Dataset, DatasetColumn, DatasetVersion, ProcessingRun
 from app.models.operation_log import OperationLog
 from app.schemas.datasets import (
     CollinearitySourceVersion,
@@ -29,6 +29,7 @@ from app.schemas.preprocessing import (
     DelayData,
     DelayPeak,
     DelayRequest,
+    InputDiagnostic,
     VariableRecommendation,
 )
 from app.services.contract_stubs import completed_task
@@ -233,6 +234,22 @@ async def get_delay_source_versions(
         )
 
     version_ids = [version.id for version in versions]
+    source_inputs: dict[UUID, list[str]] = {version.id: [] for version in versions}
+    source_columns = list(
+        (
+            await session.scalars(
+                select(DatasetColumn)
+                .where(
+                    DatasetColumn.version_id.in_(version_ids),
+                    DatasetColumn.role == "input",
+                )
+                .order_by(DatasetColumn.version_id, DatasetColumn.position)
+            )
+        ).all()
+    )
+    for column in source_columns:
+        source_inputs[column.version_id].append(column.name)
+
     runs = list(
         (
             await session.scalars(
@@ -263,6 +280,7 @@ async def get_delay_source_versions(
                 operation_name=version.operation_name,
                 parent_version_id=version.parent_version_id,
                 created_at=version.created_at,
+                input_columns=source_inputs[version.id],
                 delay_status=("complete" if rehydrated is not None else "unrehydratable" if runs_by_source[version.id] else "not_analyzed"),
                 latest_complete_delay_run_id=(rehydrated.processing_run_id if rehydrated is not None else None),
             )
@@ -315,6 +333,21 @@ async def get_collinearity_source_versions(
         )
 
     version_ids = [version.id for version in versions]
+    source_inputs: dict[UUID, list[str]] = {version.id: [] for version in versions}
+    source_columns = list(
+        (
+            await session.scalars(
+                select(DatasetColumn)
+                .where(
+                    DatasetColumn.version_id.in_(version_ids),
+                    DatasetColumn.role == "input",
+                )
+                .order_by(DatasetColumn.version_id, DatasetColumn.position)
+            )
+        ).all()
+    )
+    for column in source_columns:
+        source_inputs[column.version_id].append(column.name)
     runs = list(
         (
             await session.scalars(
@@ -346,6 +379,7 @@ async def get_collinearity_source_versions(
                 operation_name=version.operation_name,
                 parent_version_id=version.parent_version_id,
                 created_at=version.created_at,
+                input_columns=source_inputs[version.id],
                 collinearity_status=(
                     "complete"
                     if rehydrated is not None
@@ -491,18 +525,27 @@ async def run_collinearity_analysis(
     """Pearson, Spearman, VIF and condition number, with advisory recommendations."""
 
     series = await _load(session, payload.version_id, artifact_root, payload.dataset_id)
-    input_columns, _ = _resolve(series, payload.input_columns, payload.output_column)
+    input_columns = _resolve_collinearity_input_columns(
+        series, payload.input_columns, payload.output_column
+    )
+    diagnostics, analyzable_columns = _qualify_collinearity_inputs(series, input_columns)
 
     try:
         result = analyze_collinearity(
-            inputs={column: series.values[column] for column in input_columns},
+            inputs={column: series.values[column] for column in analyzable_columns},
             correlation_threshold=payload.correlation_threshold,
             vif_threshold=payload.vif_threshold,
         )
     except IdentifiabilityError as error:
         raise AnalysisDomainError(error.code, error.message, details=error.details) from error
 
-    persisted_result = _normalize_collinearity_payload(result.to_payload())
+    persisted_result = _normalize_collinearity_payload(
+        _expand_collinearity_payload(
+            result.to_payload(),
+            input_columns=input_columns,
+            diagnostics=diagnostics,
+        )
+    )
     if not _is_complete_collinearity_payload(persisted_result):
         raise AnalysisDomainError(
             "COLLINEARITY_RESULT_UNAVAILABLE",
@@ -548,6 +591,181 @@ def _normalize_collinearity_payload(payload: Mapping[str, object]) -> dict[str, 
     return _normalize_json_numbers(payload)
 
 
+def _qualify_collinearity_inputs(
+    series: VersionSeries,
+    input_columns: list[str],
+) -> tuple[list[InputDiagnostic], list[str]]:
+    """Classify requested inputs before numerical diagnostics.
+
+    Formal input-role boolean columns may reach this function as numeric 0/1 arrays.
+    They are retained in the response, but a constant or near-constant column is never
+    sent to the correlation/VIF algorithm, which would otherwise manufacture a number
+    without statistical meaning.
+    """
+
+    available = set(series.available_columns) or set(series.values)
+    missing = [column for column in input_columns if column not in available]
+    if missing:
+        raise AnalysisDomainError(
+            "MISSING_INPUT",
+            "请求的输入变量不存在。",
+            details={"missing_columns": missing, "available_columns": sorted(available)},
+        )
+
+    non_numeric = [column for column in input_columns if column not in series.values]
+    if non_numeric:
+        raise AnalysisDomainError(
+            "NON_NUMERIC_INPUT",
+            "请求的输入变量不是可用于数值诊断的列。",
+            details={"non_numeric_columns": non_numeric},
+        )
+
+    diagnostics: list[InputDiagnostic] = []
+    analyzable_columns: list[str] = []
+    for column in input_columns:
+        values = np.asarray(series.values[column], dtype=float)
+        finite_values = values[np.isfinite(values)]
+        if finite_values.size < 3:
+            raise AnalysisDomainError(
+                "MISSING_INPUT",
+                "输入变量缺少足够的有效数值样本。",
+                details={"missing_columns": [column], "finite_samples": int(finite_values.size)},
+            )
+
+        variance = float(np.var(finite_values))
+        scale = max(float(np.max(np.abs(finite_values))), 1.0)
+        near_constant_limit = (64.0 * np.finfo(float).eps * scale) ** 2
+        if variance <= near_constant_limit:
+            diagnostics.append(
+                InputDiagnostic(
+                    column=column,
+                    status="constant_or_near_constant",
+                    reason="常量或近常量特征，方差不足，无法提供可靠的相关性与 VIF 诊断。",
+                    variance=variance,
+                )
+            )
+            continue
+
+        diagnostics.append(
+            InputDiagnostic(
+                column=column,
+                status="analyzable",
+                reason="数值方差充足，可参与相关性、VIF 与条件数诊断。",
+                variance=variance,
+            )
+        )
+        analyzable_columns.append(column)
+
+    if len(analyzable_columns) < 2:
+        raise AnalysisDomainError(
+            "INSUFFICIENT_ANALYZABLE_INPUTS",
+            "共线性诊断至少需要两个方差充足的输入变量。",
+            details={"input_diagnostics": [item.model_dump(mode="json") for item in diagnostics]},
+        )
+    return diagnostics, analyzable_columns
+
+
+def _resolve_collinearity_input_columns(
+    series: VersionSeries,
+    requested_inputs: list[str] | None,
+    output_column: str | None,
+) -> list[str]:
+    """Resolve only roles Collinearity actually consumes.
+
+    Unlike modelling stages, this diagnostic has no numerical dependency on an output.
+    Keeping input validation here lets the caller distinguish a missing column from a
+    present-but-non-numeric one instead of collapsing both into the generic resolver.
+    """
+
+    columns = list(requested_inputs or series.declared_inputs)
+    if output_column is not None and output_column in columns:
+        raise AnalysisDomainError(
+            "INVALID_DATASET_SCHEMA",
+            "同一列不能同时作为输入和输出。",
+            details={"column": output_column},
+        )
+    if not columns:
+        raise AnalysisDomainError(
+            "INVALID_DATASET_SCHEMA",
+            "数据版本不包含可用的输入变量。",
+            details={"available_columns": list(series.available_columns or tuple(series.values))},
+        )
+    return columns
+
+
+def _expand_collinearity_payload(
+    payload: Mapping[str, object],
+    *,
+    input_columns: list[str],
+    diagnostics: list[InputDiagnostic],
+) -> dict[str, object]:
+    """Restore every formal input to the response without inventing a coefficient.
+
+    ``analyze_collinearity`` only receives analyzable columns.  This adapter expands
+    that mathematically valid result back to the formal input list, using JSON null for
+    every unavailable matrix/VIF value and an explicit low-variance recommendation.
+    """
+
+    result = dict(payload)
+    analyzed_columns = result.get("variables")
+    pearson = result.get("pearson")
+    spearman = result.get("spearman")
+    vif = result.get("vif")
+    if (
+        not isinstance(analyzed_columns, list)
+        or not all(isinstance(column, str) for column in analyzed_columns)
+        or not isinstance(pearson, list)
+        or not isinstance(spearman, list)
+        or not isinstance(vif, Mapping)
+    ):
+        return result
+
+    position = {column: index for index, column in enumerate(analyzed_columns)}
+
+    def expand_matrix(matrix: list[object]) -> list[list[float | None]]:
+        expanded = [[None for _ in input_columns] for _ in input_columns]
+        for row_index, row_name in enumerate(input_columns):
+            source_row = position.get(row_name)
+            if source_row is None or source_row >= len(matrix) or not isinstance(matrix[source_row], list):
+                continue
+            row = matrix[source_row]
+            for column_index, column_name in enumerate(input_columns):
+                source_column = position.get(column_name)
+                if source_column is None or source_column >= len(row):
+                    continue
+                value = row[source_column]
+                expanded[row_index][column_index] = (
+                    float(value) if _is_finite_number(value) else None
+                )
+        return expanded
+
+    advice = list(result.get("advice", [])) if isinstance(result.get("advice"), list) else []
+    for diagnostic in diagnostics:
+        if diagnostic.status == "constant_or_near_constant":
+            advice.append(
+                {
+                    "variable": diagnostic.column,
+                    "action": "drop",
+                    "reason": (
+                        "常量/近常量特征，信息量不足；相关系数与 VIF 不可可靠计算，"
+                        "建议在人工确认后从后续建模特征集中剔除。"
+                    ),
+                    "related_variables": [],
+                }
+            )
+
+    result["variables"] = list(input_columns)
+    result["pearson"] = expand_matrix(pearson)
+    result["spearman"] = expand_matrix(spearman)
+    result["vif"] = {
+        column: (_nullable_finite(vif.get(column)) if column in position else None)
+        for column in input_columns
+    }
+    result["advice"] = advice
+    result["input_diagnostics"] = [item.model_dump(mode="json") for item in diagnostics]
+    return result
+
+
 def _normalize_json_numbers(value: object) -> object:
     if isinstance(value, Mapping):
         return {str(key): _normalize_json_numbers(item) for key, item in value.items()}
@@ -561,8 +779,8 @@ def _normalize_json_numbers(value: object) -> object:
 def _is_complete_collinearity_payload(result: Mapping[str, object]) -> bool:
     variables = result.get("variables")
     vif = result.get("vif")
-    pearson = _finite_matrix(result.get("pearson"))
-    spearman = _finite_matrix(result.get("spearman"))
+    pearson = _nullable_matrix(result.get("pearson"))
+    spearman = _nullable_matrix(result.get("spearman"))
     groups = result.get("groups")
     advice = result.get("advice")
     if (
@@ -584,7 +802,12 @@ def _is_complete_collinearity_payload(result: Mapping[str, object]) -> bool:
         or not isinstance(advice, list)
     ):
         return False
-    return all(_is_nullable_finite(value) for value in vif.values()) and _advice_is_valid(advice)
+    diagnostics = result.get("input_diagnostics", [])
+    return (
+        all(_is_nullable_finite(value) for value in vif.values())
+        and _advice_is_valid(advice)
+        and _input_diagnostics_are_valid(diagnostics, variables)
+    )
 
 
 def _collinearity_data_from_payload(
@@ -600,8 +823,8 @@ def _collinearity_data_from_payload(
 
     variables = result["variables"]
     vif = result["vif"]
-    pearson = _finite_matrix(result["pearson"])
-    spearman = _finite_matrix(result["spearman"])
+    pearson = _nullable_matrix(result["pearson"])
+    spearman = _nullable_matrix(result["spearman"])
     groups = result["groups"]
     advice = result["advice"]
     assert isinstance(variables, list)
@@ -610,6 +833,12 @@ def _collinearity_data_from_payload(
     assert spearman is not None
     assert isinstance(groups, list)
     assert isinstance(advice, list)
+
+    raw_diagnostics = result.get("input_diagnostics", [])
+    try:
+        diagnostics = [InputDiagnostic.model_validate(item) for item in raw_diagnostics]
+    except (TypeError, ValueError):
+        return None
 
     try:
         recommendations = [VariableRecommendation.model_validate(item) for item in advice]
@@ -627,17 +856,18 @@ def _collinearity_data_from_payload(
         dataset_id=dataset_id,
         spearman_matrix=spearman,
         correlated_groups=[list(group) for group in groups],
+        input_diagnostics=diagnostics,
     )
 
 
-def _finite_matrix(value: object) -> list[list[float]] | None:
+def _nullable_matrix(value: object) -> list[list[float | None]] | None:
     if not isinstance(value, list):
         return None
-    matrix: list[list[float]] = []
+    matrix: list[list[float | None]] = []
     for row in value:
-        if not isinstance(row, list) or not all(_is_finite_number(item) for item in row):
+        if not isinstance(row, list) or not all(_is_nullable_finite(item) for item in row):
             return None
-        matrix.append([float(item) for item in row])
+        matrix.append([_nullable_finite(item) for item in row])
     return matrix
 
 
@@ -659,6 +889,16 @@ def _advice_is_valid(advice: list[object]) -> bool:
     except (TypeError, ValueError):
         return False
     return True
+
+
+def _input_diagnostics_are_valid(value: object, variables: object) -> bool:
+    if not isinstance(value, list) or not isinstance(variables, list):
+        return False
+    try:
+        diagnostics = [InputDiagnostic.model_validate(item) for item in value]
+    except (TypeError, ValueError):
+        return False
+    return [item.column for item in diagnostics] in ([], variables)
 
 
 async def _load(

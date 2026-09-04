@@ -12,7 +12,7 @@ import pytest
 from app.core.config import Settings
 from app.core.db import get_session
 from app.main import create_app
-from app.models import Base, Dataset, DatasetVersion, ProcessingRun
+from app.models import Base, Dataset, DatasetColumn, DatasetVersion, ProcessingRun
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -165,6 +165,22 @@ class TestDelaySourceSelectorApi:
                     created_at=now + timedelta(seconds=9),
                     parent_version_id=raw.id,
                 )
+                await session.flush()
+                for version in (complete_clean, latest_clean, incomplete_clean):
+                    session.add_all(
+                        [
+                            DatasetColumn(
+                                id=uuid4(), dataset_id=dataset.id, version_id=version.id,
+                                position=1, name="u1", inferred_type="float", role="input",
+                                unit=None, nullable=False,
+                            ),
+                            DatasetColumn(
+                                id=uuid4(), dataset_id=dataset.id, version_id=version.id,
+                                position=2, name="u2", inferred_type="float", role="input",
+                                unit=None, nullable=False,
+                            ),
+                        ]
+                    )
                 latest_complete = await _create_delay_run(
                     session,
                     dataset=dataset,
@@ -260,6 +276,8 @@ class TestDelaySourceSelectorApi:
         assert by_id[str(ids["complete_clean"])]["latest_complete_delay_run_id"] == str(
             ids["latest_complete_run"]
         )
+        assert by_id[str(ids["complete_clean"])]["input_columns"] == ["u1", "u2"]
+        assert by_id[str(ids["latest_clean"])]["input_columns"] == ["u1", "u2"]
         assert by_id[str(ids["incomplete_clean"])]["delay_status"] == "unrehydratable"
         assert by_id[str(ids["incomplete_clean"])]["latest_complete_delay_run_id"] is None
 

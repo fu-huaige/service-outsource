@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.agent_execution import AgentExecutionSession, AgentStepRun
-from app.models.dataset import DatasetVersion
 from app.schemas.copilot import (
     ArxStructureManualOverrides,
     ArxStructureValidationData,
@@ -29,6 +28,10 @@ from app.services.agent_tool_adapter import execute_agent_tool
 from app.services.modeling_service import ModelingDomainError, _orders, fit_arx_core
 from app.services.optimization_service import _structure_grid, objective_value
 from app.services.version_data import load_version_series
+from app.services.version_provenance_service import (
+    VersionProvenanceError,
+    resolve_arx_lag_provenance as _resolve_arx_lag_provenance,
+)
 
 
 class ArxStructureError(Exception):
@@ -438,35 +441,19 @@ async def resolve_arx_lag_provenance(
     version_id: UUID,
     input_columns: list[str],
 ) -> tuple[dict[str, int], UUID]:
-    current_id: UUID | None = version_id
-    visited: set[UUID] = set()
-    while current_id is not None and current_id not in visited:
-        visited.add(current_id)
-        version = await session.get(DatasetVersion, current_id)
-        if version is None:
-            break
-        if version.operation_name == "preprocessing.lag_compensation":
-            lag_map = version.parameters.get("lag_map")
-            if not isinstance(lag_map, dict) or any(
-                column not in lag_map
-                or isinstance(lag_map[column], bool)
-                or not isinstance(lag_map[column], int)
-                or lag_map[column] < 0
-                for column in input_columns
-            ):
-                raise ArxStructureError(
-                    "ARX_LAG_PROVENANCE_INCOMPLETE",
-                    "时滞补偿版本没有使用合法非负整数覆盖当前全部输入变量。",
-                )
-            return dict.fromkeys(input_columns, 0), version.id
-        if version.operation_name != "preprocessing.feature_selection":
-            break
-        current_id = version.parent_version_id
-    raise ArxStructureError(
-        "ARX_LAG_COMPENSATED_VERSION_REQUIRED",
-        "ARX 自动 delay 推导要求当前版本直接来自正式时滞补偿，或仅经过不改变时间轴的变量筛选。",
-        status_code=422,
-    )
+    try:
+        return await _resolve_arx_lag_provenance(
+            session,
+            version_id=version_id,
+            input_columns=input_columns,
+        )
+    except VersionProvenanceError as error:
+        raise ArxStructureError(
+            error.code,
+            error.message,
+            status_code=error.status_code,
+            details=error.details,
+        ) from error
 
 
 def _stored_recommendation(step: AgentStepRun) -> dict[str, Any]:

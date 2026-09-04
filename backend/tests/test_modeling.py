@@ -242,7 +242,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
 
 
 class TestModelingApi:
-    def _version(self, client: TestClient) -> str:
+    def _raw_version(self, client: TestClient) -> str:
         response = client.post(
             "/api/v1/simulation/generate",
             json={"scenario": "S2", "n_steps": 3000, "seed": 11, "input_count": 2},
@@ -250,8 +250,22 @@ class TestModelingApi:
         assert response.status_code == 201, response.text
         return response.json()["data"]["version_id"]
 
+    def _lag_version(self, client: TestClient) -> str:
+        raw_version_id = self._raw_version(client)
+        response = client.post(
+            "/api/v1/preprocessing/delay/apply",
+            json={
+                "version_id": raw_version_id,
+                "lag_map": {"u1": 3, "u2": 8},
+                "user_confirmed": True,
+                "recommendation_source": "manual",
+            },
+        )
+        assert response.status_code == 201, response.text
+        return response.json()["data"]["result_version_id"]
+
     def test_fit_returns_free_run_metrics_and_validation(self, client: TestClient) -> None:
-        version_id = self._version(client)
+        version_id = self._lag_version(client)
         response = client.post(
             "/api/v1/modeling/arx/fit",
             json={
@@ -260,7 +274,7 @@ class TestModelingApi:
                 "output_column": "y",
                 "na": 2,
                 "nb": [2, 2],
-                "delays": [3, 8],
+                "delays": [0, 0],
             },
         )
         assert response.status_code == 200, response.text
@@ -281,7 +295,7 @@ class TestModelingApi:
         assert len(data["free_run_series"]) == len(data["plot_data"]["indices"])
 
     def test_violating_a_prior_blocks_the_model(self, client: TestClient) -> None:
-        version_id = self._version(client)
+        version_id = self._lag_version(client)
         response = client.post(
             "/api/v1/modeling/arx/fit",
             json={
@@ -290,7 +304,7 @@ class TestModelingApi:
                 "output_column": "y",
                 "na": 2,
                 "nb": [2, 2],
-                "delays": [3, 8],
+                "delays": [0, 0],
                 "gain_sign": {"u1": "negative"},
             },
         )
@@ -298,6 +312,110 @@ class TestModelingApi:
         body = response.json()
         assert body["error"]["code"] == "PRIOR_CONSTRAINT_VIOLATED"
         assert body["error"]["details"]["violations"][0]["variable"] == "u1"
+
+    def test_feature_descendant_of_lag_is_allowed(self, client: TestClient) -> None:
+        lag_version_id = self._lag_version(client)
+        feature = client.post(
+            "/api/v1/preprocessing/features/apply",
+            json={
+                "version_id": lag_version_id,
+                "drop_columns": ["u2"],
+                "user_confirmed": True,
+                "recommendation_source": "manual",
+            },
+        )
+        assert feature.status_code == 201, feature.text
+
+        response = client.post(
+            "/api/v1/modeling/arx/fit",
+            json={
+                "version_id": feature.json()["data"]["result_version_id"],
+                "input_columns": ["u1"],
+                "output_column": "y",
+                "na": 2,
+                "nb": [2],
+                "delays": [0],
+            },
+        )
+
+        assert response.status_code == 200, response.text
+
+    def test_raw_source_is_rejected_before_core_fitting(
+        self,
+        client: TestClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def fail_if_called(*args: object, **kwargs: object) -> None:
+            raise AssertionError("fit_arx_core must not run for an invalid source lineage")
+
+        monkeypatch.setattr("app.services.modeling_service.fit_arx_core", fail_if_called)
+        response = client.post(
+            "/api/v1/modeling/arx/fit",
+            json={
+                "version_id": self._raw_version(client),
+                "input_columns": ["u1", "u2"],
+                "output_column": "y",
+                "na": 2,
+                "nb": [2, 2],
+                "delays": [3, 8],
+            },
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "ARX_LAG_COMPENSATED_VERSION_REQUIRED"
+
+    def test_cleaning_source_is_rejected(self, client: TestClient) -> None:
+        cleaned = client.post(
+            "/api/v1/preprocessing/clean",
+            json={
+                "version_id": self._raw_version(client),
+                "anomaly_detector": "hampel",
+                "smoothing": "moving_average",
+            },
+        )
+        assert cleaned.status_code == 202, cleaned.text
+
+        response = client.post(
+            "/api/v1/modeling/arx/fit",
+            json={
+                "version_id": cleaned.json()["data"]["derived_version_id"],
+                "input_columns": ["u1", "u2"],
+                "output_column": "y",
+                "na": 2,
+                "nb": [2, 2],
+                "delays": [3, 8],
+            },
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "ARX_LAG_COMPENSATED_VERSION_REQUIRED"
+
+    def test_feature_without_lag_ancestor_is_rejected(self, client: TestClient) -> None:
+        feature = client.post(
+            "/api/v1/preprocessing/features/apply",
+            json={
+                "version_id": self._raw_version(client),
+                "drop_columns": ["u2"],
+                "user_confirmed": True,
+                "recommendation_source": "manual",
+            },
+        )
+        assert feature.status_code == 201, feature.text
+
+        response = client.post(
+            "/api/v1/modeling/arx/fit",
+            json={
+                "version_id": feature.json()["data"]["result_version_id"],
+                "input_columns": ["u1"],
+                "output_column": "y",
+                "na": 2,
+                "nb": [2],
+                "delays": [3],
+            },
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "ARX_LAG_COMPENSATED_VERSION_REQUIRED"
 
     def test_unknown_version_returns_404(self, client: TestClient) -> None:
         response = client.post(

@@ -322,6 +322,8 @@ export interface DelaySourceVersion {
   operation_name: string;
   parent_version_id: string | null;
   created_at: string;
+  /** Optional only while a previously deployed source-selector response is still cached. */
+  input_columns?: string[];
   delay_status: DelaySourceStatus;
   latest_complete_delay_run_id: string | null;
 }
@@ -341,6 +343,7 @@ export interface CollinearitySourceVersionItem {
   operation_name: string;
   parent_version_id: string | null;
   created_at: string;
+  input_columns: string[];
   collinearity_status: CollinearitySourceStatus;
   latest_complete_collinearity_run_id: string | null;
 }
@@ -585,13 +588,28 @@ export interface CollinearityResponse {
   processing_run_id: string;
   dataset_id: string | null;
   task: TaskResource;
-  variables: string[];
-  matrix: number[][];
-  spearman_matrix: number[][];
-  vif_scores: Record<string, number | null>;
+  variables?: string[];
+  matrix?: Array<Array<number | null>>;
+  spearman_matrix?: Array<Array<number | null>>;
+  vif_scores?: Record<string, number | null>;
   condition_number: number | null;
-  correlated_groups: string[][];
-  recommendations: VariableRecommendation[];
+  correlated_groups?: string[][];
+  recommendations?: VariableRecommendation[];
+  /** Absent means this is a legacy persisted result, not an empty qualification result. */
+  input_diagnostics?: InputDiagnostic[];
+}
+
+export type InputDiagnosticStatus =
+  | "analyzable"
+  | "constant_or_near_constant"
+  | "non_numeric"
+  | "missing";
+
+export interface InputDiagnostic {
+  column: string;
+  status: InputDiagnosticStatus;
+  reason: string;
+  variance: number | null;
 }
 
 export interface FeatureSelectionApplyRequest {
