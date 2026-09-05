@@ -17,7 +17,7 @@ from algorithms.cleaning.pipeline import (
     CleaningResult,
 )
 from algorithms.cleaning.quality import build_quality_profile
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dataset import (
@@ -30,8 +30,10 @@ from app.models.dataset import (
 from app.models.operation_log import OperationLog
 from app.schemas.preprocessing import CleanData, CleanRequest, CleanSeries
 from app.services.contract_stubs import completed_task
+from app.services.dataset_csv import ParsedCsv
 from app.services.dataset_version_io import (
     DatasetVersionArtifactError,
+    artifact_matches_sha256,
     load_version_csv,
     remove_derived_artifact,
     write_derived_csv,
@@ -66,6 +68,7 @@ async def clean_dataset_version(
 ) -> CleanData:
     """Run the pure pipeline and atomically register a new immutable derived version."""
 
+    await _begin_sqlite_serialized_write(session)
     source_version = await session.get(DatasetVersion, payload.version_id)
     if source_version is None:
         raise CleaningDomainError(
@@ -106,21 +109,181 @@ async def clean_dataset_version(
     if not result.cleaned_numeric:
         raise CleaningDomainError("INVALID_DATASET_SCHEMA", "数据版本不包含可清洗的数值列。")
 
-    derived_version_id = uuid4()
+    candidate_version_id = uuid4()
     processing_run_id = uuid4()
     artifact_path: str | None = None
     try:
         artifact_path, checksum = write_derived_csv(
             artifact_root=artifact_root,
             dataset_id=dataset.id,
-            version_id=derived_version_id,
+            version_id=candidate_version_id,
             headers=parsed.headers,
             timestamp_column=parsed.timestamp_column,
             timestamps=result.timestamps,
             values=result.values,
         )
+        source_version = await _lock_source_version(session, source_version.id)
+        no_op = checksum == source_version.sha256 or _is_semantic_no_op(parsed, result)
+        converged_without_version = (
+            source_version.operation_name == "preprocessing.clean" and no_op
+        )
+        now = datetime.now(UTC)
+
+        if converged_without_version:
+            run_result = _processing_run_result(
+                derived_version_id=None,
+                effective_version_id=source_version.id,
+                created_new_version=False,
+                no_op=True,
+                converged=True,
+                reused_existing_version=False,
+                result=result,
+            )
+            remove_derived_artifact(
+                artifact_root=artifact_root,
+                relative_path=artifact_path,
+            )
+            artifact_path = None
+            run = ProcessingRun(
+                id=processing_run_id,
+                dataset_id=dataset.id,
+                source_version_id=source_version.id,
+                run_type="preprocessing.clean",
+                status="succeeded",
+                parameters=_jsonable_parameters(parameters),
+                result=run_result,
+                created_at=now,
+                finished_at=now,
+            )
+            audit = OperationLog(
+                id=uuid4(),
+                event_type="preprocessing.clean.completed",
+                subject_id=str(dataset.id),
+                payload_json=json.dumps(
+                    _operation_log_payload(
+                        source_version_id=source_version.id,
+                        derived_version_id=None,
+                        effective_version_id=source_version.id,
+                        created_new_version=False,
+                        no_op=True,
+                        converged=True,
+                        reused_existing_version=False,
+                        parameters=parameters,
+                        result=result,
+                        executed_at=now,
+                    ),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                created_at=now,
+            )
+            session.add_all([run, audit])
+            await session.commit()
+            return _clean_data(
+                dataset_id=dataset.id,
+                source_version_id=source_version.id,
+                derived_version_id=None,
+                effective_version_id=source_version.id,
+                created_new_version=False,
+                no_op=True,
+                converged=True,
+                reused_existing_version=False,
+                source_columns=source_columns,
+                source_row_count=source_version.row_count,
+                processing_run_id=processing_run_id,
+                parameters=parameters,
+                result=result,
+            )
+
+        existing_version = await _find_equivalent_cleaning_version(
+            session,
+            source_version_id=source_version.id,
+            normalized_parameters=_jsonable_parameters(parameters),
+            checksum=checksum,
+            artifact_root=artifact_root,
+        )
+        if existing_version is not None:
+            remove_derived_artifact(
+                artifact_root=artifact_root,
+                relative_path=artifact_path,
+            )
+            artifact_path = None
+            run_result = _processing_run_result(
+                derived_version_id=None,
+                effective_version_id=existing_version.id,
+                created_new_version=False,
+                no_op=False,
+                converged=False,
+                reused_existing_version=True,
+                result=result,
+            )
+            run = ProcessingRun(
+                id=processing_run_id,
+                dataset_id=dataset.id,
+                source_version_id=source_version.id,
+                run_type="preprocessing.clean",
+                status="succeeded",
+                parameters=_jsonable_parameters(parameters),
+                result=run_result,
+                created_at=now,
+                finished_at=now,
+            )
+            audit = OperationLog(
+                id=uuid4(),
+                event_type="preprocessing.clean.completed",
+                subject_id=str(dataset.id),
+                payload_json=json.dumps(
+                    _operation_log_payload(
+                        source_version_id=source_version.id,
+                        derived_version_id=None,
+                        effective_version_id=existing_version.id,
+                        created_new_version=False,
+                        no_op=False,
+                        converged=False,
+                        reused_existing_version=True,
+                        parameters=parameters,
+                        result=result,
+                        executed_at=now,
+                    ),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                created_at=now,
+            )
+            dataset.active_version_id = existing_version.id
+            dataset.updated_at = now
+            session.add_all([run, audit])
+            await session.commit()
+            return _clean_data(
+                dataset_id=dataset.id,
+                source_version_id=source_version.id,
+                derived_version_id=None,
+                effective_version_id=existing_version.id,
+                created_new_version=False,
+                no_op=False,
+                converged=False,
+                reused_existing_version=True,
+                source_columns=source_columns,
+                source_row_count=source_version.row_count,
+                processing_run_id=processing_run_id,
+                parameters=parameters,
+                result=result,
+            )
+
+        effective_version_id = candidate_version_id
+        derived_version_id = candidate_version_id
+        run_result = _processing_run_result(
+            derived_version_id=derived_version_id,
+            effective_version_id=effective_version_id,
+            created_new_version=True,
+            no_op=no_op,
+            converged=no_op,
+            reused_existing_version=False,
+            result=result,
+        )
+
         derived_version = DatasetVersion(
-            id=derived_version_id,
+            id=candidate_version_id,
             dataset_id=dataset.id,
             parent_version_id=source_version.id,
             version_index=await _next_version_index(session, dataset.id),
@@ -133,7 +296,7 @@ async def clean_dataset_version(
             column_count=len(parsed.headers),
             time_range_start=min(result.timestamps),
             time_range_end=max(result.timestamps),
-            created_at=datetime.now(UTC),
+            created_at=now,
         )
         derived_version.name = f"V{derived_version.version_index} · 清洗规整"
         derived_parsed = load_version_csv(
@@ -155,7 +318,6 @@ async def clean_dataset_version(
             version_id=derived_version.id,
             nullable=derived_parsed.nullable,
         )
-        now = datetime.now(UTC)
         profile = DatasetProfileRecord(
             id=uuid4(),
             dataset_id=dataset.id,
@@ -172,18 +334,7 @@ async def clean_dataset_version(
             run_type="preprocessing.clean",
             status="succeeded",
             parameters=_jsonable_parameters(parameters),
-            result={
-                "derived_version_id": str(derived_version.id),
-                "total_cleaned_points": result.total_changed_points,
-                "change_summary": result.change_summary,
-                "outlier_counts": {
-                    column: len(indices)
-                    for column, indices in result.detected_outlier_indices.items()
-                },
-                "constant_value_segment_count": len(result.constant_value_segments),
-                "candidate_frozen_segment_count": len(result.candidate_frozen_segments),
-                "warnings": result.warnings,
-            },
+            result=run_result,
             created_at=now,
             finished_at=now,
         )
@@ -192,16 +343,18 @@ async def clean_dataset_version(
             event_type="preprocessing.clean.completed",
             subject_id=str(dataset.id),
             payload_json=json.dumps(
-                {
-                    "source_version_id": str(source_version.id),
-                    "derived_version_id": str(derived_version.id),
-                    "algorithm": CleaningPipeline.name,
-                    "parameters": _jsonable_parameters(parameters),
-                    "total_cleaned_points": result.total_changed_points,
-                    "change_summary": result.change_summary,
-                    "replaced_indices": result.changed_indices,
-                    "executed_at": now.isoformat(),
-                },
+                _operation_log_payload(
+                    source_version_id=source_version.id,
+                    derived_version_id=derived_version.id,
+                    effective_version_id=derived_version.id,
+                    created_new_version=True,
+                    no_op=no_op,
+                    converged=no_op,
+                    reused_existing_version=False,
+                    parameters=parameters,
+                    result=result,
+                    executed_at=now,
+                ),
                 ensure_ascii=False,
                 sort_keys=True,
             ),
@@ -223,12 +376,96 @@ async def clean_dataset_version(
         dataset_id=dataset.id,
         source_version_id=source_version.id,
         derived_version_id=derived_version_id,
+        effective_version_id=effective_version_id,
+        created_new_version=True,
+        no_op=no_op,
+        converged=no_op,
+        reused_existing_version=False,
         source_columns=source_columns,
         source_row_count=source_version.row_count,
         processing_run_id=processing_run_id,
         parameters=parameters,
         result=result,
     )
+
+
+def _is_semantic_no_op(parsed: ParsedCsv, result: CleaningResult) -> bool:
+    """Confirm that the pipeline preserved cells, shape, and the complete time grid."""
+
+    data_columns = [
+        column for column in parsed.headers if column != parsed.timestamp_column
+    ]
+    return (
+        result.total_changed_points == 0
+        and result.duplicate_timestamp_count == 0
+        and result.resampling_empty_row_count == 0
+        and result.timestamps == parsed.timestamps
+        and set(result.values) == set(data_columns)
+        and all(len(result.values[column]) == len(parsed.rows) for column in data_columns)
+    )
+
+
+def _processing_run_result(
+    *,
+    derived_version_id: UUID | None,
+    effective_version_id: UUID,
+    created_new_version: bool,
+    no_op: bool,
+    converged: bool,
+    reused_existing_version: bool,
+    result: CleaningResult,
+) -> dict[str, object]:
+    return {
+        "derived_version_id": (
+            str(derived_version_id) if derived_version_id is not None else None
+        ),
+        "effective_version_id": str(effective_version_id),
+        "created_new_version": created_new_version,
+        "no_op": no_op,
+        "converged": converged,
+        "reused_existing_version": reused_existing_version,
+        "total_cleaned_points": result.total_changed_points,
+        "change_summary": result.change_summary,
+        "outlier_counts": {
+            column: len(indices)
+            for column, indices in result.detected_outlier_indices.items()
+        },
+        "constant_value_segment_count": len(result.constant_value_segments),
+        "candidate_frozen_segment_count": len(result.candidate_frozen_segments),
+        "warnings": result.warnings,
+    }
+
+
+def _operation_log_payload(
+    *,
+    source_version_id: UUID,
+    derived_version_id: UUID | None,
+    effective_version_id: UUID,
+    created_new_version: bool,
+    no_op: bool,
+    converged: bool,
+    reused_existing_version: bool,
+    parameters: CleaningParameters,
+    result: CleaningResult,
+    executed_at: datetime,
+) -> dict[str, object]:
+    return {
+        "source_version_id": str(source_version_id),
+        "derived_version_id": (
+            str(derived_version_id) if derived_version_id is not None else None
+        ),
+        "effective_version_id": str(effective_version_id),
+        "created_new_version": created_new_version,
+        "no_op": no_op,
+        "converged": converged,
+        "reused_existing_version": reused_existing_version,
+        "algorithm": CleaningPipeline.name,
+        "parameters": _jsonable_parameters(parameters),
+        "total_cleaned_points": result.total_changed_points,
+        "change_summary": result.change_summary,
+        "replaced_indices": result.changed_indices,
+        "executed_at": executed_at.isoformat(),
+    }
 
 
 async def _version_columns(session: AsyncSession, version_id: UUID) -> list[DatasetColumn]:
@@ -241,6 +478,57 @@ async def _version_columns(session: AsyncSession, version_id: UUID) -> list[Data
             )
         ).all()
     )
+
+
+async def _begin_sqlite_serialized_write(session: AsyncSession) -> None:
+    """Use SQLite's database write lock where row-level ``FOR UPDATE`` is unavailable."""
+
+    if session.get_bind().dialect.name == "sqlite" and not session.in_transaction():
+        await session.execute(text("BEGIN IMMEDIATE"))
+
+
+async def _lock_source_version(session: AsyncSession, version_id: UUID) -> DatasetVersion:
+    source = await session.scalar(
+        select(DatasetVersion)
+        .where(DatasetVersion.id == version_id)
+        .with_for_update()
+    )
+    if source is None:
+        raise CleaningDomainError(
+            "DATASET_VERSION_NOT_FOUND", "待清洗的数据版本不存在。", status_code=404
+        )
+    return source
+
+
+async def _find_equivalent_cleaning_version(
+    session: AsyncSession,
+    *,
+    source_version_id: UUID,
+    normalized_parameters: Mapping[str, object],
+    checksum: str,
+    artifact_root: Path,
+) -> DatasetVersion | None:
+    candidates = (
+        await session.scalars(
+            select(DatasetVersion)
+            .where(
+                DatasetVersion.parent_version_id == source_version_id,
+                DatasetVersion.operation_name == "preprocessing.clean",
+                DatasetVersion.sha256 == checksum,
+            )
+            .order_by(DatasetVersion.version_index, DatasetVersion.created_at)
+        )
+    ).all()
+    for candidate in candidates:
+        if candidate.parameters.get("resolved_parameters") != normalized_parameters:
+            continue
+        if artifact_matches_sha256(
+            artifact_root=artifact_root,
+            relative_path=candidate.artifact_path,
+            expected_sha256=candidate.sha256,
+        ):
+            return candidate
+    return None
 
 
 async def _next_version_index(session: AsyncSession, dataset_id: UUID) -> int:
@@ -376,7 +664,12 @@ def _clean_data(
     *,
     dataset_id: UUID,
     source_version_id: UUID,
-    derived_version_id: UUID,
+    derived_version_id: UUID | None,
+    effective_version_id: UUID,
+    created_new_version: bool,
+    no_op: bool,
+    converged: bool,
+    reused_existing_version: bool,
     source_columns: Sequence[DatasetColumn],
     source_row_count: int,
     processing_run_id: UUID,
@@ -391,7 +684,12 @@ def _clean_data(
     selected = next(item for item in series if item.column == output_column)
     return CleanData(
         source_version_id=source_version_id,
+        effective_version_id=effective_version_id,
         derived_version_id=derived_version_id,
+        created_new_version=created_new_version,
+        no_op=no_op,
+        converged=converged,
+        reused_existing_version=reused_existing_version,
         task=completed_task(stage="preprocessing.clean", message="时间规整与数据清洗已完成。"),
         series=series,
         dataset_id=dataset_id,
@@ -404,6 +702,11 @@ def _clean_data(
         warnings=result.warnings,
         recommended_downsample_factor=downsample_factor,
         summary={
+            "effective_version_id": str(effective_version_id),
+            "created_new_version": created_new_version,
+            "no_op": no_op,
+            "converged": converged,
+            "reused_existing_version": reused_existing_version,
             "rows_before": source_row_count,
             "rows_after": len(result.timestamps),
             "columns_before": len(source_columns),

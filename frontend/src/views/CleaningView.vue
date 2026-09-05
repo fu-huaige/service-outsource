@@ -19,7 +19,7 @@
       <div>
         <span class="page-eyebrow font-mono">EQUISPACED RESAMPLING & 3-SIGMA TRIAGE</span>
         <h2>时间规整与清洗实验室</h2>
-        <p class="subtitle">消除采样不均匀、补全缺失值并过滤尖峰异常点，派生可信基准版本 V1_Cleaned</p>
+        <p class="subtitle">消除采样不均匀、补全缺失值并过滤尖峰异常点，生成可追溯的清洗规整版本。</p>
       </div>
     </div>
 
@@ -148,7 +148,7 @@
           icon="MagicStick"
           @click="handleClean"
         >
-          执行规整并派生 V1_Cleaned
+          执行时间规整与清洗
         </el-button>
       </div>
     </section>
@@ -167,7 +167,26 @@
           <span>多通道时序规整波形对比 (RAW VS CLEANED)</span>
         </div>
         <div class="header-pills" v-if="cleanedData">
-          <el-tag type="success" effect="light">已修复 {{ cleanedData.total_cleaned_points }} 个唯一数据单元格</el-tag>
+          <el-tag
+            v-if="cleanedData.reused_existing_version"
+            type="success"
+            effect="light"
+            data-test="cleaning-reused-badge"
+          >已复用</el-tag>
+          <el-tag
+            v-else-if="cleanedData.converged && !cleanedData.created_new_version"
+            type="success"
+            effect="light"
+            data-test="cleaning-converged-badge"
+          >已收敛</el-tag>
+          <el-tag
+            v-else-if="cleanedData.no_op"
+            type="success"
+            effect="light"
+          >清洗认证完成</el-tag>
+          <el-tag v-else type="success" effect="light">
+            已修复 {{ cleanedData.total_cleaned_points }} 个唯一数据单元格
+          </el-tag>
         </div>
       </div>
 
@@ -361,6 +380,41 @@ const loadDatasetContext = async (datasetId: string) => {
   }
 };
 
+const refreshDatasetContextAfterClean = async (
+  datasetId: string,
+  effectiveVersionId: string
+) => {
+  const requestId = ++contextRequestId;
+  contextError.value = "";
+  loadingVersions.value = true;
+  try {
+    const [dataset, versions] = await Promise.all([
+      getDatasetDetail(datasetId),
+      getDatasetVersions(datasetId),
+    ]);
+    if (requestId !== contextRequestId || selectedDatasetId.value !== datasetId) return;
+    sourceDataset.value = dataset;
+    versionNodes.value = versions.nodes;
+    datasetStore.setActiveDataset(dataset);
+    const effectiveVersion = versions.nodes.find(
+      (version) => version.id === effectiveVersionId
+    );
+    if (effectiveVersion && isCleaningEligibleVersion(effectiveVersion)) {
+      selectedVersionId.value = effectiveVersion.id;
+      rememberedSourceByDataset.set(datasetId, effectiveVersion.id);
+    } else {
+      contextError.value = "清洗已完成，但当前有效版本未出现在版本血缘中。";
+    }
+  } catch (error) {
+    if (requestId !== contextRequestId || selectedDatasetId.value !== datasetId) return;
+    contextError.value = error instanceof ApiError
+      ? `清洗已完成，但版本列表刷新失败 [${error.code}]：${error.message}`
+      : "清洗已完成，但版本列表刷新失败。";
+  } finally {
+    if (requestId === contextRequestId) loadingVersions.value = false;
+  }
+};
+
 const handleDatasetChange = (datasetId: string) => {
   if (!datasetId) {
     ++contextRequestId;
@@ -406,9 +460,11 @@ const handleClean = async () => {
   errorMessage.value = "";
   validationIssues.value = [];
   try {
+    const datasetId = sourceDataset.value.id;
+    const sourceVersionId = sourceVersion.value.id;
     const request: CleanRequest = {
-      dataset_id: sourceDataset.value.id,
-      version_id: sourceVersion.value.id,
+      dataset_id: datasetId,
+      version_id: sourceVersionId,
       target_sample_period_seconds: form.target_sample_period_seconds,
       interpolation: form.interpolation,
       anomaly_detector: form.anomaly_detector,
@@ -416,7 +472,16 @@ const handleClean = async () => {
     };
     const res = await cleanDataset(request);
     cleanedData.value = res;
-    ElMessage.success(`成功生成清洗后数据版本: ${res.new_version_id}`);
+    await refreshDatasetContextAfterClean(datasetId, res.effective_version_id);
+    if (res.reused_existing_version) {
+      ElMessage.success("相同清洗结果已存在，已复用现有数据版本。");
+    } else if (!res.created_new_version && res.converged) {
+      ElMessage.success("清洗结果已收敛，本次未产生新的数据版本。");
+    } else if (res.no_op) {
+      ElMessage.success("数据无需修复，已完成清洗认证并生成 Cleaning Version。");
+    } else {
+      ElMessage.success(`成功生成清洗后数据版本: ${res.new_version_id}`);
+    }
   } catch (error) {
     cleanedData.value = null;
     const code = error instanceof ApiError ? error.code : "ERR";
@@ -460,6 +525,21 @@ const compareChartOptions = computed(() => {
 
 const cleaningResultSummary = computed(() => {
   if (!cleanedData.value) return "";
+  const effectiveVersion = versionNodes.value.find(
+    (version) => version.id === cleanedData.value?.effective_version_id
+  );
+  const effectiveLabel = effectiveVersion
+    ? versionDisplayName(effectiveVersion)
+    : shortVersionId(cleanedData.value.effective_version_id);
+  if (cleanedData.value.reused_existing_version) {
+    return `相同清洗结果已存在，已复用现有数据版本。当前有效版本：${effectiveLabel}。`;
+  }
+  if (!cleanedData.value.created_new_version && cleanedData.value.converged) {
+    return `清洗结果已收敛，本次未产生新的数据版本。当前有效版本：${effectiveLabel}；修改单元：0。`;
+  }
+  if (cleanedData.value.no_op) {
+    return `数据无需修复，已完成清洗认证并生成 Cleaning Version。当前有效版本：${effectiveLabel}；修改单元：0。`;
+  }
   const changes = cleanedData.value.summary?.changes;
   if (!changes || changes.breakdown_status === "not_recorded") {
     return `共修复 ${cleanedData.value.total_cleaned_points} 个唯一数据单元格；历史结果未记录分类明细。`;

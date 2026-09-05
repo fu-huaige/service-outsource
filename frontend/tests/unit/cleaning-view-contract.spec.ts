@@ -28,7 +28,8 @@ vi.mock("../../src/api/datasets", () => ({
 vi.mock("vue-router", () => ({
   useRoute: () => routeState,
 }));
-vi.mock("element-plus", () => ({ ElMessage: { success: vi.fn(), error: vi.fn() } }));
+const messages = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock("element-plus", () => ({ ElMessage: messages }));
 
 const mockedCleanDataset = vi.mocked(cleanDataset);
 const mockedGetDatasetDetail = vi.mocked(getDatasetDetail);
@@ -83,9 +84,7 @@ const datasetDetail = (activeVersionId = versionId) => ({
 
 function setupApi() {
   const detail = datasetDetail();
-  mockedListDatasets.mockResolvedValue({ items: [detail] });
-  mockedGetDatasetDetail.mockResolvedValue(detail);
-  mockedGetDatasetVersions.mockResolvedValue({
+  const versions = {
     dataset_id: datasetId,
     active_version_id: versionId,
     nodes: [
@@ -131,7 +130,11 @@ function setupApi() {
       },
     ],
     edges: [],
-  } as never);
+  };
+  mockedListDatasets.mockResolvedValue({ items: [detail] });
+  mockedGetDatasetDetail.mockResolvedValue(detail);
+  mockedGetDatasetVersions.mockResolvedValue(versions as never);
+  return { detail, versions };
 }
 
 describe("CleaningView request contract", () => {
@@ -146,7 +149,12 @@ describe("CleaningView request contract", () => {
       dataset_id: datasetId,
       new_version_id: "e13979a1-206e-4a8f-8e37-a22e12f6027d",
       source_version_id: versionId,
+      effective_version_id: "e13979a1-206e-4a8f-8e37-a22e12f6027d",
       derived_version_id: "e13979a1-206e-4a8f-8e37-a22e12f6027d",
+      created_new_version: true,
+      no_op: true,
+      converged: true,
+      reused_existing_version: false,
       processing_run_id: "d13979a1-206e-4a8f-8e37-a22e12f6027d",
       raw_series: [],
       cleaned_series: [],
@@ -197,10 +205,39 @@ describe("CleaningView request contract", () => {
     );
   });
 
-  it("uses a newly selected Cleaning UUID and clears the previous transient result", async () => {
+  it("reloads lineage and advances the source to a newly created effective version", async () => {
+    const { versions } = setupApi();
+    const newVersionId = "e13979a1-206e-4a8f-8e37-a22e12f6027d";
+    mockedGetDatasetDetail
+      .mockResolvedValueOnce(datasetDetail())
+      .mockResolvedValueOnce(datasetDetail(newVersionId));
+    mockedGetDatasetVersions
+      .mockResolvedValueOnce(versions as never)
+      .mockResolvedValueOnce({
+        ...versions,
+        active_version_id: newVersionId,
+        nodes: [
+          ...versions.nodes,
+          {
+            id: newVersionId,
+            name: "V4 · 清洗规整",
+            tool: "preprocessing.clean",
+            parent_version_id: versionId,
+            created_at: "2026-08-20T04:00:00Z",
+            row_count: 1200,
+            column_count: 4,
+            artifact_path: "derived/new-clean.csv",
+          },
+        ],
+      } as never);
     mockedCleanDataset.mockResolvedValue({
       dataset_id: datasetId,
-      new_version_id: "e13979a1-206e-4a8f-8e37-a22e12f6027d",
+      new_version_id: newVersionId,
+      effective_version_id: newVersionId,
+      created_new_version: true,
+      no_op: false,
+      converged: false,
+      reused_existing_version: false,
       raw_series: [1],
       cleaned_series: [1],
       replaced_indices: [],
@@ -211,14 +248,139 @@ describe("CleaningView request contract", () => {
     await wrapper.get("[data-test='clean-submit']").trigger("click");
     await flushPromises();
     expect(wrapper.find(".cleaning-summary").exists()).toBe(true);
-
-    await wrapper.get(`[data-version-id='${cleanVersionId}']`).trigger("click");
-    expect(wrapper.find(".cleaning-summary").exists()).toBe(false);
+    expect(messages.success).toHaveBeenCalledWith(
+      `成功生成清洗后数据版本: ${newVersionId}`
+    );
+    expect(wrapper.findAll("[data-test='lineage-node']")).toHaveLength(5);
+    expect(
+      wrapper.get("[data-test='cleaning-source-picker']").attributes("data-selected-version-id")
+    ).toBe(newVersionId);
+    expect(wrapper.get("[data-test='cleaning-source-summary']").text()).toContain(
+      "V4 · 清洗规整"
+    );
     await wrapper.get("[data-test='clean-submit']").trigger("click");
     expect(mockedCleanDataset).toHaveBeenLastCalledWith(expect.objectContaining({
       dataset_id: datasetId,
-      version_id: cleanVersionId,
+      version_id: newVersionId,
     }));
+  });
+
+  it("shows convergence without adding lineage or changing the selected Cleaning source", async () => {
+    routeState.query = { dataset_id: datasetId, version_id: cleanVersionId };
+    mockedCleanDataset.mockResolvedValue({
+      dataset_id: datasetId,
+      source_version_id: cleanVersionId,
+      effective_version_id: cleanVersionId,
+      derived_version_id: null,
+      new_version_id: null,
+      created_new_version: false,
+      no_op: true,
+      converged: true,
+      reused_existing_version: false,
+      processing_run_id: "d13979a1-206e-4a8f-8e37-a22e12f6027d",
+      raw_series: [1],
+      cleaned_series: [1],
+      replaced_indices: [],
+      total_cleaned_points: 0,
+      warnings: [],
+      summary: { changes: { count_unit: "cell", unique_changed_cells: 0 } },
+    });
+    const wrapper = mount(CleaningView, { global: { plugins: [createPinia()], stubs } });
+    await flushPromises();
+    const nodeCount = wrapper.findAll("[data-test='lineage-node']").length;
+
+    await wrapper.get("[data-test='clean-submit']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get("[data-test='cleaning-converged-badge']").text()).toBe("已收敛");
+    expect(wrapper.get(".cleaning-summary").text()).toContain(
+      "清洗结果已收敛，本次未产生新的数据版本"
+    );
+    expect(wrapper.get(".cleaning-summary").text()).toContain("当前有效版本：V1 · 清洗规整");
+    expect(wrapper.get(".cleaning-summary").text()).toContain("修改单元：0");
+    expect(wrapper.findAll("[data-test='lineage-node']")).toHaveLength(nodeCount);
+    expect(
+      wrapper.get("[data-test='cleaning-source-picker']").attributes("data-selected-version-id")
+    ).toBe(cleanVersionId);
+    expect(messages.success).toHaveBeenCalledWith(
+      "清洗结果已收敛，本次未产生新的数据版本。"
+    );
+  });
+
+  it("reloads lineage and advances to an idempotently reused Cleaning version", async () => {
+    mockedCleanDataset.mockResolvedValue({
+      dataset_id: datasetId,
+      source_version_id: versionId,
+      effective_version_id: cleanVersionId,
+      derived_version_id: null,
+      new_version_id: null,
+      created_new_version: false,
+      no_op: false,
+      converged: false,
+      reused_existing_version: true,
+      processing_run_id: "d13979a1-206e-4a8f-8e37-a22e12f6027d",
+      raw_series: [1],
+      cleaned_series: [2],
+      replaced_indices: [0],
+      total_cleaned_points: 1,
+      warnings: [],
+      summary: { changes: { count_unit: "cell", unique_changed_cells: 1 } },
+    });
+    const wrapper = mount(CleaningView, { global: { plugins: [createPinia()], stubs } });
+    await flushPromises();
+    const nodeCount = wrapper.findAll("[data-test='lineage-node']").length;
+
+    await wrapper.get("[data-test='clean-submit']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get("[data-test='cleaning-reused-badge']").text()).toBe("已复用");
+    expect(wrapper.get(".cleaning-summary").text()).toContain(
+      "相同清洗结果已存在，已复用现有数据版本"
+    );
+    expect(wrapper.findAll("[data-test='lineage-node']")).toHaveLength(nodeCount);
+    expect(
+      wrapper.get("[data-test='cleaning-source-picker']").attributes("data-selected-version-id")
+    ).toBe(cleanVersionId);
+    expect(wrapper.get("[data-test='cleaning-source-summary']").text()).toContain(
+      "V1 · 清洗规整"
+    );
+    expect(messages.success).toHaveBeenCalledWith(
+      "相同清洗结果已存在，已复用现有数据版本。"
+    );
+  });
+
+  it("distinguishes first-clean zero-change certification from repeated convergence", async () => {
+    const newVersionId = "e13979a1-206e-4a8f-8e37-a22e12f6027d";
+    mockedCleanDataset.mockResolvedValue({
+      dataset_id: datasetId,
+      source_version_id: versionId,
+      effective_version_id: newVersionId,
+      derived_version_id: newVersionId,
+      new_version_id: newVersionId,
+      created_new_version: true,
+      no_op: true,
+      converged: true,
+      reused_existing_version: false,
+      raw_series: [1],
+      cleaned_series: [1],
+      replaced_indices: [],
+      total_cleaned_points: 0,
+      warnings: [],
+      summary: { changes: { count_unit: "cell", unique_changed_cells: 0 } },
+    });
+    const wrapper = mount(CleaningView, { global: { plugins: [createPinia()], stubs } });
+    await flushPromises();
+
+    await wrapper.get("[data-test='clean-submit']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("清洗认证完成");
+    expect(wrapper.get(".cleaning-summary").text()).toContain(
+      "数据无需修复，已完成清洗认证并生成 Cleaning Version"
+    );
+    expect(messages.success).toHaveBeenCalledWith(
+      "数据无需修复，已完成清洗认证并生成 Cleaning Version。"
+    );
   });
 
   it("preserves branching lineage and renders an empty state when no source is eligible", async () => {

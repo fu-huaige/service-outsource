@@ -253,6 +253,149 @@ def test_cleaning_adapter_uses_formal_service_and_preserves_source_version(
     assert v1.operation_name == "preprocessing.clean"
 
 
+def test_cleaning_adapter_keeps_effective_version_when_repeat_is_no_op(
+    adapter_harness: AdapterHarness,
+) -> None:
+    generated = adapter_harness.client.post(
+        "/api/v1/simulation/generate",
+        json={"scenario": "S2", "n_steps": 900, "seed": 91, "input_count": 2},
+    )
+    assert generated.status_code == 201, generated.text
+    generated_data = generated.json()["data"]
+    dataset_id = UUID(generated_data["dataset_id"])
+    raw_version_id = UUID(generated_data["version_id"])
+    parameters = {"anomaly_strategy": "keep", "smoothing": "none"}
+    first = adapter_harness.client.post(
+        "/api/v1/preprocessing/clean",
+        json={"version_id": str(raw_version_id), **parameters},
+    )
+    assert first.status_code == 202, first.text
+    cleaning_version_id = UUID(first.json()["data"]["effective_version_id"])
+
+    plan, proof = _plan(
+        ExecutionPlanStep(step_id="p1", tool="profile_dataset"),
+        ExecutionPlanStep(step_id="p2", tool="detect_anomalies", depends_on=["p1"]),
+        ExecutionPlanStep(
+            step_id="s1",
+            tool="clean_data",
+            depends_on=["p2"],
+            parameters=parameters,
+        ),
+        dataset_id=dataset_id,
+    )
+    started = asyncio.run(
+        _create_and_start(
+            adapter_harness,
+            dataset_id=dataset_id,
+            version_id=cleaning_version_id,
+            plan=plan,
+            proof=proof,
+            step_id="s1",
+        )
+    )
+
+    async def run() -> tuple[object, AgentExecutionSession]:
+        async with adapter_harness.session_factory() as session:
+            execution = await _load_execution(adapter_harness, started.id)
+            step = next(item for item in execution.step_runs if item.step_id == "s1")
+            result = await execute_agent_tool(
+                session,
+                execution=execution,
+                step=step,
+                parameters=step.input_payload["parameters"],
+                artifact_root=adapter_harness.artifact_root,
+            )
+            persisted = await mark_step_succeeded(
+                session,
+                execution_id=execution.id,
+                step_id=step.step_id,
+                result_payload=result.result_payload,
+                source_version_id=result.source_version_id,
+                result_version_id=result.result_version_id,
+                processing_run_ids=result.processing_run_ids,
+            )
+            return result, persisted
+
+    result, persisted = asyncio.run(run())
+    assert result.result_version_id == cleaning_version_id
+    assert result.result_payload["created_new_version"] is False
+    assert result.result_payload["effective_version_id"] == str(cleaning_version_id)
+    assert persisted.current_version_id == cleaning_version_id
+
+
+def test_cleaning_adapter_advances_to_idempotently_reused_effective_version(
+    adapter_harness: AdapterHarness,
+) -> None:
+    generated = adapter_harness.client.post(
+        "/api/v1/simulation/generate",
+        json={"scenario": "S2", "n_steps": 900, "seed": 92, "input_count": 2},
+    )
+    assert generated.status_code == 201, generated.text
+    generated_data = generated.json()["data"]
+    dataset_id = UUID(generated_data["dataset_id"])
+    raw_version_id = UUID(generated_data["version_id"])
+    parameters = {"anomaly_strategy": "keep", "smoothing": "none"}
+    first = adapter_harness.client.post(
+        "/api/v1/preprocessing/clean",
+        json={"version_id": str(raw_version_id), **parameters},
+    )
+    assert first.status_code == 202, first.text
+    cleaning_version_id = UUID(first.json()["data"]["effective_version_id"])
+
+    plan, proof = _plan(
+        ExecutionPlanStep(step_id="p1", tool="profile_dataset"),
+        ExecutionPlanStep(step_id="p2", tool="detect_anomalies", depends_on=["p1"]),
+        ExecutionPlanStep(
+            step_id="s1",
+            tool="clean_data",
+            depends_on=["p2"],
+            parameters=parameters,
+        ),
+        dataset_id=dataset_id,
+    )
+    started = asyncio.run(
+        _create_and_start(
+            adapter_harness,
+            dataset_id=dataset_id,
+            version_id=raw_version_id,
+            plan=plan,
+            proof=proof,
+            step_id="s1",
+        )
+    )
+
+    async def run() -> tuple[object, AgentExecutionSession]:
+        async with adapter_harness.session_factory() as session:
+            execution = await _load_execution(adapter_harness, started.id)
+            step = next(item for item in execution.step_runs if item.step_id == "s1")
+            result = await execute_agent_tool(
+                session,
+                execution=execution,
+                step=step,
+                parameters=step.input_payload["parameters"],
+                artifact_root=adapter_harness.artifact_root,
+            )
+            persisted = await mark_step_succeeded(
+                session,
+                execution_id=execution.id,
+                step_id=step.step_id,
+                result_payload=result.result_payload,
+                source_version_id=result.source_version_id,
+                result_version_id=result.result_version_id,
+                processing_run_ids=result.processing_run_ids,
+            )
+            return result, persisted
+
+    result, persisted = asyncio.run(run())
+    assert result.result_version_id == cleaning_version_id
+    assert result.result_payload["created_new_version"] is False
+    assert result.result_payload["no_op"] is False
+    assert result.result_payload["converged"] is False
+    assert result.result_payload["reused_existing_version"] is True
+    assert result.result_payload["effective_version_id"] == str(cleaning_version_id)
+    assert persisted.current_version_id == cleaning_version_id
+
+
 def test_delay_adapter_reads_cleaned_current_version_without_creating_another_version(
     adapter_harness: AdapterHarness,
 ) -> None:

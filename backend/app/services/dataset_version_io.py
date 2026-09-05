@@ -122,6 +122,20 @@ def remove_derived_artifact(*, artifact_root: Path, relative_path: str) -> None:
     (artifact_root / relative_path).unlink(missing_ok=True)
 
 
+def artifact_matches_sha256(
+    *, artifact_root: Path, relative_path: str, expected_sha256: str
+) -> bool:
+    """Return whether a registered artifact is present, contained, and byte-identical."""
+
+    root = artifact_root.resolve()
+    path = (root / relative_path).resolve()
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return path.is_file() and _sha256(path) == expected_sha256
+
+
 def _string_parameter(parameters: Mapping[str, Any], key: str) -> str | None:
     value = parameters.get(key)
     return value if isinstance(value, str) and value else None

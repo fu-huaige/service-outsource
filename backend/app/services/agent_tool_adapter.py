@@ -177,13 +177,20 @@ async def _clean(
         raise AgentToolAdapterError("INVALID_AGENT_TOOL_PARAMETERS", str(error)) from error
 
     data = await clean_dataset_version(session, payload=payload, artifact_root=artifact_root)
-    return AgentToolResult(
-        summary=(
-            f"正式清洗服务已生成不可变版本 {data.derived_version_id}，"
+    summary = (
+        f"正式清洗服务已复用现有不可变版本 {data.effective_version_id}。"
+        if data.reused_existing_version
+        else f"正式清洗服务已确认版本 {data.effective_version_id} 已收敛，未创建新版本。"
+        if not data.created_new_version
+        else (
+            f"正式清洗服务已生成不可变版本 {data.effective_version_id}，"
             f"共处理 {data.total_cleaned_points} 个数据点。"
-        ),
+        )
+    )
+    return AgentToolResult(
+        summary=summary,
         source_version_id=data.source_version_id,
-        result_version_id=data.derived_version_id,
+        result_version_id=data.effective_version_id,
         processing_run_ids=[str(data.processing_run_id)] if data.processing_run_id else [],
         result_payload=data.model_dump(mode="json"),
     )

@@ -389,9 +389,14 @@ export interface CleanRequest {
 
 export interface CleanResponse {
   dataset_id: string;
-  new_version_id: string;
+  new_version_id: string | null;
   source_version_id?: string;
-  derived_version_id?: string;
+  effective_version_id: string;
+  derived_version_id?: string | null;
+  created_new_version: boolean;
+  no_op: boolean;
+  converged: boolean;
+  reused_existing_version: boolean;
   processing_run_id?: string | null;
   raw_series: number[];
   cleaned_series: number[];

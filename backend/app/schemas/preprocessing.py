@@ -43,7 +43,12 @@ class CleanSeries(Schema):
 
 class CleanData(Schema):
     source_version_id: UUID
-    derived_version_id: UUID
+    effective_version_id: UUID
+    derived_version_id: UUID | None = None
+    created_new_version: bool = True
+    no_op: bool = False
+    converged: bool = False
+    reused_existing_version: bool = False
     processing_run_id: UUID | None = None
     task: TaskResource
     series: list[CleanSeries]
