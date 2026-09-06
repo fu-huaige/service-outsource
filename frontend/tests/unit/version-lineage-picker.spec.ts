@@ -39,6 +39,13 @@ const lag: DatasetVersionNode = {
 
 const ElPopoverStub = defineComponent({
   name: "ElPopover",
+  props: {
+    placement: String,
+    fallbackPlacements: Array,
+    teleported: Boolean,
+    offset: Number,
+    popperOptions: Object,
+  },
   setup(_props, { slots }) {
     return () => h("div", [slots.reference?.(), slots.default?.()]);
   },
@@ -70,6 +77,40 @@ const mountPicker = (
 });
 
 describe("VersionLineagePicker", () => {
+  it("declares a viewport-safe Popover positioning contract", () => {
+    const wrapper = mountPicker([raw, clean, lag]);
+    const popover = wrapper.getComponent(ElPopoverStub);
+
+    expect(popover.props("placement")).toBe("bottom-start");
+    expect(popover.props("fallbackPlacements")).toEqual(["top-start"]);
+    expect(popover.props("teleported")).toBe(true);
+    expect(popover.props("offset")).toBe(12);
+
+    const popperOptions = popover.props("popperOptions") as {
+      modifiers: Array<{
+        name: string;
+        enabled: boolean;
+        options: Record<string, unknown>;
+      }>;
+    };
+    const preventOverflow = popperOptions.modifiers.find(
+      (modifier) => modifier.name === "preventOverflow"
+    );
+
+    expect(preventOverflow).toEqual({
+      name: "preventOverflow",
+      enabled: true,
+      options: {
+        boundary: "clippingParents",
+        rootBoundary: "viewport",
+        padding: 12,
+        mainAxis: true,
+        altAxis: false,
+        tether: true,
+      },
+    });
+  });
+
   it("renders the Chinese panel title with the explicit Sans typography contract", () => {
     const wrapper = mountPicker([raw, clean, lag]);
     const title = wrapper.get(".lineage-panel-label");
@@ -77,6 +118,16 @@ describe("VersionLineagePicker", () => {
     expect(title.text()).toBe("版本血缘");
     expect(title.classes()).toContain("lineage-panel-label-sans");
     expect(title.classes()).not.toContain("font-mono");
+  });
+
+  it("keeps the default selected badge and supports an additive custom label", async () => {
+    const defaultPicker = mountPicker([raw, clean, lag]);
+    expect(defaultPicker.get(`[data-version-id='${clean.id}']`).text()).toContain("当前分析源");
+
+    const customPicker = mountPicker([raw, clean, lag]);
+    await customPicker.setProps({ selectedBadgeLabel: "比较基线" });
+    expect(customPicker.get(`[data-version-id='${clean.id}']`).text()).toContain("比较基线");
+    expect(customPicker.get(`[data-version-id='${clean.id}']`).text()).not.toContain("当前分析源");
   });
 
   it("builds the displayed chain from parent_version_id and renders selected, eligibility, and metadata", () => {

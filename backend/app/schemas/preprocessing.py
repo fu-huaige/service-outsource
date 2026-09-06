@@ -69,6 +69,146 @@ class CleanData(Schema):
     summary: dict[str, object] = Field(default_factory=dict)
 
 
+CleaningVersionRelation = Literal[
+    "SAME_VERSION",
+    "DIRECT_PARENT",
+    "ANCESTOR_DESCENDANT",
+    "SIBLING",
+    "UNRELATED_WITHIN_DATASET",
+]
+CleaningVersionDirection = Literal[
+    "BASELINE_TO_COMPARE",
+    "COMPARE_TO_BASELINE",
+    "NONE",
+]
+VersionDifferenceKind = Literal[
+    "VALUE_CHANGED",
+    "POINT_ADDED",
+    "POINT_REMOVED",
+    "AMBIGUOUS_ALIGNMENT",
+]
+
+
+class VersionCompareRef(Schema):
+    version_id: UUID
+    name: str
+    operation_name: str
+    parent_version_id: UUID | None = None
+    created_at: datetime
+    row_count: int = Field(ge=0)
+    column_count: int = Field(ge=0)
+    sha256: str
+
+
+class VersionCompareChannel(Schema):
+    name: str
+    inferred_type: Literal["float", "integer"]
+    unit: str | None = None
+
+
+class CleaningVersionCompareChannelOption(Schema):
+    name: str
+    baseline_inferred_type: Literal["float", "integer"]
+    compare_inferred_type: Literal["float", "integer"]
+    unit: str | None = None
+
+
+class CleaningVersionCompareChannelsData(Schema):
+    dataset_id: UUID
+    baseline_version_id: UUID
+    compare_version_id: UUID
+    channels: list[CleaningVersionCompareChannelOption]
+    warnings: list[str] = Field(default_factory=list)
+
+
+class VersionComparePoint(Schema):
+    timestamp: datetime
+    occurrence_index: int = Field(ge=0)
+    value: float | None
+
+
+class VersionCompareSeries(Schema):
+    input_point_count: int = Field(ge=0)
+    returned_point_count: int = Field(ge=0)
+    projected: bool
+    points: list[VersionComparePoint]
+
+
+class VersionDifferencePoint(Schema):
+    timestamp: datetime
+    difference_kind: VersionDifferenceKind
+    baseline_value: float | None = None
+    compare_value: float | None = None
+    absolute_delta: float | None = Field(default=None, ge=0)
+    baseline_occurrences: list[VersionComparePoint] = Field(default_factory=list)
+    compare_occurrences: list[VersionComparePoint] = Field(default_factory=list)
+
+
+class GenericDiffSummary(Schema):
+    scope: Literal["selected_channel"] = "selected_channel"
+    baseline_point_count: int = Field(ge=0)
+    compare_point_count: int = Field(ge=0)
+    unique_matched_timestamps: int = Field(ge=0)
+    unchanged_values: int = Field(ge=0)
+    changed_values: int = Field(ge=0)
+    added_points: int = Field(ge=0)
+    removed_points: int = Field(ge=0)
+    ambiguous_timestamp_groups: int = Field(ge=0)
+    baseline_duplicate_occurrences: int = Field(ge=0)
+    compare_duplicate_occurrences: int = Field(ge=0)
+    contains_null_transitions: bool
+
+
+class DirectCleaningDerivationSummary(Schema):
+    from_version_id: UUID
+    to_version_id: UUID
+    evidence_source: Literal["persisted", "replayed", "legacy_total_only"]
+    scope: Literal["all_numeric_columns"] = "all_numeric_columns"
+    changes: dict[str, object]
+
+
+class ConvergenceEvidence(Schema):
+    version_id: UUID
+    processing_run_id: UUID
+    occurred_at: datetime
+    no_op: Literal[True] = True
+    converged: Literal[True] = True
+    effective_version_id: UUID
+    unique_changed_cells: Literal[0] = 0
+    parameters: dict[str, object] = Field(default_factory=dict)
+
+
+class VersionConvergenceEvidence(Schema):
+    baseline: ConvergenceEvidence | None = None
+    compare: ConvergenceEvidence | None = None
+
+
+class VersionCompareProjection(Schema):
+    applied: bool
+    max_points: int = Field(ge=2, le=10_000)
+    strategy: Literal["none", "evenly_spaced_index_with_endpoints"]
+    diff_computed_before_projection: Literal[True] = True
+
+
+class CleaningVersionCompareData(Schema):
+    dataset_id: UUID
+    baseline: VersionCompareRef
+    compare: VersionCompareRef
+    relation: CleaningVersionRelation
+    direction: CleaningVersionDirection
+    channel: VersionCompareChannel
+    baseline_series: VersionCompareSeries
+    compare_series: VersionCompareSeries
+    difference_points: list[VersionDifferencePoint]
+    difference_points_truncated: bool
+    generic_diff_summary: GenericDiffSummary
+    direct_derivation_summary: DirectCleaningDerivationSummary | None = None
+    convergence_evidence: VersionConvergenceEvidence
+    artifacts_identical: bool
+    projection: VersionCompareProjection
+    warnings: list[str] = Field(default_factory=list)
+
+
 class SegmentRequest(Schema):
     version_id: UUID
     input_columns: list[str] = Field(min_length=1)

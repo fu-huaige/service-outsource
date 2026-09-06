@@ -57,6 +57,8 @@ from app.schemas.optimization import (
 from app.schemas.preprocessing import (
     CleanData,
     CleanRequest,
+    CleaningVersionCompareChannelsData,
+    CleaningVersionCompareData,
     CollinearityData,
     CollinearityRequest,
     DelayData,
@@ -118,6 +120,11 @@ from app.services.agent_service import (
 from app.services.agent_tool_adapter import AgentToolAdapterError
 from app.services.benchmark_service import BenchmarkDomainError, run_benchmark
 from app.services.cleaning_service import CleaningDomainError, clean_dataset_version
+from app.services.cleaning_version_compare_service import (
+    CleaningVersionCompareError,
+    compare_cleaning_versions,
+    get_cleaning_version_compare_channels,
+)
 from app.services.contract_stubs import completed_task, queued_task
 from app.services.dashboard_service import get_dashboard_leaderboard
 from app.services.dataset_service import (
@@ -758,6 +765,80 @@ async def get_dataset_version_preview_page(
             artifact_root=get_settings().artifact_root,
         )
     except DatasetDomainError as error:
+        raise AppError(
+            error.code,
+            error.message,
+            status_code=error.status_code,
+            details=error.details,
+        ) from error
+    return success(request, data)
+
+
+@router.get(
+    "/datasets/{dataset_id}/cleaning-version-compare/channels",
+    tags=["Datasets"],
+    summary="List common numeric channels for two Cleaning-eligible versions",
+    response_model=SuccessEnvelope[CleaningVersionCompareChannelsData],
+    responses={
+        **ERROR_RESPONSES,
+        409: {"model": ErrorEnvelope, "description": "Artifact integrity conflict。"},
+    },
+)
+async def list_cleaning_version_compare_channels(
+    request: Request,
+    dataset_id: DatasetId,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    baseline_version_id: Annotated[UUID, Query(description="Baseline DatasetVersion UUID。")],
+    compare_version_id: Annotated[UUID, Query(description="Compare DatasetVersion UUID。")],
+) -> SuccessEnvelope[CleaningVersionCompareChannelsData]:
+    try:
+        data = await get_cleaning_version_compare_channels(
+            session,
+            dataset_id=dataset_id,
+            baseline_version_id=baseline_version_id,
+            compare_version_id=compare_version_id,
+            artifact_root=get_settings().artifact_root,
+        )
+    except CleaningVersionCompareError as error:
+        raise AppError(
+            error.code,
+            error.message,
+            status_code=error.status_code,
+            details=error.details,
+        ) from error
+    return success(request, data)
+
+
+@router.get(
+    "/datasets/{dataset_id}/cleaning-version-compare",
+    tags=["Datasets"],
+    summary="Compare two immutable Cleaning-eligible dataset versions",
+    response_model=SuccessEnvelope[CleaningVersionCompareData],
+    responses={
+        **ERROR_RESPONSES,
+        409: {"model": ErrorEnvelope, "description": "Artifact integrity or lineage conflict。"},
+    },
+)
+async def get_clean_version_compare(
+    request: Request,
+    dataset_id: DatasetId,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    baseline_version_id: Annotated[UUID, Query(description="Baseline DatasetVersion UUID。")],
+    compare_version_id: Annotated[UUID, Query(description="Compare DatasetVersion UUID。")],
+    channel: Annotated[str, Query(min_length=1, max_length=255)],
+    max_points: Annotated[int, Query(ge=2, le=10_000)] = 10_000,
+) -> SuccessEnvelope[CleaningVersionCompareData]:
+    try:
+        data = await compare_cleaning_versions(
+            session,
+            dataset_id=dataset_id,
+            baseline_version_id=baseline_version_id,
+            compare_version_id=compare_version_id,
+            channel=channel,
+            max_points=max_points,
+            artifact_root=get_settings().artifact_root,
+        )
+    except CleaningVersionCompareError as error:
         raise AppError(
             error.code,
             error.message,

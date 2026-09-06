@@ -3,6 +3,10 @@
     <el-popover
       v-model:visible="popoverVisible"
       placement="bottom-start"
+      :fallback-placements="['top-start']"
+      :teleported="true"
+      :offset="12"
+      :popper-options="lineagePopperOptions"
       width="min(620px, calc(100vw - 48px))"
       :disabled="!datasetName || loading || !versions.length"
       trigger="click"
@@ -66,7 +70,7 @@
               <div class="lineage-node-copy">
                 <div class="lineage-node-title">
                   <strong>{{ versionDisplayName(row.node) }}</strong>
-                  <span v-if="row.node.id === selectedVersionId" class="selected-badge">当前分析源</span>
+                  <span v-if="row.node.id === selectedVersionId" class="selected-badge">{{ selectedBadgeLabel }}</span>
                 </div>
                 <div class="lineage-node-meta">
                   <span>{{ formatVersionDate(row.node.created_at) }}</span>
@@ -94,6 +98,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { ArrowDown } from "@element-plus/icons-vue";
+import type { Options as PopperOptions } from "element-plus";
 import type { DatasetVersionNode } from "../../types/api";
 import {
   formatVersionDate,
@@ -105,6 +110,23 @@ interface LineageRow {
   node: DatasetVersionNode;
   depth: number;
 }
+
+const lineagePopperOptions = {
+  modifiers: [
+    {
+      name: "preventOverflow",
+      enabled: true,
+      options: {
+        boundary: "clippingParents",
+        rootBoundary: "viewport",
+        padding: 12,
+        mainAxis: true,
+        altAxis: false,
+        tether: true,
+      },
+    },
+  ],
+} satisfies Partial<PopperOptions>;
 
 const props = withDefaults(defineProps<{
   datasetName: string;
@@ -118,10 +140,12 @@ const props = withDefaults(defineProps<{
   emptyStateHint?: string;
   placeholder?: string;
   loading?: boolean;
+  selectedBadgeLabel?: string;
 }>(), {
   emptyStateHint: "",
   placeholder: "选择分析源版本",
   loading: false,
+  selectedBadgeLabel: "当前分析源",
 });
 
 const emit = defineEmits<{
@@ -249,8 +273,10 @@ const selectVersion = (version: DatasetVersionNode) => {
 
 .lineage-panel {
   width: 100%;
-  max-height: min(620px, calc(100vh - 160px));
+  max-height: min(520px, calc(50vh - 64px));
+  max-height: min(520px, calc(50dvh - 64px));
   overflow-y: auto;
+  overscroll-behavior: contain;
   color: var(--text-primary);
 }
 

@@ -11,6 +11,8 @@ import type {
   CollinearitySourceVersionsData,
   DatasetDeleteResponse,
   DatasetConfigRequest,
+  CleaningVersionCompareChannelsData,
+  CleaningVersionCompareData,
 } from "../types/api";
 
 export const uploadDataset = (file: File, name?: string): Promise<DatasetUploadResponse> => {
@@ -50,6 +52,28 @@ export const getDatasetProfile = (datasetId: string): Promise<DatasetProfile> =>
 
 export const getDatasetVersions = (datasetId: string): Promise<DatasetVersionsResponse> =>
   apiClient.get(`/datasets/${datasetId}/versions`);
+
+export const getCleaningVersionCompareChannels = (
+  datasetId: string,
+  params: {
+    baseline_version_id: string;
+    compare_version_id: string;
+  }
+): Promise<CleaningVersionCompareChannelsData> =>
+  apiClient.get(`/datasets/${datasetId}/cleaning-version-compare/channels`, { params });
+
+export const getCleaningVersionCompare = (
+  datasetId: string,
+  params: {
+    baseline_version_id: string;
+    compare_version_id: string;
+    channel: string;
+    max_points?: number;
+  }
+): Promise<CleaningVersionCompareData> =>
+  apiClient.get(`/datasets/${datasetId}/cleaning-version-compare`, {
+    params: { ...params, max_points: params.max_points ?? 10_000 },
+  });
 
 export const getDelaySourceVersions = (datasetId: string): Promise<DelaySourceVersionsResponse> =>
   apiClient.get(`/datasets/${datasetId}/delay-sources`);

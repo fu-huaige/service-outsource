@@ -24,6 +24,8 @@ vi.mock("../../src/api/datasets", () => ({
   getDatasetDetail: vi.fn(),
   getDatasetVersions: vi.fn(),
   listDatasets: vi.fn(),
+  getCleaningVersionCompareChannels: vi.fn(),
+  getCleaningVersionCompare: vi.fn(),
 }));
 vi.mock("vue-router", () => ({
   useRoute: () => routeState,
@@ -62,6 +64,12 @@ const ChartContainerStub = defineComponent({
   },
 });
 
+const CleaningVersionCompareWorkbenchStub = defineComponent({
+  name: "CleaningVersionCompareWorkbench",
+  props: ["dataset", "versions", "currentVersionId"],
+  template: '<div data-test="cleaning-version-compare-stub" />',
+});
+
 const stubs = {
   "el-form": { template: "<form><slot /></form>" },
   "el-form-item": { props: ["label"], template: "<div>{{ label }}<slot /></div>" },
@@ -83,6 +91,7 @@ const stubs = {
   "el-alert": { props: ["title"], template: "<div>{{ title }}<slot /></div>" },
   "el-popover": ElPopoverStub,
   ChartContainer: ChartContainerStub,
+  CleaningVersionCompareWorkbench: CleaningVersionCompareWorkbenchStub,
   Operation: true,
   MagicStick: true,
   DataAnalysis: true,
@@ -222,6 +231,16 @@ describe("CleaningView request contract", () => {
     chartGetSize.mockReturnValue({ width: 640, height: 420 });
     routeState.query = { dataset_id: datasetId, version_id: versionId };
     setupApi();
+  });
+
+  it("mounts the additive version compare workbench with existing dataset context", async () => {
+    const wrapper = mount(CleaningView, { global: { plugins: [createPinia()], stubs } });
+    await flushPromises();
+
+    const workbench = wrapper.getComponent(CleaningVersionCompareWorkbenchStub);
+    expect(workbench.props("dataset")).toEqual(expect.objectContaining({ id: datasetId }));
+    expect(workbench.props("versions")).toHaveLength(4);
+    expect(workbench.props("currentVersionId")).toBe(versionId);
   });
 
   it("shows full lineage eligibility and serializes the selected source with canonical API fields", async () => {

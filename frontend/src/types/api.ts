@@ -437,6 +437,144 @@ export interface CleaningChangeSummary {
   breakdown_status?: "not_recorded";
 }
 
+export type CleaningVersionRelation =
+  | "SAME_VERSION"
+  | "DIRECT_PARENT"
+  | "ANCESTOR_DESCENDANT"
+  | "SIBLING"
+  | "UNRELATED_WITHIN_DATASET";
+
+export type CleaningVersionDirection =
+  | "BASELINE_TO_COMPARE"
+  | "COMPARE_TO_BASELINE"
+  | "NONE";
+
+export type VersionDifferenceKind =
+  | "VALUE_CHANGED"
+  | "POINT_ADDED"
+  | "POINT_REMOVED"
+  | "AMBIGUOUS_ALIGNMENT";
+
+export interface CleaningVersionCompareChannelOption {
+  name: string;
+  baseline_inferred_type: "float" | "integer";
+  compare_inferred_type: "float" | "integer";
+  unit: string | null;
+}
+
+export interface CleaningVersionCompareChannelsData {
+  dataset_id: string;
+  baseline_version_id: string;
+  compare_version_id: string;
+  channels: CleaningVersionCompareChannelOption[];
+  warnings: string[];
+}
+
+export interface VersionCompareRef {
+  version_id: string;
+  name: string;
+  operation_name: string;
+  parent_version_id: string | null;
+  created_at: string;
+  row_count: number;
+  column_count: number;
+  sha256: string;
+}
+
+export interface VersionCompareChannel {
+  name: string;
+  inferred_type: "float" | "integer";
+  unit: string | null;
+}
+
+export interface VersionComparePoint {
+  timestamp: string;
+  occurrence_index: number;
+  value: number | null;
+}
+
+export interface VersionCompareSeries {
+  input_point_count: number;
+  returned_point_count: number;
+  projected: boolean;
+  points: VersionComparePoint[];
+}
+
+export interface VersionDifferencePoint {
+  timestamp: string;
+  difference_kind: VersionDifferenceKind;
+  baseline_value: number | null;
+  compare_value: number | null;
+  absolute_delta: number | null;
+  baseline_occurrences: VersionComparePoint[];
+  compare_occurrences: VersionComparePoint[];
+}
+
+export interface GenericDiffSummary {
+  scope: "selected_channel";
+  baseline_point_count: number;
+  compare_point_count: number;
+  unique_matched_timestamps: number;
+  unchanged_values: number;
+  changed_values: number;
+  added_points: number;
+  removed_points: number;
+  ambiguous_timestamp_groups: number;
+  baseline_duplicate_occurrences: number;
+  compare_duplicate_occurrences: number;
+  contains_null_transitions: boolean;
+}
+
+export interface DirectDerivationSummary {
+  from_version_id: string;
+  to_version_id: string;
+  evidence_source: "persisted" | "replayed" | "legacy_total_only";
+  scope: "all_numeric_columns";
+  changes: Record<string, unknown>;
+}
+
+export interface ConvergenceEvidence {
+  version_id: string;
+  processing_run_id: string;
+  occurred_at: string;
+  no_op: true;
+  converged: true;
+  effective_version_id: string;
+  unique_changed_cells: 0;
+  parameters: Record<string, unknown>;
+}
+
+export interface VersionConvergenceEvidence {
+  baseline: ConvergenceEvidence | null;
+  compare: ConvergenceEvidence | null;
+}
+
+export interface ProjectionMetadata {
+  applied: boolean;
+  max_points: number;
+  strategy: "none" | "evenly_spaced_index_with_endpoints";
+  diff_computed_before_projection: true;
+}
+
+export interface CleaningVersionCompareData {
+  dataset_id: string;
+  baseline: VersionCompareRef;
+  compare: VersionCompareRef;
+  relation: CleaningVersionRelation;
+  direction: CleaningVersionDirection;
+  channel: VersionCompareChannel;
+  baseline_series: VersionCompareSeries;
+  compare_series: VersionCompareSeries;
+  difference_points: VersionDifferencePoint[];
+  difference_points_truncated: boolean;
+  generic_diff_summary: GenericDiffSummary;
+  direct_derivation_summary: DirectDerivationSummary | null;
+  convergence_evidence: VersionConvergenceEvidence;
+  artifacts_identical: boolean;
+  projection: ProjectionMetadata;
+  warnings: string[];
+}
+
 export interface SegmentItem {
   segment_id: string;
   start_index: number;

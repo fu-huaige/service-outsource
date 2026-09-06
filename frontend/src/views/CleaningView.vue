@@ -284,6 +284,12 @@
       </div>
     </section>
 
+    <CleaningVersionCompareWorkbench
+      :dataset="sourceDataset"
+      :versions="versionNodes"
+      :current-version-id="selectedVersionId"
+    />
+
     <!-- FORMAT 1: Bottom 3-Card Telemetry Triage Strip (底部修复三联卡) -->
     <div class="triage-cards-grid">
       <div class="triage-card industrial-card">
@@ -318,6 +324,7 @@ import { ref, reactive, computed, nextTick, onMounted, watch } from "vue";
 import { useRoute } from "vue-router";
 import { Operation, MagicStick, DataAnalysis } from "@element-plus/icons-vue";
 import ChartContainer from "../components/ChartContainer.vue";
+import CleaningVersionCompareWorkbench from "../components/cleaning/CleaningVersionCompareWorkbench.vue";
 import VersionLineagePicker from "../components/versioning/VersionLineagePicker.vue";
 import { cleanDataset } from "../api/preprocessing";
 import { getDatasetDetail, getDatasetVersions, listDatasets } from "../api/datasets";
