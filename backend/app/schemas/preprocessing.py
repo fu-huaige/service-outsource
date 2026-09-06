@@ -39,6 +39,9 @@ class CleanSeries(Schema):
     raw_series: list[float | None]
     cleaned_series: list[float | None]
     replaced_indices: list[int] = Field(default_factory=list)
+    interpolation_changed_indices: list[int] = Field(default_factory=list)
+    outlier_replacement_indices: list[int] = Field(default_factory=list)
+    smoothing_changed_indices: list[int] = Field(default_factory=list)
 
 
 class CleanData(Schema):
@@ -56,6 +59,7 @@ class CleanData(Schema):
     # column (or the first numeric column when no output role exists).
     dataset_id: UUID | None = None
     new_version_id: UUID | None = None
+    primary_column: str
     raw_series: list[float | None] = Field(default_factory=list)
     cleaned_series: list[float | None] = Field(default_factory=list)
     replaced_indices: list[int] = Field(default_factory=list)

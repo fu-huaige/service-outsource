@@ -72,18 +72,53 @@ const props = defineProps<{
   options: ChartOption;
   height?: string;
 }>();
+const emit = defineEmits<{
+  chartClick: [params: unknown];
+  chartViewportChange: [];
+}>();
 
 const chartRef = ref<HTMLDivElement | null>(null);
 let chartInstance: echarts.ECharts | null = null;
+
+const handleChartClick = (params: unknown) => {
+  emit("chartClick", params);
+};
+
+type ChartAction = Parameters<echarts.ECharts["dispatchAction"]>[0];
+type CoordinateFinder = Parameters<echarts.ECharts["containPixel"]>[0];
+
+const dispatchAction = (action: ChartAction) => {
+  chartInstance?.dispatchAction(action);
+};
+
+const convertToPixel = (finder: CoordinateFinder, value: unknown) =>
+  chartInstance?.convertToPixel(finder, value as never) ?? null;
+
+const containPixel = (finder: CoordinateFinder, value: number[]) =>
+  chartInstance?.containPixel(finder, value) ?? false;
+
+const getSize = () => ({
+  width: chartInstance?.getWidth() ?? 0,
+  height: chartInstance?.getHeight() ?? 0,
+});
+
+const handleViewportChange = () => {
+  emit("chartViewportChange");
+};
+
+defineExpose({ dispatchAction, convertToPixel, containPixel, getSize });
 
 const initChart = () => {
   if (!chartRef.value) return;
   chartInstance = echarts.init(chartRef.value);
   chartInstance.setOption(props.options);
+  chartInstance.on("click", handleChartClick);
+  chartInstance.on("datazoom", handleViewportChange);
 };
 
 const handleResize = () => {
   chartInstance?.resize();
+  handleViewportChange();
 };
 
 watch(
@@ -107,6 +142,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener("resize", handleResize);
+  chartInstance?.off("click", handleChartClick);
+  chartInstance?.off("datazoom", handleViewportChange);
   chartInstance?.dispose();
 });
 </script>

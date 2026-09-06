@@ -398,8 +398,10 @@ export interface CleanResponse {
   converged: boolean;
   reused_existing_version: boolean;
   processing_run_id?: string | null;
-  raw_series: number[];
-  cleaned_series: number[];
+  series: CleanSeries[];
+  primary_column: string;
+  raw_series: Array<number | null>;
+  cleaned_series: Array<number | null>;
   replaced_indices: number[];
   total_cleaned_points: number;
   warnings?: string[];
@@ -407,6 +409,17 @@ export interface CleanResponse {
     changes?: CleaningChangeSummary;
     [key: string]: unknown;
   };
+}
+
+export interface CleanSeries {
+  column: string;
+  timestamps: string[];
+  raw_series: Array<number | null>;
+  cleaned_series: Array<number | null>;
+  replaced_indices: number[];
+  interpolation_changed_indices: number[];
+  outlier_replacement_indices: number[];
+  smoothing_changed_indices: number[];
 }
 
 export interface CleaningChangeSummary {

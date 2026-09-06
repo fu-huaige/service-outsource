@@ -694,6 +694,7 @@ def _clean_data(
         series=series,
         dataset_id=dataset_id,
         new_version_id=derived_version_id,
+        primary_column=output_column,
         processing_run_id=processing_run_id,
         raw_series=selected.raw_series,
         cleaned_series=selected.cleaned_series,
@@ -740,20 +741,33 @@ def _series_projection(result: CleaningResult) -> tuple[list[CleanSeries], int]:
     indices = list(range(0, total, factor))
     if indices and indices[-1] != total - 1:
         indices.append(total - 1)
+
+    def project_indices(source_indices: Sequence[int]) -> list[int]:
+        changed = set(source_indices)
+        return [
+            projected_index
+            for projected_index, source_index in enumerate(indices)
+            if source_index in changed
+        ]
+
     series: list[CleanSeries] = []
     for column, cleaned in result.cleaned_numeric.items():
-        changed = set(result.changed_indices[column])
         series.append(
             CleanSeries(
                 column=column,
                 timestamps=[result.timestamps[index] for index in indices],
                 raw_series=[result.raw_numeric[column][index] for index in indices],
                 cleaned_series=[cleaned[index] for index in indices],
-                replaced_indices=[
-                    projected_index
-                    for projected_index, source_index in enumerate(indices)
-                    if source_index in changed
-                ],
+                replaced_indices=project_indices(result.changed_indices[column]),
+                interpolation_changed_indices=project_indices(
+                    result.interpolation_changed_indices[column]
+                ),
+                outlier_replacement_indices=project_indices(
+                    result.outlier_replacement_indices[column]
+                ),
+                smoothing_changed_indices=project_indices(
+                    result.smoothing_changed_indices[column]
+                ),
             )
         )
     return series, factor

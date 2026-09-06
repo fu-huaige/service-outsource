@@ -166,6 +166,29 @@
           <el-icon><DataAnalysis /></el-icon>
           <span>多通道时序规整波形对比 (RAW VS CLEANED)</span>
         </div>
+        <div v-if="selectedChartSeries" class="chart-channel-control">
+          <label for="cleaning-chart-channel">观察通道</label>
+          <el-select
+            id="cleaning-chart-channel"
+            v-model="selectedChartColumn"
+            data-test="cleaning-chart-channel-select"
+            size="small"
+            style="width: 150px"
+          >
+            <el-option
+              v-for="series in cleanedData?.series ?? []"
+              :key="series.column"
+              :label="series.column"
+              :value="series.column"
+            />
+          </el-select>
+          <el-button
+            data-test="cleaning-reset-zoom"
+            size="small"
+            plain
+            @click="resetChartZoom"
+          >重置视图</el-button>
+        </div>
         <div class="header-pills" v-if="cleanedData">
           <el-tag
             v-if="cleanedData.reused_existing_version"
@@ -198,7 +221,58 @@
           :closable="false"
           show-icon
         />
-        <ChartContainer :options="compareChartOptions" height="380px" />
+        <div class="cleaning-chart-stage">
+          <ChartContainer
+            ref="compareChartRef"
+            :options="compareChartOptions"
+            height="420px"
+            @chart-click="handleChartClick"
+            @chart-viewport-change="updateRepairDetailPosition"
+          />
+          <aside
+            v-if="selectedRepairPoint"
+            ref="repairDetailCardRef"
+            class="repair-detail-card"
+            :class="{ 'is-anchor-hidden': !repairDetailPosition }"
+            :style="repairDetailCardStyle"
+            data-test="repair-detail-card"
+            :data-horizontal-placement="repairDetailPosition?.horizontal ?? ''"
+            :data-vertical-placement="repairDetailPosition?.vertical ?? ''"
+            :aria-hidden="!repairDetailPosition"
+            aria-live="polite"
+          >
+            <div class="repair-detail-card__header">
+              <div>
+                <span class="repair-detail-card__eyebrow">REPAIR EVIDENCE</span>
+                <h4>修复详情</h4>
+              </div>
+              <button
+                type="button"
+                class="repair-detail-card__close"
+                data-test="repair-detail-close"
+                aria-label="关闭修复详情"
+                @click="clearSelectedRepair"
+              >×</button>
+            </div>
+            <strong class="repair-detail-card__category">{{ selectedRepairTitle }}</strong>
+            <dl class="repair-detail-card__fields">
+              <div><dt>通道</dt><dd>{{ selectedRepairPoint.channel }}</dd></div>
+              <div><dt>时间</dt><dd>{{ formatTooltipTimestamp(selectedRepairPoint.timestamp) }}</dd></div>
+              <div><dt>处理前</dt><dd>{{ formatChartValue(selectedRepairPoint.rawValue) }}</dd></div>
+              <div class="repair-detail-card__arrow" aria-hidden="true">↓</div>
+              <div><dt>处理后</dt><dd>{{ formatChartValue(selectedRepairPoint.cleanedValue) }}</dd></div>
+            </dl>
+            <div class="repair-detail-card__types">
+              <span>修复类型</span>
+              <ul>
+                <li v-for="type in selectedRepairPoint.repairTypes" :key="type">
+                  <i aria-hidden="true">{{ REPAIR_TYPE_SYMBOLS[type] }}</i>
+                  {{ REPAIR_TYPE_LABELS[type] }}
+                </li>
+              </ul>
+            </div>
+          </aside>
+        </div>
       </div>
 
       <div class="clean-empty-state" v-else>
@@ -240,7 +314,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from "vue";
+import { ref, reactive, computed, nextTick, onMounted, watch } from "vue";
 import { useRoute } from "vue-router";
 import { Operation, MagicStick, DataAnalysis } from "@element-plus/icons-vue";
 import ChartContainer from "../components/ChartContainer.vue";
@@ -273,6 +347,27 @@ const datasetOptions = ref<DatasetItem[]>([]);
 const selectedDatasetId = ref<string | null>(null);
 const versionNodes = ref<DatasetVersionNode[]>([]);
 const selectedVersionId = ref<string | null>(null);
+const selectedChartColumn = ref<string | null>(null);
+type ChartAction = {
+  type: string;
+  seriesId?: string;
+  dataIndex?: number;
+  start?: number;
+  end?: number;
+};
+type CoordinateFinder = {
+  gridIndex?: number;
+  xAxisIndex?: number;
+  yAxisIndex?: number;
+};
+type ChartContainerExpose = {
+  dispatchAction: (action: ChartAction) => void;
+  convertToPixel: (finder: CoordinateFinder, value: unknown) => number | number[] | null;
+  containPixel: (finder: CoordinateFinder, value: number[]) => boolean;
+  getSize: () => { width: number; height: number };
+};
+const compareChartRef = ref<ChartContainerExpose | null>(null);
+const repairDetailCardRef = ref<HTMLElement | null>(null);
 const rememberedSourceByDataset = new Map<string, string>();
 const contextError = ref("");
 const errorMessage = ref("");
@@ -294,6 +389,15 @@ const queryValue = (name: "dataset_id" | "version_id") => {
 const sourceVersion = computed(
   () => versionNodes.value.find((node) => node.id === selectedVersionId.value) ?? null
 );
+const selectedChartSeries = computed(() => {
+  const response = cleanedData.value;
+  if (!response) return null;
+  const series = response.series ?? [];
+  return series.find((item) => item.column === selectedChartColumn.value)
+    ?? series.find((item) => item.column === response.primary_column)
+    ?? series[0]
+    ?? null;
+});
 const selectedParent = computed(() => {
   const parentId = sourceVersion.value?.parent_version_id;
   return parentId
@@ -321,8 +425,10 @@ const cleaningDisabledReason = (version: DatasetVersionNode) => {
 };
 
 const clearSourceContext = () => {
+  clearSelectedRepair();
   versionNodes.value = [];
   selectedVersionId.value = null;
+  selectedChartColumn.value = null;
   cleanedData.value = null;
   errorMessage.value = "";
   validationIssues.value = [];
@@ -331,8 +437,10 @@ const clearSourceContext = () => {
 const handleVersionSelect = (versionId: string) => {
   const version = versionNodes.value.find((node) => node.id === versionId);
   if (!version || !isCleaningEligibleVersion(version) || !selectedDatasetId.value) return;
+  clearSelectedRepair();
   selectedVersionId.value = versionId;
   rememberedSourceByDataset.set(selectedDatasetId.value, versionId);
+  selectedChartColumn.value = null;
   cleanedData.value = null;
   errorMessage.value = "";
   validationIssues.value = [];
@@ -472,6 +580,7 @@ const handleClean = async () => {
     };
     const res = await cleanDataset(request);
     cleanedData.value = res;
+    selectedChartColumn.value = res.primary_column ?? res.series?.[0]?.column ?? null;
     await refreshDatasetContextAfterClean(datasetId, res.effective_version_id);
     if (res.reused_existing_version) {
       ElMessage.success("相同清洗结果已存在，已复用现有数据版本。");
@@ -494,32 +603,493 @@ const handleClean = async () => {
   }
 };
 
-const compareChartOptions = computed(() => {
-  if (!cleanedData.value) return {};
-  const xData = Array.from({ length: cleanedData.value.raw_series.length }, (_, i) => `${i}s`);
+const REPAIR_TYPE_LABELS = {
+  interpolation: "插值填补",
+  outlier: "异常替换",
+  smoothing: "平滑调整",
+} as const;
+
+type RepairType = keyof typeof REPAIR_TYPE_LABELS;
+
+const REPAIR_TYPE_SYMBOLS: Record<RepairType, string> = {
+  interpolation: "●",
+  outlier: "◆",
+  smoothing: "▲",
+};
+
+type RepairMarkerCategory = RepairType | "combined";
+
+type RepairMarkerDatum = {
+  value: [string, number];
+  repairPoint: true;
+  projectedIndex: number;
+  repairTypes: RepairType[];
+  markerCategory: RepairMarkerCategory;
+  visualSeriesId: string;
+  visualDataIndex: number;
+};
+
+type SelectedRepairPoint = {
+  channel: string;
+  projectedIndex: number;
+  timestamp: string;
+  rawValue: number | null;
+  cleanedValue: number | null;
+  repairTypes: RepairType[];
+  markerCategory: RepairMarkerCategory;
+  seriesId: string;
+  dataIndex: number;
+};
+
+type ChartClickEvent = {
+  seriesId?: string;
+  dataIndex?: number;
+  data?: unknown;
+};
+
+type RepairDetailPosition = {
+  left: number;
+  top: number;
+  horizontal: "left" | "right";
+  vertical: "above" | "below";
+};
+
+const REPAIR_VISUAL_SERIES_IDS: Record<RepairMarkerCategory, string> = {
+  interpolation: "cleaning-repair-interpolation",
+  outlier: "cleaning-repair-outlier",
+  smoothing: "cleaning-repair-smoothing",
+  combined: "cleaning-repair-combined",
+};
+const REPAIR_HIT_AREA_SERIES_ID = "cleaning-repair-hit-area";
+const REPAIR_SERIES_IDS = new Set([
+  ...Object.values(REPAIR_VISUAL_SERIES_IDS),
+  REPAIR_HIT_AREA_SERIES_ID,
+]);
+const REPAIR_CARD_GAP = 16;
+const REPAIR_CARD_INSET = 8;
+const REPAIR_CARD_FALLBACK_WIDTH = 252;
+const REPAIR_CARD_FALLBACK_HEIGHT = 238;
+const selectedRepairPoint = ref<SelectedRepairPoint | null>(null);
+const repairDetailPosition = ref<RepairDetailPosition | null>(null);
+let repairPositionRequestId = 0;
+const selectedRepairTitle = computed(() =>
+  selectedRepairPoint.value?.repairTypes
+    .map((type) => REPAIR_TYPE_LABELS[type])
+    .join(" · ") ?? ""
+);
+const repairDetailCardStyle = computed(() => {
+  const position = repairDetailPosition.value;
+  return position
+    ? { left: `${position.left}px`, top: `${position.top}px` }
+    : { left: "0", top: "0" };
+});
+
+const formatChartValue = (value: number | null | undefined) => {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "缺失";
+  const magnitude = Math.abs(value);
+  if (magnitude > 0 && magnitude < 0.0001) {
+    return value.toExponential(4).replace(/\.0+(?=e)/, "");
+  }
+  return value.toLocaleString("en-US", {
+    useGrouping: false,
+    maximumFractionDigits: 4,
+  });
+};
+
+const formatAxisTimestamp = (timestamp: string) => {
+  const match = timestamp.match(/[T ](\d{2}:\d{2}:\d{2})/);
+  return match?.[1] ?? timestamp;
+};
+
+const formatTooltipTimestamp = (timestamp: string) => {
+  const match = timestamp.replace("T", " ").match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
+  return match?.[1] ?? timestamp.replace("T", " ");
+};
+
+const repairTypesByIndex = (series: NonNullable<typeof selectedChartSeries.value>) => {
+  const result = new Map<number, RepairType[]>();
+  const add = (indices: number[], type: RepairType) => {
+    for (const index of indices) {
+      if (index < 0 || index >= series.timestamps.length) continue;
+      const types = result.get(index) ?? [];
+      if (!types.includes(type)) types.push(type);
+      result.set(index, types);
+    }
+  };
+  add(series.interpolation_changed_indices, "interpolation");
+  add(series.outlier_replacement_indices, "outlier");
+  add(series.smoothing_changed_indices, "smoothing");
+  return result;
+};
+
+const isRepairMarkerDatum = (value: unknown): value is RepairMarkerDatum => {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<RepairMarkerDatum>;
+  return candidate.repairPoint === true
+    && Number.isInteger(candidate.projectedIndex)
+    && Array.isArray(candidate.repairTypes)
+    && candidate.repairTypes.every((type) => type in REPAIR_TYPE_LABELS)
+    && typeof candidate.markerCategory === "string"
+    && typeof candidate.visualSeriesId === "string"
+    && Number.isInteger(candidate.visualDataIndex);
+};
+
+const clamp = (value: number, minimum: number, maximum: number) =>
+  Math.min(Math.max(value, minimum), Math.max(minimum, maximum));
+
+const placeRepairDetailCard = (
+  point: number[],
+  chartSize: { width: number; height: number },
+  cardSize: { width: number; height: number }
+): RepairDetailPosition => {
+  const horizontal: RepairDetailPosition["horizontal"] = point[0] < chartSize.width / 2
+    ? "right"
+    : "left";
+  const preferredLeft = horizontal === "right"
+    ? point[0] + REPAIR_CARD_GAP
+    : point[0] - cardSize.width - REPAIR_CARD_GAP;
+  const aboveTop = point[1] - cardSize.height - REPAIR_CARD_GAP;
+  const vertical: RepairDetailPosition["vertical"] = aboveTop >= REPAIR_CARD_INSET
+    ? "above"
+    : "below";
+  const preferredTop = vertical === "above"
+    ? aboveTop
+    : point[1] + REPAIR_CARD_GAP;
 
   return {
-    tooltip: { trigger: "axis" },
-    legend: { data: ["原始序列 (Raw)", "清洗后序列 (Cleaned)"], top: "2%" },
-    grid: { left: "3%", right: "4%", bottom: "8%", top: "14%", containLabel: true },
-    xAxis: { type: "category", data: xData },
+    left: clamp(
+      preferredLeft,
+      REPAIR_CARD_INSET,
+      chartSize.width - cardSize.width - REPAIR_CARD_INSET
+    ),
+    top: clamp(
+      preferredTop,
+      REPAIR_CARD_INSET,
+      chartSize.height - cardSize.height - REPAIR_CARD_INSET
+    ),
+    horizontal,
+    vertical,
+  };
+};
+
+const updateRepairDetailPosition = async () => {
+  const requestId = ++repairPositionRequestId;
+  const selected = selectedRepairPoint.value;
+  if (!selected) {
+    repairDetailPosition.value = null;
+    return;
+  }
+
+  await nextTick();
+  if (requestId !== repairPositionRequestId || selected !== selectedRepairPoint.value) return;
+
+  const chart = compareChartRef.value;
+  const card = repairDetailCardRef.value;
+  if (!chart || !card || selected.cleanedValue === null) {
+    repairDetailPosition.value = null;
+    return;
+  }
+  const converted = chart.convertToPixel(
+    { xAxisIndex: 0, yAxisIndex: 0 },
+    [selected.timestamp, selected.cleanedValue]
+  );
+  if (
+    !Array.isArray(converted)
+    || converted.length < 2
+    || !converted.every((coordinate) => Number.isFinite(coordinate))
+    || !chart.containPixel({ gridIndex: 0 }, converted)
+  ) {
+    repairDetailPosition.value = null;
+    return;
+  }
+
+  const chartSize = chart.getSize();
+  const cardRect = card.getBoundingClientRect();
+  if (chartSize.width <= 0 || chartSize.height <= 0) {
+    repairDetailPosition.value = null;
+    return;
+  }
+  repairDetailPosition.value = placeRepairDetailCard(converted, chartSize, {
+    width: cardRect.width || REPAIR_CARD_FALLBACK_WIDTH,
+    height: cardRect.height || REPAIR_CARD_FALLBACK_HEIGHT,
+  });
+};
+
+const dispatchRepairState = (
+  type: "highlight" | "downplay",
+  repairPoint: SelectedRepairPoint
+) => {
+  compareChartRef.value?.dispatchAction({
+    type,
+    seriesId: repairPoint.seriesId,
+    dataIndex: repairPoint.dataIndex,
+  });
+};
+
+const clearSelectedRepair = () => {
+  const previous = selectedRepairPoint.value;
+  if (previous) dispatchRepairState("downplay", previous);
+  ++repairPositionRequestId;
+  selectedRepairPoint.value = null;
+  repairDetailPosition.value = null;
+};
+
+const handleChartClick = (params: unknown) => {
+  const event = params as ChartClickEvent;
+  if (
+    typeof event.seriesId !== "string"
+    || !REPAIR_SERIES_IDS.has(event.seriesId)
+    || typeof event.dataIndex !== "number"
+    || !isRepairMarkerDatum(event.data)
+  ) return;
+
+  const selected = selectedChartSeries.value;
+  const index = event.data.projectedIndex;
+  if (!selected || index < 0 || index >= selected.timestamps.length) return;
+
+  const previous = selectedRepairPoint.value;
+  if (previous) dispatchRepairState("downplay", previous);
+
+  const next: SelectedRepairPoint = {
+    channel: selected.column,
+    projectedIndex: index,
+    timestamp: selected.timestamps[index],
+    rawValue: selected.raw_series[index] ?? null,
+    cleanedValue: selected.cleaned_series[index] ?? null,
+    repairTypes: [...event.data.repairTypes],
+    markerCategory: event.data.markerCategory,
+    seriesId: event.data.visualSeriesId,
+    dataIndex: event.data.visualDataIndex,
+  };
+  repairDetailPosition.value = null;
+  selectedRepairPoint.value = next;
+  dispatchRepairState("highlight", next);
+  void updateRepairDetailPosition();
+};
+
+const resetChartZoom = () => {
+  compareChartRef.value?.dispatchAction({ type: "dataZoom", start: 0, end: 100 });
+  void updateRepairDetailPosition();
+};
+
+watch(selectedChartColumn, (column, previousColumn) => {
+  if (column !== previousColumn && selectedRepairPoint.value) clearSelectedRepair();
+});
+
+const compareChartOptions = computed(() => {
+  const selected = selectedChartSeries.value;
+  if (!selected) return {};
+  const repairs = repairTypesByIndex(selected);
+  const markerData: Record<RepairMarkerCategory, RepairMarkerDatum[]> = {
+    interpolation: [],
+    outlier: [],
+    smoothing: [],
+    combined: [],
+  };
+  for (const [index, repairTypes] of repairs) {
+    const cleanedValue = selected.cleaned_series[index];
+    if (cleanedValue === null) continue;
+    const markerType: RepairType | "combined" = repairTypes.length > 1
+      ? "combined"
+      : repairTypes[0] ?? "combined";
+    const visualDataIndex = markerData[markerType].length;
+    markerData[markerType].push({
+      value: [selected.timestamps[index], cleanedValue],
+      repairPoint: true,
+      projectedIndex: index,
+      repairTypes: [...repairTypes],
+      markerCategory: markerType,
+      visualSeriesId: REPAIR_VISUAL_SERIES_IDS[markerType],
+      visualDataIndex,
+    });
+  }
+  const repairHitAreaData = Object.values(markerData).flat();
+
+  return {
+    tooltip: {
+      trigger: "axis",
+      backgroundColor: "rgba(248, 248, 244, 0.97)",
+      borderColor: "#C5CEC6",
+      borderWidth: 1,
+      padding: [10, 12],
+      textStyle: { color: "#34443A", fontSize: 12, lineHeight: 20 },
+      formatter: (params: unknown) => {
+        const first = (Array.isArray(params) ? params[0] : params) as { axisValue?: unknown } | undefined;
+        const timestamp = typeof first?.axisValue === "string" ? first.axisValue : "";
+        const index = selected.timestamps.indexOf(timestamp);
+        const repairTypes = index >= 0 ? repairs.get(index) ?? [] : [];
+        const repairLine = repairTypes.length
+          ? `<br/>修复：<br/>${repairTypes.map((type) => `· ${REPAIR_TYPE_LABELS[type]}`).join("<br/>")}`
+          : "";
+        const raw = index >= 0 ? selected.raw_series[index] : null;
+        const cleaned = index >= 0 ? selected.cleaned_series[index] : null;
+        return [
+          `通道：${selected.column}`,
+          `时间：${formatTooltipTimestamp(timestamp)}`,
+          `处理前：${formatChartValue(raw)}`,
+          `处理后：${formatChartValue(cleaned)}`,
+        ].join("<br/>") + repairLine;
+      },
+    },
+    legend: {
+      data: ["原始序列 Raw", "清洗后序列 Cleaned", "插值填补", "异常替换", "平滑调整"],
+      top: 2,
+      left: "center",
+      itemGap: 18,
+      itemWidth: 20,
+      itemHeight: 9,
+      textStyle: { color: "#536158", fontSize: 11 },
+    },
+    grid: { left: "3%", right: "4%", bottom: 72, top: "16%", containLabel: true },
+    dataZoom: [
+      {
+        id: "cleaning-inside-zoom",
+        type: "inside",
+        xAxisIndex: 0,
+        filterMode: "none",
+        zoomOnMouseWheel: "ctrl",
+        moveOnMouseWheel: false,
+        moveOnMouseMove: true,
+        preventDefaultMouseMove: false,
+      },
+      {
+        id: "cleaning-slider-zoom",
+        type: "slider",
+        xAxisIndex: 0,
+        filterMode: "none",
+        height: 18,
+        bottom: 8,
+        showDetail: false,
+        brushSelect: false,
+        backgroundColor: "#F2F5F1",
+        borderColor: "#CDD5CE",
+        fillerColor: "rgba(85, 117, 98, 0.18)",
+        dataBackground: {
+          lineStyle: { color: "#AEB9B0", opacity: 0.55 },
+          areaStyle: { color: "#E4E9E4", opacity: 0.45 },
+        },
+        selectedDataBackground: {
+          lineStyle: { color: "#667D6E", opacity: 0.8 },
+          areaStyle: { color: "#BFCBC1", opacity: 0.45 },
+        },
+        handleSize: "90%",
+        handleStyle: {
+          color: "#F8F9F6",
+          borderColor: "#738579",
+          borderWidth: 1,
+        },
+        moveHandleStyle: { color: "#85968A", opacity: 0.65 },
+      },
+    ],
+    xAxis: {
+      type: "category",
+      data: selected.timestamps,
+      axisLabel: { formatter: formatAxisTimestamp, hideOverlap: true },
+    },
     yAxis: { type: "value" },
     series: [
       {
-        name: "原始序列 (Raw)",
+        id: "cleaning-raw-line",
+        name: "原始序列 Raw",
         type: "line",
-        color: "#B8746E",
-        lineStyle: { type: "dashed", width: 1.5 },
-        data: cleanedData.value.raw_series,
+        xAxisIndex: 0,
+        color: "#A8665E",
+        lineStyle: { type: "dashed", width: 1.8, opacity: 0.72 },
+        symbol: "none",
+        z: 2,
+        data: selected.raw_series,
       },
       {
-        name: "清洗后序列 (Cleaned)",
+        id: "cleaning-cleaned-line",
+        name: "清洗后序列 Cleaned",
         type: "line",
-        color: "#6E9B69",
-        lineStyle: { width: 2.2 },
-        data: cleanedData.value.cleaned_series,
+        xAxisIndex: 0,
+        color: "#557562",
+        lineStyle: { width: 2.6 },
+        symbol: "none",
+        z: 3,
+        data: selected.cleaned_series,
+      },
+      {
+        id: REPAIR_VISUAL_SERIES_IDS.interpolation,
+        name: "插值填补",
+        type: "scatter",
+        xAxisIndex: 0,
+        symbol: "circle",
+        symbolSize: 8,
+        color: "#B5965D",
+        itemStyle: { borderColor: "#FAF8F1", borderWidth: 1.4 },
+        emphasis: {
+          scale: 1.35,
+          itemStyle: { borderColor: "#40564A", borderWidth: 2.5 },
+        },
+        z: 7,
+        data: markerData.interpolation,
+      },
+      {
+        id: REPAIR_VISUAL_SERIES_IDS.outlier,
+        name: "异常替换",
+        type: "scatter",
+        xAxisIndex: 0,
+        symbol: "diamond",
+        symbolSize: 11,
+        color: "#A76155",
+        itemStyle: { borderColor: "#FAF6F3", borderWidth: 1.4 },
+        emphasis: {
+          scale: 1.35,
+          itemStyle: { borderColor: "#40564A", borderWidth: 2.5 },
+        },
+        z: 8,
+        data: markerData.outlier,
+      },
+      {
+        id: REPAIR_VISUAL_SERIES_IDS.smoothing,
+        name: "平滑调整",
+        type: "scatter",
+        xAxisIndex: 0,
+        symbol: "triangle",
+        symbolSize: 9,
+        color: "#768A8D",
+        itemStyle: { borderColor: "#F4F7F6", borderWidth: 1.4 },
+        emphasis: {
+          scale: 1.35,
+          itemStyle: { borderColor: "#40564A", borderWidth: 2.5 },
+        },
+        z: 7,
+        data: markerData.smoothing,
+      },
+      {
+        id: REPAIR_VISUAL_SERIES_IDS.combined,
+        name: "组合修复",
+        type: "scatter",
+        xAxisIndex: 0,
+        symbol: "circle",
+        symbolSize: 12,
+        color: "#4E6759",
+        itemStyle: { borderColor: "#DCE4DD", borderWidth: 3 },
+        emphasis: {
+          scale: 1.3,
+          itemStyle: { borderColor: "#40564A", borderWidth: 4 },
+        },
+        z: 9,
+        data: markerData.combined,
+      },
+      {
+        id: REPAIR_HIT_AREA_SERIES_ID,
+        type: "scatter",
+        xAxisIndex: 0,
+        symbol: "circle",
+        symbolSize: 20,
+        silent: false,
+        legendHoverLink: false,
+        tooltip: { show: false },
+        itemStyle: { color: "rgba(0, 0, 0, 0.001)" },
+        emphasis: { disabled: true },
+        z: 20,
+        data: repairHitAreaData,
       },
     ],
+    animation: false,
   };
 });
 
@@ -792,6 +1362,161 @@ onMounted(() => {
   background: #ffffff;
   border-radius: 12px;
   margin-bottom: 0;
+}
+
+.chart-channel-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.chart-channel-control label {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.header-pills {
+  margin-left: 12px;
+}
+
+.cleaning-chart-stage {
+  position: relative;
+}
+
+.repair-detail-card {
+  position: absolute;
+  z-index: 12;
+  width: min(252px, calc(100% - 44px));
+  box-sizing: border-box;
+  padding: 14px 15px;
+  border: 1px solid #cbd5cc;
+  border-radius: 8px;
+  background: rgba(250, 250, 247, 0.96);
+  box-shadow: 0 8px 22px rgba(49, 65, 54, 0.13);
+  color: var(--text-primary);
+  backdrop-filter: blur(3px);
+}
+
+.repair-detail-card.is-anchor-hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.repair-detail-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.repair-detail-card__eyebrow {
+  display: block;
+  margin-bottom: 2px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  color: #65796b;
+}
+
+.repair-detail-card h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.repair-detail-card__close {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #748178;
+  font: 18px/1 var(--font-sans);
+  cursor: pointer;
+  place-items: center;
+}
+
+.repair-detail-card__close:hover,
+.repair-detail-card__close:focus-visible {
+  border-color: #c7d0c8;
+  background: #eef2ed;
+  color: #40564a;
+  outline: none;
+}
+
+.repair-detail-card__category {
+  display: block;
+  margin-top: 10px;
+  padding: 5px 8px;
+  border-left: 3px solid #73887a;
+  background: #eef3ed;
+  font-size: 12px;
+  font-weight: 650;
+  color: #40564a;
+}
+
+.repair-detail-card__fields {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0;
+}
+
+.repair-detail-card__fields > div:not(.repair-detail-card__arrow) {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px;
+}
+
+.repair-detail-card dt,
+.repair-detail-card__types > span {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.repair-detail-card dd {
+  overflow-wrap: anywhere;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #34443a;
+}
+
+.repair-detail-card__arrow {
+  padding-left: 55px;
+  color: #819087;
+  font-size: 11px;
+  line-height: 0.7;
+}
+
+.repair-detail-card__types {
+  padding-top: 10px;
+  border-top: 1px solid #dce3dc;
+}
+
+.repair-detail-card__types ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.repair-detail-card__types li {
+  font-size: 11px;
+  color: #45564b;
+}
+
+.repair-detail-card__types i {
+  margin-right: 3px;
+  color: #687d6f;
+  font-style: normal;
 }
 
 .clean-empty-state {

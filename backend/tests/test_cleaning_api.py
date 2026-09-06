@@ -161,6 +161,43 @@ class TestCleaningRoute:
         assert data["derived_version_id"] != version_id
         assert data["series"], "the response must carry the before/after series"
 
+    def test_clean_series_projects_classified_indices_on_the_same_grid(
+        self, client: TestClient
+    ) -> None:
+        version_id = upload(client, build_csv())
+        response = client.post(
+            "/api/v1/preprocessing/clean",
+            json={
+                "version_id": version_id,
+                "target_sample_period_seconds": 1.0,
+                "interpolation": "linear",
+                "anomaly_detector": "hampel",
+                "anomaly_strategy": "local_median",
+                "hampel_window": 5,
+                "smoothing": "moving_average",
+                "smoothing_window": 5,
+            },
+        )
+        assert response.status_code == 202, response.text
+        data = response.json()["data"]
+        assert any(item["column"] == data["primary_column"] for item in data["series"])
+        primary = next(item for item in data["series"] if item["column"] == "y")
+
+        assert primary["interpolation_changed_indices"]
+        assert primary["outlier_replacement_indices"]
+        assert primary["smoothing_changed_indices"]
+        assert set(primary["interpolation_changed_indices"]) & set(primary["smoothing_changed_indices"])
+
+        projected_length = len(primary["timestamps"])
+        assert projected_length == len(primary["raw_series"]) == len(primary["cleaned_series"])
+        classified = (
+            primary["interpolation_changed_indices"]
+            + primary["outlier_replacement_indices"]
+            + primary["smoothing_changed_indices"]
+        )
+        assert all(0 <= index < projected_length for index in classified)
+        assert set(classified).issubset(set(primary["replaced_indices"]))
+
     def test_first_zero_change_clean_certifies_stage_but_repeat_converges(
         self, client: TestClient
     ) -> None:

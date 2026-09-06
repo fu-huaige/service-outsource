@@ -35,11 +35,30 @@ const mockedCleanDataset = vi.mocked(cleanDataset);
 const mockedGetDatasetDetail = vi.mocked(getDatasetDetail);
 const mockedGetDatasetVersions = vi.mocked(getDatasetVersions);
 const mockedListDatasets = vi.mocked(listDatasets);
+const chartDispatchAction = vi.fn();
+const chartConvertToPixel = vi.fn();
+const chartContainPixel = vi.fn();
+const chartGetSize = vi.fn();
 
 const ElPopoverStub = defineComponent({
   name: "ElPopover",
   setup(_props, { slots }) {
     return () => h("div", [slots.reference?.(), slots.default?.()]);
+  },
+});
+
+const ChartContainerStub = defineComponent({
+  name: "ChartContainer",
+  props: { options: { type: Object, required: true } },
+  emits: ["chart-click", "chart-viewport-change"],
+  setup(_props, { expose }) {
+    expose({
+      dispatchAction: chartDispatchAction,
+      convertToPixel: chartConvertToPixel,
+      containPixel: chartContainPixel,
+      getSize: chartGetSize,
+    });
+    return () => h("div", { "data-test": "cleaning-chart" });
   },
 });
 
@@ -50,8 +69,12 @@ const stubs = {
   "el-input-number": true,
   "el-radio-group": { template: "<div><slot /></div>" },
   "el-radio": { template: "<label><slot /></label>" },
-  "el-select": { template: "<select><slot /></select>" },
-  "el-option": true,
+  "el-select": {
+    props: ["modelValue"],
+    emits: ["update:modelValue"],
+    template: "<select :value=\"modelValue\" @change=\"$emit('update:modelValue', $event.target.value)\"><slot /></select>",
+  },
+  "el-option": { props: ["label", "value"], template: "<option :value=\"value\">{{ label }}</option>" },
   "el-button": {
     props: ["disabled", "loading"],
     template: "<button :disabled=\"disabled || loading\" @click=\"$emit('click')\"><slot /></button>",
@@ -59,7 +82,7 @@ const stubs = {
   "el-tag": { template: "<span><slot /></span>" },
   "el-alert": { props: ["title"], template: "<div>{{ title }}<slot /></div>" },
   "el-popover": ElPopoverStub,
-  ChartContainer: true,
+  ChartContainer: ChartContainerStub,
   Operation: true,
   MagicStick: true,
   DataAnalysis: true,
@@ -137,9 +160,66 @@ function setupApi() {
   return { detail, versions };
 }
 
+const interactiveCleaningResponse = () => {
+  const timestamps = [
+    "2026-01-01T00:09:18Z",
+    "2026-01-01T00:09:19Z",
+    "2026-01-01T00:09:20Z",
+    "2026-01-01T00:09:21Z",
+    "2026-01-01T00:09:22Z",
+  ];
+  return {
+    timestamps,
+    response: {
+      dataset_id: datasetId,
+      source_version_id: versionId,
+      effective_version_id: cleanVersionId,
+      derived_version_id: cleanVersionId,
+      new_version_id: cleanVersionId,
+      created_new_version: true,
+      no_op: false,
+      converged: false,
+      reused_existing_version: false,
+      processing_run_id: "d13979a1-206e-4a8f-8e37-a22e12f6027d",
+      primary_column: "y",
+      raw_series: [1, null, 40.213881, 4, 5],
+      cleaned_series: [1, 2, 7.8326741, 4.25, 5.5],
+      replaced_indices: [1, 2, 3, 4],
+      series: [
+        {
+          column: "u1",
+          timestamps,
+          raw_series: [4, 5, 6, 7, 8],
+          cleaned_series: [4, 5, 6.5, 7, 8],
+          replaced_indices: [2],
+          interpolation_changed_indices: [],
+          outlier_replacement_indices: [2],
+          smoothing_changed_indices: [],
+        },
+        {
+          column: "y",
+          timestamps,
+          raw_series: [1, null, 40.213881, 4, 5],
+          cleaned_series: [1, 2, 7.8326741, 4.25, 5.5],
+          replaced_indices: [1, 2, 3, 4],
+          interpolation_changed_indices: [1, 4],
+          outlier_replacement_indices: [2, 4],
+          smoothing_changed_indices: [3, 4],
+        },
+      ],
+      total_cleaned_points: 4,
+      warnings: [],
+      summary: { changes: { count_unit: "cell", unique_changed_cells: 4 } },
+    },
+  };
+};
+
 describe("CleaningView request contract", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    chartConvertToPixel.mockReturnValue([120, 300]);
+    chartContainPixel.mockReturnValue(true);
+    chartGetSize.mockReturnValue({ width: 640, height: 420 });
     routeState.query = { dataset_id: datasetId, version_id: versionId };
     setupApi();
   });
@@ -186,6 +266,525 @@ describe("CleaningView request contract", () => {
       interpolation: "linear",
       anomaly_detector: "hampel",
       hampel_window: 5,
+    });
+  });
+
+  it("uses the backend primary series, real timestamps, and classified repair evidence", async () => {
+    const timestamps = [
+      "2026-01-01T00:09:18Z",
+      "2026-01-01T00:09:19Z",
+      "2026-01-01T00:09:20Z",
+      "2026-01-01T00:09:21Z",
+      "2026-01-01T00:09:22Z",
+    ];
+    mockedCleanDataset.mockResolvedValue({
+      dataset_id: datasetId,
+      source_version_id: versionId,
+      effective_version_id: cleanVersionId,
+      derived_version_id: cleanVersionId,
+      new_version_id: cleanVersionId,
+      created_new_version: true,
+      no_op: false,
+      converged: false,
+      reused_existing_version: false,
+      processing_run_id: "d13979a1-206e-4a8f-8e37-a22e12f6027d",
+      primary_column: "y",
+      raw_series: [1, null, 40.213881, 4, 5],
+      cleaned_series: [1, 2, 7.8326741, 4.25, 5.5],
+      replaced_indices: [1, 2, 3, 4],
+      series: [
+        {
+          column: "u1",
+          timestamps,
+          raw_series: [4, 5, 6, 7, 8],
+          cleaned_series: [4, 5, 6.5, 7, 8],
+          replaced_indices: [2],
+          interpolation_changed_indices: [],
+          outlier_replacement_indices: [2],
+          smoothing_changed_indices: [],
+        },
+        {
+          column: "y",
+          timestamps,
+          raw_series: [1, null, 40.213881, 4, 5],
+          cleaned_series: [1, 2, 7.8326741, 4.25, 5.5],
+          replaced_indices: [1, 2, 3, 4],
+          interpolation_changed_indices: [1, 4],
+          outlier_replacement_indices: [2],
+          smoothing_changed_indices: [3, 4],
+        },
+      ],
+      total_cleaned_points: 4,
+      warnings: [],
+      summary: { changes: { count_unit: "cell", unique_changed_cells: 4 } },
+    });
+    const wrapper = mount(CleaningView, { global: { plugins: [createPinia()], stubs } });
+    await flushPromises();
+    await wrapper.get("[data-test='clean-submit']").trigger("click");
+    await flushPromises();
+
+    const chart = wrapper.getComponent(ChartContainerStub);
+    const options = chart.props("options") as {
+      xAxis: { data: string[]; axisLabel: { formatter: (value: string) => string } };
+      dataZoom: Array<Record<string, unknown>>;
+      legend: { data: string[] };
+      series: Array<{
+        id: string;
+        name: string;
+        type: string;
+        xAxisIndex: number;
+        symbol?: string;
+        symbolSize?: number;
+        color?: string;
+        z?: number;
+        tooltip?: { show: boolean };
+        itemStyle?: Record<string, unknown>;
+        data: Array<Record<string, unknown>> | number[];
+      }>;
+      tooltip: { formatter: (params: unknown) => string };
+    };
+    expect(wrapper.get("[data-test='cleaning-chart-channel-select']").element.value).toBe("y");
+    expect(options.xAxis.data).toEqual(timestamps);
+    expect(options.xAxis.axisLabel.formatter(timestamps[2])).toBe("00:09:20");
+    expect(options.dataZoom).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "cleaning-inside-zoom",
+        type: "inside",
+        xAxisIndex: 0,
+        filterMode: "none",
+        zoomOnMouseWheel: "ctrl",
+        moveOnMouseWheel: false,
+      }),
+      expect.objectContaining({
+        id: "cleaning-slider-zoom",
+        type: "slider",
+        xAxisIndex: 0,
+        filterMode: "none",
+      }),
+    ]));
+    expect(options.series.every((item) => item.xAxisIndex === 0)).toBe(true);
+    expect(options.legend.data).toEqual([
+      "原始序列 Raw",
+      "清洗后序列 Cleaned",
+      "插值填补",
+      "异常替换",
+      "平滑调整",
+    ]);
+    expect(options.series).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "原始序列 Raw", type: "line" }),
+      expect.objectContaining({ name: "清洗后序列 Cleaned", type: "line" }),
+      expect.objectContaining({
+        id: "cleaning-repair-interpolation",
+        name: "插值填补",
+        symbol: "circle",
+        color: "#B5965D",
+        data: [expect.objectContaining({
+          value: [timestamps[1], 2],
+          repairPoint: true,
+          projectedIndex: 1,
+          repairTypes: ["interpolation"],
+          markerCategory: "interpolation",
+        })],
+      }),
+      expect.objectContaining({
+        id: "cleaning-repair-outlier",
+        name: "异常替换",
+        symbol: "diamond",
+        color: "#A76155",
+        data: [expect.objectContaining({
+          value: [timestamps[2], 7.8326741],
+          projectedIndex: 2,
+          repairTypes: ["outlier"],
+        })],
+      }),
+      expect.objectContaining({
+        id: "cleaning-repair-smoothing",
+        name: "平滑调整",
+        symbol: "triangle",
+        color: "#768A8D",
+        data: [expect.objectContaining({
+          value: [timestamps[3], 4.25],
+          projectedIndex: 3,
+          repairTypes: ["smoothing"],
+        })],
+      }),
+      expect.objectContaining({
+        id: "cleaning-repair-combined",
+        name: "组合修复",
+        symbol: "circle",
+        color: "#4E6759",
+        data: [expect.objectContaining({
+          value: [timestamps[4], 5.5],
+          projectedIndex: 4,
+          repairTypes: ["interpolation", "smoothing"],
+          markerCategory: "combined",
+        })],
+      }),
+    ]));
+    const visualMarkerIds = [
+      "cleaning-repair-interpolation",
+      "cleaning-repair-outlier",
+      "cleaning-repair-smoothing",
+      "cleaning-repair-combined",
+    ];
+    for (const seriesId of visualMarkerIds) {
+      const markerSeries = options.series.find((item) => item.id === seriesId);
+      expect(markerSeries?.z).toBeGreaterThan(3);
+      for (const [dataIndex, datum] of (markerSeries?.data ?? []).entries()) {
+        expect(datum).toEqual(expect.objectContaining({
+          repairPoint: true,
+          projectedIndex: expect.any(Number),
+          repairTypes: expect.any(Array),
+          markerCategory: expect.any(String),
+          visualSeriesId: seriesId,
+          visualDataIndex: dataIndex,
+        }));
+      }
+    }
+    const hitAreaSeries = options.series.find(
+      (item) => item.id === "cleaning-repair-hit-area"
+    );
+    expect(hitAreaSeries).toEqual(expect.objectContaining({
+      type: "scatter",
+      symbolSize: 20,
+      z: 20,
+      tooltip: { show: false },
+      itemStyle: { color: "rgba(0, 0, 0, 0.001)" },
+    }));
+    expect(hitAreaSeries?.data).toHaveLength(4);
+    expect(options.legend.data).not.toContain("cleaning-repair-hit-area");
+    expect(options.tooltip.formatter([{ axisValue: timestamps[1] }])).toContain(
+      "时间：2026-01-01 00:09:19<br/>处理前：缺失<br/>处理后：2<br/>修复：<br/>· 插值填补"
+    );
+    expect(options.tooltip.formatter([{ axisValue: timestamps[2] }])).toContain(
+      "处理前：40.2139<br/>处理后：7.8327<br/>修复：<br/>· 异常替换"
+    );
+    expect(options.tooltip.formatter([{ axisValue: timestamps[4] }])).toContain(
+      "修复：<br/>· 插值填补<br/>· 平滑调整"
+    );
+
+    await wrapper.get("[data-test='cleaning-chart-channel-select']").setValue("u1");
+    await flushPromises();
+    const switchedOptions = chart.props("options") as { series: Array<{ name: string; data: unknown }> };
+    expect(switchedOptions.series.find((item) => item.name === "异常替换")?.data).toEqual([
+      expect.objectContaining({ value: [timestamps[2], 6.5], projectedIndex: 2 }),
+    ]);
+  });
+
+  it("resets the shared x-axis zoom without requesting another clean", async () => {
+    const { response } = interactiveCleaningResponse();
+    mockedCleanDataset.mockResolvedValue(response as never);
+    const wrapper = mount(CleaningView, { global: { plugins: [createPinia()], stubs } });
+    await flushPromises();
+    await wrapper.get("[data-test='clean-submit']").trigger("click");
+    await flushPromises();
+
+    chartDispatchAction.mockClear();
+    await wrapper.get("[data-test='cleaning-reset-zoom']").trigger("click");
+
+    expect(chartDispatchAction).toHaveBeenCalledWith({
+      type: "dataZoom",
+      start: 0,
+      end: 100,
+    });
+    expect(mockedCleanDataset).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts every visual repair category and maps the transparent hit area to its visual marker", async () => {
+    const { response } = interactiveCleaningResponse();
+    mockedCleanDataset.mockResolvedValue(response as never);
+    const wrapper = mount(CleaningView, { global: { plugins: [createPinia()], stubs } });
+    await flushPromises();
+    await wrapper.get("[data-test='clean-submit']").trigger("click");
+    await flushPromises();
+
+    const chart = wrapper.getComponent(ChartContainerStub);
+    chart.vm.$emit("chart-click", {
+      seriesId: "cleaning-raw-line",
+      dataIndex: 1,
+      data: null,
+    });
+    chart.vm.$emit("chart-click", {
+      seriesId: "cleaning-cleaned-line",
+      dataIndex: 1,
+      data: 2,
+    });
+    await flushPromises();
+    expect(wrapper.find("[data-test='repair-detail-card']").exists()).toBe(false);
+
+    const options = chart.props("options") as {
+      series: Array<{ id: string; data: Array<Record<string, unknown>> }>;
+    };
+    const categoryIds = [
+      "cleaning-repair-interpolation",
+      "cleaning-repair-outlier",
+      "cleaning-repair-smoothing",
+      "cleaning-repair-combined",
+    ];
+    for (const seriesId of categoryIds) {
+      const datum = options.series.find((series) => series.id === seriesId)?.data[0];
+      expect(datum).toBeDefined();
+      chart.vm.$emit("chart-click", { seriesId, dataIndex: 0, data: datum });
+      await flushPromises();
+      expect(wrapper.get("[data-test='repair-detail-card']").attributes("aria-hidden")).toBe("false");
+      expect(chartDispatchAction).toHaveBeenLastCalledWith({
+        type: "highlight",
+        seriesId,
+        dataIndex: 0,
+      });
+    }
+
+    const hitArea = options.series.find(
+      (series) => series.id === "cleaning-repair-hit-area"
+    );
+    const smoothingHit = hitArea?.data.find(
+      (datum) => datum.markerCategory === "smoothing"
+    );
+    chart.vm.$emit("chart-click", {
+      seriesId: "cleaning-repair-hit-area",
+      dataIndex: hitArea?.data.indexOf(smoothingHit ?? {}) ?? -1,
+      data: smoothingHit,
+    });
+    await flushPromises();
+
+    expect(wrapper.get("[data-test='repair-detail-card']").text()).toContain("平滑调整");
+    expect(chartDispatchAction).toHaveBeenLastCalledWith({
+      type: "highlight",
+      seriesId: "cleaning-repair-smoothing",
+      dataIndex: 0,
+    });
+  });
+
+  it("anchors the detail card to data pixels, avoids edges, and follows viewport changes", async () => {
+    const { timestamps, response } = interactiveCleaningResponse();
+    mockedCleanDataset.mockResolvedValue(response as never);
+    chartConvertToPixel.mockReturnValue([100, 300]);
+    const wrapper = mount(CleaningView, { global: { plugins: [createPinia()], stubs } });
+    await flushPromises();
+    await wrapper.get("[data-test='clean-submit']").trigger("click");
+    await flushPromises();
+
+    const chart = wrapper.getComponent(ChartContainerStub);
+    chart.vm.$emit("chart-click", {
+      seriesId: "cleaning-repair-hit-area",
+      dataIndex: 0,
+      data: {
+        value: [timestamps[1], 2],
+        repairPoint: true,
+        projectedIndex: 1,
+        repairTypes: ["interpolation"],
+        markerCategory: "interpolation",
+        visualSeriesId: "cleaning-repair-interpolation",
+        visualDataIndex: 0,
+      },
+    });
+    await flushPromises();
+
+    let detail = wrapper.get("[data-test='repair-detail-card']");
+    expect(chartConvertToPixel).toHaveBeenCalledWith(
+      { xAxisIndex: 0, yAxisIndex: 0 },
+      [timestamps[1], 2]
+    );
+    expect(chartContainPixel).toHaveBeenCalledWith({ gridIndex: 0 }, [100, 300]);
+    expect(detail.attributes("data-horizontal-placement")).toBe("right");
+    expect(detail.attributes("data-vertical-placement")).toBe("above");
+    expect(detail.attributes("style")).toContain("left: 116px");
+
+    chartConvertToPixel.mockReturnValue([540, 50]);
+    chart.vm.$emit("chart-viewport-change");
+    await flushPromises();
+    detail = wrapper.get("[data-test='repair-detail-card']");
+    expect(detail.attributes("data-horizontal-placement")).toBe("left");
+    expect(detail.attributes("data-vertical-placement")).toBe("below");
+    expect(detail.attributes("style")).toContain("left: 272px");
+    expect(detail.attributes("style")).toContain("top: 66px");
+
+    const cardRectSpy = vi.spyOn(detail.element, "getBoundingClientRect").mockReturnValue({
+      width: 700,
+      height: 500,
+      top: 0,
+      right: 700,
+      bottom: 500,
+      left: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    chartConvertToPixel.mockReturnValue([630, 410]);
+    chart.vm.$emit("chart-viewport-change");
+    await flushPromises();
+    expect(wrapper.get("[data-test='repair-detail-card']").attributes("style")).toContain("left: 8px");
+    expect(wrapper.get("[data-test='repair-detail-card']").attributes("style")).toContain("top: 8px");
+    cardRectSpy.mockRestore();
+
+    chartContainPixel.mockReturnValue(false);
+    chart.vm.$emit("chart-viewport-change");
+    await flushPromises();
+    detail = wrapper.get("[data-test='repair-detail-card']");
+    expect(detail.attributes("aria-hidden")).toBe("true");
+    expect(detail.text()).toContain("插值填补");
+
+    chartContainPixel.mockReturnValue(true);
+    chartConvertToPixel.mockReturnValue([160, 300]);
+    chart.vm.$emit("chart-viewport-change");
+    await flushPromises();
+    detail = wrapper.get("[data-test='repair-detail-card']");
+    expect(detail.attributes("aria-hidden")).toBe("false");
+    expect(detail.attributes("style")).toContain("left: 176px");
+
+    chartConvertToPixel.mockReturnValue([520, 300]);
+    chart.vm.$emit("chart-click", {
+      seriesId: "cleaning-repair-smoothing",
+      dataIndex: 0,
+      data: {
+        value: [timestamps[3], 4.25],
+        repairPoint: true,
+        projectedIndex: 3,
+        repairTypes: ["smoothing"],
+        markerCategory: "smoothing",
+        visualSeriesId: "cleaning-repair-smoothing",
+        visualDataIndex: 0,
+      },
+    });
+    await flushPromises();
+    detail = wrapper.get("[data-test='repair-detail-card']");
+    expect(detail.text()).toContain("平滑调整");
+    expect(detail.attributes("data-horizontal-placement")).toBe("left");
+    expect(detail.attributes("style")).toContain("left: 252px");
+
+    chartConvertToPixel.mockClear();
+    await wrapper.get("[data-test='cleaning-reset-zoom']").trigger("click");
+    await flushPromises();
+    expect(chartConvertToPixel).toHaveBeenCalled();
+    expect(detail.text()).toContain("平滑调整");
+  });
+
+  it("opens repair evidence only for stable repair series metadata and keeps it through zoom reset", async () => {
+    const { timestamps, response } = interactiveCleaningResponse();
+    mockedCleanDataset.mockResolvedValue(response as never);
+    const wrapper = mount(CleaningView, { global: { plugins: [createPinia()], stubs } });
+    await flushPromises();
+    await wrapper.get("[data-test='clean-submit']").trigger("click");
+    await flushPromises();
+
+    const chart = wrapper.getComponent(ChartContainerStub);
+    chart.vm.$emit("chart-click", {
+      seriesId: "cleaning-cleaned-line",
+      dataIndex: 1,
+      data: 2,
+    });
+    await flushPromises();
+    expect(wrapper.find("[data-test='repair-detail-card']").exists()).toBe(false);
+
+    chart.vm.$emit("chart-click", {
+      seriesId: "cleaning-repair-interpolation",
+      dataIndex: 0,
+      data: {
+        value: [timestamps[1], 2],
+        repairPoint: true,
+        projectedIndex: 1,
+        repairTypes: ["interpolation"],
+        markerCategory: "interpolation",
+        visualSeriesId: "cleaning-repair-interpolation",
+        visualDataIndex: 0,
+      },
+    });
+    await flushPromises();
+
+    const detail = wrapper.get("[data-test='repair-detail-card']");
+    expect(detail.text()).toContain("插值填补");
+    expect(detail.text()).toContain("y");
+    expect(detail.text()).toContain("2026-01-01 00:09:19");
+    expect(detail.text()).toContain("缺失");
+    expect(detail.text()).toContain("2");
+    expect(chartDispatchAction).toHaveBeenLastCalledWith({
+      type: "highlight",
+      seriesId: "cleaning-repair-interpolation",
+      dataIndex: 0,
+    });
+
+    chart.vm.$emit("chart-viewport-change");
+    await flushPromises();
+    expect(wrapper.find("[data-test='repair-detail-card']").exists()).toBe(true);
+
+    await wrapper.get("[data-test='cleaning-reset-zoom']").trigger("click");
+    expect(wrapper.find("[data-test='repair-detail-card']").exists()).toBe(true);
+    expect(mockedCleanDataset).toHaveBeenCalledTimes(1);
+
+    chart.vm.$emit("chart-click", {
+      seriesId: "cleaning-repair-combined",
+      dataIndex: 0,
+      data: {
+        value: [timestamps[4], 5.5],
+        repairPoint: true,
+        projectedIndex: 4,
+        repairTypes: ["interpolation", "outlier", "smoothing"],
+        markerCategory: "combined",
+        visualSeriesId: "cleaning-repair-combined",
+        visualDataIndex: 0,
+      },
+    });
+    await flushPromises();
+    expect(wrapper.get("[data-test='repair-detail-card']").text()).toContain(
+      "插值填补 · 异常替换 · 平滑调整"
+    );
+    expect(chartDispatchAction).toHaveBeenCalledWith({
+      type: "downplay",
+      seriesId: "cleaning-repair-interpolation",
+      dataIndex: 0,
+    });
+    expect(chartDispatchAction).toHaveBeenLastCalledWith({
+      type: "highlight",
+      seriesId: "cleaning-repair-combined",
+      dataIndex: 0,
+    });
+
+    await wrapper.get("[data-test='repair-detail-close']").trigger("click");
+    expect(wrapper.find("[data-test='repair-detail-card']").exists()).toBe(false);
+    expect(chartDispatchAction).toHaveBeenLastCalledWith({
+      type: "downplay",
+      seriesId: "cleaning-repair-combined",
+      dataIndex: 0,
+    });
+  });
+
+  it("shows every repair type for a combined point and clears selection on channel switch", async () => {
+    const { timestamps, response } = interactiveCleaningResponse();
+    mockedCleanDataset.mockResolvedValue(response as never);
+    const wrapper = mount(CleaningView, { global: { plugins: [createPinia()], stubs } });
+    await flushPromises();
+    await wrapper.get("[data-test='clean-submit']").trigger("click");
+    await flushPromises();
+
+    const chart = wrapper.getComponent(ChartContainerStub);
+    chart.vm.$emit("chart-click", {
+      seriesId: "cleaning-repair-combined",
+      dataIndex: 0,
+      data: {
+        value: [timestamps[4], 5.5],
+        repairPoint: true,
+        projectedIndex: 4,
+        repairTypes: ["interpolation", "outlier", "smoothing"],
+        markerCategory: "combined",
+        visualSeriesId: "cleaning-repair-combined",
+        visualDataIndex: 0,
+      },
+    });
+    await flushPromises();
+
+    const detail = wrapper.get("[data-test='repair-detail-card']");
+    expect(detail.text()).toContain("插值填补 · 异常替换 · 平滑调整");
+    expect(detail.text()).toContain("5");
+    expect(detail.text()).toContain("5.5");
+
+    await wrapper.get("[data-test='cleaning-chart-channel-select']").setValue("u1");
+    await flushPromises();
+
+    expect(wrapper.find("[data-test='repair-detail-card']").exists()).toBe(false);
+    expect(chartDispatchAction).toHaveBeenLastCalledWith({
+      type: "downplay",
+      seriesId: "cleaning-repair-combined",
+      dataIndex: 0,
     });
   });
 
