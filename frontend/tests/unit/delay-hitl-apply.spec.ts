@@ -344,6 +344,11 @@ describe("DelayView UNCERTAIN HITL review and formal Apply", () => {
     await applyButton(wrapper).trigger("click");
     await flushPromises();
 
+    expect(api.confirm).toHaveBeenCalledWith(
+      expect.stringContaining("源版本不会被覆盖。是否继续？"),
+      "确认时滞补偿",
+      { type: "warning", confirmButtonText: "确认生成", cancelButtonText: "取消" }
+    );
     expect(api.post).toHaveBeenCalledWith("/preprocessing/delay/apply", {
       version_id: cleanVersionId,
       dataset_id: "dataset-hitl",

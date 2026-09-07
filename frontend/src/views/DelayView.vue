@@ -667,7 +667,7 @@ const handleApply = async () => {
     await ElMessageBox.confirm(
       `将按以下最终时滞方案创建新的不可变 DatasetVersion：\n${applySummary.value}\n\n源版本不会被覆盖。是否继续？`,
       "确认时滞补偿",
-      { type: "warning" }
+      { type: "warning", confirmButtonText: "确认生成", cancelButtonText: "取消" }
     );
     if (
       !applyReady.value ||

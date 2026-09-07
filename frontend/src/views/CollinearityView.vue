@@ -18,7 +18,7 @@
     <div class="page-header">
       <span class="page-eyebrow font-mono">PEARSON CORRELATION & VARIANCE INFLATION FACTOR</span>
       <h2>共线性检测与冗余特征剔除面板</h2>
-      <p class="subtitle">计算 Pearson 相关系数矩阵、方差膨胀因子 VIF 与矩阵条件数；由工程师安全确认后派生 V3_FeatureSet</p>
+      <p class="subtitle">计算 Pearson 相关系数矩阵、方差膨胀因子 VIF 与矩阵条件数；由工程师安全确认后派生新的特征选择版本</p>
     </div>
 
     <div class="industrial-card analysis-context-card">
@@ -224,15 +224,15 @@
         <ChartContainer data-test="vif-chart" :options="vifOptions" height="340px" />
       </div>
 
-      <!-- Panel C: Elimination & Human Approval Board -->
+      <!-- Panel C: Feature Decision Inspector & Human Approval Board -->
       <div class="industrial-card tri-panel decision-panel">
         <div class="industrial-card-header">
           <div class="industrial-card-title">
             <el-icon><TrendCharts /></el-icon>
-            <span>特征剔除决策</span>
+            <span>特征决策检查</span>
           </div>
           <el-tag :type="conditionSeverity" effect="light" size="small" class="font-mono">
-            Cond: {{ formatNumber(result.condition_number) }}
+            Cond: {{ formatDecisionMetric(result.condition_number) }}
           </el-tag>
         </div>
 
@@ -270,24 +270,110 @@
             </div>
           </div>
 
-          <div class="drop-recommendations-list" v-if="dropCandidates.length">
-            <div class="rec-title">⚠️ 建议剔除列表 (人工确认后生效):</div>
-            <div
-              v-for="item in dropCandidates"
-              :key="item.variable"
-              class="rec-item"
-            >
-              <span class="rec-var font-mono">{{ item.variable }}</span>
-              <span class="rec-vif font-mono">VIF = {{ formatVifValue(vifScores[item.variable]) }}</span>
+          <div class="decision-table" data-test="feature-decision-table">
+            <div class="decision-table-header" aria-hidden="true">
+              <span>变量</span>
+              <span>数据资格</span>
+              <span>VIF</span>
+              <span>系统建议</span>
+              <span>决策依据</span>
+              <span></span>
             </div>
+            <div
+              v-for="row in decisionRows"
+              :key="row.variable"
+              class="decision-row"
+              :data-test="`decision-row-${row.variable}`"
+            >
+              <div class="decision-row-summary">
+                <strong class="decision-variable font-mono">{{ row.variable }}</strong>
+                <span>{{ decisionQualificationLabel(row.diagnostic?.status) }}</span>
+                <span class="font-mono">{{ formatVifValue(row.vif) }}</span>
+                <span
+                  class="decision-action"
+                  :class="recommendationActionClass(row.recommendation?.action)"
+                  :data-test="`decision-action-${row.variable}`"
+                >
+                  {{ recommendationActionLabel(row.recommendation?.action) }}
+                </span>
+                <span class="decision-reason" :data-test="`decision-reason-${row.variable}`">
+                  {{ recommendationReason(row.recommendation) }}
+                </span>
+                <button
+                  type="button"
+                  class="decision-expand-button"
+                  :aria-expanded="isDecisionExpanded(row.variable)"
+                  :data-test="`decision-toggle-${row.variable}`"
+                  @click="toggleDecisionDetails(row.variable)"
+                >
+                  {{ isDecisionExpanded(row.variable) ? '收起依据' : '查看依据' }}
+                </button>
+              </div>
+
+              <div
+                v-if="isDecisionExpanded(row.variable)"
+                class="decision-evidence"
+                :data-test="`decision-details-${row.variable}`"
+              >
+                <dl class="decision-evidence-list">
+                  <div><dt>数据资格</dt><dd>{{ decisionQualificationLabel(row.diagnostic?.status) }}</dd></div>
+                  <div><dt>资格原因</dt><dd>{{ qualificationReason(row.diagnostic) }}</dd></div>
+                  <div><dt>方差</dt><dd class="font-mono">{{ formatDecisionMetric(row.diagnostic?.variance) }}</dd></div>
+                  <div><dt>VIF</dt><dd class="font-mono">{{ formatVifValue(row.vif) }}</dd></div>
+                  <div><dt>全局诊断</dt><dd class="font-mono">Condition Number = {{ formatDecisionMetric(result.condition_number) }}</dd></div>
+                  <div><dt>系统建议</dt><dd>{{ recommendationActionLabel(row.recommendation?.action) }}</dd></div>
+                  <div><dt>决策原因</dt><dd>{{ recommendationReason(row.recommendation) }}</dd></div>
+                  <div><dt>相关变量</dt><dd class="font-mono">{{ relatedVariablesLabel(row.recommendation) }}</dd></div>
+                </dl>
+
+                <div class="correlation-evidence-grid">
+                  <section :data-test="`decision-pearson-${row.variable}`">
+                    <h5>Pearson</h5>
+                    <div v-for="entry in correlationEvidence(row.variable, result.matrix)" :key="entry.variable" class="correlation-evidence-row">
+                      <span class="font-mono">{{ row.variable }} ↔ {{ entry.variable }}</span>
+                      <strong class="font-mono">{{ formatCorrelationValue(entry.value) }}</strong>
+                    </div>
+                    <span v-if="!correlationEvidence(row.variable, result.matrix).length" class="evidence-empty">无其他正式输入</span>
+                  </section>
+                  <section :data-test="`decision-spearman-${row.variable}`">
+                    <h5>Spearman</h5>
+                    <div v-for="entry in correlationEvidence(row.variable, result.spearman_matrix)" :key="entry.variable" class="correlation-evidence-row">
+                      <span class="font-mono">{{ row.variable }} ↔ {{ entry.variable }}</span>
+                      <strong class="font-mono">{{ formatCorrelationValue(entry.value) }}</strong>
+                    </div>
+                    <span v-if="!correlationEvidence(row.variable, result.spearman_matrix).length" class="evidence-empty">无其他正式输入</span>
+                  </section>
+                </div>
+
+                <p
+                  v-if="isLowVarianceDrop(row)"
+                  class="qualification-explanation"
+                  :data-test="`decision-qualification-note-${row.variable}`"
+                >
+                  该变量因低方差 / 信息不足被建议剔除，并非由于检测到严重共线性。
+                </p>
+              </div>
+            </div>
+            <div v-if="!decisionRows.length" class="decision-empty">当前结果没有可展示的正式输入变量。</div>
           </div>
-          <div class="no-drops" v-else>
-            🟢 无重度共线性特征，全通道设计矩阵满秩且数值稳定。
+
+          <div v-if="!recommendations.length" class="decision-empty" data-test="decision-recommendations-empty">
+            当前结果未提供特征决策建议。
+          </div>
+          <div v-else-if="!dropCandidates.length" class="no-drops">
+            当前系统建议中没有需要剔除的变量。
           </div>
 
           <div class="decision-action-strip" v-if="dropCandidates.length">
+            <div class="apply-decision-summary" data-test="feature-apply-summary">
+              <strong>本次建议剔除</strong>
+              <div v-for="item in dropCandidates" :key="item.variable" class="apply-decision-item">
+                <span class="font-mono">{{ item.variable }}</span>
+                <span>{{ recommendationReason(item) }}</span>
+              </div>
+            </div>
             <el-button data-test="feature-apply-button" type="danger" size="default" :loading="applying" @click="handleApply" style="width: 100%">
-              确认剔除并生成 V3_FeatureSet →
+              确认剔除并生成特征选择版本
             </el-button>
           </div>
         </div>
@@ -328,6 +414,8 @@ import type {
   CollinearitySourceVersionItem,
   DatasetItem,
   DatasetVersionNode,
+  InputDiagnostic,
+  VariableRecommendation,
 } from "../types/api";
 import { ApiError } from "../api/client";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -351,6 +439,10 @@ const selectedDatasetId = ref<string | null>(null);
 const collinearitySources = ref<CollinearitySourceVersionItem[]>([]);
 const versionNodes = ref<DatasetVersionNode[]>([]);
 const selectedSourceVersionId = ref<string | null>(null);
+const expandedDecisionVariables = ref<Set<string>>(new Set());
+const clearDecisionExpansion = () => {
+  expandedDecisionVariables.value = new Set();
+};
 const rememberedSourceByDataset = new Map<string, string>();
 let datasetListRequest = 0;
 let datasetContextRequest = 0;
@@ -417,6 +509,24 @@ const vifScores = computed<Record<string, number | null>>(() =>
     ? result.value.vif_scores
     : {}
 );
+type DecisionRow = {
+  variable: string;
+  diagnostic: InputDiagnostic | null;
+  recommendation: VariableRecommendation | null;
+  vif: number | null | undefined;
+};
+const decisionVariables = computed(() => {
+  const formalInputs = form.input_columns.length ? form.input_columns : resultVariables.value;
+  return [...new Set(formalInputs.filter((variable) => typeof variable === "string" && variable.length > 0))];
+});
+const decisionRows = computed<DecisionRow[]>(() =>
+  decisionVariables.value.map((variable) => ({
+    variable,
+    diagnostic: inputDiagnostics.value.find((item) => item.column === variable) ?? null,
+    recommendation: recommendations.value.find((item) => item.variable === variable) ?? null,
+    vif: vifScores.value[variable],
+  }))
+);
 
 const hasValidLagCompensationSource = computed(
   () =>
@@ -481,6 +591,7 @@ const invalidateSourceRequests = () => {
 
 const clearSourceContext = () => {
   invalidateSourceRequests();
+  clearDecisionExpansion();
   correlationMode.value = "pearson";
   collinearitySources.value = [];
   versionNodes.value = [];
@@ -495,6 +606,7 @@ const clearSourceContext = () => {
 
 const hydratePersistedResult = async (versionId: string, datasetId: string) => {
   const request = ++rehydrationRequest;
+  clearDecisionExpansion();
   restoringResult.value = true;
   errorMessage.value = "";
   result.value = null;
@@ -540,6 +652,7 @@ const selectCollinearitySource = async (versionId: string | null, datasetId: str
   analysisRequest += 1;
   restoringResult.value = false;
   loading.value = false;
+  clearDecisionExpansion();
   correlationMode.value = "pearson";
   result.value = null;
   errorMessage.value = "";
@@ -578,9 +691,21 @@ const chooseDefaultCollinearitySource = (
     ?? null;
 };
 
-const loadDatasetContext = async (datasetId: string) => {
+const loadDatasetContext = async (
+  datasetId: string,
+  options: {
+    preferredSourceVersionId?: string;
+    preserveExistingContext?: boolean;
+    refreshFailureMessage?: string;
+  } = {}
+) => {
   const contextRequest = ++datasetContextRequest;
-  clearSourceContext();
+  if (options.preserveExistingContext) {
+    sourceListRequest += 1;
+    sourceError.value = "";
+  } else {
+    clearSourceContext();
+  }
   form.dataset_id = datasetId;
   loadingSources.value = true;
   try {
@@ -609,15 +734,35 @@ const loadDatasetContext = async (datasetId: string) => {
     collinearitySources.value = data.sources;
     versionNodes.value = versions.nodes;
     loadingSources.value = false;
-    const defaultVersionId = chooseDefaultCollinearitySource(
-      datasetId,
-      detail.version_id || detail.latest_version_id,
-      versions.nodes
-    );
-    await selectCollinearitySource(defaultVersionId, datasetId);
+    const preferredSourceVersionId = options.preferredSourceVersionId;
+    const preferredSource = preferredSourceVersionId &&
+      versions.nodes.some(
+        (version) =>
+          version.id === preferredSourceVersionId && isCollinearityEligibleVersion(version)
+      )
+      ? data.sources.find((source) => source.version_id === preferredSourceVersionId) ?? null
+      : null;
+    if (options.preserveExistingContext && preferredSource) {
+      selectedSourceVersionId.value = preferredSource.version_id;
+      form.version_id = preferredSource.version_id;
+      form.dataset_id = datasetId;
+      const sourceInputs = sourceInputColumns(preferredSource);
+      if (sourceInputs.length) form.input_columns = [...sourceInputs];
+    } else {
+      const defaultVersionId = preferredSource?.version_id
+        ?? chooseDefaultCollinearitySource(
+          datasetId,
+          detail.version_id || detail.latest_version_id,
+          versions.nodes
+        );
+      await selectCollinearitySource(defaultVersionId, datasetId);
+    }
   } catch (error) {
     if (contextRequest !== datasetContextRequest) return;
-    sourceError.value = error instanceof ApiError ? error.message : String(error);
+    const message = error instanceof ApiError ? error.message : String(error);
+    sourceError.value = options.refreshFailureMessage
+      ? `${options.refreshFailureMessage}：${message}`
+      : message;
   } finally {
     if (contextRequest === datasetContextRequest) loadingSources.value = false;
   }
@@ -696,6 +841,7 @@ const refreshSourcesAfterAnalyze = async (
 
 const handleAnalyze = async () => {
   rehydrationRequest += 1;
+  clearDecisionExpansion();
   restoringResult.value = false;
   errorMessage.value = "";
   sourceError.value = "";
@@ -829,6 +975,80 @@ const isFiniteVif = (value: number | null | undefined): value is number =>
 
 const formatVifValue = (value: number | null | undefined) =>
   isFiniteVif(value) ? formatNumber(value) : "N/A";
+
+const formatDecisionMetric = (value: number | null | undefined) =>
+  typeof value === "number" && Number.isFinite(value) ? formatNumber(value) : "N/A";
+
+const formatCorrelationValue = (value: number | null) =>
+  typeof value === "number" && Number.isFinite(value) ? value.toFixed(3) : "N/A";
+
+const decisionQualificationLabel = (status: InputDiagnostic["status"] | undefined) => {
+  if (!status) return "未提供";
+  return ({
+    analyzable: "可分析",
+    constant_or_near_constant: "常量 / 近常量",
+    non_numeric: "非数值",
+    missing: "缺失",
+  } satisfies Record<InputDiagnostic["status"], string>)[status];
+};
+
+const recommendationActionLabel = (action: VariableRecommendation["action"] | undefined) => {
+  if (!action) return "未提供";
+  return ({
+    keep: "保留",
+    drop: "建议剔除",
+    merge: "建议合并",
+    review: "建议复核",
+  } satisfies Record<VariableRecommendation["action"], string>)[action];
+};
+
+const recommendationActionClass = (action: VariableRecommendation["action"] | undefined) =>
+  action ?? "missing";
+
+const recommendationReason = (recommendation: VariableRecommendation | null | undefined) => {
+  if (!recommendation) return "当前结果未提供该变量的决策建议。";
+  const reason = typeof recommendation.reason === "string" ? recommendation.reason.trim() : "";
+  return reason || "当前结果未提供详细决策原因";
+};
+
+const qualificationReason = (diagnostic: InputDiagnostic | null) => {
+  const reason = typeof diagnostic?.reason === "string" ? diagnostic.reason.trim() : "";
+  return reason || "当前结果未提供数据资格原因。";
+};
+
+const relatedVariablesLabel = (recommendation: VariableRecommendation | null) =>
+  recommendation?.related_variables?.length ? recommendation.related_variables.join("、") : "无";
+
+const correlationEvidence = (
+  variable: string,
+  matrix: Array<Array<number | null>> | null | undefined
+) => {
+  const variableIndex = resultVariables.value.indexOf(variable);
+  return decisionVariables.value
+    .filter((otherVariable) => otherVariable !== variable)
+    .map((otherVariable) => {
+      const otherIndex = resultVariables.value.indexOf(otherVariable);
+      const value = variableIndex >= 0 && otherIndex >= 0
+        ? matrix?.[variableIndex]?.[otherIndex]
+        : null;
+      return {
+        variable: otherVariable,
+        value: typeof value === "number" && Number.isFinite(value) ? value : null,
+      };
+    });
+};
+
+const isLowVarianceDrop = (row: DecisionRow) =>
+  row.diagnostic?.status === "constant_or_near_constant" && row.recommendation?.action === "drop";
+
+const isDecisionExpanded = (variable: string) => expandedDecisionVariables.value.has(variable);
+
+const toggleDecisionDetails = (variable: string) => {
+  const next = new Set(expandedDecisionVariables.value);
+  if (next.has(variable)) next.delete(variable);
+  else next.add(variable);
+  expandedDecisionVariables.value = next;
+};
 
 const heatmapOptions = computed(() => {
   if (!result.value || !displayedCorrelationMatrix.value) return {};
@@ -972,22 +1192,26 @@ const vifOptions = computed(() => {
 
 const handleApply = async () => {
   const source = selectedSource.value;
-  if (!result.value || !source || !dropCandidates.value.length) return;
+  const datasetId = selectedDatasetId.value;
+  if (!result.value || !source || !datasetId || !dropCandidates.value.length) return;
   if (result.value.source_version_id !== source.version_id) {
     ElMessage.error("当前共线性结果与所选时滞补偿版本不一致，请重新选择或恢复分析结果。");
     return;
   }
   const names = dropCandidates.value.map((item) => item.variable);
+  const confirmationDetails = dropCandidates.value
+    .map((item) => `${item.variable}：${recommendationReason(item)}`)
+    .join("\n");
   try {
     await ElMessageBox.confirm(
-      `将从新版本中删除：${names.join(", ")}。源版本不会被覆盖。是否确认？`,
+      `将在新的特征选择版本中剔除：\n${confirmationDetails}\n\n源版本不会被覆盖。\n\n确认继续生成新的特征选择版本吗？`,
       "确认变量筛选",
-      { type: "warning" }
+      { type: "warning", confirmButtonText: "确认生成", cancelButtonText: "取消" }
     );
     applying.value = true;
     const applied = await applyFeatureSelection({
       version_id: source.version_id,
-      dataset_id: selectedDatasetId.value ?? undefined,
+      dataset_id: datasetId,
       drop_columns: names,
       user_confirmed: true,
       recommendation_source: "collinearity_analysis",
@@ -1004,6 +1228,19 @@ const handleApply = async () => {
       ),
     });
     ElMessage.success(`已创建变量筛选版本：${applied.result_version_id}`);
+    rememberedSourceByDataset.set(datasetId, source.version_id);
+    await loadDatasetContext(datasetId, {
+      preferredSourceVersionId: source.version_id,
+      preserveExistingContext: true,
+      refreshFailureMessage: "变量筛选版本已创建，但版本血缘刷新失败",
+    });
+    if (
+      selectedDatasetId.value === datasetId &&
+      !sourceError.value &&
+      !versionNodes.value.some((version) => version.id === applied.result_version_id)
+    ) {
+      sourceError.value = "变量筛选版本已创建，但新版本尚未出现在版本血缘中，请稍后刷新。";
+    }
   } catch (err) {
     if (err !== "cancel") ElMessage.error(err instanceof ApiError ? err.message : String(err));
   } finally {
@@ -1336,7 +1573,7 @@ const handleApply = async () => {
 /* FORMAT 4: Tri-Grid */
 .collin-tri-grid {
   display: grid;
-  grid-template-columns: 1.2fr 1.1fr 1fr;
+  grid-template-columns: 1.2fr 1.1fr;
   gap: 16px;
 }
 
@@ -1431,6 +1668,7 @@ const handleApply = async () => {
 
 /* Decision Panel */
 .decision-panel {
+  grid-column: 1 / -1;
   background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
 }
 
@@ -1492,29 +1730,201 @@ const handleApply = async () => {
   gap: 4px;
 }
 
-.drop-recommendations-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 6px;
+.decision-table {
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: #ffffff;
 }
 
-.rec-title {
+.decision-table-header,
+.decision-row-summary {
+  display: grid;
+  grid-template-columns: minmax(64px, .7fr) minmax(110px, 1fr) 70px minmax(90px, .9fr) minmax(220px, 2.2fr) 76px;
+  align-items: center;
+  gap: 12px;
+}
+
+.decision-table-header {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.decision-row + .decision-row {
+  border-top: 1px solid var(--border-light);
+}
+
+.decision-row-summary {
+  min-height: 48px;
+  padding: 9px 12px;
+  color: var(--text-secondary);
   font-family: var(--font-sans);
   font-size: 11px;
-  font-weight: 600;
-  color: #991b1b;
 }
 
-.rec-item {
+.decision-variable {
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.decision-action {
+  justify-self: start;
+  padding: 2px 7px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.decision-action.keep {
+  border-color: #c7d8c8;
+  background: #edf4eb;
+  color: #557562;
+}
+
+.decision-action.drop {
+  border-color: #dec6bd;
+  background: #f7eeea;
+  color: #8b594c;
+}
+
+.decision-action.merge,
+.decision-action.review {
+  border-color: #dfd2b6;
+  background: #f7f3e8;
+  color: #846f42;
+}
+
+.decision-reason {
+  min-width: 0;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.decision-expand-button {
+  appearance: none;
+  padding: 4px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: 5px;
+  color: var(--color-primary);
+  background: var(--surface-1);
+  box-shadow: none;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 650;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.decision-expand-button:hover {
+  border-color: var(--border-default);
+  color: var(--text-primary);
+  background: var(--surface-2);
+}
+
+.decision-expand-button:focus-visible {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 1px;
+}
+
+.decision-evidence {
+  padding: 14px;
+  border-top: 1px solid var(--border-light);
+  background: #f8faf8;
+}
+
+.decision-evidence-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.decision-evidence-list > div {
+  padding: 8px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.decision-evidence-list dt {
+  margin-bottom: 3px;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 9px;
+}
+
+.decision-evidence-list dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.correlation-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.correlation-evidence-grid section {
+  padding: 9px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.correlation-evidence-grid h5 {
+  margin: 0 0 6px;
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.correlation-evidence-row {
   display: flex;
   justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.correlation-evidence-row strong {
+  color: var(--text-primary);
+}
+
+.evidence-empty,
+.decision-empty {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
   font-size: 11px;
-  color: #b91c1c;
-  font-weight: 600;
+}
+
+.decision-empty {
+  padding: 10px 12px;
+  border: 1px dashed var(--border-default);
+  border-radius: 6px;
+  background: var(--surface-1);
+}
+
+.qualification-explanation {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-left: 3px solid #b5965d;
+  background: #f7f3e8;
+  color: #6f6246;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .no-drops {
@@ -1540,6 +1950,36 @@ const handleApply = async () => {
 .decision-action-strip {
   margin-top: auto;
   padding-top: 10px;
+}
+
+.apply-decision-summary {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid #decfc0;
+  border-radius: 7px;
+  background: #f8f3ed;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 11px;
+}
+
+.apply-decision-summary > strong {
+  color: #795a4e;
+  font-size: 11px;
+}
+
+.apply-decision-item {
+  display: grid;
+  grid-template-columns: minmax(60px, auto) 1fr;
+  gap: 10px;
+  line-height: 1.45;
+}
+
+.apply-decision-item .font-mono {
+  color: #795a4e;
+  font-weight: 700;
 }
 
 .collin-empty-card {
@@ -1602,6 +2042,28 @@ const handleApply = async () => {
 
   .selected-source-id {
     margin-left: 0;
+  }
+
+  .decision-table-header {
+    display: none;
+  }
+
+  .decision-row-summary {
+    grid-template-columns: minmax(64px, .7fr) minmax(0, 1.3fr);
+  }
+
+  .decision-reason,
+  .decision-expand-button {
+    grid-column: 1 / -1;
+  }
+
+  .decision-expand-button {
+    justify-self: start;
+  }
+
+  .decision-evidence-list,
+  .correlation-evidence-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

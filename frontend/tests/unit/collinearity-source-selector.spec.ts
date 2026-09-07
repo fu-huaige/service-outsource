@@ -317,6 +317,10 @@ const lineageResponse = (data: CollinearitySourceVersionsData) => ({
   ],
 });
 
+type LineageResponse = ReturnType<typeof lineageResponse>;
+let versionResponses: Map<string, Array<LineageResponse | Promise<LineageResponse>>>;
+let versionCallCounts: Map<string, number>;
+
 const installApiBehavior = () => {
   apiMocks.get.mockImplementation((url: string, config?: { params?: Record<string, string> }) => {
     if (url === "/datasets?page=1&page_size=100") {
@@ -331,6 +335,12 @@ const installApiBehavior = () => {
     const versionsMatch = url.match(/^\/datasets\/([^/]+)\/versions$/);
     if (versionsMatch) {
       const datasetId = versionsMatch[1];
+      const explicitQueue = versionResponses.get(datasetId);
+      if (explicitQueue?.length) {
+        const callIndex = versionCallCounts.get(datasetId) ?? 0;
+        versionCallCounts.set(datasetId, callIndex + 1);
+        return Promise.resolve(explicitQueue[Math.min(callIndex, explicitQueue.length - 1)]);
+      }
       const response = sourceResponses.get(datasetId)?.[0];
       if (!response) return Promise.reject(new Error(`Missing versions response for ${datasetId}`));
       return response instanceof Promise
@@ -405,6 +415,8 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
     detailResponses = new Map();
     sourceResponses = new Map();
     sourceCallCounts = new Map();
+    versionResponses = new Map();
+    versionCallCounts = new Map();
     latestResponses = new Map();
     apiMocks.post.mockRejectedValue(new Error("Unexpected POST"));
     installApiBehavior();
@@ -540,7 +552,7 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
     expect(options.tooltip.formatter([{ axisValue: "u1" }])).toContain("VIF: 1.10");
     expect(options.tooltip.formatter([{ axisValue: "u2" }])).toContain("VIF: N/A");
     expect(options.tooltip.formatter([{ axisValue: "u2" }])).toContain("无法可靠计算 VIF");
-    expect(wrapper.text()).toContain("VIF = N/A");
+    expect(wrapper.get('[data-test="decision-row-u2"]').text()).toContain("N/A");
   });
 
   it("resets correlation mode to Pearson when the source or Dataset changes", async () => {
@@ -697,7 +709,9 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
       "该历史分析结果缺少输入资格诊断信息，建议重新执行分析"
     );
     expect(wrapper.find('[data-test="input-qualification"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain("无重度共线性特征");
+    expect(wrapper.get('[data-test="decision-recommendations-empty"]').text()).toContain(
+      "当前结果未提供特征决策建议"
+    );
     expect(apiMocks.post).not.toHaveBeenCalled();
   });
 
@@ -851,6 +865,86 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
     };
     datasetsResponse = [active];
     detailResponses.set("dataset-a", active);
+    const sources = sourceData("dataset-a", [source("lag-a", "complete")], "lag-a");
+    sourceResponses.set("dataset-a", [sources]);
+    const initialLineage = lineageResponse(sources);
+    versionResponses.set("dataset-a", [
+      initialLineage,
+      {
+        ...initialLineage,
+        active_version_id: "feature-v3",
+        nodes: [
+          ...initialLineage.nodes,
+          {
+            id: "feature-v3",
+            name: "V3 · 冗余变量剔除",
+            tool: "preprocessing.feature_selection",
+            parent_version_id: "lag-a",
+            created_at: "2026-09-01T03:00:00Z",
+            row_count: 120,
+            column_count: 2,
+            artifact_path: "feature-v3.csv",
+          },
+        ],
+      },
+    ]);
+    latestResponses.set("lag-a", persisted);
+    apiMocks.confirm.mockResolvedValue(true);
+    apiMocks.post.mockResolvedValue({
+      source_version_id: "lag-a",
+      result_version_id: "feature-v3",
+      dataset_id: "dataset-a",
+      processing_run_id: "feature-run",
+      operation: "preprocessing.feature_selection",
+      summary: {},
+    });
+
+    const { wrapper } = mountView(active);
+    await flushPromises();
+    expect(wrapper.find("[data-version-id='feature-v3']").exists()).toBe(false);
+    await wrapper.get("[data-test='feature-apply-button']").trigger("click");
+    await flushPromises();
+
+    expect(apiMocks.confirm).toHaveBeenCalledWith(
+      expect.stringContaining("u2：redundant"),
+      "确认变量筛选",
+      { type: "warning", confirmButtonText: "确认生成", cancelButtonText: "取消" }
+    );
+    expect(apiMocks.post).toHaveBeenCalledWith("/preprocessing/features/apply", expect.objectContaining({
+      version_id: "lag-a",
+      dataset_id: "dataset-a",
+      drop_columns: ["u2"],
+      user_confirmed: true,
+      recommendation_source: "collinearity_analysis",
+    }));
+    expect(apiMocks.post).toHaveBeenCalledTimes(1);
+    expect(
+      apiMocks.post.mock.calls.filter(([url]) => url === "/preprocessing/collinearity")
+    ).toHaveLength(0);
+    expect(
+      apiMocks.get.mock.calls.filter(([url]) => url === "/datasets/dataset-a")
+    ).toHaveLength(2);
+    expect(versionCallCounts.get("dataset-a")).toBe(2);
+    expect(sourceCallCounts.get("dataset-a")).toBe(2);
+    expect(wrapper.get("[data-test='source-select']").attributes("data-selected-version-id")).toBe("lag-a");
+    const featureNode = wrapper.get("[data-version-id='feature-v3']");
+    expect(featureNode.text()).toContain("V3 · 冗余变量剔除");
+    expect(featureNode.text()).toContain("已进入后续特征版本");
+    expect(featureNode.attributes("aria-disabled")).toBe("true");
+    expect(wrapper.get("[data-test='feature-apply-button']").text()).toBe("确认剔除并生成特征选择版本");
+  });
+
+  it("reports a post-success lineage refresh failure without misreporting Feature Apply as failed", async () => {
+    const active = { ...dataset("dataset-a"), version_id: "lag-a" };
+    const persisted = {
+      ...analysisResult("lag-a", "dataset-a"),
+      recommendations: [
+        { variable: "u1", action: "keep" as const, reason: "stable", related_variables: [] },
+        { variable: "u2", action: "drop" as const, reason: "redundant", related_variables: ["u1"] },
+      ],
+    };
+    datasetsResponse = [active];
+    detailResponses.set("dataset-a", active);
     sourceResponses.set("dataset-a", [
       sourceData("dataset-a", [source("lag-a", "complete")], "lag-a"),
     ]);
@@ -867,17 +961,19 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
 
     const { wrapper } = mountView(active);
     await flushPromises();
+    detailResponses.set("dataset-a", Promise.reject(new Error("refresh unavailable")));
+
     await wrapper.get("[data-test='feature-apply-button']").trigger("click");
     await flushPromises();
 
-    expect(apiMocks.post).toHaveBeenCalledWith("/preprocessing/features/apply", expect.objectContaining({
-      version_id: "lag-a",
-      dataset_id: "dataset-a",
-      drop_columns: ["u2"],
-      user_confirmed: true,
-      recommendation_source: "collinearity_analysis",
-    }));
+    expect(apiMocks.post).toHaveBeenCalledTimes(1);
+    expect(apiMocks.messageSuccess).toHaveBeenCalledWith("已创建变量筛选版本：feature-v3");
+    expect(apiMocks.messageError).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain(
+      "变量筛选版本已创建，但版本血缘刷新失败：Error: refresh unavailable"
+    );
     expect(wrapper.get("[data-test='source-select']").attributes("data-selected-version-id")).toBe("lag-a");
+    expect(wrapper.find(".collin-tri-grid").exists()).toBe(true);
   });
 
   it("rehydrates a constant formal input as N/A without issuing a new Analyze POST", async () => {
@@ -943,6 +1039,121 @@ describe("CollinearityView dataset and Lag Compensation source context", () => {
         data: { unavailable: true, reason: "常量或近常量特征，方差不足。" },
       })
     ).toContain("N/A");
+
+    expect(wrapper.text()).toContain("特征决策检查");
+    for (const variable of sourceInputs) {
+      expect(wrapper.find(`[data-test="decision-row-${variable}"]`).exists()).toBe(true);
+    }
+    for (const variable of ["u1", "u2", "u3"]) {
+      expect(wrapper.get(`[data-test="decision-action-${variable}"]`).text()).toBe("保留");
+      expect(wrapper.get(`[data-test="decision-reason-${variable}"]`).text()).toBe("stable");
+    }
+    expect(wrapper.get('[data-test="decision-action-u4"]').text()).toBe("建议剔除");
+    expect(wrapper.text()).not.toContain("建议删除");
+    expect(wrapper.get('[data-test="decision-reason-u4"]').text()).toBe("常量/近常量特征，信息量不足");
+    expect(wrapper.get('[data-test="feature-apply-summary"]').text()).toContain("u4");
+    expect(wrapper.get('[data-test="feature-apply-summary"]').text()).toContain("常量/近常量特征，信息量不足");
+    expect(wrapper.get('[data-test="feature-apply-button"]').text()).toBe("确认剔除并生成特征选择版本");
+
+    await wrapper.get('[data-test="decision-toggle-u1"]').trigger("click");
+    const keepDetails = wrapper.get('[data-test="decision-details-u1"]');
+    expect(keepDetails.text()).toContain("数据资格");
+    expect(keepDetails.text()).toContain("可参与诊断");
+    expect(keepDetails.text()).toContain("VIF");
+    expect(keepDetails.text()).toContain("1.10");
+    expect(keepDetails.text()).toContain("全局诊断");
+    expect(keepDetails.text()).toContain("Condition Number = 2.40");
+    expect(keepDetails.text()).toContain("系统建议保留");
+    expect(keepDetails.text()).toContain("决策原因stable");
+    expect(keepDetails.text()).toContain("相关变量无");
+    expect(wrapper.get('[data-test="decision-pearson-u1"]').text()).toContain("u1 ↔ u2");
+    expect(wrapper.get('[data-test="decision-pearson-u1"]').text()).toContain("0.200");
+    expect(wrapper.get('[data-test="decision-spearman-u1"]').text()).toContain("0.180");
+
+    await wrapper.get('[data-test="decision-toggle-u4"]').trigger("click");
+    const dropDetails = wrapper.get('[data-test="decision-details-u4"]');
+    expect(dropDetails.text()).toContain("常量 / 近常量");
+    expect(dropDetails.text()).toContain("常量或近常量特征，方差不足。");
+    expect(dropDetails.text()).toContain("系统建议建议剔除");
+    expect(dropDetails.text()).toContain("决策原因常量/近常量特征，信息量不足");
+    expect(dropDetails.text()).toContain("相关变量无");
+    expect(wrapper.get('[data-test="decision-pearson-u4"]').text()).toContain("N/A");
+    expect(wrapper.get('[data-test="decision-spearman-u4"]').text()).toContain("N/A");
+    expect(dropDetails.text()).toContain("VIFN/A");
+    expect(wrapper.get('[data-test="decision-qualification-note-u4"]').text()).toContain(
+      "因低方差 / 信息不足被建议剔除，并非由于检测到严重共线性"
+    );
+    expect(wrapper.text()).not.toContain("u4 是严重共线性特征");
     expect(apiMocks.post).not.toHaveBeenCalled();
+  });
+
+  it("localizes the u4 Feature Apply confirmation and does not apply after cancellation", async () => {
+    const active = { ...dataset("dataset-a"), input_columns: ["u1", "u4"] };
+    const persisted: CollinearityResponse = {
+      ...analysisResult("lag-a", "dataset-a", ["u1", "u4"]),
+      matrix: [[1, null], [null, null]],
+      spearman_matrix: [[1, null], [null, null]],
+      vif_scores: { u1: 1.1, u4: null },
+      recommendations: [
+        { variable: "u1", action: "keep", reason: "输入信息有效", related_variables: [] },
+        { variable: "u4", action: "drop", reason: "低方差，信息量不足", related_variables: [] },
+      ],
+      input_diagnostics: [
+        { column: "u1", status: "analyzable", reason: "数值方差充足", variance: 1 },
+        { column: "u4", status: "constant_or_near_constant", reason: "无有效激励", variance: 0 },
+      ],
+    };
+    datasetsResponse = [active];
+    detailResponses.set("dataset-a", active);
+    sourceResponses.set("dataset-a", [
+      sourceData("dataset-a", [source("lag-a", "complete", 2, ["u1", "u4"])], "lag-a"),
+    ]);
+    latestResponses.set("lag-a", persisted);
+    apiMocks.confirm.mockRejectedValueOnce("cancel");
+
+    const { wrapper } = mountView(active);
+    await flushPromises();
+    await wrapper.get('[data-test="feature-apply-button"]').trigger("click");
+    await flushPromises();
+
+    expect(apiMocks.confirm).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /将在新的特征选择版本中剔除：[\s\S]*u4：低方差，信息量不足[\s\S]*源版本不会被覆盖。[\s\S]*确认继续生成新的特征选择版本吗？/
+      ),
+      "确认变量筛选",
+      { type: "warning", confirmButtonText: "确认生成", cancelButtonText: "取消" }
+    );
+    expect(apiMocks.post).not.toHaveBeenCalledWith(
+      "/preprocessing/features/apply",
+      expect.anything()
+    );
+  });
+
+  it("keeps formal inputs visible when recommendations are missing", async () => {
+    const active = dataset("dataset-a");
+    const persisted = {
+      ...analysisResult("lag-a", "dataset-a"),
+      recommendations: [],
+    };
+    datasetsResponse = [active];
+    detailResponses.set("dataset-a", active);
+    sourceResponses.set("dataset-a", [
+      sourceData("dataset-a", [source("lag-a", "complete")], "lag-a"),
+    ]);
+    latestResponses.set("lag-a", persisted);
+
+    const { wrapper } = mountView(active);
+    await flushPromises();
+
+    expect(wrapper.find('[data-test="decision-row-u1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="decision-row-u2"]').exists()).toBe(true);
+    expect(wrapper.get('[data-test="decision-action-u2"]').text()).toBe("未提供");
+    expect(wrapper.get('[data-test="decision-reason-u2"]').text()).toBe(
+      "当前结果未提供该变量的决策建议。"
+    );
+    expect(wrapper.get('[data-test="decision-recommendations-empty"]').text()).toContain(
+      "当前结果未提供特征决策建议。"
+    );
+    expect(wrapper.find('[data-test="feature-apply-button"]').exists()).toBe(false);
   });
 });
