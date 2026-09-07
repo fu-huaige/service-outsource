@@ -530,8 +530,10 @@ export interface DirectDerivationSummary {
   to_version_id: string;
   evidence_source: "persisted" | "replayed" | "legacy_total_only";
   scope: "all_numeric_columns";
-  changes: Record<string, unknown>;
+  changes: DirectDerivationChanges;
 }
+
+export type DirectDerivationChanges = Partial<CleaningChangeSummary> & Record<string, unknown>;
 
 export interface ConvergenceEvidence {
   version_id: string;

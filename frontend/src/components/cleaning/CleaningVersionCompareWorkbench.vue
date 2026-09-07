@@ -6,7 +6,6 @@
         <h3 id="version-compare-title">清洗版本对比</h3>
         <p>比较两个 Cleaning 阶段版本的数据变化与血缘关系。</p>
       </div>
-      <el-tag v-if="result?.artifacts_identical" type="success" effect="light">数据内容一致</el-tag>
     </header>
 
     <div class="selector-grid">
@@ -100,10 +99,10 @@
       show-icon
     />
     <el-alert
-      v-if="channelWarnings.length"
+      v-if="dedupedChannelWarnings.length"
       class="inline-alert"
       type="warning"
-      :title="channelWarnings.join('；')"
+      :title="dedupedChannelWarnings.join('；')"
       :closable="false"
       show-icon
     />
@@ -126,10 +125,10 @@
           <span class="summary-scope">SELECTED CHANNEL</span>
           <h4>数据差异 · 当前通道 {{ result.channel.name }}</h4>
           <p>{{ directionCopy }}</p>
+          <p class="relation-explanation">{{ relationExplanation }}</p>
         </div>
         <div class="summary-badges">
           <el-tag effect="plain">{{ relationCopy }}</el-tag>
-          <el-tag v-if="result.artifacts_identical" type="success" effect="light">数据内容一致</el-tag>
         </div>
       </div>
 
@@ -177,10 +176,10 @@
         show-icon
       />
       <el-alert
-        v-if="result.warnings.length"
+        v-if="dedupedResultWarnings.length"
         class="result-alert"
         type="warning"
-        :title="result.warnings.join('；')"
+        :title="dedupedResultWarnings.join('；')"
         :closable="false"
         show-icon
       />
@@ -189,10 +188,111 @@
         <div><strong>Overlay</strong><span>Baseline 与 Compare 共享真实时间轴</span></div>
         <el-button data-test="version-compare-reset-zoom" size="small" plain @click="resetZoom">重置视图</el-button>
       </div>
-      <ChartContainer ref="chartRef" :options="overlayChartOptions" height="420px" />
+      <div class="version-compare-chart-stage">
+        <ChartContainer
+          ref="chartRef"
+          :options="overlayChartOptions"
+          height="420px"
+          @chart-click="handleChartClick"
+          @chart-viewport-change="handleChartViewportChange"
+        />
+        <div
+          v-if="selectedDifference"
+          ref="differenceDetailHostRef"
+          class="difference-detail-host"
+          :class="{ 'is-anchor-hidden': !differenceDetailPosition }"
+          :style="differenceDetailCardStyle"
+          :aria-hidden="!differenceDetailPosition"
+          data-test="difference-detail-host"
+        >
+          <CleaningVersionDifferenceDetailCard
+            :difference="selectedDifference.difference"
+            @close="clearSelectedDifference"
+          />
+        </div>
+      </div>
       <p v-if="result.generic_diff_summary.ambiguous_timestamp_groups > 0" class="ambiguity-note">
-        重复时间戳歧义仅按 timestamp group 汇总，图中未建立 occurrence 间的推测配对。
+        重复时间戳歧义按 timestamp group 表达，未建立 occurrence 间的推测配对。
       </p>
+
+      <div
+        class="evidence-grid"
+        :class="{ 'status-only': !result.direct_derivation_summary }"
+        data-test="version-compare-evidence-grid"
+      >
+        <article
+          v-if="result.direct_derivation_summary"
+          class="evidence-card direct-evidence-card"
+          data-test="direct-cleaning-evidence"
+        >
+          <header>
+            <div>
+              <span class="evidence-eyebrow">ALL NUMERIC COLUMNS</span>
+              <h4>直接清洗证据 · 全部数值通道</h4>
+            </div>
+            <el-tag effect="plain">{{ evidenceSourceLabel }}</el-tag>
+          </header>
+
+          <div v-if="primaryEvidenceEntries.length" class="evidence-metrics">
+            <div v-for="entry in primaryEvidenceEntries" :key="entry.key" :data-evidence-key="entry.key">
+              <span>{{ entry.label }}</span><strong>{{ entry.displayValue }}</strong>
+            </div>
+          </div>
+          <dl v-if="auxiliaryEvidenceEntries.length" class="evidence-auxiliary">
+            <div v-for="entry in auxiliaryEvidenceEntries" :key="entry.key" :data-evidence-key="entry.key">
+              <dt>{{ entry.label }}</dt><dd>{{ entry.displayValue }}</dd>
+            </div>
+          </dl>
+          <el-alert
+            v-if="result.direct_derivation_summary.evidence_source === 'legacy_total_only'"
+            type="warning"
+            title="历史版本未记录完整分类明细。"
+            :closable="false"
+            show-icon
+          />
+          <details v-if="otherAuditEntries.length" class="other-audit-fields" data-test="other-audit-fields">
+            <summary>其他审计字段</summary>
+            <dl>
+              <div v-for="entry in otherAuditEntries" :key="entry.key">
+                <dt>{{ entry.key }}</dt><dd>{{ entry.displayValue }}</dd>
+              </div>
+            </dl>
+          </details>
+        </article>
+
+        <article class="evidence-card version-status-card" data-test="version-status-card">
+          <header>
+            <div>
+              <span class="evidence-eyebrow">ARTIFACT + CONVERGENCE</span>
+              <h4>版本状态</h4>
+            </div>
+            <el-tag v-if="result.artifacts_identical" type="success" effect="light">数据内容一致</el-tag>
+          </header>
+          <p
+            v-if="result.artifacts_identical && !result.convergence_evidence.baseline && !result.convergence_evidence.compare"
+            class="identity-explanation"
+          >数据内容一致不等同于存在正式清洗收敛证据。</p>
+          <div class="convergence-grid">
+            <section
+              v-for="side in convergenceSides"
+              :key="side.key"
+              class="convergence-side"
+              :data-test="`convergence-${side.key}`"
+            >
+              <span>{{ side.label }}</span>
+              <strong>{{ side.versionName }}</strong>
+              <p :class="{ confirmed: !!side.evidence }">
+                {{ side.evidence ? '存在正式清洗收敛证据' : '无正式收敛运行证据' }}
+              </p>
+              <dl v-if="side.evidence">
+                <div><dt>发生时间</dt><dd>{{ formatTooltipTimestamp(side.evidence.occurred_at) }}</dd></div>
+                <div><dt>ProcessingRun</dt><dd>{{ shortUuid(side.evidence.processing_run_id) }}</dd></div>
+                <div><dt>唯一修改单元格</dt><dd>{{ side.evidence.unique_changed_cells }}</dd></div>
+              </dl>
+            </section>
+          </div>
+        </article>
+      </div>
     </div>
 
     <div v-else-if="!compareError" class="workbench-empty">
@@ -203,8 +303,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch } from "vue";
-import ChartContainer, { type ChartOption } from "../ChartContainer.vue";
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
+import type { CustomSeriesRenderItem } from "echarts";
+import ChartContainer, { type ChartOption, type ChartViewportChange } from "../ChartContainer.vue";
+import CleaningVersionDifferenceDetailCard from "./CleaningVersionDifferenceDetailCard.vue";
 import VersionLineagePicker from "../versioning/VersionLineagePicker.vue";
 import { getCleaningVersionCompare, getCleaningVersionCompareChannels } from "../../api/datasets";
 import { ApiError } from "../../api/client";
@@ -213,10 +315,13 @@ import type {
   CleaningVersionCompareChannelOption,
   CleaningVersionCompareData,
   CleaningVersionRelation,
+  ConvergenceEvidence,
   DatasetItem,
   DatasetVersionNode,
+  DirectDerivationChanges,
   VersionComparePoint,
   VersionDifferencePoint,
+  VersionDifferenceKind,
 } from "../../types/api";
 
 defineOptions({ name: "CleaningVersionCompareWorkbench" });
@@ -227,17 +332,126 @@ const props = defineProps<{
   currentVersionId: string | null;
 }>();
 
-type ChartAction = { type: string; start?: number; end?: number };
-type ChartExpose = { dispatchAction: (action: ChartAction) => void };
+type ChartAction = {
+  type: string;
+  start?: number;
+  end?: number;
+  seriesId?: string;
+  dataIndex?: number;
+};
+type CoordinateFinder = {
+  gridIndex?: number;
+  xAxisIndex?: number;
+  yAxisIndex?: number;
+};
+type ChartExpose = {
+  dispatchAction: (action: ChartAction) => void;
+  convertToPixel: (finder: CoordinateFinder, value: unknown) => number | number[] | null;
+  containPixel: (finder: CoordinateFinder, value: number[]) => boolean;
+  getSize: () => { width: number; height: number };
+};
+type DifferenceHoverEmphasis = {
+  itemStyle: {
+    color: string;
+    borderColor: string;
+    borderWidth: number;
+    shadowBlur: number;
+    shadowColor: string;
+  };
+};
 type MarkerDatum = {
   value: [string, number];
-  differenceKind: "VALUE_CHANGED" | "POINT_ADDED" | "POINT_REMOVED";
+  differencePoint: true;
+  differenceIndex: number;
+  differenceKind: Exclude<VersionDifferenceKind, "AMBIGUOUS_ALIGNMENT">;
+  anchorKind: "data-point";
+  anchorValue: [string, number];
+  visualSeriesId: string;
+  visualDataIndex: number;
+  emphasis: DifferenceHoverEmphasis;
+};
+type AmbiguousAnnotationDatum = {
+  name: "对齐歧义";
+  xAxis: string;
+};
+type AmbiguityHitStripDatum = {
+  value: [string];
+  timestamp: string;
+  differencePoint: true;
+  differenceIndex: number;
+  differenceKind: "AMBIGUOUS_ALIGNMENT";
+  visualDataIndex: number;
+};
+type AmbiguousSelectedDatum = {
+  differencePoint: true;
+  differenceIndex: number;
+  differenceKind: "AMBIGUOUS_ALIGNMENT";
+  anchorKind: "timestamp";
+  anchorValue: string;
+  visualSeriesId: string;
+  visualDataIndex: number;
+};
+type DifferenceEventDatum = MarkerDatum | AmbiguousSelectedDatum;
+type SelectedDifference = DifferenceEventDatum & {
+  difference: VersionDifferencePoint;
+};
+type ChartClickEvent = {
+  componentType?: string;
+  seriesType?: string;
+  seriesName?: string;
+  seriesIndex?: number;
+  seriesId?: string;
+  dataIndex?: number;
+  data?: unknown;
+};
+type DifferenceDetailPosition = {
+  left: number;
+  top: number;
+  horizontal: "left" | "right";
+  vertical: "above" | "below";
+};
+type VisibleTimeWindow = {
+  startEpochMs: number;
+  endEpochMs: number;
+};
+type EvidenceEntry = {
+  key: string;
+  label: string;
+  displayValue: string;
 };
 
 const ELIGIBLE_OPERATIONS = new Set(["simulation_generate", "raw_upload", "preprocessing.clean"]);
 const BASELINE_COLOR = "#A8665E";
 const COMPARE_COLOR = "#557562";
 const CHANGED_COLOR = "#B5965D";
+const AMBIGUOUS_COLOR = "#8E7B55";
+const DIFFERENCE_HOVER_COLORS = {
+  VALUE_CHANGED: CHANGED_COLOR,
+  POINT_ADDED: COMPARE_COLOR,
+  POINT_REMOVED: BASELINE_COLOR,
+} satisfies Record<MarkerDatum["differenceKind"], string>;
+const AMBIGUITY_HIT_SERIES_NAME = "version-ambiguity-hit-strip";
+const DIFFERENCE_SERIES_IDS = {
+  changed: "version-difference-changed",
+  added: "version-difference-added",
+  removed: "version-difference-removed",
+  hitArea: "version-difference-hit-area",
+  ambiguous: "version-difference-ambiguous-annotation",
+  ambiguityHitStrip: AMBIGUITY_HIT_SERIES_NAME,
+} as const;
+const ORDINARY_DIFFERENCE_SERIES_IDS = new Set<string>([
+  DIFFERENCE_SERIES_IDS.changed,
+  DIFFERENCE_SERIES_IDS.added,
+  DIFFERENCE_SERIES_IDS.removed,
+]);
+const DIFFERENCE_CARD_GAP = 16;
+const DIFFERENCE_CARD_INSET = 8;
+const DIFFERENCE_CARD_FALLBACK_WIDTH = 292;
+const DIFFERENCE_CARD_FALLBACK_HEIGHT = 320;
+const AMBIGUOUS_ANCHOR_TOP = 72;
+const AMBIGUITY_HIT_STRIP_WIDTH = 14;
+const AMBIGUITY_HIT_STRIP_Z = 21;
+const FULL_DATA_ZOOM_EPSILON = 0.000001;
 
 const baselineVersionId = ref<string | null>(null);
 const compareVersionId = ref<string | null>(null);
@@ -250,13 +464,31 @@ const compareLoading = ref(false);
 const compareError = ref("");
 const result = shallowRef<CleaningVersionCompareData | null>(null);
 const chartRef = ref<ChartExpose | null>(null);
+const selectedDifference = ref<SelectedDifference | null>(null);
+const differenceDetailPosition = ref<DifferenceDetailPosition | null>(null);
+const differenceDetailHostRef = ref<HTMLElement | null>(null);
+const visibleTimeWindow = ref<VisibleTimeWindow | null>(null);
 let channelRequestId = 0;
 let compareRequestId = 0;
+let differencePositionRequestId = 0;
 
 const isCompareEligible = (version: DatasetVersionNode) => ELIGIBLE_OPERATIONS.has(version.tool);
 const compareDisabledReason = () => "已进入后续处理阶段，不属于 Cleaning 版本对比范围";
 const pairReady = computed(() => !!props.dataset && !!baselineVersionId.value && !!compareVersionId.value);
 const canCompare = computed(() => pairReady.value && !!selectedChannel.value && !channelLoading.value && !compareLoading.value);
+const dedupeWarnings = (warnings: string[]) => {
+  const seen = new Set<string>();
+  return warnings.filter((warning) => {
+    if (seen.has(warning)) return false;
+    seen.add(warning);
+    return true;
+  });
+};
+const dedupedChannelWarnings = computed(() => dedupeWarnings(channelWarnings.value));
+const dedupedResultWarnings = computed(() => {
+  const channelWarningSet = new Set(dedupedChannelWarnings.value);
+  return dedupeWarnings(result.value?.warnings ?? []).filter((warning) => !channelWarningSet.has(warning));
+});
 
 const nearestEligibleAncestor = (current: DatasetVersionNode, byId: Map<string, DatasetVersionNode>) => {
   const visited = new Set<string>();
@@ -316,6 +548,8 @@ const applyDefaultPair = () => {
 };
 
 const invalidateResult = () => {
+  clearSelectedDifference();
+  visibleTimeWindow.value = null;
   ++compareRequestId;
   compareLoading.value = false;
   compareError.value = "";
@@ -365,8 +599,14 @@ const loadChannels = async () => {
   }
 };
 
-const selectBaseline = (versionId: string) => { baselineVersionId.value = versionId; };
-const selectCompare = (versionId: string) => { compareVersionId.value = versionId; };
+const selectBaseline = (versionId: string) => {
+  clearSelectedDifference();
+  baselineVersionId.value = versionId;
+};
+const selectCompare = (versionId: string) => {
+  clearSelectedDifference();
+  compareVersionId.value = versionId;
+};
 
 const executeCompare = async () => {
   if (!canCompare.value) return;
@@ -375,6 +615,8 @@ const executeCompare = async () => {
   const compareId = compareVersionId.value!;
   const channel = selectedChannel.value!;
   const requestId = ++compareRequestId;
+  clearSelectedDifference();
+  visibleTimeWindow.value = null;
   result.value = null;
   compareError.value = "";
   compareLoading.value = true;
@@ -386,6 +628,7 @@ const executeCompare = async () => {
       max_points: 10_000,
     });
     if (requestId !== compareRequestId || !currentPairMatches(datasetId, baselineId, compareId) || selectedChannel.value !== channel) return;
+    visibleTimeWindow.value = null;
     result.value = response;
   } catch (error) {
     if (requestId !== compareRequestId || !currentPairMatches(datasetId, baselineId, compareId) || selectedChannel.value !== channel) return;
@@ -410,6 +653,24 @@ const DIRECTION_COPY: Record<CleaningVersionDirection, string> = {
 };
 const relationCopy = computed(() => result.value ? RELATION_COPY[result.value.relation] : "");
 const directionCopy = computed(() => result.value ? DIRECTION_COPY[result.value.direction] : "");
+const relationExplanation = computed(() => {
+  const response = result.value;
+  if (!response) return "";
+  if (response.relation === "DIRECT_PARENT") {
+    const operation = response.direct_derivation_summary ? "直接清洗" : "直接处理";
+    return response.direction === "COMPARE_TO_BASELINE"
+      ? `Baseline 由 Compare 经一次${operation}产生。`
+      : `Compare 由 Baseline 经一次${operation}产生。`;
+  }
+  if (response.relation === "ANCESTOR_DESCENDANT") {
+    return response.direction === "COMPARE_TO_BASELINE"
+      ? "Baseline 是 Compare 的后代版本，中间包含一个或多个处理步骤。"
+      : "Compare 是 Baseline 的后代版本，中间包含一个或多个处理步骤。";
+  }
+  if (response.relation === "SIBLING") return "两个版本来自同一父版本，不存在直接派生关系。";
+  if (response.relation === "SAME_VERSION") return "Baseline 与 Compare 指向同一个不可变版本。";
+  return "两个版本属于同一数据集，但当前血缘中不存在直接祖先或同父关系。";
+});
 const hasZeroDifference = computed(() => {
   const summary = result.value?.generic_diff_summary;
   return !!summary && summary.changed_values === 0 && summary.added_points === 0
@@ -417,18 +678,6 @@ const hasZeroDifference = computed(() => {
 });
 
 const lineData = (points: VersionComparePoint[]) => points.map((point) => [point.timestamp, point.value] as [string, number | null]);
-const occurrenceMarkers = (
-  difference: VersionDifferencePoint,
-  side: "baseline" | "compare",
-  kind: MarkerDatum["differenceKind"]
-) => {
-  const directValue = side === "baseline" ? difference.baseline_value : difference.compare_value;
-  if (directValue !== null) return [{ value: [difference.timestamp, directValue], differenceKind: kind } satisfies MarkerDatum];
-  const occurrences = side === "baseline" ? difference.baseline_occurrences : difference.compare_occurrences;
-  return occurrences
-    .filter((point) => point.value !== null)
-    .map((point) => ({ value: [point.timestamp, point.value as number], differenceKind: kind } satisfies MarkerDatum));
-};
 
 const formatAxisTimestamp = (value: string | number) => {
   let timestamp = String(value);
@@ -447,6 +696,396 @@ const formatValue = (value: unknown) => {
   if (value === null || typeof value !== "number" || !Number.isFinite(value)) return "缺失";
   return value.toLocaleString("en-US", { useGrouping: false, maximumFractionDigits: 4 });
 };
+const shortUuid = (value: string) => value.length > 8 ? `${value.slice(0, 8)}…` : value;
+
+const EVIDENCE_SOURCE_LABELS = {
+  persisted: "持久化审计证据",
+  replayed: "只读重放恢复",
+  legacy_total_only: "历史总数记录",
+} as const;
+type EvidenceFieldConfig = {
+  key: string;
+  label: string;
+  type: "number" | "boolean" | "string";
+};
+const PRIMARY_EVIDENCE_FIELDS: EvidenceFieldConfig[] = [
+  { key: "unique_changed_cells", label: "唯一修改单元格", type: "number" },
+  { key: "missing_value_fills", label: "缺失填补", type: "number" },
+  { key: "outlier_replacements", label: "异常值替换", type: "number" },
+  { key: "smoothing_changes", label: "平滑调整", type: "number" },
+  { key: "duplicate_timestamps_processed", label: "重复时间戳处理", type: "number" },
+  { key: "resampling_empty_rows_created", label: "重采样新增空行", type: "number" },
+];
+const AUXILIARY_EVIDENCE_FIELDS: EvidenceFieldConfig[] = [
+  { key: "overlapping_changed_cells", label: "重叠修改单元格", type: "number" },
+  { key: "category_counts_may_overlap", label: "分类计数可能重叠", type: "boolean" },
+  { key: "source_missing_cells", label: "源数据缺失单元格", type: "number" },
+  { key: "aligned_missing_cells_before_interpolation", label: "插值前对齐缺失单元格", type: "number" },
+  { key: "breakdown_status", label: "分类明细状态", type: "string" },
+  { key: "count_unit", label: "计数单位", type: "string" },
+];
+const KNOWN_EVIDENCE_KEYS = new Set([
+  ...PRIMARY_EVIDENCE_FIELDS.map((field) => field.key),
+  ...AUXILIARY_EVIDENCE_FIELDS.map((field) => field.key),
+]);
+const hasOwn = (value: object, key: PropertyKey) => Object.prototype.hasOwnProperty.call(value, key);
+const isValidKnownEvidenceValue = (value: unknown, type: EvidenceFieldConfig["type"]) => {
+  if (value === null) return true;
+  if (type === "number") return typeof value === "number" && Number.isFinite(value);
+  return typeof value === type;
+};
+const formatKnownEvidenceValue = (value: unknown) => {
+  if (value === null) return "未记录";
+  if (typeof value === "number") return formatValue(value);
+  if (typeof value === "boolean") return value ? "是" : "否";
+  return String(value);
+};
+const buildEvidenceEntries = (
+  changes: DirectDerivationChanges,
+  fields: EvidenceFieldConfig[],
+  legacyTotalOnly: boolean
+) => fields.flatMap((field): EvidenceEntry[] => {
+  if (legacyTotalOnly && field.key !== "unique_changed_cells") return [];
+  if (!hasOwn(changes, field.key)) return [];
+  const value = changes[field.key];
+  if (!isValidKnownEvidenceValue(value, field.type)) return [];
+  return [{ key: field.key, label: field.label, displayValue: formatKnownEvidenceValue(value) }];
+});
+const evidenceSourceLabel = computed(() => {
+  const source = result.value?.direct_derivation_summary?.evidence_source;
+  return source ? EVIDENCE_SOURCE_LABELS[source] : "";
+});
+const primaryEvidenceEntries = computed(() => {
+  const evidence = result.value?.direct_derivation_summary;
+  return evidence
+    ? buildEvidenceEntries(evidence.changes, PRIMARY_EVIDENCE_FIELDS, evidence.evidence_source === "legacy_total_only")
+    : [];
+});
+const auxiliaryEvidenceEntries = computed(() => {
+  const evidence = result.value?.direct_derivation_summary;
+  return evidence && evidence.evidence_source !== "legacy_total_only"
+    ? buildEvidenceEntries(evidence.changes, AUXILIARY_EVIDENCE_FIELDS, false)
+    : [];
+});
+const otherAuditEntries = computed(() => {
+  const evidence = result.value?.direct_derivation_summary;
+  if (!evidence || evidence.evidence_source === "legacy_total_only") return [];
+  return Object.entries(evidence.changes).flatMap(([key, value]): EvidenceEntry[] => {
+    if (KNOWN_EVIDENCE_KEYS.has(key)) return [];
+    const isScalar = value === null
+      || typeof value === "string"
+      || typeof value === "boolean"
+      || (typeof value === "number" && Number.isFinite(value));
+    if (!isScalar) return [];
+    return [{ key, label: key, displayValue: value === null ? "null" : String(value) }];
+  });
+});
+const convergenceSides = computed(() => {
+  const response = result.value;
+  if (!response) return [];
+  return [
+    { key: "baseline", label: "Baseline", versionName: response.baseline.name, evidence: response.convergence_evidence.baseline },
+    { key: "compare", label: "Compare", versionName: response.compare.name, evidence: response.convergence_evidence.compare },
+  ] satisfies Array<{
+    key: "baseline" | "compare";
+    label: string;
+    versionName: string;
+    evidence: ConvergenceEvidence | null;
+  }>;
+});
+
+const appendMarker = (
+  target: MarkerDatum[],
+  differenceIndex: number,
+  differenceKind: MarkerDatum["differenceKind"],
+  visualSeriesId: string,
+  timestamp: string,
+  value: number
+) => {
+  const anchorValue: [string, number] = [timestamp, value];
+  const hoverColor = DIFFERENCE_HOVER_COLORS[differenceKind];
+  target.push({
+    value: anchorValue,
+    differencePoint: true,
+    differenceIndex,
+    differenceKind,
+    anchorKind: "data-point",
+    anchorValue,
+    visualSeriesId,
+    visualDataIndex: target.length,
+    emphasis: {
+      itemStyle: {
+        color: `${hoverColor}24`,
+        borderColor: hoverColor,
+        borderWidth: 2,
+        shadowBlur: 6,
+        shadowColor: `${hoverColor}66`,
+      },
+    },
+  });
+};
+const appendOccurrenceMarkers = (
+  target: MarkerDatum[],
+  difference: VersionDifferencePoint,
+  differenceIndex: number,
+  side: "baseline" | "compare",
+  differenceKind: MarkerDatum["differenceKind"],
+  visualSeriesId: string
+) => {
+  const directValue = side === "baseline" ? difference.baseline_value : difference.compare_value;
+  if (directValue !== null) {
+    appendMarker(target, differenceIndex, differenceKind, visualSeriesId, difference.timestamp, directValue);
+    return;
+  }
+  const occurrences = side === "baseline" ? difference.baseline_occurrences : difference.compare_occurrences;
+  for (const occurrence of occurrences) {
+    if (occurrence.value === null) continue;
+    appendMarker(target, differenceIndex, differenceKind, visualSeriesId, occurrence.timestamp, occurrence.value);
+  }
+};
+
+const isDifferenceEventDatum = (value: unknown): value is DifferenceEventDatum => {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.differencePoint !== true
+    || !Number.isInteger(candidate.differenceIndex)
+    || typeof candidate.differenceKind !== "string"
+    || typeof candidate.anchorKind !== "string"
+    || typeof candidate.visualSeriesId !== "string"
+    || !Number.isInteger(candidate.visualDataIndex)
+  ) return false;
+  if (candidate.anchorKind === "timestamp") {
+    return candidate.differenceKind === "AMBIGUOUS_ALIGNMENT" && typeof candidate.anchorValue === "string";
+  }
+  return candidate.anchorKind === "data-point"
+    && candidate.differenceKind !== "AMBIGUOUS_ALIGNMENT"
+    && Array.isArray(candidate.anchorValue)
+    && candidate.anchorValue.length === 2
+    && typeof candidate.anchorValue[0] === "string"
+    && typeof candidate.anchorValue[1] === "number"
+    && Number.isFinite(candidate.anchorValue[1]);
+};
+const isAmbiguityHitStripDatum = (value: unknown): value is AmbiguityHitStripDatum => {
+  if (!value || typeof value !== "object") return false;
+  return "differencePoint" in value
+    && value.differencePoint === true
+    && "differenceIndex" in value
+    && Number.isInteger(value.differenceIndex)
+    && value.differenceIndex >= 0
+    && "differenceKind" in value
+    && value.differenceKind === "AMBIGUOUS_ALIGNMENT"
+    && "timestamp" in value
+    && typeof value.timestamp === "string"
+    && "visualDataIndex" in value
+    && Number.isInteger(value.visualDataIndex)
+    && value.visualDataIndex >= 0;
+};
+const dispatchDifferenceState = (type: "highlight" | "downplay", selected: SelectedDifference) => {
+  if (!ORDINARY_DIFFERENCE_SERIES_IDS.has(selected.visualSeriesId)) return;
+  chartRef.value?.dispatchAction({
+    type,
+    seriesId: selected.visualSeriesId,
+    dataIndex: selected.visualDataIndex,
+  });
+};
+const clearSelectedDifference = () => {
+  const previous = selectedDifference.value;
+  if (previous) dispatchDifferenceState("downplay", previous);
+  ++differencePositionRequestId;
+  selectedDifference.value = null;
+  differenceDetailPosition.value = null;
+};
+const clamp = (value: number, minimum: number, maximum: number) =>
+  Math.min(Math.max(value, minimum), Math.max(minimum, maximum));
+const placeDifferenceDetailCard = (
+  point: number[],
+  chartSize: { width: number; height: number },
+  cardSize: { width: number; height: number }
+): DifferenceDetailPosition => {
+  const horizontal: DifferenceDetailPosition["horizontal"] = point[0] < chartSize.width / 2 ? "right" : "left";
+  const preferredLeft = horizontal === "right"
+    ? point[0] + DIFFERENCE_CARD_GAP
+    : point[0] - cardSize.width - DIFFERENCE_CARD_GAP;
+  const aboveTop = point[1] - cardSize.height - DIFFERENCE_CARD_GAP;
+  const vertical: DifferenceDetailPosition["vertical"] = aboveTop >= DIFFERENCE_CARD_INSET ? "above" : "below";
+  const preferredTop = vertical === "above" ? aboveTop : point[1] + DIFFERENCE_CARD_GAP;
+  return {
+    left: clamp(preferredLeft, DIFFERENCE_CARD_INSET, chartSize.width - cardSize.width - DIFFERENCE_CARD_INSET),
+    top: clamp(preferredTop, DIFFERENCE_CARD_INSET, chartSize.height - cardSize.height - DIFFERENCE_CARD_INSET),
+    horizontal,
+    vertical,
+  };
+};
+const differenceDetailCardStyle = computed(() => {
+  const position = differenceDetailPosition.value;
+  return position ? { left: `${position.left}px`, top: `${position.top}px` } : { left: "0", top: "0" };
+});
+const toEpochMilliseconds = (value: number | string | Date | undefined) => {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (value instanceof Date) {
+    const epoch = value.getTime();
+    return Number.isFinite(epoch) ? epoch : null;
+  }
+  if (typeof value === "string") {
+    const epoch = Date.parse(value);
+    return Number.isFinite(epoch) ? epoch : null;
+  }
+  return null;
+};
+const updateVisibleTimeWindow = (change: Extract<ChartViewportChange, { reason: "datazoom" }>) => {
+  for (const range of change.ranges) {
+    if (!range.xAxisIndices.includes(0)) continue;
+    const isFullRange = typeof range.start === "number"
+      && typeof range.end === "number"
+      && Math.abs(range.start) <= FULL_DATA_ZOOM_EPSILON
+      && Math.abs(100 - range.end) <= FULL_DATA_ZOOM_EPSILON;
+    if (isFullRange) {
+      visibleTimeWindow.value = null;
+      return;
+    }
+    const startEpochMs = toEpochMilliseconds(range.startValue);
+    const endEpochMs = toEpochMilliseconds(range.endValue);
+    if (startEpochMs === null || endEpochMs === null) continue;
+    visibleTimeWindow.value = {
+      startEpochMs: Math.min(startEpochMs, endEpochMs),
+      endEpochMs: Math.max(startEpochMs, endEpochMs),
+    };
+    return;
+  }
+};
+const isTimestampVisible = (timestamp: string) => {
+  const window = visibleTimeWindow.value;
+  if (!window) return true;
+  const timestampEpochMs = Date.parse(timestamp);
+  return Number.isFinite(timestampEpochMs)
+    && timestampEpochMs >= window.startEpochMs
+    && timestampEpochMs <= window.endEpochMs;
+};
+const updateDifferenceDetailPosition = async () => {
+  const requestId = ++differencePositionRequestId;
+  const selected = selectedDifference.value;
+  if (!selected) {
+    differenceDetailPosition.value = null;
+    return;
+  }
+  await nextTick();
+  if (requestId !== differencePositionRequestId || selected !== selectedDifference.value) return;
+  const chart = chartRef.value;
+  const card = differenceDetailHostRef.value;
+  if (!chart || !card) {
+    differenceDetailPosition.value = null;
+    return;
+  }
+  const chartSize = chart.getSize();
+  if (chartSize.width <= 0 || chartSize.height <= 0) {
+    differenceDetailPosition.value = null;
+    return;
+  }
+  let point: number[] | null = null;
+  if (selected.anchorKind === "data-point") {
+    const converted = chart.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, selected.anchorValue);
+    if (Array.isArray(converted) && converted.length >= 2 && converted.every(Number.isFinite)) point = converted;
+    if (!point || !chart.containPixel({ gridIndex: 0 }, point)) {
+      differenceDetailPosition.value = null;
+      return;
+    }
+  } else {
+    if (!isTimestampVisible(selected.anchorValue)) {
+      differenceDetailPosition.value = null;
+      return;
+    }
+    const converted = chart.convertToPixel({ xAxisIndex: 0 }, selected.anchorValue);
+    const x = typeof converted === "number" ? converted : Array.isArray(converted) ? converted[0] : null;
+    if (typeof x === "number" && Number.isFinite(x)) {
+      point = [x, Math.min(AMBIGUOUS_ANCHOR_TOP, chartSize.height / 2)];
+    }
+  }
+  if (!point) {
+    differenceDetailPosition.value = null;
+    return;
+  }
+  const cardRect = card.getBoundingClientRect();
+  differenceDetailPosition.value = placeDifferenceDetailCard(point, chartSize, {
+    width: cardRect.width || DIFFERENCE_CARD_FALLBACK_WIDTH,
+    height: cardRect.height || DIFFERENCE_CARD_FALLBACK_HEIGHT,
+  });
+};
+const handleChartViewportChange = (change: ChartViewportChange) => {
+  if (change.reason === "datazoom") updateVisibleTimeWindow(change);
+  void updateDifferenceDetailPosition();
+};
+const selectDifference = (datum: DifferenceEventDatum, difference: VersionDifferencePoint) => {
+  const previous = selectedDifference.value;
+  if (previous) dispatchDifferenceState("downplay", previous);
+  const next: SelectedDifference = { ...datum, difference };
+  differenceDetailPosition.value = null;
+  selectedDifference.value = next;
+  dispatchDifferenceState("highlight", next);
+  void updateDifferenceDetailPosition();
+};
+const handleChartClick = (params: unknown) => {
+  const event = params as ChartClickEvent;
+  if (
+    event.componentType === "series"
+    && event.seriesType === "custom"
+    && event.seriesName === AMBIGUITY_HIT_SERIES_NAME
+  ) {
+    if (!isAmbiguityHitStripDatum(event.data)) return;
+    const differencePoints = result.value?.difference_points;
+    if (!differencePoints || event.data.differenceIndex >= differencePoints.length) return;
+    const difference = differencePoints[event.data.differenceIndex];
+    if (!difference || difference.difference_kind !== "AMBIGUOUS_ALIGNMENT") return;
+    selectDifference({
+      differencePoint: true,
+      differenceIndex: event.data.differenceIndex,
+      differenceKind: "AMBIGUOUS_ALIGNMENT",
+      anchorKind: "timestamp",
+      anchorValue: event.data.timestamp,
+      visualSeriesId: DIFFERENCE_SERIES_IDS.ambiguityHitStrip,
+      visualDataIndex: event.data.visualDataIndex,
+    }, difference);
+    return;
+  }
+  if (!isDifferenceEventDatum(event.data)) return;
+  const difference = result.value?.difference_points[event.data.differenceIndex];
+  if (!difference || difference.difference_kind !== event.data.differenceKind) return;
+  selectDifference(event.data, difference);
+};
+
+const renderAmbiguityHitStrip: CustomSeriesRenderItem = (params, api) => {
+  const coordSys = params.coordSys;
+  if (
+    coordSys.type !== "cartesian2d"
+    || !("y" in coordSys)
+    || typeof coordSys.y !== "number"
+    || !("height" in coordSys)
+    || typeof coordSys.height !== "number"
+  ) return null;
+
+  // UI-only coordinate helper for x pixel conversion; not a business y value.
+  const uiOnlyCoordinateY = 0;
+  const x = api.coord([api.value(0), uiOnlyCoordinateY])[0];
+  if (typeof x !== "number" || !Number.isFinite(x)) return null;
+
+  return {
+    type: "rect",
+    shape: {
+      x: x - AMBIGUITY_HIT_STRIP_WIDTH / 2,
+      y: coordSys.y,
+      width: AMBIGUITY_HIT_STRIP_WIDTH,
+      height: coordSys.height,
+    },
+    style: { fill: "rgba(142, 123, 85, 0.001)" },
+    emphasis: {
+      style: {
+        fill: "rgba(142, 123, 85, 0.1)",
+        shadowBlur: 4,
+        shadowColor: "rgba(142, 123, 85, 0.24)",
+      },
+    },
+  };
+};
 
 const overlayChartOptions = computed<ChartOption>(() => {
   const response = result.value;
@@ -454,15 +1093,39 @@ const overlayChartOptions = computed<ChartOption>(() => {
   const changed: MarkerDatum[] = [];
   const added: MarkerDatum[] = [];
   const removed: MarkerDatum[] = [];
-  for (const difference of response.difference_points) {
-    if (difference.difference_kind === "VALUE_CHANGED" && difference.compare_value !== null) {
-      changed.push({ value: [difference.timestamp, difference.compare_value], differenceKind: "VALUE_CHANGED" });
+  const ambiguousAnnotations: AmbiguousAnnotationDatum[] = [];
+  const ambiguityHitStrips: AmbiguityHitStripDatum[] = [];
+  response.difference_points.forEach((difference, differenceIndex) => {
+    if (difference.difference_kind === "VALUE_CHANGED") {
+      const anchor = difference.compare_value ?? difference.baseline_value;
+      if (anchor !== null) appendMarker(
+        changed,
+        differenceIndex,
+        "VALUE_CHANGED",
+        DIFFERENCE_SERIES_IDS.changed,
+        difference.timestamp,
+        anchor
+      );
     } else if (difference.difference_kind === "POINT_ADDED") {
-      added.push(...occurrenceMarkers(difference, "compare", "POINT_ADDED"));
+      appendOccurrenceMarkers(added, difference, differenceIndex, "compare", "POINT_ADDED", DIFFERENCE_SERIES_IDS.added);
     } else if (difference.difference_kind === "POINT_REMOVED") {
-      removed.push(...occurrenceMarkers(difference, "baseline", "POINT_REMOVED"));
+      appendOccurrenceMarkers(removed, difference, differenceIndex, "baseline", "POINT_REMOVED", DIFFERENCE_SERIES_IDS.removed);
+    } else {
+      ambiguousAnnotations.push({
+        name: "对齐歧义",
+        xAxis: difference.timestamp,
+      });
+      ambiguityHitStrips.push({
+        value: [difference.timestamp],
+        timestamp: difference.timestamp,
+        differencePoint: true,
+        differenceIndex,
+        differenceKind: "AMBIGUOUS_ALIGNMENT",
+        visualDataIndex: ambiguityHitStrips.length,
+      });
     }
-  }
+  });
+  const hitAreaData = [...changed, ...added, ...removed];
   return {
     animation: false,
     tooltip: {
@@ -493,20 +1156,87 @@ const overlayChartOptions = computed<ChartOption>(() => {
     xAxis: { type: "time", axisLabel: { formatter: formatAxisTimestamp, hideOverlap: true } },
     yAxis: { type: "value", scale: true },
     series: [
-      { id: "version-compare-baseline", name: "Baseline", type: "line", showSymbol: false, connectNulls: false, lineStyle: { type: "dashed", width: 1.8, opacity: 0.72, color: BASELINE_COLOR }, itemStyle: { color: BASELINE_COLOR }, data: lineData(response.baseline_series.points), z: 2 },
-      { id: "version-compare-target", name: "Compare", type: "line", showSymbol: false, connectNulls: false, lineStyle: { type: "solid", width: 2.6, color: COMPARE_COLOR }, itemStyle: { color: COMPARE_COLOR }, data: lineData(response.compare_series.points), z: 3 },
-      { id: "version-difference-changed", name: "值变化", type: "scatter", silent: true, symbol: "emptyCircle", symbolSize: 9, itemStyle: { color: CHANGED_COLOR, borderColor: CHANGED_COLOR, borderWidth: 2 }, data: changed, z: 7 },
-      { id: "version-difference-added", name: "新增点", type: "scatter", silent: true, symbol: "triangle", symbolSize: 10, itemStyle: { color: COMPARE_COLOR }, data: added, z: 7 },
-      { id: "version-difference-removed", name: "移除点", type: "scatter", silent: true, symbol: "triangle", symbolRotate: 180, symbolSize: 10, itemStyle: { color: BASELINE_COLOR }, data: removed, z: 7 },
+      {
+        id: "version-compare-baseline",
+        name: "Baseline",
+        type: "line",
+        showSymbol: false,
+        connectNulls: false,
+        lineStyle: { type: "dashed", width: 1.8, opacity: 0.72, color: BASELINE_COLOR },
+        itemStyle: { color: BASELINE_COLOR },
+        data: lineData(response.baseline_series.points),
+        z: 2,
+      },
+      {
+        id: "version-compare-target",
+        name: "Compare",
+        type: "line",
+        showSymbol: false,
+        connectNulls: false,
+        lineStyle: { type: "solid", width: 2.6, color: COMPARE_COLOR },
+        itemStyle: { color: COMPARE_COLOR },
+        data: lineData(response.compare_series.points),
+        markLine: {
+          silent: true,
+          symbol: ["none", "diamond"],
+          symbolSize: [0, 11],
+          label: { show: true, formatter: "对齐歧义", position: "insideEndTop", color: AMBIGUOUS_COLOR, fontSize: 10 },
+          lineStyle: { color: AMBIGUOUS_COLOR, type: "dashed", width: 1.4, opacity: 0.8 },
+          data: ambiguousAnnotations,
+        },
+        z: 3,
+      },
+      { id: DIFFERENCE_SERIES_IDS.changed, name: "值变化", type: "scatter", silent: true, symbol: "emptyCircle", symbolSize: 9, itemStyle: { color: CHANGED_COLOR, borderColor: CHANGED_COLOR, borderWidth: 2 }, data: changed, z: 7 },
+      { id: DIFFERENCE_SERIES_IDS.added, name: "新增点", type: "scatter", silent: true, symbol: "triangle", symbolSize: 10, itemStyle: { color: COMPARE_COLOR }, data: added, z: 7 },
+      { id: DIFFERENCE_SERIES_IDS.removed, name: "移除点", type: "scatter", silent: true, symbol: "triangle", symbolRotate: 180, symbolSize: 10, itemStyle: { color: BASELINE_COLOR }, data: removed, z: 7 },
+      {
+        id: DIFFERENCE_SERIES_IDS.hitArea,
+        type: "scatter",
+        silent: false,
+        symbol: "circle",
+        symbolSize: 20,
+        cursor: "pointer",
+        legendHoverLink: false,
+        tooltip: { show: false },
+        itemStyle: { color: "rgba(0, 0, 0, 0.001)" },
+        emphasis: { scale: 1.1, focus: "none" },
+        data: hitAreaData,
+        z: 20,
+      },
+      {
+        id: DIFFERENCE_SERIES_IDS.ambiguityHitStrip,
+        name: AMBIGUITY_HIT_SERIES_NAME,
+        type: "custom",
+        coordinateSystem: "cartesian2d",
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        dimensions: ["timestamp"],
+        encode: { x: 0 },
+        silent: false,
+        cursor: "pointer",
+        legendHoverLink: false,
+        tooltip: { show: false },
+        renderItem: renderAmbiguityHitStrip,
+        data: ambiguityHitStrips,
+        clip: true,
+        z: AMBIGUITY_HIT_STRIP_Z,
+      },
     ],
   };
 });
 
-const resetZoom = () => { chartRef.value?.dispatchAction({ type: "dataZoom", start: 0, end: 100 }); };
+const resetZoom = () => {
+  chartRef.value?.dispatchAction({ type: "dataZoom", start: 0, end: 100 });
+  void updateDifferenceDetailPosition();
+};
 
-watch([() => props.dataset?.id, () => props.currentVersionId, () => props.versions], applyDefaultPair, { immediate: true });
+watch([() => props.dataset?.id, () => props.currentVersionId, () => props.versions], () => {
+  clearSelectedDifference();
+  applyDefaultPair();
+}, { immediate: true });
 watch([() => props.dataset?.id, baselineVersionId, compareVersionId], () => { void loadChannels(); }, { immediate: true });
 watch(selectedChannel, (channel, previous) => { if (channel !== previous) invalidateResult(); });
+onBeforeUnmount(() => { ++differencePositionRequestId; });
 </script>
 
 <style scoped>
@@ -529,6 +1259,7 @@ watch(selectedChannel, (channel, previous) => { if (channel !== previous) invali
 .summary-header { align-items: flex-start; }
 .summary-header h4 { margin-top: 3px; font-size: 15px; }
 .summary-header p { margin-top: 4px; }
+.summary-header .relation-explanation { max-width: 720px; margin-top: 7px; color: var(--text-secondary); }
 .summary-badges { display: flex; gap: 8px; }
 .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
 .metric-card { display: flex; flex-direction: column; gap: 5px; padding: 12px 14px; border: 1px solid var(--border-light); border-radius: 8px; background: #fafbf8; }
@@ -543,10 +1274,40 @@ watch(selectedChannel, (channel, previous) => { if (channel !== previous) invali
 .chart-header > div { display: flex; flex-direction: column; gap: 2px; }
 .chart-header strong { font-size: 13px; }
 .ambiguity-note { margin: 6px 0 0; }
+.version-compare-chart-stage { position: relative; }
+.difference-detail-host { position: absolute; z-index: 12; }
+.difference-detail-host.is-anchor-hidden { visibility: hidden; pointer-events: none; }
+.evidence-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+.evidence-grid.status-only { grid-template-columns: 1fr; }
+.evidence-card { min-width: 0; padding: 16px; border: 1px solid var(--border-light); border-radius: 9px; background: #fafbf8; }
+.evidence-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.evidence-card h4 { margin: 3px 0 0; font-size: 14px; }
+.evidence-eyebrow { color: var(--color-primary); font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: .09em; }
+.evidence-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.evidence-metrics > div { display: flex; flex-direction: column; gap: 4px; padding: 9px 10px; border: 1px solid #e1e6df; border-radius: 6px; background: #fff; }
+.evidence-metrics span, .evidence-auxiliary dt, .other-audit-fields dt { color: var(--text-muted); font-size: 10px; }
+.evidence-metrics strong { font-family: var(--font-mono); font-size: 16px; }
+.evidence-auxiliary, .other-audit-fields dl { display: grid; gap: 6px; margin: 12px 0 0; }
+.evidence-auxiliary > div, .other-audit-fields dl > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+.evidence-auxiliary dd, .other-audit-fields dd { overflow-wrap: anywhere; margin: 0; font-family: var(--font-mono); font-size: 10px; }
+.direct-evidence-card :deep(.el-alert) { margin-top: 12px; }
+.other-audit-fields { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-light); }
+.other-audit-fields summary { color: var(--text-secondary); font-size: 11px; cursor: pointer; }
+.identity-explanation { margin: 12px 0 0; padding: 8px 10px; border-left: 3px solid #8e9b90; background: #f0f3ef; color: var(--text-secondary); font-size: 10px; }
+.convergence-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.convergence-side { min-width: 0; padding: 11px; border: 1px solid #e1e6df; border-radius: 7px; background: #fff; }
+.convergence-side > span { color: var(--text-muted); font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.convergence-side > strong { display: block; overflow: hidden; margin-top: 3px; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.convergence-side > p { margin: 9px 0 0; color: var(--text-muted); font-size: 10px; }
+.convergence-side > p.confirmed { color: #466f43; font-weight: 650; }
+.convergence-side dl { display: grid; gap: 5px; margin: 10px 0 0; padding-top: 9px; border-top: 1px solid #e5e9e4; }
+.convergence-side dl > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.convergence-side dt { color: var(--text-muted); font-size: 9px; }
+.convergence-side dd { overflow-wrap: anywhere; margin: 0; font-family: var(--font-mono); font-size: 9px; }
 .workbench-empty { display: flex; flex-direction: column; align-items: center; gap: 5px; margin-top: 20px; padding: 34px 20px; border: 1px dashed var(--border-default); border-radius: 8px; background: var(--bg-subtle); }
 .workbench-empty strong { font-size: 13px; }
 @media (max-width: 900px) {
-  .selector-grid, .metric-grid { grid-template-columns: 1fr; }
+  .selector-grid, .metric-grid, .evidence-grid, .convergence-grid { grid-template-columns: 1fr; }
   .execution-row, .workbench-header, .summary-header { align-items: stretch; flex-direction: column; }
   .summary-badges { align-self: flex-start; }
 }
