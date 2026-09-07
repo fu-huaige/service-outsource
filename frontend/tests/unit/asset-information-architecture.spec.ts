@@ -51,6 +51,37 @@ afterEach(() => {
 });
 
 describe("Function Center information architecture", () => {
+  it("keeps secondary module hover and focus feedback aligned with first-level cards", () => {
+    const primarySource = readFileSync(resolve(process.cwd(), "src/views/AssetsView.vue"), "utf8");
+    const secondarySource = readFileSync(resolve(process.cwd(), "src/views/AssetCategoryView.vue"), "utf8");
+    const sharedFeedbackDeclarations = [
+      "background: #F7F9F5;",
+      "border-color: #D6DDD2;",
+      "transform: translateY(-1px);",
+      "box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);",
+      "background: #E8F0E5;",
+      "color: #426340;",
+      "transform: translateX(2px);",
+      "outline: 2px solid var(--border-focus, #82A978);",
+      "outline-offset: 2px;",
+    ];
+
+    for (const declaration of sharedFeedbackDeclarations) {
+      expect(primarySource).toContain(declaration);
+      expect(secondarySource).toContain(declaration);
+    }
+    expect(secondarySource).toContain(
+      "transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;"
+    );
+    expect(secondarySource).toContain(
+      "transition: background-color 180ms ease, color 180ms ease;"
+    );
+    expect(secondarySource).toContain(
+      "transition: transform 180ms ease, color 180ms ease;"
+    );
+    expect(secondarySource).not.toMatch(/\.module-card(?:\.router-link-(?:exact-)?active|\.selected|\.active)\s*\{/);
+  });
+
   it("uses the formal Function Center heading, introduction, and no technical eyebrow", () => {
     const wrapper = mount(AssetsView, { global: { stubs: navigationStubs } });
 

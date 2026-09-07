@@ -194,13 +194,19 @@ const content = computed(() => categoryContent[props.category]);
   border-radius: var(--radius-md);
   background: var(--surface-1);
   box-shadow: var(--shadow-sm);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+  transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 
 .module-card:hover {
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-md);
+  background: #F7F9F5;
+  border-color: #D6DDD2;
   transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.module-card:focus-visible {
+  outline: 2px solid var(--border-focus, #82A978);
+  outline-offset: 2px;
 }
 
 .module-card__icon {
@@ -214,6 +220,12 @@ const content = computed(() => categoryContent[props.category]);
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
   color: var(--accent-dark);
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+.module-card:hover .module-card__icon {
+  background: #E8F0E5;
+  color: #426340;
 }
 
 .module-card__icon :deep(svg) {
@@ -235,6 +247,10 @@ const content = computed(() => categoryContent[props.category]);
   letter-spacing: normal;
 }
 
+.module-card:hover .module-card__body h2 {
+  color: #426340;
+}
+
 .module-card__body p {
   margin: 0;
   color: var(--text-secondary);
@@ -248,11 +264,11 @@ const content = computed(() => categoryContent[props.category]);
   height: 16px;
   flex-shrink: 0;
   color: var(--text-tertiary);
-  transition: transform var(--transition-fast), color var(--transition-fast);
+  transition: transform 180ms ease, color 180ms ease;
 }
 
 .module-card:hover .module-card__arrow {
-  color: var(--accent-dark);
+  color: #426340;
   transform: translateX(2px);
 }
 
