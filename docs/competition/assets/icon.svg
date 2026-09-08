@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+<title>IndusOpt 图标 · 闭环信号标</title>
+<desc>深蓝底色圆形徽标，青色闭环箭头环绕，中央为平稳信号中挑出高信息片段的波形，两个琥珀色标记点代表被优选的数据点</desc>
+<circle cx="100" cy="100" r="90" fill="#17384F"/>
+<circle cx="100" cy="100" r="65" fill="none" stroke="#1C7293" stroke-width="7"/>
+<polygon points="100,28 100,42 118,35" fill="#1C7293"/>
+<path d="M 50,105 L 75,105" fill="none" stroke="#A9BECD" stroke-width="3" stroke-linecap="round"/>
+<path d="M 75,105 L 85,80 L 95,110 L 105,85 L 115,105" fill="none" stroke="#E39A2B" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 115,105 L 150,105" fill="none" stroke="#A9BECD" stroke-width="3" stroke-linecap="round"/>
+<circle cx="85" cy="80" r="3.2" fill="#E39A2B"/>
+<circle cx="105" cy="85" r="3.2" fill="#E39A2B"/>
+</svg>

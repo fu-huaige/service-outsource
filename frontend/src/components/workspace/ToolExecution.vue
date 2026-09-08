@@ -45,12 +45,23 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { agentStepStatus } from '../../utils/agentStepStatus';
 import type { CopilotExecutionStepSnapshot, ExecutionPlanStep } from '../../types/api';
 
 const props = defineProps<{
   stepRun: CopilotExecutionStepSnapshot;
   planStep?: ExecutionPlanStep;
 }>();
+
+// Render the persistent snapshot through the same status vocabulary as the plan.
+const stepRun = computed(() => ({
+  ...props.stepRun,
+  status: agentStepStatus(props.stepRun.status),
+  summary: typeof props.stepRun.result_payload?.summary === 'string'
+    ? props.stepRun.result_payload.summary : '',
+  duration_ms: props.stepRun.started_at && props.stepRun.finished_at
+    ? Date.parse(props.stepRun.finished_at) - Date.parse(props.stepRun.started_at) : null,
+}));
 
 defineEmits<{ click: [] }>();
 

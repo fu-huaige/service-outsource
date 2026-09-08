@@ -87,12 +87,31 @@
         </div>
       </template>
 
+      <template v-else-if="activeArtifact.type === 'lag'">
+        <MetricStrip :metrics="[
+          { label: '补偿前样本数', value: String(activeArtifact.payload.summary?.rows_before ?? '—') },
+          { label: '补偿后样本数', value: String(activeArtifact.payload.summary?.rows_after ?? '—'), primary: true },
+          { label: '裁剪边界行数', value: String(activeArtifact.payload.summary?.removed_boundary_rows ?? '—') },
+        ]" />
+        <div class="aw-section">
+          <div class="aw-section__label">已应用的时滞补偿</div>
+          <div class="aw-kv-list">
+            <div v-for="(val, key) in activeArtifact.payload.summary?.lag_map" :key="key" class="aw-kv">
+              <span>{{ key }}</span><span>{{ val }} 采样点</span>
+            </div>
+          </div>
+          <div>已生成补偿后数据版本</div>
+          <code data-test="lag-result-version">{{ activeArtifact.payload.result_version_id }}</code>
+          <a :href="`${apiBase}/datasets/${encodeURIComponent(execution.dataset_id)}/download?version_id=${encodeURIComponent(activeArtifact.payload.result_version_id)}`">下载补偿后 CSV</a>
+        </div>
+      </template>
+
       <!-- Delay Artifact -->
       <template v-else-if="activeArtifact.type === 'delay'">
         <div class="aw-section">
           <div class="aw-section__label">估计纯时滞 (Estimated Delays)</div>
           <div class="aw-kv-list">
-            <div v-for="(val, key) in activeArtifact.payload.estimated_delays" :key="key" class="aw-kv">
+            <div v-for="(val, key) in (activeArtifact.payload.best_delays ?? activeArtifact.payload.estimated_delays)" :key="key" class="aw-kv">
               <span class="aw-kv__key font-mono">{{ key }}</span>
               <span class="aw-kv__val font-mono">{{ val }} 采样点</span>
             </div>
@@ -139,6 +158,9 @@
 import { ref, computed, watch } from 'vue';
 import MetricStrip from './MetricStrip.vue';
 import type { CopilotExecutionSnapshot } from '../../types/api';
+import { agentStepStatus } from '../../utils/agentStepStatus';
+
+const apiBase = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 const props = defineProps<{
   execution: CopilotExecutionSnapshot;
@@ -152,12 +174,20 @@ const activeTab = ref<string | null>(null);
 
 interface ArtifactDef {
   stepId: string;
-  type: 'model' | 'evaluation' | 'optimization' | 'delay' | 'feature' | 'cleaning' | 'segmentation' | 'report' | 'generic';
+  type: 'model' | 'evaluation' | 'optimization' | 'delay' | 'lag' | 'feature' | 'cleaning' | 'segmentation' | 'report' | 'generic';
   label: string;
   payload: Record<string, any>;
 }
 
 const TOOL_META: Record<string, { type: ArtifactDef['type']; label: string }> = {
+  profile_dataset:         { type: 'generic',      label: '数据画像' },
+  detect_anomalies:        { type: 'generic',      label: '异常检测' },
+  clean_data:              { type: 'cleaning',     label: '数据清洗' },
+  detect_dynamic_segments: { type: 'segmentation', label: '区间优选' },
+  estimate_delays:         { type: 'delay',        label: '时滞分析' },
+  apply_lag_compensation:  { type: 'lag',          label: '时滞补偿结果' },
+  fit_arx:                 { type: 'model',        label: 'ARX 模型' },
+  select_variables:        { type: 'generic',      label: '特征筛选' },
   arx_fit:                 { type: 'model',        label: 'ARX 模型' },
   evaluate_model:          { type: 'evaluation',   label: '模型评价' },
   optimize_pipeline:       { type: 'optimization', label: '寻优结果' },
@@ -172,10 +202,11 @@ const TOOL_META: Record<string, { type: ArtifactDef['type']; label: string }> = 
 
 const availableArtifacts = computed<ArtifactDef[]>(() => {
   return props.execution.step_runs
-    .filter(r => r.status === 'completed' && r.result_payload && Object.keys(r.result_payload).length > 0)
+    .filter(r => agentStepStatus(r.status) === 'completed' && r.result_payload && Object.keys(r.result_payload).length > 0)
     .map(r => {
       const plan = props.execution.plan?.steps?.find(s => s.step_id === r.step_id);
-      const meta = TOOL_META[plan?.tool ?? ''] ?? { type: 'generic', label: plan?.tool ?? r.step_id };
+      const tool = r.tool || plan?.tool || r.step_id;
+      const meta = TOOL_META[tool] ?? { type: 'generic', label: tool };
       return {
         stepId: r.step_id,
         type: meta.type,
@@ -189,14 +220,14 @@ const activeArtifact = computed(() =>
   availableArtifacts.value.find(a => a.stepId === activeTab.value) ?? null
 );
 
-watch(availableArtifacts, (arts) => {
-  if (!activeTab.value && arts.length > 0) {
-    activeTab.value = arts[arts.length - 1].stepId;
+watch(availableArtifacts, (arts, previous = []) => {
+  if (!arts.some(a => a.stepId === activeTab.value) || (!isPinned.value && arts.length > previous.length)) {
+    activeTab.value = arts.at(-1)?.stepId ?? null;
   }
 }, { immediate: true });
 
 watch(() => props.activeStepId, (id) => {
-  if (id) activeTab.value = id;
+  if (id && availableArtifacts.value.some(a => a.stepId === id)) activeTab.value = id;
 });
 
 function modelMetrics(art: ArtifactDef) {

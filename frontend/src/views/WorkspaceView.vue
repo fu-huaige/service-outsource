@@ -57,7 +57,7 @@
               v-for="step in execution.plan.steps"
               :key="step.step_id"
               class="ws-progress-step"
-              :class="step.status"
+              :class="agentStepStatus(execution.step_runs.find(r => r.step_id === step.step_id)?.status ?? step.status)"
               @click="handleArtifactSelect(step.step_id)"
             >
               <span class="ws-progress-step__dot" />
@@ -218,6 +218,7 @@
         v-else-if="execution"
         :execution="execution"
         :is-sending="isSending"
+        :is-confirming="isConfirming"
         @confirm="handleConfirm"
         @execute-evaluation="handleExecuteEvaluation"
         @execute-optimization="handleExecuteOptimization"
@@ -249,7 +250,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { agentStepStatus } from '../utils/agentStepStatus';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import AgentComposer from '../components/composer/AgentComposer.vue';
@@ -267,6 +269,7 @@ const execution = ref<CopilotExecutionSnapshot | null>(null);
 const recentExecutions = ref<CopilotExecutionSnapshot[]>([]);
 const loading = ref(false);
 const isSending = ref(false);
+const isConfirming = ref(false);
 const showArtifact = ref(true);
 const sidebarCollapsed = ref(false);
 const activeArtifactStepId = ref<string | null>(null);
@@ -407,14 +410,23 @@ async function handleNewTask(payload: { message: string; datasetId?: string | nu
 }
 
 async function handleConfirm(req: CopilotConfirmRequest) {
+  if (isConfirming.value) return;
+  isConfirming.value = true;
+  stopPolling();
   try {
     await confirmCopilotStep(req);
-    if (execution.value) {
-      execution.value = await getCopilotExecution(execution.value.execution_id);
-      startPollingIfNeeded();
+    if (execution.value?.execution_id === req.execution_id) {
+      execution.value = await getCopilotExecution(req.execution_id!);
+      cacheRecentExecution(execution.value);
+      const step = execution.value.step_runs.find(s => s.step_id === req.step_id);
+      if (step?.status === 'SUCCEEDED') handleArtifactSelect(step.step_id);
     }
   } catch (err: any) {
     console.error('Confirm failed', err);
+    ElMessage.error(err?.message || '确认操作失败，请检查任务状态和服务日志');
+  } finally {
+    isConfirming.value = false;
+    startPollingIfNeeded();
   }
 }
 
@@ -467,6 +479,7 @@ function cacheRecentExecution(exec: CopilotExecutionSnapshot) {
 }
 
 // Route handling
+onUnmounted(stopPolling);
 onMounted(async () => {
   refreshRecentExecutions();
   const execId = route.params.executionId as string | undefined;

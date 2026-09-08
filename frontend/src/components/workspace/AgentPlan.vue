@@ -14,7 +14,7 @@
 
     <div class="plan-steps" v-if="!collapsed">
       <div
-        v-for="step in steps"
+        v-for="step in displaySteps"
         :key="step.step_id"
         class="plan-step"
         :class="[stepClass(step), { 'is-clickable': hasResult(step.step_id) }]"
@@ -74,6 +74,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import type { ExecutionPlanStep, CopilotExecutionStepSnapshot } from '../../types/api';
+import { agentStepStatus } from '../../utils/agentStepStatus';
 
 const props = defineProps<{
   steps: ExecutionPlanStep[];
@@ -87,7 +88,11 @@ defineEmits<{
 
 const collapsed = ref(false);
 
-const completedCount = computed(() => props.steps.filter(s => s.status === 'completed').length);
+const displaySteps = computed(() => props.steps.map(step => ({
+  ...step,
+  status: agentStepStatus(stepRun(step.step_id)?.status ?? step.status),
+})));
+const completedCount = computed(() => displaySteps.value.filter(s => s.status === 'completed').length);
 
 const TOOL_NAMES: Record<string, string> = {
   clean: '数据清洗 (Clean)',
@@ -106,8 +111,15 @@ function localizedToolName(tool: string): string {
   return TOOL_NAMES[tool] ?? tool;
 }
 
-function stepRun(stepId: string): CopilotExecutionStepSnapshot | undefined {
-  return props.stepRuns.find(r => r.step_id === stepId);
+function stepRun(stepId: string) {
+  const run = props.stepRuns.find(r => r.step_id === stepId);
+  if (!run) return undefined;
+  return {
+    ...run,
+    summary: typeof run.result_payload?.summary === 'string' ? run.result_payload.summary : '',
+    duration_ms: run.started_at && run.finished_at
+      ? Date.parse(run.finished_at) - Date.parse(run.started_at) : null,
+  };
 }
 
 function hasResult(stepId: string): boolean {
@@ -115,7 +127,7 @@ function hasResult(stepId: string): boolean {
   return !!run && Object.keys(run.result_payload ?? {}).length > 0;
 }
 
-function stepClass(step: ExecutionPlanStep): string {
+function stepClass(step: { status: string }): string {
   return step.status;
 }
 

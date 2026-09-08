@@ -65,15 +65,10 @@
             <span class="ac-arx-recommended">推荐: <span class="font-mono">{{ arxRec.na }}</span></span>
             <input v-model.number="arxOverride.na" type="number" min="1" max="20" class="ac-lag-input" />
           </div>
-          <div class="ac-arx-item">
-            <label class="ac-arx-label"><span class="font-mono">nb</span>（输入阶）</label>
-            <span class="ac-arx-recommended">推荐: <span class="font-mono">{{ arxRec.nb }}</span></span>
-            <input v-model.number="arxOverride.nb" type="number" min="1" max="20" class="ac-lag-input" />
-          </div>
-          <div class="ac-arx-item">
-            <label class="ac-arx-label"><span class="font-mono">nk</span>（纯延迟）</label>
-            <span class="ac-arx-recommended">推荐: <span class="font-mono">{{ arxRec.nk }}</span></span>
-            <input v-model.number="arxOverride.nk" type="number" min="0" max="20" class="ac-lag-input" />
+          <div v-for="variable in arxVariables" :key="variable" class="ac-arx-item">
+            <label class="ac-arx-label"><span class="font-mono">nb[{{ variable }}]</span>（输入阶）</label>
+            <span class="ac-arx-recommended">推荐: <span class="font-mono">{{ arxRec.nb[variable] }}</span></span>
+            <input v-model.number="arxOverride.nb[variable]" type="number" min="1" max="100" class="ac-lag-input" />
           </div>
         </div>
         <div
@@ -106,11 +101,12 @@
     </template>
 
     <!-- Actions -->
+    <p v-if="!copilotRunId" class="ac-desc" role="alert">该任务缺少运行标识，请从任务历史重新打开或新建任务。</p>
     <div class="ac-actions">
       <button
         type="button"
         class="ac-btn ac-btn--reject"
-        :disabled="isSubmitting"
+        :disabled="isSubmitting || !copilotRunId"
         :data-test="`reject-${stepRun.step_id}`"
         @click="handleReject"
       >
@@ -119,7 +115,7 @@
       <button
         type="button"
         class="ac-btn ac-btn--approve"
-        :disabled="isSubmitting"
+        :disabled="isSubmitting || !copilotRunId"
         :data-test="`approve-${stepRun.step_id}`"
         @click="handleApprove"
       >
@@ -138,21 +134,22 @@ const props = defineProps<{
   stepRun: CopilotExecutionStepSnapshot;
   planStep?: ExecutionPlanStep;
   executionId: string;
-  copilotRunId: string;
+  copilotRunId: string | null;
+  submitting?: boolean;
 }>();
 
 const emit = defineEmits<{
   confirm: [req: CopilotConfirmRequest];
 }>();
 
-const isSubmitting = ref(false);
+const isSubmitting = computed(() => props.submitting ?? false);
 
 // Determine confirmation type from tool name
 const confirmationType = computed((): 'lag' | 'arx' | 'feature' | null => {
-  const tool = props.planStep?.tool ?? '';
-  if (tool === 'lag_apply' || tool === 'lag_compensation_apply' || tool === 'delay_analyze') return 'lag';
-  if (tool === 'arx_fit') return 'arx';
-  if (tool === 'feature_apply' || tool === 'feature_selection_apply' || tool === 'collinearity') return 'feature';
+  const tool = props.stepRun.tool || props.planStep?.tool || '';
+  if (tool === 'apply_lag_compensation' || tool === 'lag_apply' || tool === 'lag_compensation_apply' || tool === 'delay_analyze') return 'lag';
+  if (tool === 'fit_arx' || tool === 'arx_fit') return 'arx';
+  if (tool === 'select_variables' || tool === 'feature_apply' || tool === 'feature_selection_apply' || tool === 'collinearity') return 'feature';
   return null;
 });
 
@@ -167,7 +164,9 @@ const toolLabel = computed((): string => {
 
 // ── Lag ──────────────────────────────────────────────────
 const lagRecommendations = computed<{ variable: string; recommended: number }[]>(() => {
-  const recs = props.stepRun.confirmation_payload?.recommendations ?? {};
+  const recs = props.stepRun.input_payload?.recommended_lag_map
+    ?? props.stepRun.input_payload?.recommendations
+    ?? {};
   return Object.entries(recs).map(([variable, recommended]) => ({
     variable,
     recommended: recommended as number,
@@ -175,7 +174,7 @@ const lagRecommendations = computed<{ variable: string; recommended: number }[]>
 });
 
 const lagItems = computed(() => lagRecommendations.value);
-const lagOverrides = ref<{ variable: string; value: number | null }[]>([]);
+const lagOverrides = ref<{ variable: string; value: number | '' | null }[]>([]);
 
 if (lagItems.value.length > 0) {
   lagOverrides.value = lagItems.value.map(i => ({ variable: i.variable, value: null }));
@@ -185,76 +184,70 @@ const lagValidation = ref<{ valid: boolean; message: string } | null>(null);
 
 // ── ARX ──────────────────────────────────────────────────
 const arxRec = computed(() => ({
-  na: props.stepRun.confirmation_payload?.recommended_na ?? 2,
-  nb: props.stepRun.confirmation_payload?.recommended_nb ?? 2,
-  nk: props.stepRun.confirmation_payload?.recommended_nk ?? 1,
+  na: props.stepRun.input_payload?.arx_structure_recommendation?.recommended_na ?? 2,
+  nb: props.stepRun.input_payload?.arx_structure_recommendation?.recommended_nb ?? {},
 }));
-const arxOverride = ref({ na: arxRec.value.na, nb: arxRec.value.nb, nk: arxRec.value.nk });
+const arxVariables = computed(() => Object.keys(arxRec.value.nb));
+const arxOverride = ref({ na: arxRec.value.na, nb: { ...arxRec.value.nb } });
 const arxModelId = computed(() => props.stepRun.result_payload?.model_id ?? null);
 
 // ── Feature ───────────────────────────────────────────────
 const featureItems = ref<{ name: string; reason: string; shouldRemove: boolean }[]>([]);
-const rawFeatureRecs = computed<string[]>(() => props.stepRun.confirmation_payload?.recommended_removal ?? []);
+const rawFeatureRecs = computed<string[]>(() => props.stepRun.input_payload?.recommended_drop_columns ?? []);
 
 if (rawFeatureRecs.value.length > 0) {
   featureItems.value = rawFeatureRecs.value.map(name => ({
     name,
-    reason: props.stepRun.confirmation_payload?.reasons?.[name] ?? '',
+    reason: props.stepRun.input_payload?.recommendation_evidence?.[name]?.reason ?? '',
     shouldRemove: true,
   }));
 }
 
 // ── Actions ───────────────────────────────────────────────
 async function handleApprove() {
-  isSubmitting.value = true;
-  try {
+  if (isSubmitting.value) return;
+  if (!props.copilotRunId) return;
     const base = {
       execution_id: props.executionId,
       copilot_run_id: props.copilotRunId,
+      confirmation_id: props.stepRun.step_id,
       step_id: props.stepRun.step_id,
       approved: true,
     };
 
     if (confirmationType.value === 'lag') {
-      const overrides: Record<string, number> = {};
-      lagOverrides.value.forEach(o => {
-        if (o.value !== null) overrides[o.variable] = o.value;
-      });
+      const overrides = lagOverrides.value
+        .filter(o => o.value !== null && o.value !== '')
+        .map(o => ({ variable: o.variable, value: o.value as number }));
       emit('confirm', {
         ...base,
-        lag_overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
-      } as CopilotConfirmRequest);
+        manual_overrides: overrides,
+      });
     } else if (confirmationType.value === 'arx') {
       emit('confirm', {
         ...base,
-        arx_structure_override: arxOverride.value,
-      } as CopilotConfirmRequest);
+        arx_structure_overrides: arxOverride.value,
+      });
     } else if (confirmationType.value === 'feature') {
       const columnsToRemove = featureItems.value.filter(f => f.shouldRemove).map(f => f.name);
       emit('confirm', {
         ...base,
-        columns_to_remove: columnsToRemove,
-      } as CopilotConfirmRequest);
+        feature_drop_columns: columnsToRemove,
+      });
     } else {
-      emit('confirm', base as CopilotConfirmRequest);
+      emit('confirm', base);
     }
-  } finally {
-    isSubmitting.value = false;
-  }
 }
 
 async function handleReject() {
-  isSubmitting.value = true;
-  try {
+  if (isSubmitting.value || !props.copilotRunId) return;
     emit('confirm', {
       execution_id: props.executionId,
       copilot_run_id: props.copilotRunId,
+      confirmation_id: props.stepRun.step_id,
       step_id: props.stepRun.step_id,
       approved: false,
-    } as CopilotConfirmRequest);
-  } finally {
-    isSubmitting.value = false;
-  }
+    });
 }
 </script>
 

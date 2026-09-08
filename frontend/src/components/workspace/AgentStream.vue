@@ -49,6 +49,7 @@
           :plan-step="getPlanStep(stepRun.step_id)"
           :execution-id="execution.execution_id"
           :copilot-run-id="execution.copilot_run_id"
+          :submitting="isConfirming"
           @confirm="$emit('confirm', $event)"
         />
       </template>
@@ -102,6 +103,14 @@
       </div>
     </div>
 
+    <div v-if="execution.workflow_status === 'SUCCEEDED'" class="stream-conclusion" data-test="execution-completed">
+      <div class="stream-conclusion__label">任务已完成</div>
+      <div>所有步骤执行成功，可在右侧成果工作区查看和下载结果。</div>
+    </div>
+    <div v-else-if="execution.workflow_status === 'FAILED'" class="stream-notice warning" role="alert">
+      {{ execution.error_message || '任务执行失败，请查看失败步骤。' }}
+    </div>
+
     <!-- Conclusion -->
     <div v-if="execution.artifacts?.conclusion" class="stream-conclusion">
       <div class="stream-conclusion__label font-mono">CONCLUSION · 执行结论</div>
@@ -134,11 +143,12 @@ import { ref, computed, watch, nextTick } from 'vue';
 import AgentPlan from './AgentPlan.vue';
 import ToolExecution from './ToolExecution.vue';
 import ApprovalCard from './ApprovalCard.vue';
-import type { CopilotExecutionSnapshot, ExecutionPlanStep, CopilotExecutionStepSnapshot, CopilotConfirmRequest } from '../../types/api';
+import type { CopilotExecutionSnapshot, ExecutionPlanStep, CopilotConfirmRequest } from '../../types/api';
 
 const props = defineProps<{
   execution: CopilotExecutionSnapshot;
   isSending: boolean;
+  isConfirming?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -174,26 +184,18 @@ function needsApproval(stepId: string): boolean {
   return run?.confirmation_status === 'PENDING';
 }
 
-function isEvaluationStep(stepId: string): boolean {
-  return getPlanStep(stepId)?.tool === 'evaluate_model';
-}
-
-function isOptimizationStep(stepId: string): boolean {
-  return getPlanStep(stepId)?.tool === 'optimize_pipeline';
-}
-
 const canExecuteEvaluation = computed(() => {
   const pending = props.execution.plan?.steps?.find(
-    s => s.tool === 'evaluate_model' && s.status === 'pending'
+    s => s.tool === 'evaluate_model' && props.execution.step_runs.find(r => r.step_id === s.step_id)?.status === 'PENDING'
   );
-  return !!pending && props.execution.workflow_status !== 'RUNNING';
+  return !!pending && props.execution.current_step_id === pending.step_id && props.execution.workflow_status === 'PLANNED';
 });
 
 const canExecuteOptimization = computed(() => {
   const pending = props.execution.plan?.steps?.find(
-    s => s.tool === 'optimize_pipeline' && s.status === 'pending'
+    s => s.tool === 'optimize_pipeline' && props.execution.step_runs.find(r => r.step_id === s.step_id)?.status === 'PENDING'
   );
-  return !!pending && props.execution.workflow_status !== 'RUNNING';
+  return !!pending && props.execution.current_step_id === pending.step_id && props.execution.workflow_status === 'PLANNED';
 });
 
 // Auto-scroll to bottom when new events arrive
