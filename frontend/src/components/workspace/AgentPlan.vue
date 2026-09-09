@@ -5,7 +5,7 @@
         <svg class="plan-toggle__icon" :class="{ 'is-open': !collapsed }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12">
           <path d="m9 18 6-6-6-6"/>
         </svg>
-        <span class="plan-header__label font-mono">AGENT PLAN · 执行计划</span>
+        <span class="plan-header__label">执行计划</span>
       </button>
       <div class="plan-header__right">
         <span class="plan-count font-mono">{{ completedCount }}/{{ steps.length }}</span>
@@ -183,8 +183,9 @@ function formatDuration(ms: number): string {
 }
 
 .plan-header__label {
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  letter-spacing: normal;
   font-weight: 600;
   color: #426340;
 }

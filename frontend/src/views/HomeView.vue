@@ -1,11 +1,6 @@
 <template>
   <div class="home-view">
     <div class="home-primary">
-      <!-- Lightweight Eyebrow -->
-      <div class="home-eyebrow">
-        <span class="home-eyebrow__tag font-mono">A14 · INDUSTRIAL AI AGENT WORKSPACE</span>
-      </div>
-
       <!-- Headline -->
       <div class="home-headline">
         <h1 class="home-headline__main">今天想完成什么？</h1>
@@ -53,10 +48,7 @@
         <!-- 1. Recent Tasks Mode -->
         <div v-if="recentExecutions.length > 0" class="home-recent">
           <div class="home-section-header">
-            <span class="home-section-label">
-              <span class="home-section-label__technical font-mono">RECENT TASKS</span>
-              <span class="home-section-label__localized"> · 最近任务</span>
-            </span>
+            <span class="home-section-label home-section-label--recent">最近任务</span>
             <router-link to="/runs" class="home-section-more">全部记录 →</router-link>
           </div>
           <div class="recent-list">
@@ -72,7 +64,13 @@
               <div class="recent-item__body">
                 <div class="recent-item__goal">{{ exec.plan?.goal || 'Agent Task' }}</div>
                 <div class="recent-item__meta">
-                  <span v-if="exec.dataset_id" class="font-mono">Dataset: {{ exec.dataset_id.slice(0, 8) }}…</span>
+                  <span
+                    v-if="exec.dataset_id"
+                    class="recent-item__dataset"
+                    :title="datasetTitle(exec.dataset_id)"
+                  >
+                    数据集：{{ datasetName(exec.dataset_id) }}
+                  </span>
                   <span class="recent-item__time">{{ formatRelativeTime(exec.created_at) }}</span>
                 </div>
               </div>
@@ -121,10 +119,13 @@ import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import AgentComposer from '../components/composer/AgentComposer.vue';
+import { listDatasets } from '../api/datasets';
+import type { CopilotExecutionSnapshot } from '../types/api';
 
 const router = useRouter();
 
-const recentExecutions = ref<any[]>([]);
+const recentExecutions = ref<CopilotExecutionSnapshot[]>([]);
+const datasetNamesById = ref<Record<string, string>>({});
 
 const quickActions = [
   { label: '诊断数据质量', icon: 'scan', prompt: '对当前数据集进行完整的数据质量诊断，包括缺失值、异常检测和采样一致性分析。' },
@@ -208,15 +209,39 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(hours / 24)} 天前`;
 }
 
+function datasetName(datasetId: string): string {
+  return datasetNamesById.value[datasetId] || '未知数据集';
+}
+
+function datasetTitle(datasetId: string): string {
+  return datasetNamesById.value[datasetId] || datasetId;
+}
+
+async function loadDatasetNames() {
+  if (!recentExecutions.value.some((execution) => execution.dataset_id)) return;
+  try {
+    const response = await listDatasets({ page: 1, page_size: 100 });
+    datasetNamesById.value = Object.fromEntries(
+      response.items
+        .filter((dataset) => dataset.id && dataset.name)
+        .map((dataset) => [dataset.id, dataset.name])
+    );
+  } catch {
+    datasetNamesById.value = {};
+  }
+}
+
 onMounted(async () => {
   try {
     const cached = localStorage.getItem('indusopt.recent_executions');
     if (cached) {
-      recentExecutions.value = JSON.parse(cached).slice(0, 5);
+      const parsed = JSON.parse(cached);
+      recentExecutions.value = Array.isArray(parsed) ? parsed.slice(0, 5) : [];
     }
   } catch {
     ElMessage.warning('最近执行记录读取失败');
   }
+  await loadDatasetNames();
 });
 </script>
 
@@ -228,7 +253,7 @@ onMounted(async () => {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding-top: clamp(48px, 6vh, 88px);
+  padding-top: calc(clamp(48px, 6vh, 88px) + var(--space-10));
   padding-bottom: 48px;
   padding-left: var(--page-gutter);
   padding-right: var(--page-gutter);
@@ -240,24 +265,6 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-}
-
-/* Eyebrow */
-.home-eyebrow {
-  margin-bottom: 12px;
-}
-
-.home-eyebrow__tag {
-  display: inline-flex;
-  align-items: center;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: #426340;
-  background: #EDF4E9;
-  border: 1px solid #D6E5D1;
-  padding: 3px 12px;
-  border-radius: var(--radius-full);
 }
 
 /* Headline */
@@ -346,6 +353,15 @@ onMounted(async () => {
   font-weight: 600;
 }
 
+.home-section-label--recent {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: normal;
+  color: var(--text-primary);
+}
+
 .home-section-label__technical {
   letter-spacing: 0.08em;
 }
@@ -420,10 +436,21 @@ onMounted(async () => {
   display: flex;
   gap: 12px;
   margin-top: 2px;
+  min-width: 0;
+}
+
+.recent-item__dataset {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  letter-spacing: normal;
 }
 
 .recent-item__time {
   color: #A1A1A6;
+  flex-shrink: 0;
 }
 
 .recent-item__badge {
@@ -438,6 +465,10 @@ onMounted(async () => {
 }
 
 @media (max-width: 800px) {
+  .home-view {
+    padding-top: calc(clamp(48px, 6vh, 88px) + var(--space-4));
+  }
+
   .workflow-grid {
     grid-template-columns: 1fr;
   }

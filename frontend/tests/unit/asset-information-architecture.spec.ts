@@ -195,6 +195,9 @@ describe("Primary navigation", () => {
 
     expect(wrapper.text()).toContain("功能中心");
     expect(wrapper.text()).not.toContain("资产中心");
+    expect(wrapper.get(".brand-name").text()).toBe("IndusOpt");
+    expect(wrapper.find(".brand-badge").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("A14");
   });
 });
 
@@ -275,5 +278,49 @@ describe("Chinese structural typography", () => {
     expect(titleRules).toContain("text-transform: none");
     expect(benchmarkTemplate).toContain('<div class="industrial-card-title">');
     expect(benchmarkTemplate).not.toContain('class="industrial-card-title font-mono"');
+  });
+
+  it("keeps the Home hierarchy Chinese-first without changing Suggested Workflows", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/views/HomeView.vue"), "utf8");
+    const recentRule = source.match(/\.home-section-label--recent\s*\{([^}]+)\}/)?.[1] ?? "";
+
+    expect(source).not.toContain("A14 · INDUSTRIAL AI AGENT WORKSPACE");
+    expect(source).not.toContain("RECENT TASKS");
+    expect(source).toContain('<span class="home-section-label home-section-label--recent">最近任务</span>');
+    expect(recentRule).toContain("font-family: var(--font-sans)");
+    expect(recentRule).toContain("letter-spacing: normal");
+    expect(source).toContain("SUGGESTED WORKFLOWS");
+    expect(source).toContain("· 推荐场景");
+  });
+
+  it("uses the shared PageHeader hierarchy for Task History without an eyebrow", () => {
+    const runsSource = readFileSync(resolve(process.cwd(), "src/views/RunsView.vue"), "utf8");
+    const assetsSource = readFileSync(resolve(process.cwd(), "src/views/AssetsView.vue"), "utf8");
+
+    expect(runsSource).toContain("<PageHeader");
+    expect(assetsSource).toContain("<PageHeader");
+    expect(runsSource).toContain('title="任务历史"');
+    expect(runsSource).toContain('description="查看 Agent 的执行阶段、审批和产物记录"');
+    expect(runsSource).not.toContain("AGENT / HISTORY");
+  });
+
+  it("uses concise Sans panel headers while preserving technical body typography", () => {
+    const planSource = readFileSync(resolve(process.cwd(), "src/components/workspace/AgentPlan.vue"), "utf8");
+    const artifactSource = readFileSync(resolve(process.cwd(), "src/components/artifact/ArtifactWorkbench.vue"), "utf8");
+    const planHeaderRule = planSource.match(/\.plan-header__label\s*\{([^}]+)\}/)?.[1] ?? "";
+    const artifactHeaderRule = artifactSource.match(/\.aw-header__title\s*\{([^}]+)\}/)?.[1] ?? "";
+
+    expect(planSource).toContain('<span class="plan-header__label">执行计划</span>');
+    expect(planSource).not.toContain("AGENT PLAN");
+    expect(planHeaderRule).toContain("font-family: var(--font-sans)");
+    expect(planHeaderRule).toContain("letter-spacing: normal");
+    expect(planSource).toContain("plan-step__tool font-mono");
+
+    expect(artifactSource).toContain('<span class="aw-header__title">成果工作区</span>');
+    expect(artifactSource).not.toContain("WORKSPACE ARTIFACTS");
+    expect(artifactHeaderRule).toContain("font-family: var(--font-sans)");
+    expect(artifactHeaderRule).toContain("letter-spacing: normal");
+    expect(artifactSource).toContain("aw-kv__key font-mono");
+    expect(artifactSource).toContain("<MetricStrip");
   });
 });

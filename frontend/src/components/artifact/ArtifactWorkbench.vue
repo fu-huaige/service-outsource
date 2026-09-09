@@ -3,7 +3,7 @@
     <!-- Header -->
     <div class="aw-header">
       <div class="aw-header__left">
-        <span class="aw-header__title font-mono">WORKSPACE ARTIFACTS · 成果工作区</span>
+        <span class="aw-header__title">成果工作区</span>
       </div>
       <div class="aw-header__right">
         <button
@@ -47,8 +47,13 @@
 
     <!-- Artifact Content -->
     <div class="aw-content" v-if="activeArtifact">
+      <!-- Dataset Profile Artifact -->
+      <template v-if="activeArtifact.type === 'profile'">
+        <ProfileArtifactRenderer :payload="activeArtifact.payload" />
+      </template>
+
       <!-- Model Artifact (arx_fit / evaluate_model) -->
-      <template v-if="activeArtifact.type === 'model' || activeArtifact.type === 'evaluation'">
+      <template v-else-if="activeArtifact.type === 'model' || activeArtifact.type === 'evaluation'">
         <MetricStrip :metrics="modelMetrics(activeArtifact)" />
         <div class="aw-section">
           <div class="aw-section__label">模型结构 (Model Structure)</div>
@@ -157,6 +162,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import MetricStrip from './MetricStrip.vue';
+import ProfileArtifactRenderer from './ProfileArtifactRenderer.vue';
 import type { CopilotExecutionSnapshot } from '../../types/api';
 import { agentStepStatus } from '../../utils/agentStepStatus';
 
@@ -174,13 +180,13 @@ const activeTab = ref<string | null>(null);
 
 interface ArtifactDef {
   stepId: string;
-  type: 'model' | 'evaluation' | 'optimization' | 'delay' | 'lag' | 'feature' | 'cleaning' | 'segmentation' | 'report' | 'generic';
+  type: 'profile' | 'model' | 'evaluation' | 'optimization' | 'delay' | 'lag' | 'feature' | 'cleaning' | 'segmentation' | 'report' | 'generic';
   label: string;
   payload: Record<string, any>;
 }
 
 const TOOL_META: Record<string, { type: ArtifactDef['type']; label: string }> = {
-  profile_dataset:         { type: 'generic',      label: '数据画像' },
+  profile_dataset:         { type: 'profile',      label: '数据画像' },
   detect_anomalies:        { type: 'generic',      label: '异常检测' },
   clean_data:              { type: 'cleaning',     label: '数据清洗' },
   detect_dynamic_segments: { type: 'segmentation', label: '区间优选' },
@@ -273,9 +279,10 @@ function optimizationMetrics(art: ArtifactDef) {
 }
 
 .aw-header__title {
-  font-size: 11px;
+  font-family: var(--font-sans);
+  font-size: 12px;
   color: #426340;
-  letter-spacing: 0.08em;
+  letter-spacing: normal;
   font-weight: 600;
 }
 

@@ -2,7 +2,6 @@
   <div class="page-container runs-view">
     <!-- Unified Page Header -->
     <PageHeader
-      eyebrow="AGENT / HISTORY"
       title="任务历史"
       description="查看 Agent 的执行阶段、审批和产物记录"
     >
@@ -137,7 +136,7 @@
             <div class="run-row__goal">
               {{ exec.plan?.goal || '工业时序建模与寻优任务' }}
             </div>
-            <div class="run-row__meta font-mono">
+            <div class="run-row__meta">
               <span class="run-id">{{ shortId(exec.execution_id) }}</span>
               <span class="meta-sep">·</span>
               <span v-if="exec.plan?.steps?.length" class="meta-steps">
@@ -517,6 +516,8 @@ function formatTime(iso: string): string {
   gap: 8px;
   font-size: 12px;
   color: #858B82;
+  font-family: var(--font-sans);
+  letter-spacing: normal;
 }
 
 .meta-sep {

@@ -15,7 +15,6 @@
         </div>
         <div v-show="isExpanded" class="brand-info">
           <span class="brand-name">IndusOpt</span>
-          <span class="brand-badge font-mono">A14</span>
         </div>
       </router-link>
 
@@ -279,15 +278,6 @@ const healthTooltip = computed(() => {
   color: #2C332B;
   letter-spacing: -0.02em;
   white-space: nowrap;
-}
-
-.brand-badge {
-  font-size: 10px;
-  font-weight: 700;
-  color: #5E8358;
-  background: #E8F0E5;
-  padding: 1px 5px;
-  border-radius: 4px;
 }
 
 .nav-toggle-btn {
