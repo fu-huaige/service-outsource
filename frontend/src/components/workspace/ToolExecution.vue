@@ -13,7 +13,13 @@
           <svg v-else-if="stepRun.status === 'failed'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="11" height="11"><circle cx="12" cy="12" r="10"/><line x1="15" x2="9" y1="9" y2="15"/><line x1="9" x2="15" y1="9" y2="15"/></svg>
           <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="11" height="11"><circle cx="12" cy="12" r="10"/></svg>
         </span>
-        <span class="te-tool font-mono">{{ localizedTool(planStep?.tool ?? stepRun.step_id) }}</span>
+        <span
+          class="te-tool"
+          :class="{
+            'font-mono': toolKey !== 'generate_report',
+            'te-tool--report': toolKey === 'generate_report',
+          }"
+        >{{ localizedTool(toolKey) }}</span>
         <span v-if="stepRun.status === 'waiting_confirmation'" class="te-awaiting">等待确认</span>
       </div>
       <div class="te-header__right">
@@ -63,6 +69,8 @@ const stepRun = computed(() => ({
     ? Date.parse(props.stepRun.finished_at) - Date.parse(props.stepRun.started_at) : null,
 }));
 
+const toolKey = computed(() => props.planStep?.tool ?? props.stepRun.tool ?? props.stepRun.step_id);
+
 defineEmits<{ click: [] }>();
 
 const TOOL_MAP: Record<string, string> = {
@@ -75,7 +83,7 @@ const TOOL_MAP: Record<string, string> = {
   arx_fit: 'ARX 系统辨识 (ARX Fit)',
   evaluate_model: '模型评价 (Evaluate)',
   optimize_pipeline: 'Optuna 寻优 (Optimize)',
-  generate_report: '报告交付 (Report)',
+  generate_report: '报告交付',
 };
 
 function localizedTool(t: string): string {
@@ -196,6 +204,11 @@ const keyMetrics = computed<{ label: string; value: string }[]>(() => {
   font-size: 13px;
   font-weight: 500;
   color: #171717;
+}
+
+.te-tool--report {
+  font-family: var(--font-sans);
+  letter-spacing: normal;
 }
 
 .te-awaiting {

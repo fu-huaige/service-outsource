@@ -67,9 +67,9 @@
                   <span
                     v-if="exec.dataset_id"
                     class="recent-item__dataset"
-                    :title="datasetTitle(exec.dataset_id)"
+                    :title="datasetStore.resolveDatasetName(exec.dataset_id)"
                   >
-                    数据集：{{ datasetName(exec.dataset_id) }}
+                    数据集：{{ datasetStore.resolveDatasetName(exec.dataset_id) }}
                   </span>
                   <span class="recent-item__time">{{ formatRelativeTime(exec.created_at) }}</span>
                 </div>
@@ -119,13 +119,13 @@ import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import AgentComposer from '../components/composer/AgentComposer.vue';
-import { listDatasets } from '../api/datasets';
+import { useDatasetStore } from '../stores/datasetStore';
 import type { CopilotExecutionSnapshot } from '../types/api';
 
 const router = useRouter();
+const datasetStore = useDatasetStore();
 
 const recentExecutions = ref<CopilotExecutionSnapshot[]>([]);
-const datasetNamesById = ref<Record<string, string>>({});
 
 const quickActions = [
   { label: '诊断数据质量', icon: 'scan', prompt: '对当前数据集进行完整的数据质量诊断，包括缺失值、异常检测和采样一致性分析。' },
@@ -209,28 +209,6 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(hours / 24)} 天前`;
 }
 
-function datasetName(datasetId: string): string {
-  return datasetNamesById.value[datasetId] || '未知数据集';
-}
-
-function datasetTitle(datasetId: string): string {
-  return datasetNamesById.value[datasetId] || datasetId;
-}
-
-async function loadDatasetNames() {
-  if (!recentExecutions.value.some((execution) => execution.dataset_id)) return;
-  try {
-    const response = await listDatasets({ page: 1, page_size: 100 });
-    datasetNamesById.value = Object.fromEntries(
-      response.items
-        .filter((dataset) => dataset.id && dataset.name)
-        .map((dataset) => [dataset.id, dataset.name])
-    );
-  } catch {
-    datasetNamesById.value = {};
-  }
-}
-
 onMounted(async () => {
   try {
     const cached = localStorage.getItem('indusopt.recent_executions');
@@ -241,7 +219,9 @@ onMounted(async () => {
   } catch {
     ElMessage.warning('最近执行记录读取失败');
   }
-  await loadDatasetNames();
+  if (recentExecutions.value.some((execution) => execution.dataset_id)) {
+    await datasetStore.ensureDatasetNamesLoaded();
+  }
 });
 </script>
 

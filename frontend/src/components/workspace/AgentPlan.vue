@@ -46,7 +46,13 @@
         <!-- Step Content -->
         <div class="plan-step__content">
           <div class="plan-step__top">
-            <span class="plan-step__tool font-mono">{{ localizedToolName(step.tool) }}</span>
+            <span
+              class="plan-step__tool"
+              :class="{
+                'font-mono': step.tool !== 'generate_report',
+                'plan-step__tool--report': step.tool === 'generate_report',
+              }"
+            >{{ localizedToolName(step.tool) }}</span>
             <span v-if="step.requires_confirmation" class="plan-step__confirm-badge">需确认</span>
             <span v-if="step.status === 'running'" class="agent-working-dot" style="margin-left: auto" />
           </div>
@@ -104,7 +110,7 @@ const TOOL_NAMES: Record<string, string> = {
   arx_fit: 'ARX 系统辨识 (ARX Fit)',
   evaluate_model: '模型测试集评价 (Evaluate)',
   optimize_pipeline: 'Optuna 闭环寻优 (Optimize)',
-  generate_report: '报告生成交付 (Report)',
+  generate_report: '报告交付',
 };
 
 function localizedToolName(tool: string): string {
@@ -260,6 +266,11 @@ function formatDuration(ms: number): string {
   font-weight: 500;
   color: #171717;
   transition: color 0.15s ease;
+}
+
+.plan-step__tool--report {
+  font-family: var(--font-sans);
+  letter-spacing: normal;
 }
 
 .plan-step__confirm-badge {

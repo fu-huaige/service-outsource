@@ -65,8 +65,8 @@
             v-model="searchQuery"
             type="text"
             class="runs-search-input"
-            placeholder="搜索任务目标或 ID..."
-            aria-label="搜索任务目标或 ID"
+            placeholder="搜索任务目标、数据集或 ID..."
+            aria-label="搜索任务目标、数据集或 ID"
           />
           <button
             v-if="searchQuery"
@@ -137,7 +137,12 @@
               {{ exec.plan?.goal || '工业时序建模与寻优任务' }}
             </div>
             <div class="run-row__meta">
-              <span class="run-id">{{ shortId(exec.execution_id) }}</span>
+              <span
+                class="run-dataset"
+                :title="datasetStore.resolveDatasetName(exec.dataset_id)"
+              >
+                数据集：{{ datasetStore.resolveDatasetName(exec.dataset_id) }}
+              </span>
               <span class="meta-sep">·</span>
               <span v-if="exec.plan?.steps?.length" class="meta-steps">
                 {{ exec.plan.steps.length }} 个阶段
@@ -177,10 +182,12 @@
 import { ref, computed, onMounted } from 'vue';
 import PageHeader from '../components/common/PageHeader.vue';
 import AppEmptyState from '../components/common/AppEmptyState.vue';
+import { useDatasetStore } from '../stores/datasetStore';
 
 const loading = ref(false);
 const error = ref<string | null>(null);
 const executions = ref<any[]>([]);
+const datasetStore = useDatasetStore();
 
 const searchQuery = ref('');
 const selectedStatus = ref('');
@@ -199,8 +206,11 @@ function loadExecutions() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   loadExecutions();
+  if (executions.value.some((execution) => execution.dataset_id)) {
+    await datasetStore.ensureDatasetNamesLoaded();
+  }
 });
 
 const filteredExecutions = computed(() => {
@@ -212,7 +222,8 @@ const filteredExecutions = computed(() => {
     list = list.filter(
       (e) =>
         (e.plan?.goal && e.plan.goal.toLowerCase().includes(q)) ||
-        (e.execution_id && e.execution_id.toLowerCase().includes(q))
+        (e.execution_id && e.execution_id.toLowerCase().includes(q)) ||
+        datasetStore.resolveDatasetName(e.dataset_id).toLowerCase().includes(q)
     );
   }
 
@@ -235,11 +246,6 @@ function resetFilters() {
   searchQuery.value = '';
   selectedStatus.value = '';
   sortOrder.value = 'desc';
-}
-
-function shortId(id: string): string {
-  if (!id) return '';
-  return id.length > 12 ? `${id.slice(0, 10)}…` : id;
 }
 
 function statusClass(s: string) {
@@ -518,6 +524,19 @@ function formatTime(iso: string): string {
   color: #858B82;
   font-family: var(--font-sans);
   letter-spacing: normal;
+}
+
+.run-dataset {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta-steps,
+.meta-time,
+.meta-sep {
+  flex-shrink: 0;
 }
 
 .meta-sep {

@@ -52,6 +52,16 @@
         <ProfileArtifactRenderer :payload="activeArtifact.payload" />
       </template>
 
+      <!-- Anomaly Detection Artifact -->
+      <template v-else-if="activeArtifact.type === 'anomaly'">
+        <AnomalyArtifactRenderer :payload="activeArtifact.payload" />
+      </template>
+
+      <!-- Cleaning Artifact -->
+      <template v-else-if="activeArtifact.type === 'cleaning'">
+        <CleaningArtifactRenderer :payload="activeArtifact.payload" />
+      </template>
+
       <!-- Model Artifact (arx_fit / evaluate_model) -->
       <template v-else-if="activeArtifact.type === 'model' || activeArtifact.type === 'evaluation'">
         <MetricStrip :metrics="modelMetrics(activeArtifact)" />
@@ -162,6 +172,8 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import MetricStrip from './MetricStrip.vue';
+import AnomalyArtifactRenderer from './AnomalyArtifactRenderer.vue';
+import CleaningArtifactRenderer from './CleaningArtifactRenderer.vue';
 import ProfileArtifactRenderer from './ProfileArtifactRenderer.vue';
 import type { CopilotExecutionSnapshot } from '../../types/api';
 import { agentStepStatus } from '../../utils/agentStepStatus';
@@ -180,14 +192,14 @@ const activeTab = ref<string | null>(null);
 
 interface ArtifactDef {
   stepId: string;
-  type: 'profile' | 'model' | 'evaluation' | 'optimization' | 'delay' | 'lag' | 'feature' | 'cleaning' | 'segmentation' | 'report' | 'generic';
+  type: 'profile' | 'anomaly' | 'model' | 'evaluation' | 'optimization' | 'delay' | 'lag' | 'feature' | 'cleaning' | 'segmentation' | 'report' | 'generic';
   label: string;
   payload: Record<string, any>;
 }
 
 const TOOL_META: Record<string, { type: ArtifactDef['type']; label: string }> = {
   profile_dataset:         { type: 'profile',      label: '数据画像' },
-  detect_anomalies:        { type: 'generic',      label: '异常检测' },
+  detect_anomalies:        { type: 'anomaly',      label: '异常检测' },
   clean_data:              { type: 'cleaning',     label: '数据清洗' },
   detect_dynamic_segments: { type: 'segmentation', label: '区间优选' },
   estimate_delays:         { type: 'delay',        label: '时滞分析' },

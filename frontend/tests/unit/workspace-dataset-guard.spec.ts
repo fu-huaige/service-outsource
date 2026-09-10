@@ -2,8 +2,11 @@ import { defineComponent } from "vue";
 import { flushPromises, shallowMount } from "@vue/test-utils";
 import { createPinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import WorkspaceView from "../../src/views/WorkspaceView.vue";
+import type { CopilotExecutionSnapshot, DatasetItem } from "../../src/types/api";
 
 const route = vi.hoisted(() => ({
   params: {} as Record<string, string>,
@@ -21,6 +24,9 @@ const messageApi = vi.hoisted(() => ({
   warning: vi.fn(),
   error: vi.fn(),
 }));
+const datasetApi = vi.hoisted(() => ({
+  listDatasets: vi.fn(),
+}));
 
 vi.mock("vue-router", () => ({
   useRoute: () => route,
@@ -28,6 +34,7 @@ vi.mock("vue-router", () => ({
 }));
 
 vi.mock("../../src/api/copilot", () => copilotApi);
+vi.mock("../../src/api/datasets", () => datasetApi);
 
 vi.mock("element-plus", () => ({
   ElMessage: messageApi,
@@ -59,6 +66,45 @@ function mountWorkspace(payload: {
   });
 }
 
+const dataset = (id: string, name: string): DatasetItem => ({
+  id,
+  name,
+  version_id: id + "-version",
+  file_size_bytes: 128,
+  row_count: 10,
+  col_count: 3,
+  created_at: "2026-09-09T10:00:00Z",
+  time_column: "timestamp",
+  input_columns: ["u"],
+  output_column: "y",
+});
+
+const executionSnapshot = (): CopilotExecutionSnapshot => ({
+  execution_id: "execution-visible-id",
+  copilot_run_id: null,
+  dataset_id: "dataset-visible-uuid",
+  initial_version_id: "version-initial-uuid",
+  current_version_id: "version-current-uuid",
+  planner_source: "deterministic",
+  workflow_status: "SUCCEEDED",
+  current_step_id: null,
+  pending_confirmation_step_id: null,
+  plan: {
+    goal: "分析长名称数据集",
+    dataset_id: "dataset-visible-uuid",
+    steps: [],
+    stop_conditions: [],
+    assumptions: [],
+  },
+  artifacts: {},
+  error_code: null,
+  error_message: null,
+  created_at: "2026-09-09T10:00:00Z",
+  updated_at: "2026-09-09T10:00:01Z",
+  finished_at: "2026-09-09T10:00:01Z",
+  step_runs: [],
+});
+
 describe("WorkspaceView dataset context guard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -66,6 +112,7 @@ describe("WorkspaceView dataset context guard", () => {
     route.query = {};
     localStorage.clear();
     copilotApi.chatWithCopilot.mockResolvedValue({ execution_id: "execution-1" });
+    datasetApi.listDatasets.mockResolvedValue({ items: [] });
   });
 
   it("blocks a composer task without both dataset and version", async () => {
@@ -104,5 +151,37 @@ describe("WorkspaceView dataset context guard", () => {
 
     expect(messageApi.warning).toHaveBeenCalledWith("请先挂载数据集后再发起 Agent 任务。");
     expect(copilotApi.chatWithCopilot).not.toHaveBeenCalled();
+  });
+
+  it("shows the resolved dataset name and hides dataset and version UUIDs from the current-task summary", async () => {
+    const longName = "verify_feature_apply_refresh_with_a_long_dataset_name";
+    route.params = { executionId: "execution-visible-id" };
+    copilotApi.getCopilotExecution.mockResolvedValue(executionSnapshot());
+    datasetApi.listDatasets.mockResolvedValue({
+      items: [dataset("dataset-visible-uuid", longName)],
+    });
+
+    const wrapper = mountWorkspace({ message: "unused" });
+    await flushPromises();
+
+    const metadata = wrapper.get(".ws-sidebar__dataset-meta");
+    expect(metadata.text()).toBe("数据集：" + longName);
+    expect(metadata.text()).not.toContain("dataset-visible-uuid");
+    expect(metadata.text()).not.toContain("version-current-uuid");
+    expect(metadata.get(".ws-sidebar__dataset-name").attributes("title")).toBe(longName);
+    expect(copilotApi.getCopilotExecution).toHaveBeenCalledWith("execution-visible-id");
+    expect(datasetApi.listDatasets).toHaveBeenCalledWith({ page: 1, page_size: 100 });
+
+    const source = readFileSync(resolve(process.cwd(), "src/views/WorkspaceView.vue"), "utf8");
+    const nameRule = source.match(/\.ws-sidebar__dataset-name\s*\{([^}]+)\}/)?.[1] ?? "";
+    expect(nameRule).toContain("text-overflow: ellipsis");
+    expect(nameRule).toContain("white-space: nowrap");
+    const artifactExecution = wrapper.getComponent({ name: "ArtifactWorkbench" })
+      .props("execution") as CopilotExecutionSnapshot;
+    expect(artifactExecution.current_version_id).toBe("version-current-uuid");
+    expect(artifactExecution.dataset_id).toBe("dataset-visible-uuid");
+    expect(artifactExecution.execution_id).toBe("execution-visible-id");
+    expect(source).not.toContain("execution.current_version_id.slice");
+    expect(source).not.toContain("execution.dataset_id.slice");
   });
 });

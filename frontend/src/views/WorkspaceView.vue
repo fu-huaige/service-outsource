@@ -47,8 +47,12 @@
             {{ execution.plan?.goal || '工业时序建模与优化任务' }}
           </div>
           <div class="ws-sidebar__dataset-meta" v-if="execution?.dataset_id">
-            <span>数据集: <span class="font-mono">{{ execution.dataset_id.slice(0, 8) }}…</span></span>
-            <span v-if="execution.current_version_id" class="font-mono">v: {{ execution.current_version_id.slice(0, 6) }}</span>
+            <span
+              class="ws-sidebar__dataset-name"
+              :title="datasetStore.resolveDatasetName(execution.dataset_id)"
+            >
+              数据集：{{ datasetStore.resolveDatasetName(execution.dataset_id) }}
+            </span>
           </div>
 
           <!-- Step Progress -->
@@ -259,11 +263,13 @@ import AgentStream from '../components/workspace/AgentStream.vue';
 import ArtifactWorkbench from '../components/artifact/ArtifactWorkbench.vue';
 import { chatWithCopilot, getCopilotExecution, confirmCopilotStep, executeModelEvaluation, executePipelineOptimization } from '../api/copilot';
 import { useCopilotExecutionStore } from '../stores/copilotExecution';
+import { useDatasetStore } from '../stores/datasetStore';
 import type { CopilotExecutionSnapshot, CopilotConfirmRequest } from '../types/api';
 
 const route = useRoute();
 const router = useRouter();
 const executionStore = useCopilotExecutionStore();
+const datasetStore = useDatasetStore();
 
 const execution = ref<CopilotExecutionSnapshot | null>(null);
 const recentExecutions = ref<CopilotExecutionSnapshot[]>([]);
@@ -340,6 +346,7 @@ async function loadExecution(executionId: string) {
   loading.value = true;
   try {
     execution.value = await getCopilotExecution(executionId);
+    void datasetStore.ensureDatasetNamesLoaded();
     startPollingIfNeeded();
     cacheRecentExecution(execution.value);
   } catch (err: any) {
@@ -666,6 +673,16 @@ watch(() => route.params.executionId, async (newId) => {
   color: #8E8E93;
   display: flex;
   gap: 8px;
+  min-width: 0;
+  font-family: var(--font-sans);
+  letter-spacing: normal;
+}
+
+.ws-sidebar__dataset-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Progress steps */

@@ -2,8 +2,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
+import { createPinia, setActivePinia } from "pinia";
 import HomeView from "../../src/views/HomeView.vue";
 import { listDatasets } from "../../src/api/datasets";
+import { useDatasetStore } from "../../src/stores/datasetStore";
 import type { DatasetItem } from "../../src/types/api";
 
 const push = vi.fn();
@@ -41,6 +43,7 @@ const recentExecution = (executionId: string, datasetId: string, goal: string) =
 
 const mountHome = () => mount(HomeView, {
   global: {
+    plugins: [createPinia()],
     stubs: {
       AgentComposer: { template: '<div data-test="agent-composer" />' },
       RouterLink: RouterLinkStub,
@@ -74,9 +77,10 @@ describe("HomeView final polish", () => {
     expect(labels[0]!.text()).toBe("数据集：demo_cleaning_visible_diff");
     expect(labels[0]!.attributes("title")).toBe("demo_cleaning_visible_diff");
     expect(labels[1]!.text()).toBe("数据集：未知数据集");
-    expect(labels[1]!.attributes("title")).toBe(missingDatasetId);
+    expect(labels[1]!.attributes("title")).toBe("未知数据集");
     expect(wrapper.text()).not.toContain("Dataset:");
     expect(wrapper.text()).not.toContain(knownDatasetId);
+    expect(wrapper.text()).not.toContain(missingDatasetId);
     expect(wrapper.text()).not.toContain("undefined");
     expect(wrapper.text()).not.toContain("null");
     expect(mockedListDatasets).toHaveBeenCalledTimes(1);
@@ -107,5 +111,28 @@ describe("HomeView final polish", () => {
     expect(datasetRule).toContain("text-overflow: ellipsis");
     expect(datasetRule).toContain("white-space: nowrap");
     expect(datasetRule).toContain("font-family: var(--font-sans)");
+  });
+
+  it("shares one paginated list load across concurrent name consumers without per-dataset requests", async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) =>
+      dataset("dataset-" + index, "数据集 " + index)
+    );
+    mockedListDatasets
+      .mockResolvedValueOnce({ items: firstPage })
+      .mockResolvedValueOnce({ items: [dataset("dataset-100", "第 101 个数据集")] });
+
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const store = useDatasetStore();
+    await Promise.all([
+      store.ensureDatasetNamesLoaded(),
+      store.ensureDatasetNamesLoaded(),
+    ]);
+
+    expect(mockedListDatasets).toHaveBeenCalledTimes(2);
+    expect(mockedListDatasets).toHaveBeenNthCalledWith(1, { page: 1, page_size: 100 });
+    expect(mockedListDatasets).toHaveBeenNthCalledWith(2, { page: 2, page_size: 100 });
+    expect(store.resolveDatasetName("dataset-100")).toBe("第 101 个数据集");
+    expect(store.resolveDatasetName("missing-id")).toBe("未知数据集");
   });
 });
