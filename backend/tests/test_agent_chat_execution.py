@@ -16,7 +16,8 @@ from app.core.db import get_session
 from app.main import create_app
 from app.models import Base
 from app.models.agent_execution import AgentExecutionSession
-from app.services import agent_service
+from app.services import agent_service, agent_tool_adapter
+from app.services.report_service import ReportDomainError
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -232,10 +233,60 @@ def test_failed_step_marks_persistent_execution_failed(
     assert all(step.status == "PENDING" for step in execution.step_runs[1:])
 
 
-def test_deferred_step_is_not_persisted_as_completed_workflow(
+def test_generate_report_completes_persisted_workflow(
     chat_harness: ChatHarness,
 ) -> None:
     version_id = _benchmark_version(chat_harness.client)
+    response = chat_harness.client.post(
+        "/api/v1/copilot/chat",
+        json={"message": "清洗数据并生成报告", "active_version_id": version_id},
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    execution = asyncio.run(
+        _load_execution(chat_harness.session_factory, UUID(data["execution_id"]))
+    )
+    assert [step.tool_name for step in execution.step_runs] == [
+        "profile_dataset",
+        "detect_anomalies",
+        "clean_data",
+        "generate_report",
+    ]
+    assert all(step.status == "SUCCEEDED" for step in execution.step_runs)
+    assert data["workflow_status"] == "SUCCEEDED"
+    assert execution.workflow_status == "SUCCEEDED"
+    assert execution.finished_at is not None
+    assert execution.current_step_id is None
+
+    report = execution.step_runs[-1]
+    assert report.result_payload["report_id"]
+    assert report.result_payload["artifact_uri"]
+    assert report.processing_run_ids == [report.result_payload["report_id"]]
+
+    snapshot = chat_harness.client.get(f"/api/v1/copilot/executions/{execution.id}")
+    assert snapshot.status_code == 200, snapshot.text
+    persisted_report = snapshot.json()["data"]["step_runs"][-1]
+    assert persisted_report["status"] == "SUCCEEDED"
+    assert (
+        persisted_report["result_payload"]["report_id"]
+        == report.result_payload["report_id"]
+    )
+    assert (
+        persisted_report["result_payload"]["artifact_uri"]
+        == report.result_payload["artifact_uri"]
+    )
+
+
+def test_generate_report_domain_failure_marks_execution_failed(
+    chat_harness: ChatHarness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    version_id = _benchmark_version(chat_harness.client)
+
+    async def fail_report(*args: object, **kwargs: object) -> object:
+        raise ReportDomainError("REPORT_TEST_FAILURE", "deterministic report failure")
+
+    monkeypatch.setattr(agent_tool_adapter, "generate_report", fail_report)
     response = chat_harness.client.post(
         "/api/v1/copilot/chat",
         json={"message": "生成报告", "active_version_id": version_id},
@@ -246,8 +297,163 @@ def test_deferred_step_is_not_persisted_as_completed_workflow(
     execution = asyncio.run(
         _load_execution(chat_harness.session_factory, UUID(data["execution_id"]))
     )
-    assert execution.workflow_status != "SUCCEEDED"
-    deferred = next(run for run in data["step_runs"] if run["result"].get("deferred"))
-    persisted = next(step for step in execution.step_runs if step.step_id == deferred["step_id"])
-    assert deferred["status"] == "pending"
-    assert persisted.status == "PENDING"
+    report = next(
+        step for step in execution.step_runs if step.tool_name == "generate_report"
+    )
+    assert data["workflow_status"] == "FAILED"
+    assert execution.workflow_status == "FAILED"
+    assert execution.finished_at is not None
+    assert report.status == "FAILED"
+    assert report.error_code == "REPORT_TEST_FAILURE"
+    assert report.error_message == "deterministic report failure"
+
+
+def test_capability_registry_owns_report_and_export_without_deferred_steps() -> None:
+    assert set(agent_service._TOOL_CAPABILITIES) == {
+        "profile_dataset",
+        "align_and_resample",
+        "detect_anomalies",
+        "clean_data",
+        "detect_dynamic_segments",
+        "estimate_delays",
+        "apply_lag_compensation",
+        "analyze_collinearity",
+        "select_variables",
+        "fit_arx",
+        "evaluate_model",
+        "optimize_pipeline",
+        "generate_report",
+        "export_dataset",
+    }
+    assert agent_service._TOOL_CAPABILITIES["generate_report"].mode == "FORMAL_EXECUTABLE"
+    assert agent_service._TOOL_CAPABILITIES["export_dataset"].mode == "WAITING_CONFIRMATION"
+    assert "generate_report" in agent_service._FORMAL_ADAPTER_TOOLS
+    assert "export_dataset" in agent_service._FORMAL_ADAPTER_TOOLS
+    assert agent_service._DEFERRED_TOOLS == frozenset()
+
+
+def _confirm(chat_harness: ChatHarness, data: dict[str, object]) -> object:
+    step_id = str(data["pending_confirmation_step_id"])
+    response = chat_harness.client.post(
+        "/api/v1/copilot/confirm",
+        json={
+            "copilot_run_id": data["copilot_run_id"],
+            "confirmation_id": step_id,
+            "approved": True,
+            "execution_id": data["execution_id"],
+            "step_id": step_id,
+        },
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["data"]
+
+
+def test_explicit_export_with_formal_selection_confirms_exports_and_closes(
+    chat_harness: ChatHarness,
+) -> None:
+    version_id = _benchmark_version(chat_harness.client)
+    response = chat_harness.client.post(
+        "/api/v1/copilot/chat",
+        json={
+            "message": "做动态区间优选并导出优选数据集",
+            "active_version_id": version_id,
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["workflow_status"] == "WAITING_CONFIRMATION"
+
+    confirmed = _confirm(chat_harness, data)
+    execution = asyncio.run(
+        _load_execution(chat_harness.session_factory, UUID(str(data["execution_id"])))
+    )
+    export = next(step for step in execution.step_runs if step.tool_name == "export_dataset")
+    assert confirmed["workflow_status"] == "SUCCEEDED"
+    assert execution.workflow_status == "SUCCEEDED"
+    assert export.status == "SUCCEEDED"
+    assert export.result_payload["exported_rows"] > 0
+    assert export.result_payload["exported_rows"] < export.result_payload["source_rows"]
+    assert export.result_payload["csv_uri"]
+    assert export.result_payload["manifest_uri"]
+
+
+def test_explicit_export_without_selection_fails_terminally(
+    chat_harness: ChatHarness,
+) -> None:
+    version_id = _benchmark_version(chat_harness.client)
+    response = chat_harness.client.post(
+        "/api/v1/copilot/chat",
+        json={"message": "下载 CSV", "active_version_id": version_id},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["workflow_status"] == "WAITING_CONFIRMATION"
+
+    confirmed = _confirm(chat_harness, data)
+    execution = asyncio.run(
+        _load_execution(chat_harness.session_factory, UUID(str(data["execution_id"])))
+    )
+    export = next(step for step in execution.step_runs if step.tool_name == "export_dataset")
+    assert confirmed["workflow_status"] == "FAILED"
+    assert execution.workflow_status == "FAILED"
+    assert execution.finished_at is not None
+    assert export.status == "FAILED"
+    assert export.error_code == "EXPORT_NO_SELECTION"
+
+
+def test_unexpected_formal_tool_exception_is_terminal(
+    chat_harness: ChatHarness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    version_id = _benchmark_version(chat_harness.client)
+
+    async def fail_unexpectedly(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("private diagnostic detail")
+
+    monkeypatch.setattr(agent_service, "execute_agent_tool", fail_unexpectedly)
+    response = chat_harness.client.post(
+        "/api/v1/copilot/chat",
+        json={"message": "生成报告", "active_version_id": version_id},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    execution = asyncio.run(
+        _load_execution(chat_harness.session_factory, UUID(data["execution_id"]))
+    )
+    failed = next(step for step in execution.step_runs if step.status == "FAILED")
+    assert data["workflow_status"] == "FAILED"
+    assert execution.workflow_status == "FAILED"
+    assert execution.finished_at is not None
+    assert failed.error_code == "AGENT_UNEXPECTED_STEP_ERROR"
+    assert "private diagnostic detail" not in failed.error_message
+
+
+def test_cleaning_version_is_refreshed_before_following_segment(
+    chat_harness: ChatHarness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    version_id = _benchmark_version(chat_harness.client)
+    original = agent_tool_adapter.select_dynamic_segments
+    observed_versions: list[UUID] = []
+
+    async def capture_segment(*args: object, **kwargs: object) -> object:
+        payload = kwargs["payload"]
+        observed_versions.append(payload.version_id)
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(agent_tool_adapter, "select_dynamic_segments", capture_segment)
+    response = chat_harness.client.post(
+        "/api/v1/copilot/chat",
+        json={
+            "message": "清洗数据后做动态区间优选",
+            "active_version_id": version_id,
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    execution = asyncio.run(
+        _load_execution(chat_harness.session_factory, UUID(data["execution_id"]))
+    )
+    cleaning = next(step for step in execution.step_runs if step.tool_name == "clean_data")
+    assert cleaning.result_version_id is not None
+    assert observed_versions == [cleaning.result_version_id]
+    assert execution.current_version_id == cleaning.result_version_id
+    assert execution.workflow_status == "SUCCEEDED"

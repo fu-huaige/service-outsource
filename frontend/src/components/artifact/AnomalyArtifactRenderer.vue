@@ -1,6 +1,6 @@
 <template>
   <section class="anomaly-artifact" data-test="anomaly-artifact-renderer">
-    <header class="anomaly-artifact__header">
+    <header v-if="!compact" class="anomaly-artifact__header">
       <h3>异常检测详情</h3>
       <p v-if="summary" data-test="anomaly-summary">{{ summary }}</p>
     </header>
@@ -50,7 +50,7 @@
       暂无可结构化展示的异常检测结果
     </p>
 
-    <div class="anomaly-raw">
+    <div v-if="!compact" class="anomaly-raw">
       <button
         type="button"
         class="anomaly-raw__toggle"
@@ -77,7 +77,10 @@ type MetricRow = {
 
 const props = defineProps<{
   payload?: Record<string, unknown> | null;
+  compact?: boolean;
 }>();
+
+const compact = computed(() => props.compact ?? false);
 
 const rawExpanded = ref(false);
 

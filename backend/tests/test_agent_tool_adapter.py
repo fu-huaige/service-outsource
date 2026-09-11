@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from algorithms.agent.compliance import verify_plan
@@ -19,6 +19,7 @@ from app.main import create_app
 from app.models import Base, DatasetVersion, ProcessingRun
 from app.models.agent_execution import AgentExecutionSession
 from app.schemas.copilot import ExecutionPlan, ExecutionPlanStep
+from app.schemas.reporting import ReportData, ReportRequest
 from app.services import agent_service, agent_tool_adapter
 from app.services.agent_execution_service import (
     approve_step,
@@ -31,6 +32,7 @@ from app.services.agent_execution_service import (
 from app.services.agent_tool_adapter import execute_agent_tool
 from app.services.agent_arx_modeling_service import ArxStructureError
 from app.services.cleaning_service import CleaningDomainError
+from app.services.contract_stubs import completed_task
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -394,6 +396,90 @@ def test_cleaning_adapter_advances_to_idempotently_reused_effective_version(
     assert result.result_payload["reused_existing_version"] is True
     assert result.result_payload["effective_version_id"] == str(cleaning_version_id)
     assert persisted.current_version_id == cleaning_version_id
+
+
+def test_report_adapter_binds_execution_context_and_persists_formal_result(
+    adapter_harness: AdapterHarness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dataset_id, version_id = _upload_controlled_version(adapter_harness)
+    plan, proof = _plan(
+        ExecutionPlanStep(step_id="p1", tool="profile_dataset"),
+        ExecutionPlanStep(step_id="r1", tool="generate_report", depends_on=["p1"]),
+        dataset_id=dataset_id,
+    )
+    started = asyncio.run(
+        _create_and_start(
+            adapter_harness,
+            dataset_id=dataset_id,
+            version_id=version_id,
+            plan=plan,
+            proof=proof,
+            step_id="r1",
+        )
+    )
+    report_id = uuid4()
+    artifact_uri = f"reports/{report_id}.md"
+    captured: dict[str, object] = {}
+
+    async def fake_generate_report(
+        session: AsyncSession, *, payload: object, artifact_root: Path
+    ) -> ReportData:
+        captured["session"] = session
+        captured["payload"] = payload
+        captured["artifact_root"] = artifact_root
+        return ReportData(
+            report_id=report_id,
+            dataset_id=dataset_id,
+            task=completed_task(stage="generate_report", message="report generated"),
+            title="IndusOpt 建模数据优选与辨识报告",
+            markdown="# Report",
+            sections=[],
+            artifact_uri=artifact_uri,
+            cited_runs=["r12345678"],
+        )
+
+    monkeypatch.setattr(agent_tool_adapter, "generate_report", fake_generate_report)
+
+    async def run() -> tuple[object, AgentExecutionSession]:
+        async with adapter_harness.session_factory() as session:
+            execution = await get_execution(session, execution_id=started.id)
+            step = next(item for item in execution.step_runs if item.step_id == "r1")
+            result = await execute_agent_tool(
+                session,
+                execution=execution,
+                step=step,
+                parameters=step.input_payload["parameters"],
+                artifact_root=adapter_harness.artifact_root,
+            )
+            persisted = await mark_step_succeeded(
+                session,
+                execution_id=execution.id,
+                step_id=step.step_id,
+                result_payload=result.result_payload,
+                source_version_id=result.source_version_id,
+                result_version_id=result.result_version_id,
+                processing_run_ids=result.processing_run_ids,
+            )
+            return result, persisted
+
+    result, persisted = asyncio.run(run())
+    payload = captured["payload"]
+    assert isinstance(payload, ReportRequest)
+    assert payload.dataset_id == dataset_id
+    assert payload.version_id == version_id
+    assert captured["artifact_root"] == adapter_harness.artifact_root
+    assert result.source_version_id == version_id
+    assert result.result_version_id is None
+    assert result.processing_run_ids == [str(report_id)]
+    assert result.result_payload["report_id"] == str(report_id)
+    assert result.result_payload["artifact_uri"] == artifact_uri
+    assert persisted.workflow_status == "SUCCEEDED"
+
+    reloaded = asyncio.run(_load_execution(adapter_harness, persisted.id))
+    report = next(step for step in reloaded.step_runs if step.step_id == "r1")
+    assert report.result_payload["report_id"] == str(report_id)
+    assert report.result_payload["artifact_uri"] == artifact_uri
+    assert report.processing_run_ids == [str(report_id)]
 
 
 def test_delay_adapter_reads_cleaned_current_version_without_creating_another_version(

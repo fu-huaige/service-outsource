@@ -294,6 +294,7 @@ class SelectionSummary(Schema):
 
 class SegmentData(Schema):
     source_version_id: UUID
+    processing_run_id: UUID | None = None
     task: TaskResource
     timestamps: list[datetime]
     series: dict[str, list[float | None]]

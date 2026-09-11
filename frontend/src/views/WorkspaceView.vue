@@ -895,16 +895,21 @@ watch(() => route.params.executionId, async (newId) => {
   background: #FFFFFF;
   border-bottom: 1px solid #E5E5E8;
   flex-shrink: 0;
+  min-width: 0;
+  gap: 12px;
 }
 
 .ws-top-bar__left {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
 .ws-top-goal {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 13px;
   font-weight: 600;
   color: #171717;
@@ -914,10 +919,16 @@ watch(() => route.params.executionId, async (newId) => {
   max-width: 420px;
 }
 
+.ws-top-bar__left > .status-badge {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .ws-top-bar__right {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .ws-top-btn {
@@ -933,6 +944,8 @@ watch(() => route.params.executionId, async (newId) => {
   color: #666666;
   cursor: pointer;
   transition: all 0.15s ease;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .ws-top-btn:hover {

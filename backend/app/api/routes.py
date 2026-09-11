@@ -113,6 +113,7 @@ from app.services.agent_lag_apply_service import (
 from app.services.agent_service import (
     AgentDomainError,
     continue_agent_execution,
+    execute_approved_export_step,
     execute_approved_optimization_step,
     execute_pending_evaluation_step,
     run_copilot,
@@ -170,6 +171,7 @@ from app.services.report_service import (
     ReportDomainError,
     export_optimised_dataset,
     generate_report,
+    get_export_artifact,
 )
 from app.services.segment_service import SegmentDomainError, select_dynamic_segments
 from app.services.simulation_service import generate_simulation as generate_simulation_service
@@ -1316,6 +1318,24 @@ async def copilot_confirm(
             execution = await approve_step(
                 session, execution_id=payload.execution_id, step_id=payload.step_id
             )
+            approved_step = next(
+                item for item in execution.step_runs if item.step_id == payload.step_id
+            )
+            if approved_step.tool_name == "optimize_pipeline":
+                execution = await execute_approved_optimization_step(
+                    session,
+                    execution_id=execution.id,
+                    artifact_root=get_settings().artifact_root,
+                )
+                resume_after_confirmation = True
+            elif approved_step.tool_name == "export_dataset":
+                execution = await execute_approved_export_step(
+                    session,
+                    execution_id=execution.id,
+                    step_id=approved_step.step_id,
+                    artifact_root=get_settings().artifact_root,
+                )
+                resume_after_confirmation = True
         if resume_after_confirmation:
             execution = await continue_agent_execution(
                 session,
@@ -1389,6 +1409,12 @@ async def execute_copilot_optimize_pipeline(
             execution_id=payload.execution_id,
             artifact_root=get_settings().artifact_root,
         )
+        if execution.workflow_status == "RUNNING":
+            execution = await continue_agent_execution(
+                session,
+                execution_id=execution.id,
+                artifact_root=get_settings().artifact_root,
+            )
     except ExecutionStateError as error:
         raise AppError(
             "AGENT_EXECUTION_STATE_CONFLICT",
@@ -1437,6 +1463,12 @@ async def execute_copilot_evaluate_model(
 ) -> SuccessEnvelope[CopilotEvaluateModelExecuteData]:
     try:
         execution = await execute_pending_evaluation_step(session, execution_id=payload.execution_id, artifact_root=get_settings().artifact_root)
+        if execution.workflow_status == "RUNNING":
+            execution = await continue_agent_execution(
+                session,
+                execution_id=execution.id,
+                artifact_root=get_settings().artifact_root,
+            )
     except ExecutionStateError as error:
         raise AppError("AGENT_EXECUTION_STATE_CONFLICT", "当前执行状态不允许模型评价。", status_code=status.HTTP_409_CONFLICT, details={"reason": str(error)}) from error
     except AgentDomainError as error:
@@ -1511,6 +1543,60 @@ async def export_dataset_route(
             details=error.details,
         ) from error
     return success(request, data)
+
+
+@router.get(
+    "/delivery/exports/{export_id}/csv",
+    tags=["Delivery"],
+    summary="Download a persisted optimised dataset CSV",
+    responses={404: {"model": ErrorEnvelope, "description": "导出记录或 CSV 不存在。"}},
+)
+async def download_export_csv(
+    export_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FileResponse:
+    try:
+        path, filename, media_type = await get_export_artifact(
+            session,
+            export_id=export_id,
+            artifact_root=get_settings().artifact_root,
+            kind="csv",
+        )
+    except ReportDomainError as error:
+        raise AppError(
+            error.code,
+            error.message,
+            status_code=error.status_code,
+            details=error.details,
+        ) from error
+    return FileResponse(path, media_type=media_type, filename=filename)
+
+
+@router.get(
+    "/delivery/exports/{export_id}/manifest",
+    tags=["Delivery"],
+    summary="Download a persisted optimised dataset provenance manifest",
+    responses={404: {"model": ErrorEnvelope, "description": "导出记录或 Manifest 不存在。"}},
+)
+async def download_export_manifest(
+    export_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FileResponse:
+    try:
+        path, filename, media_type = await get_export_artifact(
+            session,
+            export_id=export_id,
+            artifact_root=get_settings().artifact_root,
+            kind="manifest",
+        )
+    except ReportDomainError as error:
+        raise AppError(
+            error.code,
+            error.message,
+            status_code=error.status_code,
+            details=error.details,
+        ) from error
+    return FileResponse(path, media_type=media_type, filename=filename)
 
 
 @router.post(

@@ -1,6 +1,6 @@
 <template>
   <section class="cleaning-artifact" data-test="cleaning-artifact-renderer">
-    <header class="cleaning-artifact__header">
+    <header v-if="!compact" class="cleaning-artifact__header">
       <h3>数据清洗详情</h3>
       <p v-if="summary" data-test="cleaning-summary">{{ summary }}</p>
     </header>
@@ -83,7 +83,7 @@
       </div>
     </section>
 
-    <section v-if="processingRunId" class="cleaning-section" data-test="cleaning-provenance">
+    <section v-if="processingRunId && !compact" class="cleaning-section" data-test="cleaning-provenance">
       <h4>技术追溯</h4>
       <div class="cleaning-provenance-row">
         <span>Processing Run</span>
@@ -95,7 +95,7 @@
       暂无可结构化展示的数据清洗结果
     </p>
 
-    <div class="cleaning-raw">
+    <div v-if="!compact" class="cleaning-raw">
       <button
         type="button"
         class="cleaning-raw__toggle"
@@ -127,7 +127,10 @@ type CountPair = {
 
 const props = defineProps<{
   payload?: Record<string, unknown> | null;
+  compact?: boolean;
 }>();
+
+const compact = computed(() => props.compact ?? false);
 
 const rawExpanded = ref(false);
 

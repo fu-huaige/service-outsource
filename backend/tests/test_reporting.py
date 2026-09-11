@@ -19,6 +19,8 @@ from app.core.config import Settings
 from app.core.db import get_session
 from app.main import create_app
 from app.models import Base
+from app.models.dataset import ProcessingRun
+from app.services.report_service import _matches
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -151,6 +153,19 @@ def run_pipeline(client: TestClient) -> str:
     assert generated.status_code == 201, generated.text
     version_id = generated.json()["data"]["version_id"]
 
+    lagged = client.post(
+        "/api/v1/preprocessing/delay/apply",
+        json={
+            "version_id": version_id,
+            "lag_map": {"u1": 3, "u2": 8},
+            "user_confirmed": True,
+            "recommendation_source": "manual",
+            "evidence_summary": {"fixture": "known_simulation_lags"},
+        },
+    )
+    assert lagged.status_code == 201, lagged.text
+    version_id = lagged.json()["data"]["result_version_id"]
+
     segment = client.post(
         "/api/v1/preprocessing/segment",
         json={
@@ -191,6 +206,7 @@ class TestReportApi:
         for binding in data["bindings"]:
             assert binding["run_id"]
             assert binding["resolved"] is True
+        assert data["cited_runs"] == sorted({binding["run_id"] for binding in data["bindings"]})
         assert any(section["key"] == "selection" for section in data["sections"])
         assert any(section["key"] == "model" for section in data["sections"])
 
@@ -275,6 +291,15 @@ class TestExportApi:
         assert manifest["version_id"] == version_id
         assert manifest["exported_rows"] == data["exported_rows"]
 
+        csv_download = client.get(f"/api/v1/delivery/exports/{data['export_id']}/csv")
+        manifest_download = client.get(
+            f"/api/v1/delivery/exports/{data['export_id']}/manifest"
+        )
+        assert csv_download.status_code == 200
+        assert csv_download.headers["content-type"].startswith("text/csv")
+        assert manifest_download.status_code == 200
+        assert manifest_download.json()["exported_rows"] == data["exported_rows"]
+
     def test_explicit_indices_are_honoured(self, client: TestClient) -> None:
         version_id = run_pipeline(client)
         response = client.post(
@@ -301,3 +326,48 @@ class TestExportApi:
         )
         assert response.status_code == 404
         assert response.json()["error"]["code"] == "EXPORT_NO_SELECTION"
+
+
+def test_processing_run_scope_requires_dataset_and_version_when_both_are_requested() -> None:
+    requested_dataset = uuid4()
+    other_dataset = uuid4()
+    requested_version = uuid4()
+    other_version = uuid4()
+    same_dataset_old_version = ProcessingRun(
+        dataset_id=requested_dataset,
+        source_version_id=other_version,
+        run_type="preprocessing.clean",
+        status="succeeded",
+        parameters={},
+        result={"effective_version_id": str(other_version)},
+    )
+    same_version_other_dataset = ProcessingRun(
+        dataset_id=other_dataset,
+        source_version_id=requested_version,
+        run_type="preprocessing.clean",
+        status="succeeded",
+        parameters={},
+        result={"effective_version_id": str(requested_version)},
+    )
+    exact_scope = ProcessingRun(
+        dataset_id=requested_dataset,
+        source_version_id=other_version,
+        run_type="preprocessing.clean",
+        status="succeeded",
+        parameters={},
+        result={"effective_version_id": str(requested_version)},
+    )
+
+    assert not _matches(
+        same_dataset_old_version,
+        dataset_id=requested_dataset,
+        version_id=requested_version,
+    )
+    assert not _matches(
+        same_version_other_dataset,
+        dataset_id=requested_dataset,
+        version_id=requested_version,
+    )
+    assert _matches(exact_scope, dataset_id=requested_dataset, version_id=requested_version)
+    assert _matches(same_dataset_old_version, dataset_id=requested_dataset, version_id=None)
+    assert _matches(same_version_other_dataset, dataset_id=None, version_id=requested_version)

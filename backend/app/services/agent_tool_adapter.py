@@ -19,7 +19,9 @@ from app.schemas.preprocessing import (
     DelayRequest,
     FeatureSelectionApplyRequest,
     LagCompensationRequest,
+    SegmentRequest,
 )
+from app.schemas.reporting import ExportDatasetRequest, ReportRequest
 from app.services.cleaning_service import clean_dataset_version
 from app.services.modeling_service import (
     evaluate_saved_arx_model,
@@ -31,6 +33,8 @@ from app.services.preprocessing_analysis_service import (
     run_collinearity_analysis,
     run_delay_estimation,
 )
+from app.services.report_service import export_optimised_dataset, generate_report
+from app.services.segment_service import select_dynamic_segments
 from app.services.version_data import VersionDataError, load_version_series
 from app.services.versioned_preprocessing_service import (
     apply_feature_selection,
@@ -124,6 +128,13 @@ async def execute_agent_tool(
             parameters=parameters,
             artifact_root=artifact_root,
         )
+    if step.tool_name == "detect_dynamic_segments":
+        return await _detect_dynamic_segments(
+            session,
+            execution=execution,
+            parameters=parameters,
+            artifact_root=artifact_root,
+        )
     if step.tool_name == "optimize_pipeline":
         return await _optimize_pipeline(
             session,
@@ -137,6 +148,20 @@ async def execute_agent_tool(
             session,
             execution=execution,
             step=step,
+            parameters=parameters,
+            artifact_root=artifact_root,
+        )
+    if step.tool_name == "generate_report":
+        return await _generate_report(
+            session,
+            execution=execution,
+            parameters=parameters,
+            artifact_root=artifact_root,
+        )
+    if step.tool_name == "export_dataset":
+        return await _export_dataset(
+            session,
+            execution=execution,
             parameters=parameters,
             artifact_root=artifact_root,
         )
@@ -192,6 +217,106 @@ async def _clean(
         source_version_id=data.source_version_id,
         result_version_id=data.effective_version_id,
         processing_run_ids=[str(data.processing_run_id)] if data.processing_run_id else [],
+        result_payload=data.model_dump(mode="json"),
+    )
+
+
+async def _generate_report(
+    session: AsyncSession,
+    *,
+    execution: AgentExecutionSession,
+    parameters: dict[str, Any],
+    artifact_root: Path,
+) -> AgentToolResult:
+    """Generate a provenance-bound report for this execution's current version."""
+
+    _validated_parameters(parameters, allowed=frozenset(), tool_name="generate_report")
+    data = await generate_report(
+        session,
+        payload=ReportRequest(
+            dataset_id=execution.dataset_id,
+            version_id=execution.current_version_id,
+        ),
+        artifact_root=artifact_root,
+    )
+    return AgentToolResult(
+        summary=f"正式报告服务已生成报告 {data.report_id}。",
+        source_version_id=execution.current_version_id,
+        result_version_id=None,
+        processing_run_ids=[str(data.report_id)],
+        result_payload=data.model_dump(mode="json"),
+    )
+
+
+async def _detect_dynamic_segments(
+    session: AsyncSession,
+    *,
+    execution: AgentExecutionSession,
+    parameters: dict[str, Any],
+    artifact_root: Path,
+) -> AgentToolResult:
+    """Persist the current execution's selected samples through the formal segment service."""
+
+    try:
+        series = await load_version_series(
+            session,
+            version_id=execution.current_version_id,
+            dataset_id=execution.dataset_id,
+            artifact_root=artifact_root,
+        )
+        input_columns, output_column = series.resolve_columns(
+            input_columns=None,
+            output_column=None,
+        )
+        payload = SegmentRequest(
+            version_id=execution.current_version_id,
+            dataset_id=execution.dataset_id,
+            input_columns=input_columns,
+            output_column=output_column,
+            **_validated_parameters(
+                parameters,
+                allowed=frozenset(SegmentRequest.model_fields)
+                - {"version_id", "dataset_id", "input_columns", "output_column"},
+                tool_name="detect_dynamic_segments",
+            ),
+        )
+    except ValidationError as error:
+        raise AgentToolAdapterError("INVALID_AGENT_TOOL_PARAMETERS", str(error)) from error
+
+    data = await select_dynamic_segments(session, payload=payload, artifact_root=artifact_root)
+    selected_count = data.selection.selected_count if data.selection else len(data.selected_indices)
+    return AgentToolResult(
+        summary=f"正式样本优选服务已选中 {selected_count} 个动态区间。",
+        source_version_id=data.source_version_id,
+        result_version_id=None,
+        processing_run_ids=[str(data.processing_run_id)] if data.processing_run_id else [],
+        result_payload=data.model_dump(mode="json"),
+    )
+
+
+async def _export_dataset(
+    session: AsyncSession,
+    *,
+    execution: AgentExecutionSession,
+    parameters: dict[str, Any],
+    artifact_root: Path,
+) -> AgentToolResult:
+    """Export only a formally selected subset from this execution's current version."""
+
+    _validated_parameters(parameters, allowed=frozenset(), tool_name="export_dataset")
+    data = await export_optimised_dataset(
+        session,
+        payload=ExportDatasetRequest(
+            dataset_id=execution.dataset_id,
+            version_id=execution.current_version_id,
+        ),
+        artifact_root=artifact_root,
+    )
+    return AgentToolResult(
+        summary=f"正式交付服务已导出 {data.exported_rows} 行优选数据。",
+        source_version_id=execution.current_version_id,
+        result_version_id=None,
+        processing_run_ids=[str(data.export_id)],
         result_payload=data.model_dump(mode="json"),
     )
 

@@ -91,6 +91,25 @@ class TestPlanning:
         steps, _, _ = plan_for("清洗数据，做动态优选、时滞、共线性、建模、闭环寻优、出报告并导出")
         assert all(step.tool in TOOL_WHITELIST for step in steps)
 
+    @pytest.mark.parametrize(
+        "message",
+        ["报告交付", "生成报告", "分析报告", "报告生成", "给我报告"],
+    )
+    def test_report_delivery_does_not_imply_dataset_export(self, message: str) -> None:
+        tools = [step.tool for step in plan_for(message)[0]]
+
+        assert "generate_report" in tools
+        assert "export_dataset" not in tools
+
+    @pytest.mark.parametrize(
+        "message",
+        ["导出数据集", "下载数据集", "导出 CSV", "下载 CSV", "导出清洗后的数据", "导出优选数据集"],
+    )
+    def test_explicit_dataset_export_intent_is_preserved(self, message: str) -> None:
+        tools = [step.tool for step in plan_for(message)[0]]
+
+        assert "export_dataset" in tools
+
     def test_prerequisites_come_first(self) -> None:
         steps, _, _ = plan_for("清洗后建模")
         order = [step.tool for step in steps]

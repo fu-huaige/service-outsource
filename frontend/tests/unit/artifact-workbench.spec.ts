@@ -1,9 +1,16 @@
 import { defineComponent, nextTick } from "vue";
-import { mount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { flushPromises, mount } from "@vue/test-utils";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import ArtifactWorkbench from "../../src/components/artifact/ArtifactWorkbench.vue";
+import { ApiError } from "../../src/api/client";
 import type { ChartOption } from "../../src/components/ChartContainer.vue";
 import type { CopilotExecutionSnapshot } from "../../src/types/api";
+
+const deliveryApi = vi.hoisted(() => ({ exportDataset: vi.fn() }));
+const messageApi = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+
+vi.mock("../../src/api/delivery", () => deliveryApi);
+vi.mock("element-plus", () => ({ ElMessage: messageApi }));
 
 const ChartContainerStub = defineComponent({
   name: "ChartContainer",
@@ -74,6 +81,56 @@ const mountWorkbench = async (execution: CopilotExecutionSnapshot) => {
   });
   await nextTick();
   return wrapper;
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+const reportExecution = (): CopilotExecutionSnapshot => {
+  const reportId = "44444444-4444-4444-4444-444444444444";
+  const execution = executionWith("generate_report", {
+    report_id: reportId,
+    dataset_id: "dataset-1",
+    title: "生产分析报告",
+    markdown: "# 关键结论\n\n- 清洗与异常检测均已完成。",
+    fully_resolved: true,
+    unresolved: [],
+    bindings: [{
+      placeholder: "{{run:r123.validation.free_run_fit}}",
+      kind: "run",
+      run_id: "r123",
+      path: "validation.free_run_fit",
+      value: "88.2",
+      resolved: true,
+    }],
+    artifact_uri: `reports/${reportId}.md`,
+    narration_source: "template",
+    llm_provider: "none",
+    llm_model: "none",
+  });
+  const steps = [
+    ["profile", "profile_dataset", { summary: "画像完成", result: { n_samples: 1200 } }],
+    ["anomaly", "detect_anomalies", { summary: "异常检测完成", result: { anomaly_count: 6, anomaly_ratio: 0.005 } }],
+    ["clean", "clean_data", { summary: "清洗完成", total_cleaned_points: 7, rows_before: 1200, rows_after: 1198 }],
+    ["report", "generate_report", execution.step_runs[0].result_payload],
+  ] as const;
+  execution.plan.steps = steps.map(([stepId, tool]) => ({
+    step_id: stepId,
+    tool,
+    depends_on: [],
+    parameters: {},
+    requires_confirmation: false,
+    status: "completed",
+  }));
+  execution.step_runs = steps.map(([stepId, tool, payload], index) => ({
+    ...execution.step_runs[0],
+    step_id: stepId,
+    sequence: index + 1,
+    tool,
+    result_payload: payload,
+  }));
+  return execution;
 };
 
 describe("ArtifactWorkbench profile_dataset rendering", () => {
@@ -438,5 +495,100 @@ describe("ArtifactWorkbench cleaning rendering", () => {
       summary: { changes: { source_missing_cells: 106, missing_value_fills: 106 } },
     })));
     expect(incomplete.find('[data-test="cleaning-missing-count-chart"]').exists()).toBe(false);
+  });
+});
+
+describe("ArtifactWorkbench report and delivery actions", () => {
+  it("uses the dedicated report renderer and restores real sibling results from a persisted snapshot", async () => {
+    const wrapper = await mountWorkbench(reportExecution());
+
+    expect(wrapper.get('[data-test="report-artifact-renderer"]').exists()).toBe(true);
+    expect(wrapper.find(".aw-json").exists()).toBe(false);
+    expect(wrapper.get('[data-test="report-core-metrics"]').text()).toContain("样本数1,200");
+    expect(wrapper.get('[data-test="report-core-metrics"]').text()).toContain("异常点6");
+    expect(wrapper.get('[data-test="report-core-metrics"]').text()).toContain("异常比例0.50%");
+    expect(wrapper.get('[data-test="report-core-metrics"]').text()).toContain("修改单元格7");
+    expect(wrapper.get('[data-test="report-profile-section"]').exists()).toBe(true);
+    expect(wrapper.get('[data-test="report-anomaly-section"]').exists()).toBe(true);
+    expect(wrapper.get('[data-test="report-cleaning-section"]').exists()).toBe(true);
+    expect(wrapper.get('[data-test="report-markdown"]').text()).toContain("清洗与异常检测均已完成");
+    expect(wrapper.get('[data-test="report-evidence"]').text()).toContain("free run fit");
+  });
+
+  it("does not invent absent metrics and keeps raw JSON and UUIDs in closed technical details", async () => {
+    const reportId = "44444444-4444-4444-4444-444444444444";
+    const wrapper = await mountWorkbench(executionWith("generate_report", {
+      report_id: reportId,
+      title: "无指标报告",
+      markdown: "结论仅来自现有证据。",
+      fully_resolved: true,
+      unresolved: [],
+      bindings: [],
+    }));
+
+    expect(wrapper.find('[data-test="report-core-metrics"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("N/A");
+    expect(wrapper.text()).not.toContain("综合评分");
+    const technical = wrapper.get('[data-test="report-technical-details"]');
+    expect(technical.attributes("open")).toBeUndefined();
+    expect(technical.get('[data-test="report-raw-json"]').text()).toContain(reportId);
+    expect(wrapper.get(".report-header").text()).not.toContain(reportId);
+    expect(wrapper.get('[data-test="report-markdown"]').text()).not.toContain(reportId);
+  });
+
+  it("binds current-dataset download to the execution dataset and current version", async () => {
+    const execution = executionWith("profile_dataset", { result: { n_samples: 10 } });
+    execution.dataset_id = "dataset-current";
+    execution.current_version_id = "version-current";
+    const wrapper = await mountWorkbench(execution);
+
+    expect(wrapper.get('[data-test="download-current-dataset"]').attributes("href")).toBe(
+      "/api/v1/datasets/dataset-current/download?version_id=version-current"
+    );
+  });
+
+  it("shows the formal no-selection message without falling back to a full dataset download", async () => {
+    deliveryApi.exportDataset.mockRejectedValueOnce(
+      new ApiError("EXPORT_NO_SELECTION", "no selection", "request-1")
+    );
+    const wrapper = await mountWorkbench(executionWith("profile_dataset", { result: { n_samples: 10 } }));
+
+    await wrapper.get('[data-test="export-optimised-dataset"]').trigger("click");
+    await flushPromises();
+
+    expect(deliveryApi.exportDataset).toHaveBeenCalledWith({
+      dataset_id: "dataset-1",
+      version_id: "version-0",
+    });
+    expect(wrapper.get('[data-test="export-notice"]').text()).toBe(
+      "尚未完成样本优选，无法导出优选数据集。"
+    );
+    expect(messageApi.error).toHaveBeenCalledWith("尚未完成样本优选，无法导出优选数据集。");
+    expect(wrapper.get('[data-test="download-current-dataset"]').text()).toBe("下载当前数据集");
+  });
+
+  it("shows real export metrics and persisted artifact download routes after success", async () => {
+    deliveryApi.exportDataset.mockResolvedValueOnce({
+      export_id: "export-1",
+      dataset_id: "dataset-1",
+      version_id: "version-0",
+      task: {},
+      csv_uri: "exports/export-1.csv",
+      manifest_uri: "exports/export-1.manifest.json",
+      exported_rows: 25,
+      source_rows: 100,
+      coverage_ratio: 0.25,
+      columns: ["timestamp", "u", "y"],
+    });
+    const wrapper = await mountWorkbench(executionWith("profile_dataset", { result: { n_samples: 100 } }));
+
+    await wrapper.get('[data-test="export-optimised-dataset"]').trigger("click");
+    await flushPromises();
+
+    const notice = wrapper.get('[data-test="export-notice"]');
+    expect(notice.text()).toContain("优选数据集导出完成");
+    expect(notice.text()).toContain("导出 25 / 100 行，覆盖率 25.00%");
+    expect(notice.get('a[href="/api/v1/delivery/exports/export-1/csv"]').text()).toBe("下载优选 CSV");
+    expect(notice.get('a[href="/api/v1/delivery/exports/export-1/manifest"]').text()).toBe("下载 Manifest");
   });
 });

@@ -184,4 +184,29 @@ describe("WorkspaceView dataset context guard", () => {
     expect(source).not.toContain("execution.current_version_id.slice");
     expect(source).not.toContain("execution.dataset_id.slice");
   });
+
+  it("lets the title shrink while status and workbench controls remain intact", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/views/WorkspaceView.vue"), "utf8");
+    const topBar = source.match(/\.ws-top-bar\s*\{([^}]+)\}/)?.[1] ?? "";
+    const left = source.match(/\.ws-top-bar__left\s*\{([^}]+)\}/)?.[1] ?? "";
+    const goal = source.match(/\.ws-top-goal\s*\{([^}]+)\}/)?.[1] ?? "";
+    const status = source.match(/\.ws-top-bar__left\s*>\s*\.status-badge\s*\{([^}]+)\}/)?.[1] ?? "";
+    const right = source.match(/\.ws-top-bar__right\s*\{([^}]+)\}/)?.[1] ?? "";
+    const button = source.match(/\.ws-top-btn\s*\{([^}]+)\}/)?.[1] ?? "";
+
+    expect(topBar).toContain("min-width: 0");
+    expect(left).toContain("flex: 1 1 auto");
+    expect(left).toContain("min-width: 0");
+    expect(goal).toContain("flex: 1 1 auto");
+    expect(goal).toContain("min-width: 0");
+    expect(goal).toContain("overflow: hidden");
+    expect(goal).toContain("text-overflow: ellipsis");
+    expect(goal).toContain("white-space: nowrap");
+    expect(status).toContain("flex-shrink: 0");
+    expect(status).toContain("white-space: nowrap");
+    expect(right).toContain("flex-shrink: 0");
+    expect(button).toContain("flex-shrink: 0");
+    expect(button).toContain("white-space: nowrap");
+    expect(button).not.toContain("width:");
+  });
 });

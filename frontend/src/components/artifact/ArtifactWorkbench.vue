@@ -31,6 +31,35 @@
       </div>
     </div>
 
+    <div class="aw-data-actions" data-test="artifact-data-actions">
+      <a
+        class="aw-action-btn"
+        data-test="download-current-dataset"
+        :href="currentDatasetDownloadUrl"
+      >下载当前数据集</a>
+      <button
+        type="button"
+        class="aw-action-btn"
+        data-test="export-optimised-dataset"
+        :disabled="isExporting"
+        @click="handleOptimisedExport"
+      >{{ isExporting ? '导出中…' : '导出优选数据集' }}</button>
+    </div>
+
+    <div
+      v-if="exportNotice"
+      class="aw-export-notice"
+      :class="{ 'is-error': exportNotice.kind === 'error' }"
+      data-test="export-notice"
+    >
+      <span>{{ exportNotice.message }}</span>
+      <template v-if="exportNotice.result">
+        <span>导出 {{ exportNotice.result.exported_rows }} / {{ exportNotice.result.source_rows }} 行，覆盖率 {{ formatCoverage(exportNotice.result.coverage_ratio) }}</span>
+        <a :href="exportCsvUrl(exportNotice.result.export_id)">下载优选 CSV</a>
+        <a :href="exportManifestUrl(exportNotice.result.export_id)">下载 Manifest</a>
+      </template>
+    </div>
+
     <!-- Artifact Tabs -->
     <div class="aw-tabs" v-if="availableArtifacts.length > 0">
       <button
@@ -60,6 +89,25 @@
       <!-- Cleaning Artifact -->
       <template v-else-if="activeArtifact.type === 'cleaning'">
         <CleaningArtifactRenderer :payload="activeArtifact.payload" />
+      </template>
+
+      <template v-else-if="activeArtifact.type === 'report'">
+        <ReportArtifactRenderer :payload="activeArtifact.payload" :execution="execution" />
+      </template>
+
+      <template v-else-if="activeArtifact.type === 'export'">
+        <section class="aw-export-artifact" data-test="export-artifact-renderer">
+          <h3>优选数据集已导出</h3>
+          <div class="aw-export-metrics">
+            <span>导出样本数<strong>{{ activeArtifact.payload.exported_rows }}</strong></span>
+            <span>源样本数<strong>{{ activeArtifact.payload.source_rows }}</strong></span>
+            <span>覆盖率<strong>{{ formatCoverage(activeArtifact.payload.coverage_ratio) }}</strong></span>
+          </div>
+          <div class="aw-export-links" v-if="typeof activeArtifact.payload.export_id === 'string'">
+            <a :href="exportCsvUrl(activeArtifact.payload.export_id)">下载优选 CSV</a>
+            <a :href="exportManifestUrl(activeArtifact.payload.export_id)">下载 Manifest</a>
+          </div>
+        </section>
       </template>
 
       <!-- Model Artifact (arx_fit / evaluate_model) -->
@@ -171,11 +219,16 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
+import { ElMessage } from 'element-plus';
 import MetricStrip from './MetricStrip.vue';
 import AnomalyArtifactRenderer from './AnomalyArtifactRenderer.vue';
 import CleaningArtifactRenderer from './CleaningArtifactRenderer.vue';
 import ProfileArtifactRenderer from './ProfileArtifactRenderer.vue';
+import ReportArtifactRenderer from './ReportArtifactRenderer.vue';
 import type { CopilotExecutionSnapshot } from '../../types/api';
+import type { ExportDatasetResponse } from '../../types/api';
+import { exportDataset } from '../../api/delivery';
+import { ApiError } from '../../api/client';
 import { agentStepStatus } from '../../utils/agentStepStatus';
 
 const apiBase = import.meta.env.VITE_API_BASE_URL || '/api/v1';
@@ -192,7 +245,7 @@ const activeTab = ref<string | null>(null);
 
 interface ArtifactDef {
   stepId: string;
-  type: 'profile' | 'anomaly' | 'model' | 'evaluation' | 'optimization' | 'delay' | 'lag' | 'feature' | 'cleaning' | 'segmentation' | 'report' | 'generic';
+  type: 'profile' | 'anomaly' | 'model' | 'evaluation' | 'optimization' | 'delay' | 'lag' | 'feature' | 'cleaning' | 'segmentation' | 'report' | 'export' | 'generic';
   label: string;
   payload: Record<string, any>;
 }
@@ -216,7 +269,50 @@ const TOOL_META: Record<string, { type: ArtifactDef['type']; label: string }> = 
   clean:                   { type: 'cleaning',     label: '数据清洗' },
   segment:                 { type: 'segmentation', label: '区间优选' },
   generate_report:         { type: 'report',       label: '分析报告' },
+  export_dataset:          { type: 'export',       label: '导出结果' },
 };
+
+const isExporting = ref(false);
+const exportNotice = ref<{
+  kind: 'success' | 'error';
+  message: string;
+  result?: ExportDatasetResponse;
+} | null>(null);
+
+const currentDatasetDownloadUrl = computed(() =>
+  `${apiBase}/datasets/${encodeURIComponent(props.execution.dataset_id)}/download?version_id=${encodeURIComponent(props.execution.current_version_id)}`
+);
+
+const exportCsvUrl = (exportId: string) =>
+  `${apiBase}/delivery/exports/${encodeURIComponent(exportId)}/csv`;
+const exportManifestUrl = (exportId: string) =>
+  `${apiBase}/delivery/exports/${encodeURIComponent(exportId)}/manifest`;
+const formatCoverage = (value: unknown): string =>
+  typeof value === 'number' && Number.isFinite(value) ? `${(value * 100).toFixed(2)}%` : '';
+
+async function handleOptimisedExport() {
+  if (isExporting.value) return;
+  isExporting.value = true;
+  exportNotice.value = null;
+  try {
+    const result = await exportDataset({
+      dataset_id: props.execution.dataset_id,
+      version_id: props.execution.current_version_id,
+    });
+    exportNotice.value = { kind: 'success', message: '优选数据集导出完成。', result };
+    ElMessage.success('优选数据集导出完成');
+  } catch (error) {
+    const message = error instanceof ApiError && error.code === 'EXPORT_NO_SELECTION'
+      ? '尚未完成样本优选，无法导出优选数据集。'
+      : error instanceof Error
+        ? error.message
+        : '优选数据集导出失败。';
+    exportNotice.value = { kind: 'error', message };
+    ElMessage.error(message);
+  } finally {
+    isExporting.value = false;
+  }
+}
 
 const availableArtifacts = computed<ArtifactDef[]>(() => {
   return props.execution.step_runs
@@ -297,6 +393,18 @@ function optimizationMetrics(art: ArtifactDef) {
   letter-spacing: normal;
   font-weight: 600;
 }
+
+.aw-data-actions { display: flex; gap: 8px; padding: 9px 12px; border-bottom: 1px solid #ECECED; background: #FFFFFF; }
+.aw-action-btn { flex-shrink: 0; padding: 6px 10px; border: 1px solid var(--border-default); border-radius: 6px; background: #FFFFFF; color: var(--accent-dark); font-family: var(--font-sans); font-size: 11px; line-height: 1.3; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.aw-action-btn:disabled { cursor: wait; opacity: .55; }
+.aw-export-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px; border-bottom: 1px solid #DDE8D9; background: #F3F8F1; color: #426340; font-size: 11px; }
+.aw-export-notice.is-error { border-color: #F0D7D4; background: #FFF5F4; color: #9B3F36; }
+.aw-export-notice a, .aw-export-links a { color: var(--accent-dark); font-weight: 600; text-decoration: none; }
+.aw-export-artifact h3 { margin: 0 0 14px; font-size: 16px; }
+.aw-export-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.aw-export-metrics span { padding: 10px; border: 1px solid var(--border-default); border-radius: 7px; color: var(--text-tertiary); font-size: 10px; }
+.aw-export-metrics strong { display: block; margin-top: 4px; color: var(--text-primary); font-size: 17px; }
+.aw-export-links { display: flex; gap: 14px; margin-top: 14px; font-size: 12px; }
 
 .aw-header__right {
   display: flex;

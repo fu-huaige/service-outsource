@@ -98,7 +98,20 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
     "model": ("辨识", "建模", "模型", "arx", "identif", "model"),
     "optimize": ("寻优", "闭环", "优化", "自动优化", "调参", "最佳", "optimi", "optuna", "closed loop", "tune"),
     "report": ("报告", "结论", "解释", "report", "explain"),
-    "export": ("导出", "交付", "下载", "export", "deliver"),
+    "export": (
+        "导出数据集",
+        "下载数据集",
+        "数据集导出",
+        "数据集下载",
+        "导出 csv",
+        "下载 csv",
+        "导出清洗后的数据",
+        "导出优选数据集",
+        "export dataset",
+        "download dataset",
+        "export csv",
+        "download csv",
+    ),
 }
 
 

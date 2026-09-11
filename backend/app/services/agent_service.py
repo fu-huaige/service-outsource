@@ -70,6 +70,7 @@ from app.services.contract_stubs import completed_task
 from app.services.modeling_service import ModelingDomainError, fit_arx_core
 from app.services.optimization_service import run_study
 from app.services.preprocessing_analysis_service import AnalysisDomainError
+from app.services.report_service import ReportDomainError
 from app.services.segment_service import SegmentDomainError, run_segment_selection
 from app.services.version_data import VersionDataError, VersionSeries, load_version_series
 
@@ -106,6 +107,58 @@ class StepExecution:
     result: dict[str, Any] = field(default_factory=dict)
     duration_ms: float = 0.0
     error_code: str | None = None
+
+
+@dataclass(frozen=True)
+class ToolCapability:
+    """One planner tool's persisted execution ownership contract."""
+
+    mode: str
+    requires_confirmation: bool
+    handler: str
+    continuation: str
+
+
+_TOOL_CAPABILITIES: dict[str, ToolCapability] = {
+    "profile_dataset": ToolCapability("DIRECT_EXECUTABLE", False, "direct", "controller"),
+    "align_and_resample": ToolCapability("DIRECT_EXECUTABLE", False, "direct", "controller"),
+    "detect_anomalies": ToolCapability("DIRECT_EXECUTABLE", False, "direct", "controller"),
+    "clean_data": ToolCapability("FORMAL_EXECUTABLE", False, "formal", "controller"),
+    "detect_dynamic_segments": ToolCapability("FORMAL_EXECUTABLE", False, "formal", "controller"),
+    "estimate_delays": ToolCapability("FORMAL_EXECUTABLE", False, "formal", "controller"),
+    "apply_lag_compensation": ToolCapability("WAITING_CONFIRMATION", True, "formal", "confirm"),
+    "analyze_collinearity": ToolCapability("FORMAL_EXECUTABLE", False, "formal", "controller"),
+    "select_variables": ToolCapability("WAITING_CONFIRMATION", True, "formal", "confirm"),
+    "fit_arx": ToolCapability("WAITING_CONFIRMATION", True, "formal", "confirm"),
+    "evaluate_model": ToolCapability("FORMAL_EXECUTABLE", False, "formal", "controller"),
+    "optimize_pipeline": ToolCapability("WAITING_CONFIRMATION", True, "formal", "confirm"),
+    "generate_report": ToolCapability("FORMAL_EXECUTABLE", False, "formal", "controller"),
+    "export_dataset": ToolCapability("WAITING_CONFIRMATION", True, "formal", "confirm"),
+}
+
+_FORMAL_ADAPTER_TOOLS = frozenset(
+    tool for tool, capability in _TOOL_CAPABILITIES.items() if capability.handler == "formal"
+)
+_DEFERRED_TOOLS = frozenset()
+
+
+def _validate_plan_capabilities(steps: list[PlannedStep]) -> None:
+    """Reject planner/executor drift before a persistent execution is created."""
+
+    for step in steps:
+        capability = _TOOL_CAPABILITIES.get(step.tool)
+        if capability is None:
+            raise AgentDomainError(
+                "AGENT_TOOL_CAPABILITY_UNAVAILABLE",
+                f"工具 {step.tool} 没有合法的 Agent 执行能力。",
+                status_code=409,
+            )
+        if step.requires_confirmation != capability.requires_confirmation:
+            raise AgentDomainError(
+                "AGENT_TOOL_CONFIRMATION_POLICY_MISMATCH",
+                f"工具 {step.tool} 的计划确认策略与执行能力不一致。",
+                status_code=409,
+            )
 
 
 async def execute_approved_optimization_step(
@@ -264,9 +317,12 @@ async def run_copilot(
         list(outcome.assumptions),
         outcome.stop_conditions,
     )
+
+
     steps, lag_steps_removed = _normalize_plan_for_lag_context(
         steps, lag_ready=lag_ready
     )
+    _validate_plan_capabilities(steps)
     if lag_steps_removed:
         assumptions.append(
             "当前 DatasetVersion 已由服务器验证为时滞补偿就绪，计划已跳过重复的时滞估计与补偿。"
@@ -406,19 +462,66 @@ async def run_copilot(
         llm_fallback_reason=outcome.fallback_reason,
     )
 
-_FORMAL_ADAPTER_TOOLS = frozenset(
-    {
-        "clean_data",
-        "estimate_delays",
-        "apply_lag_compensation",
-        "analyze_collinearity",
-        "select_variables",
-        "fit_arx",
-        "evaluate_model",
-    }
-)
-_DEFERRED_TOOLS = frozenset({"generate_report", "export_dataset"})
 
+async def execute_approved_export_step(
+    session: AsyncSession,
+    *,
+    execution_id: UUID,
+    step_id: str,
+    artifact_root: Path,
+) -> AgentExecutionSession:
+    """Execute one already-approved export step and always persist a terminal outcome."""
+
+    execution = await get_execution(session, execution_id=execution_id)
+    export = next(
+        (
+            step
+            for step in execution.step_runs
+            if step.step_id == step_id and step.tool_name == "export_dataset"
+        ),
+        None,
+    )
+    if export is None:
+        raise AgentDomainError(
+            "EXPORT_STEP_REQUIRED",
+            "当前执行中不存在指定的 export_dataset 步骤。",
+            status_code=409,
+        )
+    if export.status in {"SUCCEEDED", "FAILED"}:
+        return execution
+    if export.status != "RUNNING" or export.confirmation_status != "APPROVED":
+        raise AgentDomainError(
+            "EXPORT_STEP_NOT_APPROVED",
+            "优选数据导出步骤尚未获得人工确认。",
+            status_code=409,
+        )
+
+    try:
+        result = await execute_agent_tool(
+            session,
+            execution=execution,
+            step=export,
+            parameters=dict(export.input_payload["parameters"]),
+            artifact_root=artifact_root,
+        )
+    except Exception as error:
+        return await mark_step_failed(
+            session,
+            execution_id=execution.id,
+            step_id=export.step_id,
+            error_code=getattr(error, "code", "AGENT_EXPORT_FAILED"),
+            error_message=getattr(error, "message", "优选数据导出失败。"),
+        )
+
+    return await mark_step_succeeded(
+        session,
+        execution_id=execution.id,
+        step_id=export.step_id,
+        result_payload=result.result_payload,
+        source_version_id=result.source_version_id,
+        result_version_id=result.result_version_id,
+        processing_run_ids=result.processing_run_ids,
+    )
 
 def _normalize_plan_for_lag_context(
     steps: list[PlannedStep], *, lag_ready: bool | None
@@ -524,44 +627,6 @@ async def _execute_with_formal_tools(
     """Run a mixed plan once while formal tools resolve the latest persisted Version."""
 
     current = await get_execution(session, execution_id=execution.id)
-    try:
-        input_columns, output_column = series.resolve_columns(
-            input_columns=None, output_column=None
-        )
-    except VersionDataError as error:
-        pending_ids = {
-            step.step_id for step in current.step_runs if step.status == "PENDING"
-        }
-        first = next((step for step in steps if step.step_id in pending_ids), None)
-        if first is None:
-            return current, []
-        current = await start_step(session, execution_id=current.id, step_id=first.step_id)
-        current = await mark_step_failed(
-            session,
-            execution_id=current.id,
-            step_id=first.step_id,
-            error_code=error.code,
-            error_message=error.message,
-        )
-        return current, [
-            StepExecution(
-                step_id=first.step_id,
-                tool=first.tool,
-                status="failed",
-                parameters=dict(first.parameters),
-                summary=error.message,
-                error_code=error.code,
-            )
-        ]
-
-    context: dict[str, Any] = {
-        "input_columns": input_columns,
-        "output_column": output_column,
-        "selected_indices": [],
-        "delays": {column: 0 for column in input_columns},
-        "na": 2,
-        "nb": 2,
-    }
     executions: list[StepExecution] = []
 
     for step in steps:
@@ -570,20 +635,46 @@ async def _execute_with_formal_tools(
             continue
         if persisted_step.status != "PENDING":
             break
-        if step.tool == "evaluate_model":
-            break
-        if step.tool in _DEFERRED_TOOLS:
+
+        try:
+            step_series = await load_version_series(
+                session,
+                version_id=current.current_version_id,
+                dataset_id=current.dataset_id,
+                artifact_root=artifact_root,
+            )
+            input_columns, output_column = step_series.resolve_columns(
+                input_columns=None,
+                output_column=None,
+            )
+        except VersionDataError as error:
+            current = await mark_step_preparation_failed(
+                session,
+                execution_id=current.id,
+                step_id=step.step_id,
+                error_code=error.code,
+                error_message=error.message,
+            )
             executions.append(
                 StepExecution(
                     step_id=step.step_id,
                     tool=step.tool,
-                    status="pending",
+                    status="failed",
                     parameters=dict(step.parameters),
-                    summary="该步骤将在后续专用工作流中执行。",
-                    result={"deferred": True},
+                    summary=error.message,
+                    error_code=error.code,
                 )
             )
             break
+
+        context: dict[str, Any] = {
+            "input_columns": input_columns,
+            "output_column": output_column,
+            "selected_indices": [],
+            "delays": {column: 0 for column in input_columns},
+            "na": 2,
+            "nb": 2,
+        }
 
         confirmation_input: dict[str, Any] | None = None
         try:
@@ -672,7 +763,13 @@ async def _execute_with_formal_tools(
                 # See the comment on the sibling _execute() call site: _dispatch can run
                 # optimize_pipeline's synchronous Optuna search, so it must not run on the
                 # event loop thread.
-                summary, result = await run_in_threadpool(_dispatch, step, series, context, hints)
+                summary, result = await run_in_threadpool(
+                    _dispatch,
+                    step,
+                    step_series,
+                    context,
+                    hints,
+                )
                 if result.get("deferred"):
                     raise AgentDomainError(
                         "UNEXPECTED_DEFERRED_AGENT_TOOL",
@@ -709,6 +806,7 @@ async def _execute_with_formal_tools(
             SegmentDomainError,
             ModelingDomainError,
             AnalysisDomainError,
+            ReportDomainError,
             VersionDataError,
         ) as error:
             error_code = getattr(error, "code", "AGENT_STEP_FAILED")
@@ -732,6 +830,64 @@ async def _execute_with_formal_tools(
                 )
             )
             break
+        except Exception:
+            error_code = "AGENT_UNEXPECTED_STEP_ERROR"
+            error_message = "步骤执行期间发生未预期错误。"
+            current = await mark_step_failed(
+                session,
+                execution_id=current.id,
+                step_id=step.step_id,
+                error_code=error_code,
+                error_message=error_message,
+            )
+            executions.append(
+                StepExecution(
+                    step_id=step.step_id,
+                    tool=step.tool,
+                    status="failed",
+                    parameters=dict(step.parameters),
+                    summary=error_message,
+                    duration_ms=(time.perf_counter() - started) * 1000.0,
+                    error_code=error_code,
+                )
+            )
+            break
+
+    if current.workflow_status in {"PLANNED", "RUNNING"}:
+        orphan = next(
+            (
+                item
+                for item in current.step_runs
+                if item.status in {"PENDING", "RUNNING"}
+            ),
+            None,
+        )
+        if orphan is not None:
+            if orphan.status == "PENDING":
+                current = await start_step(
+                    session,
+                    execution_id=current.id,
+                    step_id=orphan.step_id,
+                )
+                orphan = next(item for item in current.step_runs if item.step_id == orphan.step_id)
+            if orphan.status == "RUNNING":
+                current = await mark_step_failed(
+                    session,
+                    execution_id=current.id,
+                    step_id=orphan.step_id,
+                    error_code="AGENT_CONTROLLER_OWNER_MISSING",
+                    error_message="执行器退出时该步骤没有合法的 continuation owner。",
+                )
+                executions.append(
+                    StepExecution(
+                        step_id=orphan.step_id,
+                        tool=orphan.tool_name,
+                        status="failed",
+                        parameters=dict(orphan.input_payload.get("parameters") or {}),
+                        summary="执行器退出时该步骤没有合法的 continuation owner。",
+                        error_code="AGENT_CONTROLLER_OWNER_MISSING",
+                    )
+                )
     return current, executions
 
 def _execute(

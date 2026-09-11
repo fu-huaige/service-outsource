@@ -187,7 +187,13 @@ async def generate_report(
         unresolved=list(rendered.unresolved),
         fully_resolved=rendered.fully_resolved,
         artifact_uri=artifact_uri,
-        cited_runs=sorted(index.records),
+        cited_runs=sorted(
+            {
+                binding.run_id
+                for binding in rendered.bindings
+                if binding.kind == "run" and binding.resolved
+            }
+        ),
         narration_source=narration.source,
         llm_provider=narration.provider,
         llm_model=narration.model,
@@ -577,6 +583,41 @@ async def export_optimised_dataset(
     )
 
 
+async def get_export_artifact(
+    session: AsyncSession,
+    *,
+    export_id: UUID,
+    artifact_root: Path,
+    kind: str,
+) -> tuple[Path, str, str]:
+    """Resolve a persisted delivery artifact without trusting a client-provided path."""
+
+    run = await session.get(ProcessingRun, export_id)
+    if run is None or run.run_type != "delivery.export" or run.status != "succeeded":
+        raise ReportDomainError(
+            "EXPORT_NOT_FOUND",
+            "优选数据导出记录不存在。",
+            status_code=404,
+        )
+    if kind == "csv":
+        path = artifact_root / "exports" / f"{export_id}.csv"
+        filename = f"optimised-dataset-{export_id}.csv"
+        media_type = "text/csv"
+    elif kind == "manifest":
+        path = artifact_root / "exports" / f"{export_id}.manifest.json"
+        filename = f"optimised-dataset-{export_id}.manifest.json"
+        media_type = "application/json"
+    else:
+        raise ReportDomainError("EXPORT_ARTIFACT_KIND_INVALID", "不支持的导出产物类型。")
+    if not path.is_file():
+        raise ReportDomainError(
+            "EXPORT_ARTIFACT_MISSING",
+            "优选数据导出文件不存在。",
+            status_code=404,
+        )
+    return path, filename, media_type
+
+
 def _matches(
     run: ProcessingRun,
     *,
@@ -591,26 +632,22 @@ def _matches(
     ones every demonstration uses — citable in a report.
     """
 
-    if dataset_id is None and version_id is None:
-        return True
     parameters = run.parameters or {}
-    if dataset_id is not None:
-        if run.dataset_id == dataset_id:
-            return True
-        if str(parameters.get("dataset_id") or "") == str(dataset_id):
-            return True
-    if version_id is not None:
-        if run.source_version_id == version_id:
-            return True
-        if str(parameters.get("version_id") or "") == str(version_id):
-            return True
-        if str(parameters.get("active_version_id") or "") == str(version_id):
-            return True
-        result = run.result or {}
-        for key in ("derived_version_id", "result_version_id"):
-            if str(result.get(key) or "") == str(version_id):
-                return True
-    return False
+    result = run.result or {}
+    dataset_matches = dataset_id is None or (
+        run.dataset_id == dataset_id
+        or str(parameters.get("dataset_id") or "") == str(dataset_id)
+    )
+    version_matches = version_id is None or (
+        run.source_version_id == version_id
+        or str(parameters.get("version_id") or "") == str(version_id)
+        or str(parameters.get("active_version_id") or "") == str(version_id)
+        or any(
+            str(result.get(key) or "") == str(version_id)
+            for key in ("derived_version_id", "effective_version_id", "result_version_id")
+        )
+    )
+    return dataset_matches and version_matches
 
 
 def _short_id(value: UUID) -> str:

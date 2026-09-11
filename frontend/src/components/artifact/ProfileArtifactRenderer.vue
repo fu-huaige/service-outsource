@@ -1,6 +1,6 @@
 <template>
   <section class="profile-artifact" data-test="profile-artifact-renderer">
-    <header class="profile-artifact__header">
+    <header v-if="!compact" class="profile-artifact__header">
       <h3>数据画像详情</h3>
       <p v-if="summary" data-test="profile-summary">{{ summary }}</p>
     </header>
@@ -50,7 +50,7 @@
       暂无可结构化展示的数据画像结果
     </p>
 
-    <div class="profile-raw">
+    <div v-if="!compact" class="profile-raw">
       <button
         type="button"
         class="profile-raw__toggle"
@@ -83,7 +83,10 @@ type MetricRow = {
 
 const props = defineProps<{
   payload: Record<string, unknown>;
+  compact?: boolean;
 }>();
+
+const compact = computed(() => props.compact ?? false);
 
 const rawExpanded = ref(false);
 

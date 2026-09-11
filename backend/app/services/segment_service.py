@@ -247,6 +247,7 @@ async def select_dynamic_segments(
 
     return SegmentData(
         source_version_id=series.version_id,
+        processing_run_id=run_id,
         dataset_id=series.dataset_id,
         task=completed_task(
             stage="detect_dynamic_segments",
