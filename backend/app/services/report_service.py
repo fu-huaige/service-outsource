@@ -1,10 +1,10 @@
 """Report assembly and optimised-dataset export (phase 10).
 
-The report is composed from persisted ``ProcessingRun`` records, never from values held in
-memory by whoever is generating it. Every figure enters through a placeholder that names the
-run it came from, so the document is a view over the audit trail rather than a retelling of
-it. :mod:`algorithms.report.provenance` enforces that: a draft containing a bare numeral is
-rejected before rendering.
+Agent reports are composed from their persisted step results and explicitly linked
+``ProcessingRun`` records. Standalone reports retain dataset/version-scoped run lookup.
+Every figure enters through a typed placeholder, so the document is a view over persisted
+evidence rather than a retelling of in-memory state. :mod:`algorithms.report.provenance`
+enforces that a draft containing a bare numeral is rejected before rendering.
 
 Export writes the rows the closed loop actually selected, plus a manifest recording which
 runs produced the selection, so the delivered CSV can be traced back to the decisions that
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import csv
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,10 +25,17 @@ from uuid import UUID, uuid4
 import numpy as np
 from algorithms.agent.llm import LlmProvider
 from algorithms.agent.llm_planner import LlmNarrator, NarrationOutcome
-from algorithms.report.provenance import RenderResult, render_template, validate_draft
+from algorithms.report.provenance import (
+    RenderResult,
+    format_fraction_percent,
+    render_template,
+    resolve_path,
+    validate_draft,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.agent_execution import AgentStepRun
 from app.models.dataset import ProcessingRun
 from app.models.operation_log import OperationLog
 from app.models.optimization import OptimizationStudy
@@ -41,6 +48,7 @@ from app.schemas.reporting import (
     ReportSection,
 )
 from app.services.contract_stubs import completed_task
+from app.services.agent_execution_service import ExecutionStateError, get_execution
 from app.services.version_data import VersionDataError, load_version_series
 
 # Reports cite recent work, not the whole history; this bounds the scan below.
@@ -71,6 +79,8 @@ class RunIndex:
 
     records: dict[str, dict[str, Any]]
     by_type: dict[str, str]
+    step_by_tool: dict[str, str]
+    execution_id: UUID | None
 
     def latest(self, run_type: str) -> str | None:
         return self.by_type.get(run_type)
@@ -103,7 +113,101 @@ async def build_run_index(
             **(run.result or {}),
         }
         by_type.setdefault(run.run_type, short)
-    return RunIndex(records=records, by_type=by_type)
+    return RunIndex(records=records, by_type=by_type, step_by_tool={}, execution_id=None)
+
+
+async def build_execution_run_index(
+    session: AsyncSession,
+    *,
+    execution_id: UUID,
+    dataset_id: UUID | None,
+    version_id: UUID | None,
+) -> RunIndex:
+    """Index one execution's persisted steps and only their explicitly linked runs."""
+
+    try:
+        execution = await get_execution(session, execution_id=execution_id)
+    except ExecutionStateError as error:
+        raise ReportDomainError(
+            "REPORT_EXECUTION_NOT_FOUND",
+            "报告绑定的 Agent 执行不存在。",
+            status_code=404,
+        ) from error
+    if dataset_id != execution.dataset_id or version_id != execution.current_version_id:
+        raise ReportDomainError(
+            "REPORT_EXECUTION_SCOPE_MISMATCH",
+            "报告请求的数据集或版本与当前 Agent 执行不一致。",
+            status_code=409,
+            details={
+                "execution_id": str(execution.id),
+                "execution_dataset_id": str(execution.dataset_id),
+                "execution_version_id": str(execution.current_version_id),
+            },
+        )
+
+    records: dict[str, dict[str, Any]] = {}
+    step_by_tool: dict[str, str] = {}
+    referenced_run_ids: list[UUID] = []
+    for step in sorted(execution.step_runs, key=lambda item: item.sequence):
+        if step.status != "SUCCEEDED":
+            continue
+        key = f"step{step.sequence}"
+        records[key] = _step_record(step)
+        step_by_tool.setdefault(step.tool_name, key)
+        for raw_run_id in step.processing_run_ids:
+            try:
+                run_id = UUID(raw_run_id)
+            except (TypeError, ValueError):
+                continue
+            if run_id not in referenced_run_ids:
+                referenced_run_ids.append(run_id)
+
+    by_type: dict[str, str] = {}
+    for run_id in referenced_run_ids:
+        run = await session.get(ProcessingRun, run_id)
+        if run is None:
+            continue
+        short = _short_id(run.id)
+        records[short] = {
+            "run_id": str(run.id),
+            "run_type": run.run_type,
+            "status": run.status,
+            "parameters": dict(run.parameters or {}),
+            "created_at": run.created_at.isoformat() if run.created_at else "",
+            **(run.result or {}),
+        }
+        by_type.setdefault(run.run_type, short)
+    return RunIndex(
+        records=records,
+        by_type=by_type,
+        step_by_tool=step_by_tool,
+        execution_id=execution.id,
+    )
+
+
+def _step_record(step: AgentStepRun) -> dict[str, Any]:
+    payload = dict(step.result_payload or {})
+    result = dict(payload["result"]) if isinstance(payload.get("result"), Mapping) else payload
+    summary_data = result.get("summary") if isinstance(result.get("summary"), Mapping) else None
+    summary = payload.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        task = result.get("task") if isinstance(result.get("task"), Mapping) else {}
+        progress = task.get("progress") if isinstance(task.get("progress"), Mapping) else {}
+        summary = progress.get("message") if isinstance(progress.get("message"), str) else ""
+    record: dict[str, Any] = {
+        "step_id": step.step_id,
+        "tool_name": step.tool_name,
+        "status": step.status,
+        "summary": summary,
+        "source_version_id": str(step.source_version_id) if step.source_version_id else "",
+        "result_version_id": str(step.result_version_id) if step.result_version_id else "",
+        "processing_run_ids": list(step.processing_run_ids),
+        **result,
+    }
+    record["summary"] = summary
+    if summary_data is not None:
+        record["summary_data"] = dict(summary_data)
+    return record
 
 
 async def generate_report(
@@ -121,9 +225,17 @@ async def generate_report(
     the templated conclusion stands instead.
     """
 
-    index = await build_run_index(
-        session, dataset_id=payload.dataset_id, version_id=payload.version_id
-    )
+    if payload.execution_id is not None:
+        index = await build_execution_run_index(
+            session,
+            execution_id=payload.execution_id,
+            dataset_id=payload.dataset_id,
+            version_id=payload.version_id,
+        )
+    else:
+        index = await build_run_index(
+            session, dataset_id=payload.dataset_id, version_id=payload.version_id
+        )
     if not index.records:
         raise ReportDomainError(
             "REPORT_NO_RUNS",
@@ -132,7 +244,7 @@ async def generate_report(
         )
 
     study = None
-    if payload.study_id is not None:
+    if payload.execution_id is None and payload.study_id is not None:
         study = await session.get(OptimizationStudy, payload.study_id)
         if study is None:
             raise ReportDomainError(
@@ -146,13 +258,19 @@ async def generate_report(
         }
 
     sections = _compose(index, payload)
-    narration = _narrate(provider or _resolve_provider(), index=index, sections=sections)
+    narration = (
+        NarrationOutcome()
+        if payload.execution_id is not None
+        else _narrate(provider or _resolve_provider(), index=index, sections=sections)
+    )
     if narration.text:
         sections.append(
             ReportSection(
-                key="expert_commentary", title="十、专家结论（大模型撰写）", body=narration.text
+                key="expert_commentary", title="专家结论（大模型撰写）", body=narration.text
             )
         )
+    sections = _number_sections(sections)
+    title = _report_title(index, payload)
     template = "\n\n".join(f"## {section.title}\n\n{section.body}" for section in sections)
 
     # The draft must contain no bare numerals. This is checked even though the composer is
@@ -165,7 +283,11 @@ async def generate_report(
             details={"violations": [violation.to_payload() for violation in violations[:20]]},
         )
 
-    rendered = render_template(template, runs=index.records)
+    rendered = render_template(
+        template,
+        runs=index.records,
+        formatters=_presentation_formatters(index),
+    )
     report_id = uuid4()
     artifact_uri = _write_report(
         artifact_root,
@@ -173,14 +295,16 @@ async def generate_report(
         rendered=rendered,
         payload=payload,
         index=index,
+        title=title,
     )
     await _persist(session, report_id=report_id, payload=payload, rendered=rendered)
 
     return ReportData(
         report_id=report_id,
+        execution_id=payload.execution_id,
         dataset_id=payload.dataset_id,
         task=completed_task(stage="generate_report", message="图文报告已生成，全部数值均已溯源。"),
-        title=payload.title,
+        title=title,
         markdown=rendered.text,
         sections=sections,
         bindings=[ReportBinding(**binding.to_payload()) for binding in rendered.bindings],
@@ -239,157 +363,307 @@ def _leaf_paths(record: Mapping[str, Any], prefix: str = "", depth: int = 0) -> 
     return paths
 
 
+def _presentation_formatters(
+    index: RunIndex,
+) -> dict[tuple[str, str, str], Callable[[Any], str]]:
+    """Declare percentage presentation by metric semantics, never by numeric range."""
+
+    formatters: dict[tuple[str, str, str], Callable[[Any], str]] = {}
+    profile = index.step_by_tool.get("profile_dataset")
+    if profile is not None:
+        for path in (
+            "fingerprint.values.missing_ratio",
+            "fingerprint.values.anomaly_ratio",
+            "fingerprint.values.dynamic_ratio",
+        ):
+            formatters[("step", profile, path)] = format_fraction_percent
+    anomaly = index.step_by_tool.get("detect_anomalies")
+    if anomaly is not None:
+        formatters[("step", anomaly, "anomaly_ratio")] = format_fraction_percent
+    segment = index.latest("preprocessing.segment")
+    if segment is not None:
+        formatters[("run", segment, "selection.coverage_ratio")] = format_fraction_percent
+    return formatters
+
+
 def _compose(index: RunIndex, payload: ReportRequest) -> list[ReportSection]:
-    """Build the section bodies. Numbers appear only as placeholders."""
+    """Build only sections supported by evidence in the selected report scope."""
 
-    sections: list[ReportSection] = []
+    if index.execution_id is not None:
+        return _compose_execution(index)
+    return _compose_standalone(index, payload)
 
-    profile = index.latest("preprocessing.segment")
+
+def _report_title(index: RunIndex, payload: ReportRequest) -> str:
+    if index.execution_id is None:
+        return payload.title
+    tools = set(index.step_by_tool)
+    if "optimize_pipeline" in tools:
+        return "IndusOpt 动态建模与闭环寻优报告"
+    if tools.intersection({"fit_arx", "evaluate_model"}):
+        return "IndusOpt 动态建模与系统辨识报告"
+    if tools.intersection(
+        {
+            "detect_dynamic_segments",
+            "estimate_delays",
+            "apply_lag_compensation",
+            "analyze_collinearity",
+            "select_variables",
+        }
+    ):
+        return "IndusOpt 建模数据预处理与优选报告"
+    if tools.intersection({"profile_dataset", "detect_anomalies", "clean_data"}):
+        return "IndusOpt 数据质量分析与清洗报告"
+    return "IndusOpt 数据分析报告"
+
+
+def _compose_execution(index: RunIndex) -> list[ReportSection]:
+    sections = [
+        ReportSection(
+            key="overview",
+            title="分析概述",
+            body=(
+                "本报告仅汇总当前 Agent 任务中已完成并持久化的执行步骤。"
+                "未在本次任务中执行的分析阶段及同一数据资源的历史处理记录，均不进入本次结论。"
+            ),
+        )
+    ]
+    definitions = [
+        ("profile_dataset", "profile", "数据画像", _profile_body),
+        ("detect_anomalies", "anomaly", "异常检测", _anomaly_body),
+        ("clean_data", "cleaning", "数据清洗与规整", _cleaning_body),
+        ("detect_dynamic_segments", "selection", "动态区间与数据优选", _summary_body),
+        ("estimate_delays", "delay", "时滞估计", _summary_body),
+        ("apply_lag_compensation", "lag", "时滞补偿", _summary_body),
+        ("analyze_collinearity", "collinearity", "共线性诊断", _summary_body),
+        ("select_variables", "feature_selection", "变量优选", _summary_body),
+        ("fit_arx", "model", "动态模型辨识", _summary_body),
+        ("evaluate_model", "evaluation", "模型评价", _summary_body),
+        ("optimize_pipeline", "optimization", "闭环寻优", _summary_body),
+        ("export_dataset", "export", "数据导出", _summary_body),
+    ]
+    for tool, section_key, title, body_builder in definitions:
+        record_key = index.step_by_tool.get(tool)
+        if record_key is None:
+            continue
+        sections.append(
+            ReportSection(
+                key=section_key,
+                title=title,
+                body=body_builder(record_key, index.records[record_key]),
+            )
+        )
+    limitations = _execution_limitations(set(index.step_by_tool))
+    if limitations:
+        sections.append(
+            ReportSection(key="limitations", title="局限与风险提示", body=limitations)
+        )
+    return sections
+
+
+def _summary_body(record_key: str, record: Mapping[str, Any]) -> str:
+    if isinstance(record.get("summary"), str) and record["summary"].strip():
+        return f"本阶段执行摘要：{{{{step:{record_key}.summary}}}}"
+    return "本阶段已在当前 Agent 任务中完成，详细结果保存在对应步骤证据中。"
+
+
+def _profile_body(record_key: str, record: Mapping[str, Any]) -> str:
+    clauses = _step_metric_clauses(
+        record_key,
+        record,
+        [
+            ("n_samples", "本次数据画像覆盖样本", "个"),
+            ("fingerprint.values.missing_ratio", "缺失比例", ""),
+            ("fingerprint.values.anomaly_ratio", "画像离群比例", ""),
+        ],
+    )
+    return _body_with_summary(record_key, record, clauses)
+
+
+def _anomaly_body(record_key: str, record: Mapping[str, Any]) -> str:
+    clauses = _step_metric_clauses(
+        record_key,
+        record,
+        [("anomaly_count", "检出疑似异常点", "个"), ("anomaly_ratio", "疑似异常比例", "")],
+    )
+    return _body_with_summary(record_key, record, clauses)
+
+
+def _cleaning_body(record_key: str, record: Mapping[str, Any]) -> str:
+    clauses = _step_metric_clauses(
+        record_key,
+        record,
+        [
+            ("total_cleaned_points", "清洗修改单元格", "个"),
+            ("summary_data.rows_before", "清洗前样本", "条"),
+            ("summary_data.rows_after", "清洗后样本", "条"),
+            ("summary_data.changes.unique_changed_cells", "实际修改单元格", "个"),
+            ("summary_data.changes.missing_value_fills", "缺失填补", "个"),
+            ("summary_data.changes.outlier_replacements", "异常替换", "个"),
+            ("summary_data.changes.duplicate_timestamps_processed", "重复时间戳处理", "个"),
+            ("summary_data.changes.resampling_empty_rows_created", "重采样空行", "条"),
+            ("summary_data.changes.smoothing_changes", "平滑修改", "个"),
+        ],
+    )
+    return _body_with_summary(record_key, record, clauses)
+
+
+def _body_with_summary(
+    record_key: str, record: Mapping[str, Any], clauses: list[str]
+) -> str:
+    paragraphs: list[str] = []
+    if clauses:
+        paragraphs.append("，".join(clauses) + "。")
+    if isinstance(record.get("summary"), str) and record["summary"].strip():
+        paragraphs.append(f"执行摘要：{{{{step:{record_key}.summary}}}}")
+    return "\n\n".join(paragraphs) or "本阶段已完成，未产生可量化的结构化摘要。"
+
+
+def _step_metric_clauses(
+    record_key: str,
+    record: Mapping[str, Any],
+    definitions: list[tuple[str, str, str]],
+) -> list[str]:
+    return [
+        f"{label} {{{{step:{record_key}.{path}}}}}{suffix}"
+        for path, label, suffix in definitions
+        if resolve_path(record, path) is not None
+    ]
+
+
+def _execution_limitations(tools: set[str]) -> str:
+    limitations: list[str] = []
+    if "detect_anomalies" in tools:
+        limitations.append("疑似异常点由当前检测方法识别，结果用于提示复核，不等同于过程故障诊断。")
+    if "clean_data" in tools:
+        limitations.append("清洗结果受当前插值、异常处理和时间规整参数约束，仍需结合工艺语义复核。")
+    if "detect_dynamic_segments" in tools:
+        limitations.append("D-最优区间优选依赖候选窗口与质量门控结果，不能替代对工况覆盖性的工程判断。")
+    if tools.intersection({"estimate_delays", "apply_lag_compensation"}):
+        limitations.append("时滞结论受采样周期、信号激励与相关结构影响，补偿前应确认工艺因果方向。")
+    if tools.intersection({"fit_arx", "evaluate_model"}):
+        limitations.append("ARX 模型建立在线性与时不变近似上，外推至未覆盖工况时应重新验证。")
+    if "optimize_pipeline" in tools:
+        limitations.append("闭环寻优结果受搜索空间、目标函数和试验预算约束，不代表全局最优保证。")
+    return "\n\n".join(limitations)
+
+
+def _compose_standalone(index: RunIndex, payload: ReportRequest) -> list[ReportSection]:
+    sections = [
+        ReportSection(
+            key="overview",
+            title="分析概述",
+            body=(
+                f"本报告由 IndusOpt 自动生成，引用了 "
+                f"{{{{run:{next(iter(index.records))}.run_type}}}} 等当前数据资源范围内的处理记录。"
+                "报告数值均通过持久化证据占位符解析。"
+            ),
+        )
+    ]
     clean = index.latest("preprocessing.clean")
+    segment = index.latest("preprocessing.segment")
     delay = index.latest("preprocessing.delay")
     collinearity = index.latest("preprocessing.collinearity")
     modeling = index.latest("modeling.arx")
-    agent = index.latest("agent.copilot")
-
-    sections.append(
-        ReportSection(
-            key="overview",
-            title="一、分析概述",
-            body=(
-                f"本报告由 IndusOpt 自动生成，引用了 {{{{run:{next(iter(index.records))}.run_type}}}} "
-                "等处理运行记录。报告中的每一个数值均通过占位符从运行数据库解析，"
-                "不经过任何自然语言改写环节。"
-            ),
-        )
-    )
-
-    if clean:
-        sections.append(
-            ReportSection(
-                key="cleaning",
-                title="二、数据清洗与规整",
-                body=(
-                    f"清洗共修改数据点 {{{{run:{clean}.total_cleaned_points}}}} 个，"
-                    f"检出恒值段 {{{{run:{clean}.constant_value_segment_count}}}} 个，"
-                    f"派生版本 {{{{run:{clean}.derived_version_id}}}}。"
-                ),
+    standalone_sections = [
+        (clean, "cleaning", "数据清洗与规整", [("total_cleaned_points", "清洗修改数据点", "个")]),
+        (
+            segment,
+            "selection",
+            "动态区间与数据优选",
+            [
+                ("selection.candidate_count", "候选窗口", "个"),
+                ("selection.gated_count", "通过质量门控", "个"),
+                ("selection.selected_count", "最终选中区间", "个"),
+                ("selection.coverage_ratio", "采样占比", ""),
+            ],
+        ),
+        (delay, "delay", "时滞估计", [("refined_delays", "最终时滞", ""), ("validation_fit", "验证结果", "")]),
+        (collinearity, "collinearity", "共线性诊断", [("condition_number", "设计矩阵条件数", ""), ("groups", "高相关变量组", "")]),
+        (
+            modeling,
+            "model",
+            "模型辨识与评价",
+            [
+                ("validation.free_run_fit", "验证集自由仿真 FIT", ""),
+                ("validation.one_step_fit", "一步预测 FIT", ""),
+                ("validation.stable", "模型稳定性", ""),
+                ("training_rows", "训练样本", "条"),
+            ],
+        ),
+    ]
+    for record_key, section_key, title, metrics in standalone_sections:
+        if record_key:
+            sections.append(
+                ReportSection(
+                    key=section_key,
+                    title=title,
+                    body=_run_body(record_key, index.records[record_key], metrics),
+                )
             )
-        )
-
-    if profile:
-        sections.append(
-            ReportSection(
-                key="selection",
-                title="三、质量门控与 D-最优数据优选",
-                body=(
-                    f"候选窗口 {{{{run:{profile}.selection.candidate_count}}}} 个，"
-                    f"通过质量门控 {{{{run:{profile}.selection.gated_count}}}} 个，"
-                    f"最终选中 {{{{run:{profile}.selection.selected_count}}}} 个区间，"
-                    f"采样占比 {{{{run:{profile}.selection.coverage_ratio}}}}。"
-                    f"选中子集的设计矩阵条件数为 "
-                    f"{{{{run:{profile}.selection.condition_number}}}}，"
-                    f"持续激励条件满足情况："
-                    f"{{{{run:{profile}.selection.excitation_satisfied}}}}。"
-                    "\n\n先执行质量门控再做信息增益优选，是因为尖峰扰动在 log det 意义上"
-                    "恰恰是“高信息量”的；不先剔除，信息准则会优先选中工程师本应丢弃的数据。"
-                ),
-            )
-        )
-
-    if delay:
-        sections.append(
-            ReportSection(
-                key="delay",
-                title="四、时滞估计",
-                body=(
-                    f"预白化互相关生成候选后，由验证集自由仿真 FIT 复核，"
-                    f"最终时滞为 {{{{run:{delay}.refined_delays}}}}，"
-                    f"复核时验证集自由仿真 FIT 为 {{{{run:{delay}.validation_fit}}}}。"
-                ),
-            )
-        )
-
-    if collinearity:
-        sections.append(
-            ReportSection(
-                key="collinearity",
-                title="五、共线性诊断",
-                body=(
-                    f"设计矩阵条件数 {{{{run:{collinearity}.condition_number}}}}，"
-                    f"检出高相关变量组 {{{{run:{collinearity}.groups}}}}。"
-                    "剔除建议为咨询性质，需人工确认后方可生效。"
-                ),
-            )
-        )
-
-    if modeling:
-        sections.append(
-            ReportSection(
-                key="model",
-                title="六、模型辨识与评价",
-                body=(
-                    f"验证集自由仿真 FIT 为 "
-                    f"{{{{run:{modeling}.validation.free_run_fit}}}}，"
-                    f"一步预测 FIT 为 {{{{run:{modeling}.validation.one_step_fit}}}}，"
-                    f"两者差值 {{{{run:{modeling}.validation.fit_gap}}}}。"
-                    f"模型稳定性：{{{{run:{modeling}.validation.stable}}}}，"
-                    f"最大极点模 {{{{run:{modeling}.validation.max_pole_modulus}}}}，"
-                    f"残差白度 {{{{run:{modeling}.validation.residual_whiteness_ratio}}}}，"
-                    f"训练样本数 {{{{run:{modeling}.training_rows}}}}。"
-                    "\n\n以自由仿真 FIT 作为主指标，是因为 APC 在预测时域内做多步预测；"
-                    "一步预测会把实测上一时刻喂回模型，在强自相关过程上对劣质模型同样给出高分。"
-                ),
-            )
-        )
-
     if "study" in index.records:
         sections.append(
             ReportSection(
                 key="optimization",
-                title="七、闭环寻优",
-                body=(
-                    "寻优目标为 {{run:study.objective}}，"
-                    "最优目标值 {{run:study.best_value}}，"
-                    "最优参数组合 {{run:study.best_params}}。"
-                    "共完成有效试验 {{run:study.statistics.completed_trials}} 个，"
-                    "剪枝 {{run:study.statistics.pruned_trials}} 个，"
-                    "失败 {{run:study.statistics.failed_trials}} 个；"
-                    "昂贵环节摊薄倍数 "
-                    "{{run:study.statistics.evaluations_per_selection}}。"
+                title="闭环寻优",
+                body=_run_body(
+                    "study",
+                    index.records["study"],
+                    [("objective", "寻优目标", ""), ("best_value", "最优目标值", "")],
                 ),
             )
         )
-
-    if agent:
-        sections.append(
-            ReportSection(
-                key="compliance",
-                title="八、合规证明",
-                body=(
-                    f"本次 Agent 运行的合规证明编号为 "
-                    f"{{{{run:{agent}.compliance.proof_id}}}}，"
-                    f"校验结论 {{{{run:{agent}.compliance.passed}}}}，"
-                    f"签名 {{{{run:{agent}.compliance.signature}}}}，"
-                    f"代码版本 {{{{run:{agent}.compliance.code_version}}}}。"
-                ),
-            )
-        )
-
-    sections.append(
-        ReportSection(
-            key="limitations",
-            title="九、局限与风险提示",
-            body=(
-                "本报告的结论建立在线性 ARX 假设成立的前提下。若过程存在显著非线性、"
-                "时变增益或未测扰动，模型的外推能力将下降。"
-                "D-最优优选在同构激励场景下相对常规能量启发式无显著优势，"
-                "其价值在于异构激励（真实历史数据的常态）下不会失效。"
-                "报告中的全部数值均来自实际运行记录，未经任何模型改写。"
-            ),
-        )
-    )
+    limitations = _standalone_limitations(index)
+    if limitations:
+        sections.append(ReportSection(key="limitations", title="局限与风险提示", body=limitations))
     _ = payload
     return sections
+
+
+def _run_body(
+    record_key: str,
+    record: Mapping[str, Any],
+    definitions: list[tuple[str, str, str]],
+) -> str:
+    clauses = [
+        f"{label} {{{{run:{record_key}.{path}}}}}{suffix}"
+        for path, label, suffix in definitions
+        if resolve_path(record, path) is not None
+    ]
+    return "，".join(clauses) + "。" if clauses else "该处理记录已完成，但未提供可量化摘要。"
+
+
+def _standalone_limitations(index: RunIndex) -> str:
+    limitations: list[str] = []
+    if index.latest("preprocessing.clean"):
+        limitations.append("清洗结论受当前处理参数约束，仍需结合工艺语义复核。")
+    if index.latest("preprocessing.segment"):
+        limitations.append("D-最优区间优选依赖候选窗口与质量门控结果。")
+    if index.latest("preprocessing.delay"):
+        limitations.append("时滞估计受采样周期、信号激励与相关结构影响。")
+    if index.latest("modeling.arx"):
+        limitations.append("ARX 模型建立在线性与时不变近似上，外推时应重新验证。")
+    if "study" in index.records:
+        limitations.append("闭环寻优受搜索空间、目标函数和试验预算约束。")
+    return "\n\n".join(limitations)
+
+
+_SECTION_NUMERALS = ("零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十")
+
+
+def _section_numeral(value: int) -> str:
+    if value <= 10:
+        return _SECTION_NUMERALS[value]
+    if value < 20:
+        return f"十{_SECTION_NUMERALS[value - 10]}"
+    return str(value)
+
+
+def _number_sections(sections: list[ReportSection]) -> list[ReportSection]:
+    return [
+        section.model_copy(update={"title": f"{_section_numeral(index)}、{section.title}"})
+        for index, section in enumerate(sections, start=1)
+    ]
 
 
 def _write_report(
@@ -399,12 +673,13 @@ def _write_report(
     rendered: RenderResult,
     payload: ReportRequest,
     index: RunIndex,
+    title: str,
 ) -> str:
     root = artifact_root / "reports"
     root.mkdir(parents=True, exist_ok=True)
     path = root / f"{report_id}.md"
     header = (
-        f"# {payload.title}\n\n"
+        f"# {title}\n\n"
         f"生成时间：{datetime.now(UTC).isoformat()}\n\n"
         f"引用运行记录：{', '.join(sorted(index.records))}\n\n"
         f"数值绑定数：{len(rendered.bindings)}，未解析：{len(rendered.unresolved)}\n\n"

@@ -6,7 +6,7 @@
         <h3>{{ reportTitle }}</h3>
       </div>
       <span class="report-status" :class="{ warning: !fullyResolved }">
-        {{ fullyResolved ? "全部引用已解析" : `仍有 ${unresolvedCount} 项未解析引用` }}
+        {{ resolutionLabel }}
       </span>
     </header>
 
@@ -60,16 +60,16 @@
       </template>
     </section>
 
-    <section v-if="resolvedBindings.length" class="report-section" data-test="report-evidence">
+    <section v-if="businessEvidence.length" class="report-section" data-test="report-evidence">
       <h4>证据与来源</h4>
       <div class="evidence-list">
-        <article v-for="(binding, index) in resolvedBindings" :key="`${binding.placeholder}-${index}`">
+        <article v-for="evidence in businessEvidence" :key="evidence.key">
           <div>
-            <strong>{{ evidenceStage(binding.path) }}</strong>
-            <span>{{ evidenceMetric(binding.path) }}</span>
+            <strong>{{ evidence.stage }}</strong>
+            <span>{{ evidence.metric }}</span>
           </div>
-          <span class="evidence-value">{{ binding.value }}</span>
-          <span class="evidence-state">已解析</span>
+          <span class="evidence-value">{{ evidence.value }}</span>
+          <span class="evidence-state">来源：{{ evidence.source }}</span>
         </article>
       </div>
     </section>
@@ -89,7 +89,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { CopilotExecutionSnapshot, CopilotExecutionStepSnapshot, ReportBinding } from "../../types/api";
+import type { CopilotExecutionSnapshot, CopilotExecutionStepSnapshot } from "../../types/api";
 import AnomalyArtifactRenderer from "./AnomalyArtifactRenderer.vue";
 import CleaningArtifactRenderer from "./CleaningArtifactRenderer.vue";
 import ProfileArtifactRenderer from "./ProfileArtifactRenderer.vue";
@@ -126,6 +126,13 @@ const cleaningPayload = computed(() => payloadFor("clean_data"));
 const reportTitle = computed(() => nonEmptyString(props.payload.title) ?? "分析报告");
 const fullyResolved = computed(() => props.payload.fully_resolved === true);
 const unresolvedCount = computed(() => Array.isArray(props.payload.unresolved) ? props.payload.unresolved.length : 0);
+const executionScoped = computed(() =>
+  nonEmptyString(props.payload.execution_id) === props.execution.execution_id
+);
+const resolutionLabel = computed(() => {
+  if (!fullyResolved.value) return `${unresolvedCount.value} 项引用未解析`;
+  return executionScoped.value ? "本次任务证据已解析" : "报告引用已解析";
+});
 
 const coreMetrics = computed(() => {
   const metrics: Array<{ label: string; value: string }> = [];
@@ -148,21 +155,34 @@ const coreMetrics = computed(() => {
   return metrics;
 });
 
-const stageDefinitions = [
-  ["profile_dataset", "数据画像"],
-  ["detect_anomalies", "异常检测"],
-  ["clean_data", "数据清洗"],
-  ["generate_report", "分析报告"],
-] as const;
+const stageLabels: Record<string, string> = {
+  profile_dataset: "数据画像",
+  align_and_resample: "时间对齐与重采样",
+  detect_anomalies: "异常检测",
+  clean_data: "数据清洗",
+  detect_dynamic_segments: "动态区间与数据优选",
+  estimate_delays: "时滞估计",
+  apply_lag_compensation: "时滞补偿",
+  analyze_collinearity: "共线性诊断",
+  select_variables: "变量优选",
+  fit_arx: "动态模型辨识",
+  evaluate_model: "模型评价",
+  optimize_pipeline: "闭环寻优",
+  generate_report: "分析报告",
+  export_dataset: "数据导出",
+};
+
+const UUID_PATTERN = /\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/gi;
+const withoutTechnicalIds = (value: string): string => value.replace(UUID_PATTERN, "技术标识已隐藏");
 
 const stageSummary = (step: CopilotExecutionStepSnapshot): string => {
   const payload = step.result_payload;
   const explicit = nonEmptyString(payload.summary);
-  if (explicit) return explicit;
+  if (explicit) return withoutTechnicalIds(explicit);
   const result = unwrap(payload);
   const task = isRecord(result.task) ? result.task : {};
   const progress = isRecord(task.progress) ? task.progress : {};
-  return nonEmptyString(progress.message) ?? "";
+  return withoutTechnicalIds(nonEmptyString(progress.message) ?? "");
 };
 
 const stageDuration = (step: CopilotExecutionStepSnapshot): string => {
@@ -183,9 +203,9 @@ const statusLabel = (status: string): string => ({
   waiting_confirmation: "待确认",
 }[status] ?? status);
 
-const reportStages = computed(() => stageDefinitions.flatMap(([tool, label]) => {
-  const step = stepFor(tool);
-  return step ? [{
+const reportStages = computed(() => props.execution.step_runs.flatMap((step) => {
+  const label = stageLabels[step.tool];
+  return label ? [{
     stepId: step.step_id,
     label,
     statusLabel: statusLabel(step.status),
@@ -226,30 +246,66 @@ const markdownBlocks = computed<MarkdownBlock[]>(() => {
   return blocks;
 });
 
-const resolvedBindings = computed<ReportBinding[]>(() => Array.isArray(props.payload.bindings)
-  ? props.payload.bindings.filter((value): value is ReportBinding =>
-      isRecord(value)
-      && value.resolved === true
-      && typeof value.placeholder === "string"
-      && typeof value.path === "string"
-      && typeof value.value === "string"
-      && typeof value.run_id === "string"
-      && typeof value.kind === "string")
-  : []);
-
-const evidenceStage = (path: string): string => {
-  if (path.includes("clean") || path.includes("changed") || path.includes("derived_version")) return "数据清洗";
-  if (path.includes("selection") || path.includes("segment")) return "数据优选";
-  if (path.includes("delay")) return "时滞分析";
-  if (path.includes("validation") || path.includes("model")) return "模型分析";
-  if (path.includes("compliance")) return "合规证明";
-  return "运行证据";
+type BusinessEvidence = {
+  key: string;
+  stage: string;
+  metric: string;
+  value: string;
+  source: string;
 };
-const evidenceMetric = (path: string): string => path.split(".").at(-1)?.replaceAll("_", " ") ?? path;
+
+const countText = (value: number): string => Math.round(value).toLocaleString("zh-CN");
+const ratioText = (value: number): string => `${(value * 100).toFixed(2)}%`;
+const businessEvidence = computed<BusinessEvidence[]>(() => {
+  const evidence: BusinessEvidence[] = [];
+  const profile = profilePayload.value ? unwrap(profilePayload.value) : {};
+  const profileFingerprint = isRecord(profile.fingerprint) ? profile.fingerprint : {};
+  const profileValues = isRecord(profileFingerprint.values) ? profileFingerprint.values : {};
+  const anomaly = anomalyPayload.value ? unwrap(anomalyPayload.value) : {};
+  const cleaning = cleaningPayload.value ? unwrap(cleaningPayload.value) : {};
+  const cleaningSummary = isRecord(cleaning.summary) ? cleaning.summary : {};
+  const changes = isRecord(cleaningSummary.changes) ? cleaningSummary.changes : {};
+  const pushCount = (
+    key: string, stage: string, metric: string, value: unknown, source: string
+  ) => {
+    const numeric = finiteNumber(value);
+    if (numeric !== null) evidence.push({ key, stage, metric, value: countText(numeric), source });
+  };
+  const pushRatio = (
+    key: string, stage: string, metric: string, value: unknown, source: string
+  ) => {
+    const numeric = finiteNumber(value);
+    if (numeric !== null && numeric >= 0 && numeric <= 1) {
+      evidence.push({ key, stage, metric, value: ratioText(numeric), source });
+    }
+  };
+  pushCount("profile-samples", "数据画像", "样本数量", profile.n_samples, "本次数据画像");
+  pushRatio("profile-missing", "数据画像", "缺失比例", profileValues.missing_ratio, "本次数据画像");
+  pushRatio("profile-anomaly", "数据画像", "画像离群比例", profileValues.anomaly_ratio, "本次数据画像");
+  pushCount("anomaly-count", "异常检测", "疑似异常点数量", anomaly.anomaly_count, "本次异常检测");
+  pushRatio("anomaly-ratio", "异常检测", "疑似异常比例", anomaly.anomaly_ratio, "本次异常检测");
+  pushCount(
+    "clean-changed",
+    "数据清洗",
+    "修改单元格",
+    changes.unique_changed_cells ?? cleaning.total_cleaned_points,
+    "本次数据清洗"
+  );
+  pushCount("clean-rows-before", "数据清洗", "清洗前样本", cleaningSummary.rows_before, "本次数据清洗");
+  pushCount("clean-rows-after", "数据清洗", "清洗后样本", cleaningSummary.rows_after, "本次数据清洗");
+  return evidence;
+});
+
+const processingRunIds = computed(() => [...new Set(
+  props.execution.step_runs.flatMap((step) => step.processing_run_ids)
+)]);
 
 const technicalItems = computed(() => [
   ["Report ID", props.payload.report_id],
   ["Dataset ID", props.payload.dataset_id],
+  ["Execution ID", props.payload.execution_id ?? props.execution.execution_id],
+  ["Version ID", props.execution.current_version_id],
+  ["ProcessingRun IDs", processingRunIds.value.join(", ")],
   ["Artifact", props.payload.artifact_uri],
   ["Narration", props.payload.narration_source],
   ["Provider", props.payload.llm_provider],

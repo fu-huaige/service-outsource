@@ -107,8 +107,8 @@ const METRIC_DEFINITIONS: Record<string, MetricDefinition> = {
     format: "percentage",
   },
   anomaly_ratio: {
-    label: "异常率",
-    description: "输出序列中基于 MAD 3σ 规则识别的离群点比例",
+    label: "画像离群比例",
+    description: "输出序列中基于 MAD 3σ 规则识别的离群样本占比，属于数据画像指纹指标，与正式 Hampel 异常检测结果不是同一指标",
     format: "percentage",
   },
   snr_db_scaled: {
@@ -216,7 +216,7 @@ const overviewCards = computed(() => {
   }
   const candidates = [
     ["missing_ratio", "缺失率"],
-    ["anomaly_ratio", "异常率"],
+    ["anomaly_ratio", "画像离群比例"],
     ["dynamic_ratio", "输入动态比例"],
   ] as const;
   candidates.forEach(([key, label]) => {
@@ -228,7 +228,7 @@ const overviewCards = computed(() => {
 
 const qualityRatioMetrics = computed(() => ([
   { key: "missing_ratio", label: "缺失率" },
-  { key: "anomaly_ratio", label: "异常率" },
+  { key: "anomaly_ratio", label: "画像离群比例" },
 ] as const).flatMap((metric) => {
   const value = validRatio(metric.key);
   return value === null ? [] : [{ ...metric, value: Number((value * 100).toFixed(2)) }];

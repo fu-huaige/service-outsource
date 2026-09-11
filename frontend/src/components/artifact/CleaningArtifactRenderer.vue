@@ -37,14 +37,19 @@
         :height="actionChartHeight"
       />
       <p v-else class="cleaning-chart-empty" data-test="cleaning-action-empty">
-        本次未记录具体清洗动作计数。
+        {{ compact ? "本次清洗未修改数据" : "本次未记录具体清洗动作计数。" }}
       </p>
       <p v-if="countsMayOverlap" class="cleaning-overlap-note" data-test="cleaning-overlap-note">
         各类计数可能重叠，不表示占比构成。
       </p>
     </section>
 
-    <section v-if="rowCounts" class="cleaning-section" data-test="cleaning-row-count-chart">
+    <section v-if="rowsUnchanged" class="cleaning-row-unchanged" data-test="cleaning-row-count-unchanged">
+      <strong>样本规模保持不变</strong>
+      <span class="tabular-nums">{{ rowsUnchanged.before.toLocaleString("zh-CN") }} → {{ rowsUnchanged.after.toLocaleString("zh-CN") }}</span>
+    </section>
+
+    <section v-if="rowCounts && !rowsUnchanged" class="cleaning-section" data-test="cleaning-row-count-chart">
       <div class="cleaning-section__heading">
         <h4>样本规模变化</h4>
         <span>清洗前后事实行数</span>
@@ -359,6 +364,10 @@ const rowCounts = computed<CountPair | null>(() => {
   return before !== null && after !== null ? { before, after } : null;
 });
 
+const rowsUnchanged = computed<CountPair | null>(() =>
+  rowCounts.value && rowCounts.value.before === rowCounts.value.after ? rowCounts.value : null
+);
+
 const missingCounts = computed<CountPair | null>(() => {
   const nestedMissing = isRecord(summaryPayload.value.missing) ? summaryPayload.value.missing : {};
   const nestedBefore = finiteCount(nestedMissing.before);
@@ -497,6 +506,9 @@ const rawPayload = computed(() => {
 .cleaning-impact-card strong { display: block; margin-top: 4px; color: var(--text-primary); font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
 .cleaning-impact-card strong { font-size: 18px; font-weight: 700; }
 .cleaning-chart-empty { margin: 0; padding: 14px 12px; border: 1px dashed var(--border-default); border-radius: 7px; color: var(--text-muted); font-size: 11px; text-align: center; }
+.cleaning-row-unchanged { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; border: 1px solid var(--border-default); border-radius: 7px; background: var(--surface-2); }
+.cleaning-row-unchanged strong { color: var(--text-primary); font-size: 12px; }
+.cleaning-row-unchanged span { color: var(--text-secondary); font-size: 11px; }
 .cleaning-overlap-note { margin: 7px 0 0; color: var(--text-muted); font-size: 10px; line-height: 1.5; }
 .cleaning-metric-table { overflow: hidden; border: 1px solid var(--border-default); border-radius: 7px; }
 .cleaning-metric-table__header,

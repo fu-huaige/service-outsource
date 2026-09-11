@@ -7,6 +7,7 @@ import csv
 import json
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -20,7 +21,16 @@ from app.core.db import get_session
 from app.main import create_app
 from app.models import Base
 from app.models.dataset import ProcessingRun
-from app.services.report_service import _matches
+from app.services import report_service
+from app.services.report_service import (
+    RunIndex,
+    _compose,
+    _matches,
+    _number_sections,
+    _presentation_formatters,
+    _report_title,
+    build_execution_run_index,
+)
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -118,6 +128,304 @@ class TestRendering:
 
         result = render_template("FIT={{run:r1.validation.free_run_fit}}", runs=RUNS)
         assert validate_draft(result.text) != []
+
+    def test_execution_step_placeholder_is_distinct_from_processing_run_evidence(self) -> None:
+        result = render_template(
+            "样本数={{step:s1.n_samples}}",
+            runs={"s1": {"n_samples": 1500}},
+        )
+
+        assert result.text == "样本数=1500"
+        assert result.bindings[0].kind == "step"
+        assert result.bindings[0].run_id == "s1"
+
+
+class TestExecutionScopedReportComposition:
+    @staticmethod
+    def _clean_only_index() -> RunIndex:
+        return RunIndex(
+            records={
+                "s1": {
+                    "tool_name": "profile_dataset",
+                    "status": "SUCCEEDED",
+                    "summary": "数据画像完成",
+                    "n_samples": 1500,
+                    "fingerprint": {
+                        "values": {
+                            "log_sample_count": 0.5132,
+                            "missing_ratio": 0.0,
+                            "anomaly_ratio": 0.2242,
+                        }
+                    },
+                },
+                "s2": {
+                    "tool_name": "detect_anomalies",
+                    "status": "SUCCEEDED",
+                    "summary": "异常检测完成",
+                    "anomaly_count": 0,
+                    "anomaly_ratio": 0.0025,
+                },
+                "s3": {
+                    "tool_name": "clean_data",
+                    "status": "SUCCEEDED",
+                    "summary": "数据清洗完成",
+                    "total_cleaned_points": 0,
+                    "summary_data": {
+                        "rows_before": 1500,
+                        "rows_after": 1500,
+                        "changes": {
+                            "unique_changed_cells": 0,
+                            "missing_value_fills": 0,
+                        },
+                    },
+                },
+            },
+            by_type={},
+            step_by_tool={
+                "profile_dataset": "s1",
+                "detect_anomalies": "s2",
+                "clean_data": "s3",
+            },
+            execution_id=uuid4(),
+        )
+
+    def test_clean_only_execution_has_scoped_title_and_no_modeling_claims(self) -> None:
+        index = self._clean_only_index()
+        payload = report_service.ReportRequest(
+            execution_id=index.execution_id,
+            dataset_id=uuid4(),
+            version_id=uuid4(),
+        )
+
+        sections = _number_sections(_compose(index, payload))
+        text = "\n".join(f"{section.title}\n{section.body}" for section in sections)
+
+        assert _report_title(index, payload) == "IndusOpt 数据质量分析与清洗报告"
+        assert [section.key for section in sections] == [
+            "overview",
+            "profile",
+            "anomaly",
+            "cleaning",
+            "limitations",
+        ]
+        assert [section.title.split("、", 1)[0] for section in sections] == [
+            "一",
+            "二",
+            "三",
+            "四",
+            "五",
+        ]
+        for forbidden in ("D-最优", "ARX", "Optuna", "模型评价"):
+            assert forbidden not in text
+
+    def test_execution_report_formats_only_explicit_fraction_metrics_as_percentages(
+        self,
+    ) -> None:
+        index = self._clean_only_index()
+        payload = report_service.ReportRequest(
+            execution_id=index.execution_id,
+            dataset_id=uuid4(),
+            version_id=uuid4(),
+        )
+        sections = _number_sections(_compose(index, payload))
+        template = "\n\n".join(
+            f"## {section.title}\n\n{section.body}" for section in sections
+        )
+        template += "\n\n画像规模指纹 {{step:s1.fingerprint.values.log_sample_count}}"
+
+        rendered = render_template(
+            template,
+            runs=index.records,
+            formatters=_presentation_formatters(index),
+        )
+
+        assert "画像离群比例 22.42%" in rendered.text
+        assert "疑似异常比例 0.25%" in rendered.text
+        assert "缺失比例 0.00%" in rendered.text
+        assert "画像规模指纹 0.5132" in rendered.text
+        assert "51.32%" not in rendered.text
+        anomaly_binding = next(
+            binding
+            for binding in rendered.bindings
+            if binding.path == "fingerprint.values.anomaly_ratio"
+        )
+        assert anomaly_binding.value == "0.2242"
+
+    def test_generate_report_returns_percentage_formatted_final_markdown(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        index = self._clean_only_index()
+        dataset_id = uuid4()
+        version_id = uuid4()
+        payload = report_service.ReportRequest(
+            execution_id=index.execution_id,
+            dataset_id=dataset_id,
+            version_id=version_id,
+        )
+
+        async def fake_build_execution_run_index(
+            session: AsyncSession,
+            *,
+            execution_id: object,
+            dataset_id: object,
+            version_id: object,
+        ) -> RunIndex:
+            return index
+
+        persisted = []
+
+        async def fake_persist(
+            session: AsyncSession,
+            *,
+            report_id: object,
+            payload: object,
+            rendered: object,
+        ) -> None:
+            persisted.append(rendered)
+
+        monkeypatch.setattr(
+            report_service,
+            "build_execution_run_index",
+            fake_build_execution_run_index,
+        )
+        monkeypatch.setattr(report_service, "_persist", fake_persist)
+
+        data = asyncio.run(
+            report_service.generate_report(
+                SimpleNamespace(),
+                payload=payload,
+                artifact_root=tmp_path,
+            )
+        )
+
+        assert "画像离群比例 22.42%" in data.markdown
+        assert "疑似异常比例 0.25%" in data.markdown
+        assert "画像异常比例 0.2242" not in data.markdown
+        assert "疑似异常比例 0.0025" not in data.markdown
+        assert "0.5132" not in data.markdown
+        assert "51.32%" not in data.markdown
+
+        binding_values = {
+            binding.path: binding.value
+            for binding in data.bindings
+            if binding.path in {
+                "fingerprint.values.anomaly_ratio",
+                "anomaly_ratio",
+            }
+        }
+        assert binding_values == {
+            "fingerprint.values.anomaly_ratio": "0.2242",
+            "anomaly_ratio": "0.0025",
+        }
+        assert persisted
+        artifact = tmp_path / data.artifact_uri
+        assert "画像离群比例 22.42%" in artifact.read_text(encoding="utf-8")
+        assert "疑似异常比例 0.25%" in artifact.read_text(encoding="utf-8")
+
+    def test_only_executed_capabilities_create_sections(self) -> None:
+        segment_index = RunIndex(
+            records={"s1": {"tool_name": "detect_dynamic_segments", "summary": "优选完成"}},
+            by_type={},
+            step_by_tool={"detect_dynamic_segments": "s1"},
+            execution_id=uuid4(),
+        )
+        model_index = RunIndex(
+            records={
+                "s1": {"tool_name": "fit_arx", "summary": "辨识完成"},
+                "s2": {"tool_name": "evaluate_model", "summary": "评价完成"},
+            },
+            by_type={},
+            step_by_tool={"fit_arx": "s1", "evaluate_model": "s2"},
+            execution_id=uuid4(),
+        )
+
+        segment_sections = {section.key for section in _compose(segment_index, report_service.ReportRequest(execution_id=segment_index.execution_id))}
+        model_sections = {section.key for section in _compose(model_index, report_service.ReportRequest(execution_id=model_index.execution_id))}
+
+        assert "selection" in segment_sections
+        assert "model" not in segment_sections
+        assert "model" in model_sections
+        assert "evaluation" in model_sections
+        assert _report_title(model_index, report_service.ReportRequest(execution_id=model_index.execution_id)) == "IndusOpt 动态建模与系统辨识报告"
+
+    def test_execution_index_loads_only_explicit_processing_run_ids(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        execution_id = uuid4()
+        dataset_id = uuid4()
+        version_id = uuid4()
+        explicit_run_id = uuid4()
+        historical_segment_id = uuid4()
+        execution = SimpleNamespace(
+            id=execution_id,
+            dataset_id=dataset_id,
+            current_version_id=version_id,
+            step_runs=[
+                SimpleNamespace(
+                    step_id="profile",
+                    sequence=1,
+                    tool_name="profile_dataset",
+                    status="SUCCEEDED",
+                    source_version_id=version_id,
+                    result_version_id=None,
+                    result_payload={"summary": "画像完成", "result": {"n_samples": 1500}},
+                    processing_run_ids=[],
+                    started_at=None,
+                    finished_at=None,
+                ),
+                SimpleNamespace(
+                    step_id="clean",
+                    sequence=2,
+                    tool_name="clean_data",
+                    status="SUCCEEDED",
+                    source_version_id=version_id,
+                    result_version_id=version_id,
+                    result_payload={"total_cleaned_points": 0},
+                    processing_run_ids=[str(explicit_run_id)],
+                    started_at=None,
+                    finished_at=None,
+                ),
+            ],
+        )
+        explicit_run = SimpleNamespace(
+            id=explicit_run_id,
+            run_type="preprocessing.clean",
+            status="succeeded",
+            parameters={},
+            result={"total_cleaned_points": 0},
+            created_at=None,
+        )
+
+        async def fake_get_execution(session: object, *, execution_id: object) -> object:
+            return execution
+
+        class FakeSession:
+            def __init__(self) -> None:
+                self.requested_ids: list[object] = []
+
+            async def get(self, model: object, identifier: object) -> object:
+                self.requested_ids.append(identifier)
+                return explicit_run if identifier == explicit_run_id else None
+
+        monkeypatch.setattr(report_service, "get_execution", fake_get_execution)
+        session = FakeSession()
+        index = asyncio.run(
+            build_execution_run_index(
+                session,
+                execution_id=execution_id,
+                dataset_id=dataset_id,
+                version_id=version_id,
+            )
+        )
+
+        assert session.requested_ids == [explicit_run_id]
+        assert historical_segment_id not in session.requested_ids
+        assert index.by_type == {
+            "preprocessing.clean": f"r{str(explicit_run_id).replace('-', '')[:8]}"
+        }
+        assert "preprocessing.segment" not in index.by_type
 
 
 @pytest.fixture

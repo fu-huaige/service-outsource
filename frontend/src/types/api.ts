@@ -1225,6 +1225,7 @@ export interface CopilotOptimizePipelineExecuteResponse extends CopilotStepExecu
 
 // Delivery API Types (Phase 10)
 export interface ReportRequest {
+  execution_id?: string | null;
   dataset_id?: string | null;
   version_id?: string | null;
   study_id?: string | null;
@@ -1237,7 +1238,7 @@ export interface ReportSection {
   body: string;
 }
 
-/** One number in the report, and the run record it was read from. */
+/** One bound report value and the typed evidence record it was read from. */
 export interface ReportBinding {
   placeholder: string;
   kind: string;
@@ -1249,6 +1250,7 @@ export interface ReportBinding {
 
 export interface ReportResponse {
   report_id: string;
+  execution_id: string | null;
   dataset_id: string | null;
   task: TaskResource;
   title: string;

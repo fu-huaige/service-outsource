@@ -12,12 +12,17 @@
       </article>
     </div>
 
-    <section v-if="ratio !== null" class="anomaly-section" data-test="anomaly-ratio-chart">
+    <section v-if="zeroAnomalyState" class="anomaly-zero-state" data-test="anomaly-zero-state">
+      <strong>本次未检出疑似异常点</strong>
+      <span>异常比例 {{ ((ratio ?? 0) * 100).toFixed(2) }}%</span>
+    </section>
+
+    <section v-if="ratio !== null && !zeroAnomalyState" class="anomaly-section" data-test="anomaly-ratio-chart">
       <div class="anomaly-section__heading">
-        <h4>异常比例</h4>
-        <span>按 0%–100% 展示后端事实比例</span>
+        <h4>疑似异常占比</h4>
+        <span>真实 0%–100% 比例</span>
       </div>
-      <ChartContainer :options="ratioChartOptions" height="160px" />
+      <ChartContainer :options="ratioChartOptions" height="112px" />
     </section>
 
     <section v-if="knownMetricRows.length || otherMetricRows.length" class="anomaly-section" data-test="anomaly-metrics">
@@ -113,7 +118,68 @@ const ratio = computed(() => {
   return value !== null && value >= 0 && value <= 1 ? value : null;
 });
 
+const zeroAnomalyState = computed(() => count.value === 0);
+const ratioPercent = computed(() => (ratio.value ?? 0) * 100);
+const sampleTotal = computed(() => {
+  const explicit = finiteNumber(
+    resultPayload.value.total
+      ?? resultPayload.value.n_samples
+      ?? resultPayload.value.sample_count
+  );
+  if (explicit !== null && explicit >= 0 && Number.isInteger(explicit)) return explicit;
+  if (count.value !== null && count.value > 0 && ratio.value !== null && ratio.value > 0) {
+    const derived = Math.round(count.value / ratio.value);
+    return derived > 0 ? derived : null;
+  }
+  return null;
+});
+
+const ratioTooltip = (): string => {
+  const lines = [`异常比例：${ratioPercent.value.toFixed(2)}%`];
+  if (count.value !== null && sampleTotal.value !== null) {
+    lines.push(
+      `异常样本：${count.value.toLocaleString("zh-CN")} / ${sampleTotal.value.toLocaleString("zh-CN")} 个样本`
+    );
+  } else if (count.value !== null) {
+    lines.push(`异常样本：${count.value.toLocaleString("zh-CN")} 个`);
+  }
+  return lines.join("<br/>");
+};
+
+const ratioChartOptions = computed<ChartOption>(() => ({
+  animation: false,
+  grid: { left: 70, right: 28, top: 8, bottom: 26 },
+  tooltip: {
+    trigger: "item",
+    formatter: (_params: unknown) => ratioTooltip(),
+  },
+  xAxis: {
+    type: "value",
+    min: 0,
+    max: 100,
+    interval: 20,
+    axisLabel: { formatter: "{value}%", color: "#8E8E93", fontSize: 10 },
+    axisLine: { lineStyle: { color: "#DDE3DA" } },
+    axisTick: { show: false },
+    splitLine: { lineStyle: { color: "#EEF1EC" } },
+  },
+  yAxis: {
+    type: "category",
+    data: ["异常比例"],
+    axisLabel: { color: "#596157", fontSize: 10 },
+    axisLine: { show: false },
+    axisTick: { show: false },
+  },
+  series: [{
+    type: "bar",
+    data: [ratioPercent.value],
+    barWidth: 14,
+    itemStyle: { color: "#82A978", borderRadius: [0, 3, 3, 0] },
+  }],
+}));
+
 const overviewCards = computed(() => {
+  if (zeroAnomalyState.value) return [];
   const cards: Array<{ key: string; label: string; value: string }> = [];
   if (count.value !== null) {
     cards.push({ key: "anomaly_count", label: "异常点数量", value: Math.round(count.value).toLocaleString("zh-CN") });
@@ -157,40 +223,20 @@ const knownMetricRows = computed<MetricRow[]>(() => {
   return rows;
 });
 
-const RESERVED_KEYS = new Set(["summary", "result", "duration_ms", "error_code"]);
+const RESERVED_KEYS = new Set([
+  "summary",
+  "result",
+  "duration_ms",
+  "error_code",
+  "total",
+  "n_samples",
+  "sample_count",
+]);
 const KNOWN_KEYS = new Set(["anomaly_count", "anomaly_ratio"]);
 
 const otherMetricRows = computed(() => Object.entries(resultPayload.value)
   .filter(([key]) => !KNOWN_KEYS.has(key) && !RESERVED_KEYS.has(key))
   .map(([key, value]) => ({ key, value: formatRawValue(value) })));
-
-const ratioChartOptions = computed<ChartOption>(() => ({
-  animation: false,
-  grid: { left: 58, right: 46, top: 12, bottom: 28 },
-  tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-  xAxis: {
-    type: "value",
-    min: 0,
-    max: 100,
-    axisLabel: { formatter: "{value}%", color: "#8E8E93", fontSize: 10 },
-    axisLine: { lineStyle: { color: "#DDE3DA" } },
-    splitLine: { lineStyle: { color: "#EEF1EC" } },
-  },
-  yAxis: {
-    type: "category",
-    data: ["异常比例"],
-    axisLabel: { color: "#596157", fontSize: 11 },
-    axisLine: { show: false },
-    axisTick: { show: false },
-  },
-  series: [{
-    type: "bar",
-    data: [Number(((ratio.value ?? 0) * 100).toFixed(2))],
-    barWidth: 14,
-    itemStyle: { color: "#82A978", borderRadius: [0, 3, 3, 0] },
-    label: { show: true, position: "right", formatter: "{c}%", color: "#596157", fontSize: 10 },
-  }],
-}));
 
 const hasStructuredContent = computed(() =>
   Boolean(summary.value || overviewCards.value.length || knownMetricRows.value.length || otherMetricRows.value.length)
@@ -231,6 +277,9 @@ const rawPayload = computed(() => {
 .anomaly-other__row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; padding: 6px 0; border-top: 1px solid var(--border-subtle); color: var(--text-secondary); font-size: 11px; overflow-wrap: anywhere; }
 .anomaly-other__row code { color: var(--text-primary); font-family: var(--font-mono); }
 .anomaly-artifact__empty { margin: 0; padding: 18px 12px; border: 1px dashed var(--border-default); border-radius: 7px; color: var(--text-muted); font-size: 12px; text-align: center; }
+.anomaly-zero-state { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; border: 1px solid var(--border-default); border-radius: 7px; background: var(--surface-2); }
+.anomaly-zero-state strong { color: var(--text-primary); font-size: 12px; }
+.anomaly-zero-state span { color: var(--text-secondary); font-size: 11px; }
 .anomaly-raw { padding-top: 12px; border-top: 1px solid var(--border-subtle); }
 .anomaly-raw__toggle { border: 0; background: transparent; color: var(--accent-dark); font-family: var(--font-sans); font-size: 12px; font-weight: 600; cursor: pointer; }
 .anomaly-raw__content { max-width: 100%; max-height: 240px; overflow: auto; margin: 10px 0 0; padding: 12px; border: 1px solid var(--border-default); border-radius: 6px; background: #F7F8F5; color: var(--text-secondary); font-size: 10px; line-height: 1.55; white-space: pre; }

@@ -262,6 +262,25 @@ def test_generate_report_completes_persisted_workflow(
     report = execution.step_runs[-1]
     assert report.result_payload["report_id"]
     assert report.result_payload["artifact_uri"]
+    assert report.result_payload["execution_id"] == str(execution.id)
+    assert report.result_payload["title"] == "IndusOpt 数据质量分析与清洗报告"
+    assert [section["key"] for section in report.result_payload["sections"]] == [
+        "overview",
+        "profile",
+        "anomaly",
+        "cleaning",
+        "limitations",
+    ]
+    assert [
+        section["title"].split("、", 1)[0]
+        for section in report.result_payload["sections"]
+    ] == ["一", "二", "三", "四", "五"]
+    for forbidden in ("D-最优", "ARX", "Optuna", "模型评价"):
+        assert forbidden not in report.result_payload["markdown"]
+    assert all(
+        binding["kind"] == "step" for binding in report.result_payload["bindings"]
+    )
+    assert report.result_payload["cited_runs"] == []
     assert report.processing_run_ids == [report.result_payload["report_id"]]
 
     snapshot = chat_harness.client.get(f"/api/v1/copilot/executions/{execution.id}")

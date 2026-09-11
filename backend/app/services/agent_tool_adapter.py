@@ -234,6 +234,7 @@ async def _generate_report(
     data = await generate_report(
         session,
         payload=ReportRequest(
+            execution_id=execution.id,
             dataset_id=execution.dataset_id,
             version_id=execution.current_version_id,
         ),

@@ -91,19 +91,13 @@ const reportExecution = (): CopilotExecutionSnapshot => {
   const reportId = "44444444-4444-4444-4444-444444444444";
   const execution = executionWith("generate_report", {
     report_id: reportId,
+    execution_id: "execution-1",
     dataset_id: "dataset-1",
     title: "生产分析报告",
     markdown: "# 关键结论\n\n- 清洗与异常检测均已完成。",
     fully_resolved: true,
     unresolved: [],
-    bindings: [{
-      placeholder: "{{run:r123.validation.free_run_fit}}",
-      kind: "run",
-      run_id: "r123",
-      path: "validation.free_run_fit",
-      value: "88.2",
-      resolved: true,
-    }],
+    bindings: [],
     artifact_uri: `reports/${reportId}.md`,
     narration_source: "template",
     llm_provider: "none",
@@ -112,7 +106,21 @@ const reportExecution = (): CopilotExecutionSnapshot => {
   const steps = [
     ["profile", "profile_dataset", { summary: "画像完成", result: { n_samples: 1200 } }],
     ["anomaly", "detect_anomalies", { summary: "异常检测完成", result: { anomaly_count: 6, anomaly_ratio: 0.005 } }],
-    ["clean", "clean_data", { summary: "清洗完成", total_cleaned_points: 7, rows_before: 1200, rows_after: 1198 }],
+    ["clean", "clean_data", {
+      summary: {
+        rows_before: 1200,
+        rows_after: 1198,
+        changes: {
+          unique_changed_cells: 7,
+          missing_value_fills: 4,
+          outlier_replacements: 3,
+          duplicate_timestamps_processed: 0,
+          resampling_empty_rows_created: 0,
+          smoothing_changes: 0,
+        },
+      },
+      total_cleaned_points: 7,
+    }],
     ["report", "generate_report", execution.step_runs[0].result_payload],
   ] as const;
   execution.plan.steps = steps.map(([stepId, tool]) => ({
@@ -156,7 +164,7 @@ describe("ArtifactWorkbench profile_dataset rendering", () => {
             log_sample_count: 0.5132,
             input_count: 0.25,
             missing_ratio: 0.02,
-            anomaly_ratio: 0.01,
+            anomaly_ratio: 0.2242,
             snr_db_scaled: 0.72,
             dynamic_ratio: 0.42,
             output_autocorrelation: 0.81,
@@ -174,12 +182,16 @@ describe("ArtifactWorkbench profile_dataset rendering", () => {
     );
     expect(wrapper.get('[data-test="profile-overview"]').text()).toContain("1,200");
     expect(wrapper.get('[data-test="profile-overview"]').text()).toContain("2.00%");
-    expect(wrapper.get('[data-test="profile-overview"]').text()).toContain("1.00%");
+    expect(wrapper.get('[data-test="profile-overview"]').text()).toContain("画像离群比例22.42%");
+    expect(wrapper.get('[data-test="profile-overview"]').text()).not.toContain("异常率");
+    expect(wrapper.get('[data-test="profile-overview"]').text()).not.toContain("0.2242");
     expect(wrapper.get('[data-test="profile-overview"]').text()).toContain("42.00%");
     expect(wrapper.get('[data-test="profile-metrics"]').text()).toContain("样本规模指纹");
     expect(wrapper.get('[data-test="profile-metrics"]').text()).toContain("不代表原始样本数");
     expect(wrapper.get('[data-test="profile-metrics"]').text()).toContain("指标明细");
     expect(wrapper.get('[data-test="profile-metrics"]').text()).toContain("说明");
+    expect(wrapper.get('[data-test="profile-metrics"]').text()).toContain("画像离群比例");
+    expect(wrapper.get('[data-test="profile-metrics"]').text()).toContain("与正式 Hampel 异常检测结果不是同一指标");
     expect(wrapper.get('[data-test="profile-metrics"]').text()).not.toContain("仅解释后端已定义的指纹语义");
     expect(wrapper.get('[data-test="profile-other-metrics"]').text()).toContain("future_metric");
     expect(wrapper.get('[data-test="profile-other-metrics"]').text()).toContain("raw-value");
@@ -191,7 +203,7 @@ describe("ArtifactWorkbench profile_dataset rendering", () => {
     const options = chart.props("options") as ChartOption;
     expect(options.xAxis).toMatchObject({ type: "value", min: 0, max: 100 });
     expect(options.series).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: "bar", data: [2, 1] }),
+      expect.objectContaining({ type: "bar", data: [2, 22.42] }),
     ]));
 
     await wrapper.get(".profile-raw__toggle").trigger("click");
@@ -254,33 +266,76 @@ describe("ArtifactWorkbench anomaly rendering", () => {
     const wrapper = await mountWorkbench(executionWith("detect_anomalies", {
       summary: "检出疑似异常点 6 个（占比 0.30%），噪声水平估计 0.02417。",
       result: {
-        anomaly_count: 6,
-        anomaly_ratio: 0.003,
+        anomaly_count: 3,
+        anomaly_ratio: 0.0025,
         future_metric: "raw-value",
       },
     }));
 
     expect(wrapper.get('[data-test="anomaly-artifact-renderer"]').exists()).toBe(true);
     expect(wrapper.get('[data-test="anomaly-summary"]').text()).toContain("噪声水平估计 0.02417");
-    expect(wrapper.get('[data-test="anomaly-overview"]').text()).toContain("异常点数量6");
-    expect(wrapper.get('[data-test="anomaly-overview"]').text()).toContain("异常比例0.30%");
+    expect(wrapper.get('[data-test="anomaly-overview"]').text()).toContain("异常点数量3");
+    expect(wrapper.get('[data-test="anomaly-overview"]').text()).toContain("异常比例0.25%");
+    expect(wrapper.get('[data-test="anomaly-overview"]').text()).not.toContain("画像离群比例");
     expect(wrapper.get('[data-test="anomaly-metrics"]').text()).toContain("疑似异常样本数量");
     expect(wrapper.get('[data-test="anomaly-other-metrics"]').text()).toContain("future_metric");
     expect(wrapper.get('[data-test="anomaly-other-metrics"]').text()).toContain("raw-value");
-    expect(wrapper.get('[data-test="anomaly-ratio-chart"]').exists()).toBe(true);
+    const ratioChart = wrapper.get('[data-test="anomaly-ratio-chart"]');
+    const chart = ratioChart.getComponent(ChartContainerStub);
+    expect(chart.attributes("data-height")).toBe("112px");
+    const options = chart.props("options") as ChartOption;
+    expect(options.xAxis).toMatchObject({ type: "value", min: 0, max: 100, interval: 20 });
+    expect(options.yAxis).toMatchObject({ type: "category", data: ["异常比例"] });
+    expect(options.series).toEqual([
+      expect.objectContaining({ type: "bar", data: [0.25] }),
+    ]);
+    expect(options.series).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ barMinHeight: expect.any(Number) }),
+    ]));
+    const tooltip = options.tooltip as { formatter?: (params: unknown) => string };
+    expect(tooltip.formatter?.({ value: 0.25 })).toContain("异常比例：0.25%");
+    expect(tooltip.formatter?.({ value: 0.25 })).toContain("异常样本：3 / 1,200 个样本");
+    expect(wrapper.find('[data-test="anomaly-ratio-track"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="anomaly-position-chart"]').exists()).toBe(false);
     expect(wrapper.find(".aw-json").exists()).toBe(false);
     expect(wrapper.find('[data-test="anomaly-raw-data"]').exists()).toBe(false);
 
-    const chart = wrapper.getComponent(ChartContainerStub);
-    const options = chart.props("options") as ChartOption;
-    expect(options.xAxis).toMatchObject({ type: "value", min: 0, max: 100 });
-    expect(options.series).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: "bar", data: [0.3] }),
-    ]));
-
     await wrapper.get(".anomaly-raw__toggle").trigger("click");
-    expect(wrapper.get('[data-test="anomaly-raw-data"]').text()).toContain('"anomaly_count": 6');
+    expect(wrapper.get('[data-test="anomaly-raw-data"]').text()).toContain('"anomaly_count": 3');
+  });
+
+  it("uses the compact zero state for standalone anomaly results without drawing an empty chart", async () => {
+    const wrapper = await mountWorkbench(executionWith("detect_anomalies", {
+      result: { anomaly_count: 0, anomaly_ratio: 0 },
+    }));
+
+    expect(wrapper.get('[data-test="anomaly-zero-state"]').text()).toContain("本次未检出疑似异常点");
+    expect(wrapper.get('[data-test="anomaly-zero-state"]').text()).toContain("0.00%");
+    expect(wrapper.find('[data-test="anomaly-ratio-chart"]').exists()).toBe(false);
+  });
+
+  it("keeps a larger anomaly ratio on the same true zero-to-one-hundred bar scale", async () => {
+    const wrapper = await mountWorkbench(executionWith("detect_anomalies", {
+      result: {
+        anomaly_count: 20,
+        anomaly_ratio: 0.2,
+        total: 100,
+        n_samples: 99,
+        sample_count: 98,
+      },
+    }));
+
+    const options = wrapper
+      .get('[data-test="anomaly-ratio-chart"]')
+      .getComponent(ChartContainerStub)
+      .props("options") as ChartOption;
+    expect(options.xAxis).toMatchObject({ min: 0, max: 100 });
+    expect(options.series).toEqual([
+      expect.objectContaining({ type: "bar", data: [20] }),
+    ]);
+    const tooltip = options.tooltip as { formatter?: (params: unknown) => string };
+    expect(tooltip.formatter?.({ value: 20 })).toContain("异常比例：20.00%");
+    expect(tooltip.formatter?.({ value: 20 })).toContain("异常样本：20 / 100 个样本");
   });
 
   it("does not chart an invalid ratio and safely handles an empty historical envelope", async () => {
@@ -496,6 +551,27 @@ describe("ArtifactWorkbench cleaning rendering", () => {
     })));
     expect(incomplete.find('[data-test="cleaning-missing-count-chart"]').exists()).toBe(false);
   });
+
+  it("uses one sample-size status for equal standalone row counts while preserving content changes", async () => {
+    const wrapper = await mountWorkbench(executionWith("clean_data", cleaningPayload({
+      summary: {
+        rows_before: 1200,
+        rows_after: 1200,
+        changes: {
+          unique_changed_cells: 9,
+          outlier_replacements: 9,
+          category_counts_may_overlap: true,
+        },
+      },
+    })));
+
+    expect(wrapper.get('[data-test="cleaning-row-count-unchanged"]').text()).toContain("样本规模保持不变");
+    expect(wrapper.get('[data-test="cleaning-row-count-unchanged"]').text()).toContain("1,200 → 1,200");
+    expect(wrapper.find('[data-test="cleaning-row-count-chart"]').exists()).toBe(false);
+    expect(wrapper.get('[data-test="cleaning-impact-overview"]').text()).toContain("修改单元格9");
+    expect(wrapper.get('[data-test="cleaning-action-chart"]').exists()).toBe(true);
+    expect(wrapper.text()).not.toContain("清洗无变化");
+  });
 });
 
 describe("ArtifactWorkbench report and delivery actions", () => {
@@ -512,7 +588,100 @@ describe("ArtifactWorkbench report and delivery actions", () => {
     expect(wrapper.get('[data-test="report-anomaly-section"]').exists()).toBe(true);
     expect(wrapper.get('[data-test="report-cleaning-section"]').exists()).toBe(true);
     expect(wrapper.get('[data-test="report-markdown"]').text()).toContain("清洗与异常检测均已完成");
-    expect(wrapper.get('[data-test="report-evidence"]').text()).toContain("free run fit");
+    expect(wrapper.get('[data-test="report-evidence"]').text()).toContain("样本数量");
+    expect(wrapper.get('[data-test="report-evidence"]').text()).toContain("来源：本次数据画像");
+    expect(wrapper.get('[data-test="report-evidence"]').text()).not.toContain("run type");
+  });
+
+  it("uses compact zero states and keeps technical identifiers out of the primary report UI", async () => {
+    const execution = reportExecution();
+    execution.current_version_id = "11111111-1111-1111-1111-111111111111";
+    execution.step_runs[0].result_payload = {
+      summary: "画像完成",
+      result: {
+        n_samples: 1500,
+        fingerprint: { values: { missing_ratio: 0, anomaly_ratio: 0 } },
+      },
+    };
+    execution.step_runs[1].result_payload = {
+      summary: "异常检测完成",
+      result: { anomaly_count: 0, anomaly_ratio: 0 },
+    };
+    execution.step_runs[2].result_payload = {
+      total_cleaned_points: 0,
+      processing_run_id: "22222222-2222-2222-2222-222222222222",
+      task: {
+        progress: {
+          message: "正式清洗服务已生成不可变版本 11111111-1111-1111-1111-111111111111。",
+        },
+      },
+      summary: {
+        rows_before: 1500,
+        rows_after: 1500,
+        changes: {
+          unique_changed_cells: 0,
+          missing_value_fills: 0,
+          outlier_replacements: 0,
+          duplicate_timestamps_processed: 0,
+          resampling_empty_rows_created: 0,
+          smoothing_changes: 0,
+        },
+      },
+    };
+    execution.step_runs[2].processing_run_ids = ["22222222-2222-2222-2222-222222222222"];
+    const report = execution.step_runs[3].result_payload;
+    report.execution_id = execution.execution_id;
+    report.title = "IndusOpt 数据质量分析与清洗报告";
+    report.markdown = "## 一、分析概述\n\n本次仅执行数据质量分析与清洗。";
+
+    const wrapper = await mountWorkbench(execution);
+
+    expect(wrapper.get(".report-status").text()).toBe("本次任务证据已解析");
+    expect(wrapper.get('[data-test="anomaly-zero-state"]').text()).toContain("本次未检出疑似异常点");
+    expect(wrapper.get('[data-test="anomaly-zero-state"]').text()).toContain("0.00%");
+    expect(wrapper.find('[data-test="anomaly-ratio-chart"]').exists()).toBe(false);
+    expect(wrapper.get('[data-test="profile-quality-chart"]').exists()).toBe(true);
+    expect(wrapper.get('[data-test="cleaning-action-empty"]').text()).toContain("本次清洗未修改数据");
+    expect(wrapper.find('[data-test="cleaning-action-chart"]').exists()).toBe(false);
+    expect(wrapper.get('[data-test="cleaning-row-count-unchanged"]').text()).toContain("1,500 → 1,500");
+    expect(wrapper.find('[data-test="cleaning-row-count-chart"]').exists()).toBe(false);
+
+    const primaryText = [
+      wrapper.get(".report-header").text(),
+      wrapper.get('[data-test="report-core-metrics"]').text(),
+      wrapper.get('[data-test="report-stages"]').text(),
+      wrapper.get('[data-test="report-evidence"]').text(),
+      wrapper.get('[data-test="report-markdown"]').text(),
+    ].join(" ");
+    expect(primaryText).not.toContain("11111111-1111-1111-1111-111111111111");
+    expect(primaryText).not.toContain("22222222-2222-2222-2222-222222222222");
+    expect(primaryText).not.toContain("derived version id");
+    expect(primaryText).not.toContain("constant value segment count");
+    expect(primaryText).not.toContain("profile_dataset");
+    expect(primaryText).not.toContain("detect_anomalies");
+    expect(primaryText).not.toContain("clean_data");
+    expect(primaryText).not.toContain("ARX");
+
+    const technical = wrapper.get('[data-test="report-technical-details"]');
+    expect(technical.attributes("open")).toBeUndefined();
+    expect(technical.text()).toContain(execution.execution_id);
+    expect(technical.text()).toContain("11111111-1111-1111-1111-111111111111");
+    expect(technical.text()).toContain("22222222-2222-2222-2222-222222222222");
+  });
+
+  it("renders non-zero cleaning actions and changed row counts as comparison charts", async () => {
+    const wrapper = await mountWorkbench(reportExecution());
+
+    const actionOptions = wrapper
+      .get('[data-test="cleaning-action-chart"]')
+      .getComponent(ChartContainerStub)
+      .props("options") as ChartOption;
+    expect(actionOptions.yAxis).toEqual(expect.objectContaining({ type: "category" }));
+    expect(actionOptions.series).toEqual([
+      expect.objectContaining({ type: "bar", data: [4, 3] }),
+    ]);
+    expect(wrapper.get('[data-test="cleaning-row-count-chart"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="cleaning-row-count-unchanged"]').exists()).toBe(false);
   });
 
   it("does not invent absent metrics and keeps raw JSON and UUIDs in closed technical details", async () => {

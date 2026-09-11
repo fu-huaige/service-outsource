@@ -465,6 +465,7 @@ def test_report_adapter_binds_execution_context_and_persists_formal_result(
     result, persisted = asyncio.run(run())
     payload = captured["payload"]
     assert isinstance(payload, ReportRequest)
+    assert payload.execution_id == started.id
     assert payload.dataset_id == dataset_id
     assert payload.version_id == version_id
     assert captured["artifact_root"] == adapter_harness.artifact_root

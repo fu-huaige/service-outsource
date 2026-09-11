@@ -6,8 +6,9 @@ occasionally invent figures. One altered number in a commissioning report costs 
 than the whole report earns.
 
 So the contract is inverted. The model is forbidden to write digits at all. It writes
-placeholders — ``{{run:<run_id>.metrics.val_free_run_fit}}`` — and a renderer substitutes
-the value read from the persisted run record. Two mechanisms enforce it:
+typed placeholders — for example ``{{run:<run_id>.metrics.val_free_run_fit}}`` or
+``{{step:<step_key>.n_samples}}`` — and a renderer substitutes the value read from the
+persisted evidence record. Two mechanisms enforce it:
 
 * :func:`validate_draft` rejects a draft containing any bare numeral, so a model that
   ignores the instruction produces a *rejected draft*, not a wrong report.
@@ -21,13 +22,14 @@ choosing to comply.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-# {{run:<run_id>.<dotted.path>}} or {{chart:<artifact_id>}}
+# {{run:<run_id>.<dotted.path>}}, {{step:<step_key>.<dotted.path>}}, or
+# {{chart:<artifact_id>}}. ``step`` keeps execution evidence distinct from domain runs.
 PLACEHOLDER_PATTERN = re.compile(
-    r"\{\{\s*(run|chart)\s*:\s*([A-Za-z0-9_\-]+)(?:\.([^}\s]+))?\s*\}\}"
+    r"\{\{\s*(run|step|chart)\s*:\s*([A-Za-z0-9_\-]+)(?:\.([^}\s]+))?\s*\}\}"
 )
 
 _DIGIT_RUN = re.compile(r"\d+(?:\.\d+)?")
@@ -158,6 +160,7 @@ def render_template(
     *,
     runs: Mapping[str, Mapping[str, Any]],
     charts: Mapping[str, str] | None = None,
+    formatters: Mapping[tuple[str, str, str], Callable[[Any], str]] | None = None,
     precision: int = 4,
 ) -> RenderResult:
     """Substitute every placeholder with the value from its run record.
@@ -169,6 +172,7 @@ def render_template(
     bindings: list[Binding] = []
     unresolved: list[str] = []
     chart_map = charts or {}
+    formatter_map = formatters or {}
 
     def substitute(match: re.Match[str]) -> str:
         kind, identifier, path = match.group(1), match.group(2), match.group(3) or ""
@@ -195,7 +199,11 @@ def render_template(
         record = runs.get(identifier)
         value = resolve_path(record, path) if record is not None else None
         resolved = value is not None
-        rendered = _format(value, precision) if resolved else f"[未解析数值:{identifier}.{path}]"
+        binding_value = (
+            _format(value, precision) if resolved else f"[未解析数值:{identifier}.{path}]"
+        )
+        formatter = formatter_map.get((kind, identifier, path))
+        rendered = formatter(value) if resolved and formatter is not None else binding_value
         if not resolved:
             unresolved.append(placeholder)
         bindings.append(
@@ -204,7 +212,7 @@ def render_template(
                 kind=kind,
                 run_id=identifier,
                 path=path,
-                value=rendered,
+                value=binding_value,
                 resolved=resolved,
             )
         )
@@ -212,6 +220,17 @@ def render_template(
 
     text = PLACEHOLDER_PATTERN.sub(substitute, template)
     return RenderResult(text=text, bindings=tuple(bindings), unresolved=tuple(unresolved))
+
+
+def format_fraction_percent(value: Any) -> str:
+    """Format an explicitly declared fraction metric for human-facing report text."""
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return str(value)
+    numeric = float(value)
+    if numeric != numeric or numeric in (float("inf"), float("-inf")):
+        return _format(value, 4)
+    return f"{numeric * 100:.2f}%"
 
 
 def _format(value: Any, precision: int) -> str:
