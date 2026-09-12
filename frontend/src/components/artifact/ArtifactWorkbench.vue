@@ -55,8 +55,11 @@
       <span>{{ exportNotice.message }}</span>
       <template v-if="exportNotice.result">
         <span>导出 {{ exportNotice.result.exported_rows }} / {{ exportNotice.result.source_rows }} 行，覆盖率 {{ formatCoverage(exportNotice.result.coverage_ratio) }}</span>
-        <a :href="exportCsvUrl(exportNotice.result.export_id)">下载优选 CSV</a>
-        <a :href="exportManifestUrl(exportNotice.result.export_id)">下载 Manifest</a>
+        <ExportDownloadActions
+          class="aw-notice-downloads"
+          :csv-url="exportCsvUrl(exportNotice.result.export_id)"
+          :manifest-url="exportManifestUrl(exportNotice.result.export_id)"
+        />
       </template>
     </div>
 
@@ -91,6 +94,10 @@
         <CleaningArtifactRenderer :payload="activeArtifact.payload" />
       </template>
 
+      <template v-else-if="activeArtifact.type === 'segmentation'">
+        <SegmentationArtifactRenderer :payload="activeArtifact.payload" />
+      </template>
+
       <template v-else-if="activeArtifact.type === 'report'">
         <ReportArtifactRenderer :payload="activeArtifact.payload" :execution="execution" />
       </template>
@@ -103,10 +110,12 @@
             <span>源样本数<strong>{{ activeArtifact.payload.source_rows }}</strong></span>
             <span>覆盖率<strong>{{ formatCoverage(activeArtifact.payload.coverage_ratio) }}</strong></span>
           </div>
-          <div class="aw-export-links" v-if="typeof activeArtifact.payload.export_id === 'string'">
-            <a :href="exportCsvUrl(activeArtifact.payload.export_id)">下载优选 CSV</a>
-            <a :href="exportManifestUrl(activeArtifact.payload.export_id)">下载 Manifest</a>
-          </div>
+          <ExportDownloadActions
+            v-if="typeof activeArtifact.payload.export_id === 'string'"
+            class="aw-export-downloads"
+            :csv-url="exportCsvUrl(activeArtifact.payload.export_id)"
+            :manifest-url="exportManifestUrl(activeArtifact.payload.export_id)"
+          />
         </section>
       </template>
 
@@ -198,7 +207,7 @@
         </div>
       </template>
 
-      <!-- Cleaning / Segmentation / Generic -->
+      <!-- Generic fallback -->
       <template v-else>
         <div class="aw-section">
           <div class="aw-section__label">工件详细数据 (Payload Details)</div>
@@ -223,8 +232,10 @@ import { ElMessage } from 'element-plus';
 import MetricStrip from './MetricStrip.vue';
 import AnomalyArtifactRenderer from './AnomalyArtifactRenderer.vue';
 import CleaningArtifactRenderer from './CleaningArtifactRenderer.vue';
+import ExportDownloadActions from './ExportDownloadActions.vue';
 import ProfileArtifactRenderer from './ProfileArtifactRenderer.vue';
 import ReportArtifactRenderer from './ReportArtifactRenderer.vue';
+import SegmentationArtifactRenderer from './SegmentationArtifactRenderer.vue';
 import type { CopilotExecutionSnapshot } from '../../types/api';
 import type { ExportDatasetResponse } from '../../types/api';
 import { exportDataset } from '../../api/delivery';
@@ -399,12 +410,12 @@ function optimizationMetrics(art: ArtifactDef) {
 .aw-action-btn:disabled { cursor: wait; opacity: .55; }
 .aw-export-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px; border-bottom: 1px solid #DDE8D9; background: #F3F8F1; color: #426340; font-size: 11px; }
 .aw-export-notice.is-error { border-color: #F0D7D4; background: #FFF5F4; color: #9B3F36; }
-.aw-export-notice a, .aw-export-links a { color: var(--accent-dark); font-weight: 600; text-decoration: none; }
 .aw-export-artifact h3 { margin: 0 0 14px; font-size: 16px; }
 .aw-export-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .aw-export-metrics span { padding: 10px; border: 1px solid var(--border-default); border-radius: 7px; color: var(--text-tertiary); font-size: 10px; }
 .aw-export-metrics strong { display: block; margin-top: 4px; color: var(--text-primary); font-size: 17px; }
-.aw-export-links { display: flex; gap: 14px; margin-top: 14px; font-size: 12px; }
+.aw-notice-downloads { flex-basis: 100%; }
+.aw-export-downloads { margin-top: 14px; }
 
 .aw-header__right {
   display: flex;

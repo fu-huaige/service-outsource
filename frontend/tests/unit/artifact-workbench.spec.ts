@@ -5,12 +5,28 @@ import ArtifactWorkbench from "../../src/components/artifact/ArtifactWorkbench.v
 import { ApiError } from "../../src/api/client";
 import type { ChartOption } from "../../src/components/ChartContainer.vue";
 import type { CopilotExecutionSnapshot } from "../../src/types/api";
+import { mergeSelectedSampleIndices } from "../../src/utils/segmentationArtifact";
 
 const deliveryApi = vi.hoisted(() => ({ exportDataset: vi.fn() }));
 const messageApi = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 
 vi.mock("../../src/api/delivery", () => deliveryApi);
-vi.mock("element-plus", () => ({ ElMessage: messageApi }));
+vi.mock("element-plus", () => ({
+  ElMessage: messageApi,
+  ElButton: {
+    name: "ElButton",
+    inheritAttrs: false,
+    props: ["tag", "type"],
+    template: `
+      <component
+        :is="tag || 'button'"
+        v-bind="$attrs"
+        class="el-button"
+        :class="'el-button--' + (type || 'default')"
+      ><slot /></component>
+    `,
+  },
+}));
 
 const ChartContainerStub = defineComponent({
   name: "ChartContainer",
@@ -258,6 +274,178 @@ describe("ArtifactWorkbench profile_dataset rendering", () => {
     expect(wrapper.text()).toContain("输出阶数 na");
     expect(wrapper.text()).toContain("FIT 拟合度");
     expect(wrapper.find(".aw-json").exists()).toBe(false);
+  });
+});
+
+describe("ArtifactWorkbench segmentation rendering", () => {
+  const segmentationPayload = () => ({
+    source_version_id: "11111111-1111-1111-1111-111111111111",
+    processing_run_id: "22222222-2222-2222-2222-222222222222",
+    timestamps: Array.from(
+      { length: 12 },
+      (_, index) => `2026-09-09T00:00:${String(index).padStart(2, "0")}Z`
+    ),
+    series: { u1: Array.from({ length: 12 }, (_, index) => index) },
+    segments: [
+      {
+        segment_id: "seg_01",
+        start_index: 1,
+        end_index: 3,
+        start_time: "2026-09-09T00:00:01Z",
+        end_time: "2026-09-09T00:00:03Z",
+        rank: 1,
+        n_rows: 3,
+        information_gain_bits: 1.6,
+        dynamic_score: 1.6,
+        snr_db: 12.4,
+      },
+      {
+        segment_id: "seg_02",
+        start_index: 8,
+        end_index: 9,
+        start_time: "2026-09-09T00:00:08Z",
+        end_time: "2026-09-09T00:00:09Z",
+        rank: 2,
+        n_rows: 2,
+        information_gain_bits: 0.8,
+        dynamic_score: 0.8,
+        snr_db: 10.2,
+      },
+    ],
+    selection: {
+      candidate_count: 7,
+      gated_count: 4,
+      selected_count: 2,
+      selected_rows: 5,
+      coverage_ratio: 5 / 12,
+    },
+    selected_indices: [1, 2, 3, 8, 9],
+  });
+
+  it("renders real selection facts, coverage, and information-gain ranking", async () => {
+    const wrapper = await mountWorkbench(
+      executionWith("detect_dynamic_segments", segmentationPayload())
+    );
+
+    expect(wrapper.get('[data-test="segmentation-artifact-renderer"]').exists()).toBe(true);
+    const overview = wrapper.get('[data-test="segmentation-overview"]').text();
+    expect(overview).toContain("入选样本数5");
+    expect(overview).toContain("入选区间数2");
+    expect(overview).toContain("全量可建模样本覆盖率41.67%");
+    expect(overview).toContain("候选窗口数7");
+    expect(wrapper.get('[data-test="segmentation-summary"]').text()).toContain(
+      "在训练分区中筛选出 2 个有效动态区间，共覆盖 5 个去重建模样本"
+    );
+    expect(wrapper.get('[data-test="segmentation-coverage-legend"]').text()).toContain(
+      "整体样本轴"
+    );
+    expect(wrapper.get('[data-test="segmentation-coverage-legend"]').text()).toContain(
+      "入选建模区间"
+    );
+    expect(wrapper.get('[data-test="segmentation-ranking-title"]').text()).toBe(
+      "入选区间信息增益"
+    );
+    expect(wrapper.find('[data-test="segmentation-ranking-limit-note"]').exists()).toBe(false);
+
+    const coverageOptions = wrapper
+      .get('[data-test="segmentation-coverage-chart"]')
+      .getComponent(ChartContainerStub)
+      .props("options") as ChartOption;
+    const coverageSeries = (coverageOptions.series as Array<Record<string, unknown>>)[0];
+    const markArea = coverageSeries.markArea as { data: unknown[] };
+    expect(markArea.data).toHaveLength(2);
+
+    const rankingOptions = wrapper
+      .get('[data-test="segmentation-ranking-chart"]')
+      .getComponent(ChartContainerStub)
+      .props("options") as ChartOption;
+    expect(rankingOptions.series).toEqual([
+      expect.objectContaining({ type: "bar", data: [1.6, 0.8] }),
+    ]);
+    expect(wrapper.find('[data-test="segmentation-raw-data"]').exists()).toBe(false);
+    expect(wrapper.find(".font-mono").exists()).toBe(false);
+  });
+
+  it("labels and explains the compact Top 8 ranking when more segments are selected", async () => {
+    const payload = segmentationPayload();
+    payload.segments = Array.from({ length: 10 }, (_, index) => ({
+      segment_id: `seg_${String(index + 1).padStart(2, "0")}`,
+      start_index: index,
+      end_index: index,
+      start_time: payload.timestamps[index],
+      end_time: payload.timestamps[index],
+      rank: index + 1,
+      n_rows: 1,
+      information_gain_bits: 10 - index,
+      dynamic_score: 10 - index,
+      snr_db: 12 - index / 10,
+    }));
+    payload.selection.selected_count = 10;
+    payload.selection.selected_rows = 10;
+    payload.selection.coverage_ratio = 10 / 12;
+    payload.selected_indices = Array.from({ length: 10 }, (_, index) => index);
+
+    const wrapper = await mountWorkbench(
+      executionWith("detect_dynamic_segments", payload)
+    );
+
+    expect(wrapper.get('[data-test="segmentation-ranking-title"]').text()).toBe(
+      "入选区间信息增益 Top 8"
+    );
+    expect(wrapper.get('[data-test="segmentation-ranking-limit-note"]').text()).toBe(
+      "共入选 10 个区间，当前展示信息增益最高的前 8 个。"
+    );
+
+    const rankingOptions = wrapper
+      .get('[data-test="segmentation-ranking-chart"]')
+      .getComponent(ChartContainerStub)
+      .props("options") as ChartOption;
+    expect(rankingOptions.series).toEqual([
+      expect.objectContaining({ type: "bar", data: [10, 9, 8, 7, 6, 5, 4, 3] }),
+    ]);
+  });
+
+  it("deterministically merges persisted selected sample indices into intervals", async () => {
+    expect(mergeSelectedSampleIndices([1, 2, 3, 8, 9])).toEqual([
+      { startIndex: 1, endIndex: 3, count: 3 },
+      { startIndex: 8, endIndex: 9, count: 2 },
+    ]);
+
+    const wrapper = await mountWorkbench(executionWith("detect_dynamic_segments", {
+      timestamps: Array.from({ length: 12 }, (_, index) => String(index)),
+      selected_sample_indices: [1, 2, 3, 8, 9],
+    }));
+    expect(wrapper.get('[data-test="segmentation-overview"]').text()).toContain("入选样本数5");
+    expect(wrapper.get('[data-test="segmentation-coverage-chart"]').exists()).toBe(true);
+  });
+
+  it("keeps raw JSON collapsed inside technical details", async () => {
+    const wrapper = await mountWorkbench(
+      executionWith("detect_dynamic_segments", segmentationPayload())
+    );
+
+    const technical = wrapper.get('[data-test="segmentation-technical-details"]');
+    expect(technical.get("button").attributes("aria-expanded")).toBe("false");
+    expect(wrapper.find('[data-test="segmentation-raw-data"]').exists()).toBe(false);
+
+    await technical.get("button").trigger("click");
+    expect(wrapper.get('[data-test="segmentation-raw-data"]').text()).toContain(
+      '"selected_indices"'
+    );
+    expect(wrapper.get('[data-test="segmentation-raw-data"]').classes()).toContain("font-mono");
+  });
+
+  it("shows a business empty state when no visual selection evidence exists", async () => {
+    const wrapper = await mountWorkbench(executionWith("detect_dynamic_segments", {
+      selected_indices: [],
+      segments: [],
+    }));
+
+    expect(wrapper.get('[data-test="segmentation-empty"]').text()).toContain(
+      "当前结果未包含可视化区间数据"
+    );
+    expect(wrapper.find('[data-test="segmentation-coverage-chart"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="segmentation-ranking-chart"]').exists()).toBe(false);
   });
 });
 
@@ -757,7 +945,44 @@ describe("ArtifactWorkbench report and delivery actions", () => {
     const notice = wrapper.get('[data-test="export-notice"]');
     expect(notice.text()).toContain("优选数据集导出完成");
     expect(notice.text()).toContain("导出 25 / 100 行，覆盖率 25.00%");
-    expect(notice.get('a[href="/api/v1/delivery/exports/export-1/csv"]').text()).toBe("下载优选 CSV");
-    expect(notice.get('a[href="/api/v1/delivery/exports/export-1/manifest"]').text()).toBe("下载 Manifest");
+    const csv = notice.get('a[href="/api/v1/delivery/exports/export-1/csv"]');
+    const manifest = notice.get('a[href="/api/v1/delivery/exports/export-1/manifest"]');
+    expect(csv.text()).toBe("下载优选 CSV");
+    expect(manifest.text()).toBe("下载 Manifest");
+    expect(csv.classes()).toEqual(expect.arrayContaining([
+      "el-button",
+      "artifact-download-button",
+      "artifact-download-button--primary",
+    ]));
+    expect(manifest.classes()).toEqual(expect.arrayContaining([
+      "el-button",
+      "artifact-download-button",
+      "artifact-download-button--secondary",
+    ]));
+  });
+
+  it("renders export artifact downloads as equal formal Element Plus actions", async () => {
+    const wrapper = await mountWorkbench(executionWith("export_dataset", {
+      export_id: "export-2",
+      exported_rows: 48,
+      source_rows: 120,
+      coverage_ratio: 0.4,
+    }));
+
+    const renderer = wrapper.get('[data-test="export-artifact-renderer"]');
+    const actions = renderer.get('[data-test="export-download-actions"]');
+    const csv = actions.get('[data-test="download-optimised-csv"]');
+    const manifest = actions.get('[data-test="download-export-manifest"]');
+
+    expect(csv.element.tagName).toBe("A");
+    expect(manifest.element.tagName).toBe("A");
+    expect(csv.attributes("href")).toBe("/api/v1/delivery/exports/export-2/csv");
+    expect(manifest.attributes("href")).toBe(
+      "/api/v1/delivery/exports/export-2/manifest"
+    );
+    expect(csv.classes()).toContain("el-button--primary");
+    expect(manifest.classes()).toContain("el-button--default");
+    expect(csv.classes()).toContain("artifact-download-button");
+    expect(manifest.classes()).toContain("artifact-download-button");
   });
 });
