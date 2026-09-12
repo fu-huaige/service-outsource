@@ -105,7 +105,7 @@
 
     <div v-if="execution.workflow_status === 'SUCCEEDED'" class="stream-conclusion" data-test="execution-completed">
       <div class="stream-conclusion__label">任务已完成</div>
-      <div>所有步骤执行成功，可在右侧成果工作区查看和下载结果。</div>
+      <div>所有步骤执行成功，可在右侧成果展示区查看和下载结果。</div>
     </div>
     <div v-else-if="execution.workflow_status === 'FAILED'" class="stream-notice warning" role="alert">
       {{ execution.error_message || '任务执行失败，请查看失败步骤。' }}

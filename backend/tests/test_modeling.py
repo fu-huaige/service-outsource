@@ -280,6 +280,17 @@ class TestModelingApi:
         assert response.status_code == 200, response.text
         data = response.json()["data"]
 
+        assert data["model_structure"] == {
+            "model_type": "ARX",
+            "input_columns": ["u1", "u2"],
+            "output_column": "y",
+            "na": 2,
+            "nb": {"u1": 2, "u2": 2},
+            "delays": {"u1": 0, "u2": 0},
+            "estimator": "ols",
+            "ridge_alpha": None,
+            "parameter_count": 6,
+        }
         assert data["metrics"]["val_free_run_fit"] is not None
         assert data["validation"]["free_run_fit"] is not None
         assert data["validation"]["one_step_fit"] is not None
@@ -291,6 +302,9 @@ class TestModelingApi:
         assert data["metrics"]["test_free_run_fit"] is None
         assert "test" not in data["metrics"]["one_step"]
         assert "test" not in data["metrics"]["free_run"]
+        assert "evaluation_scope" not in data
+        assert "series" not in data
+        assert "model_health" not in data
         assert max(data["plot_data"]["indices"]) < data["plot_data"]["splits"]["val_end"]
         assert len(data["free_run_series"]) == len(data["plot_data"]["indices"])
 

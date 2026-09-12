@@ -3,7 +3,7 @@
     <!-- Header -->
     <div class="aw-header">
       <div class="aw-header__left">
-        <span class="aw-header__title">成果工作区</span>
+        <span class="aw-header__title">成果展示区</span>
       </div>
       <div class="aw-header__right">
         <button
@@ -98,6 +98,14 @@
         <SegmentationArtifactRenderer :payload="activeArtifact.payload" />
       </template>
 
+      <template v-else-if="activeArtifact.type === 'model'">
+        <ArxModelArtifactRenderer :payload="activeArtifact.payload" />
+      </template>
+
+      <template v-else-if="activeArtifact.type === 'evaluation'">
+        <ModelEvaluationArtifactRenderer :payload="activeArtifact.payload" />
+      </template>
+
       <template v-else-if="activeArtifact.type === 'report'">
         <ReportArtifactRenderer :payload="activeArtifact.payload" :execution="execution" />
       </template>
@@ -117,32 +125,6 @@
             :manifest-url="exportManifestUrl(activeArtifact.payload.export_id)"
           />
         </section>
-      </template>
-
-      <!-- Model Artifact (arx_fit / evaluate_model) -->
-      <template v-else-if="activeArtifact.type === 'model' || activeArtifact.type === 'evaluation'">
-        <MetricStrip :metrics="modelMetrics(activeArtifact)" />
-        <div class="aw-section">
-          <div class="aw-section__label">模型结构 (Model Structure)</div>
-          <div class="aw-kv-list">
-            <div v-if="activeArtifact.payload.na !== undefined" class="aw-kv">
-              <span class="aw-kv__key">输出阶数 na</span>
-              <span class="aw-kv__val">{{ activeArtifact.payload.na }}</span>
-            </div>
-            <div v-if="activeArtifact.payload.nb !== undefined" class="aw-kv">
-              <span class="aw-kv__key">输入阶数 nb</span>
-              <span class="aw-kv__val">{{ activeArtifact.payload.nb }}</span>
-            </div>
-            <div v-if="activeArtifact.payload.nk !== undefined" class="aw-kv">
-              <span class="aw-kv__key">延迟阶数 nk</span>
-              <span class="aw-kv__val">{{ activeArtifact.payload.nk }}</span>
-            </div>
-            <div v-if="activeArtifact.payload.model_id" class="aw-kv">
-              <span class="aw-kv__key">模型唯一 ID</span>
-              <span class="aw-kv__val font-mono" style="font-size:11px">{{ activeArtifact.payload.model_id }}</span>
-            </div>
-          </div>
-        </div>
       </template>
 
       <!-- Optimization Artifact -->
@@ -231,11 +213,13 @@ import { ref, computed, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import MetricStrip from './MetricStrip.vue';
 import AnomalyArtifactRenderer from './AnomalyArtifactRenderer.vue';
+import ArxModelArtifactRenderer from './ArxModelArtifactRenderer.vue';
 import CleaningArtifactRenderer from './CleaningArtifactRenderer.vue';
 import ExportDownloadActions from './ExportDownloadActions.vue';
 import ProfileArtifactRenderer from './ProfileArtifactRenderer.vue';
 import ReportArtifactRenderer from './ReportArtifactRenderer.vue';
 import SegmentationArtifactRenderer from './SegmentationArtifactRenderer.vue';
+import ModelEvaluationArtifactRenderer from './ModelEvaluationArtifactRenderer.vue';
 import type { CopilotExecutionSnapshot } from '../../types/api';
 import type { ExportDatasetResponse } from '../../types/api';
 import { exportDataset } from '../../api/delivery';
@@ -354,17 +338,6 @@ watch(availableArtifacts, (arts, previous = []) => {
 watch(() => props.activeStepId, (id) => {
   if (id && availableArtifacts.value.some(a => a.stepId === id)) activeTab.value = id;
 });
-
-function modelMetrics(art: ArtifactDef) {
-  const p = art.payload;
-  const metrics: { label: string; value: string; sub?: string; primary?: boolean }[] = [];
-  if (p.fit_pct !== undefined)  metrics.push({ label: 'FIT 拟合度', value: `${p.fit_pct.toFixed(1)}%`, primary: true });
-  if (p.r2 !== undefined)       metrics.push({ label: '决定系数 R²', value: p.r2.toFixed(3) });
-  if (p.rmse !== undefined)     metrics.push({ label: '均方根误差', value: p.rmse.toFixed(4) });
-  if (p.free_run_fit !== undefined) metrics.push({ label: '自由仿真 FIT', value: `${p.free_run_fit.toFixed(1)}%` });
-  if (p.nrmse !== undefined)    metrics.push({ label: 'NRMSE', value: p.nrmse.toFixed(3) });
-  return metrics;
-}
 
 function optimizationMetrics(art: ArtifactDef) {
   const p = art.payload;

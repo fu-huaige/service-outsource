@@ -827,6 +827,18 @@ export interface ModelValidationData {
   partition: string;
 }
 
+export interface ArxModelStructure {
+  model_type: "ARX";
+  input_columns: string[];
+  output_column: string;
+  na: number;
+  nb: Record<string, number>;
+  delays: Record<string, number>;
+  estimator: "ols" | "ridge";
+  ridge_alpha: number | null;
+  parameter_count: number;
+}
+
 export interface PriorViolation {
   variable: string;
   kind: "gain_sign" | "gain_bounds" | "stability";
@@ -842,8 +854,10 @@ export interface SplitIndices {
 
 export interface ARXFitResponse {
   model_id: string;
+  processing_run_id: string;
   task: TaskResource;
   estimator: "ols" | "ridge";
+  model_structure: ArxModelStructure;
   dataset_id: string | null;
   version_id: string | null;
   coefficients: Record<string, number>;
@@ -1150,13 +1164,42 @@ export interface PredictionMetrics {
 export interface SavedArxEvaluationTest {
   one_step: PredictionMetrics;
   free_run: PredictionMetrics;
+  n_samples: number;
+}
+
+export interface ArxEvaluationSeries {
+  sample_indices: number[];
+  timestamps: string[];
+  y_true: number[];
+  one_step_prediction: number[];
+  free_run_prediction: number[];
+  one_step_residual: number[];
+  free_run_residual: number[];
+}
+
+export interface ArxModelHealth {
+  stable: boolean;
+  max_pole_modulus: number | null;
+}
+
+export interface ArxEvaluationResidualDiagnostics {
+  partition: "test";
+  residual_type: "one_step";
+  residual_whiteness_ratio: number | null;
+  acf_values: number[];
+  confidence_interval: number | null;
 }
 
 export interface SavedArxEvaluationResult {
   model_id: string;
   source_version_id: string;
   processing_run_id: string;
+  evaluation_scope: "test";
+  model_structure: ArxModelStructure;
+  model_health: ArxModelHealth;
   test: SavedArxEvaluationTest;
+  series: ArxEvaluationSeries;
+  residual_diagnostics: ArxEvaluationResidualDiagnostics;
 }
 
 export interface CopilotStepExecutionResponse {

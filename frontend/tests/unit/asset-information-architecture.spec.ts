@@ -310,6 +310,8 @@ describe("Chinese structural typography", () => {
   it("uses concise Sans panel headers while preserving technical body typography", () => {
     const planSource = readFileSync(resolve(process.cwd(), "src/components/workspace/AgentPlan.vue"), "utf8");
     const artifactSource = readFileSync(resolve(process.cwd(), "src/components/artifact/ArtifactWorkbench.vue"), "utf8");
+    const streamSource = readFileSync(resolve(process.cwd(), "src/components/workspace/AgentStream.vue"), "utf8");
+    const workspaceSource = readFileSync(resolve(process.cwd(), "src/views/WorkspaceView.vue"), "utf8");
     const planHeaderRule = planSource.match(/\.plan-header__label\s*\{([^}]+)\}/)?.[1] ?? "";
     const artifactHeaderRule = artifactSource.match(/\.aw-header__title\s*\{([^}]+)\}/)?.[1] ?? "";
 
@@ -317,13 +319,19 @@ describe("Chinese structural typography", () => {
     expect(planSource).not.toContain("AGENT PLAN");
     expect(planHeaderRule).toContain("font-family: var(--font-sans)");
     expect(planHeaderRule).toContain("letter-spacing: normal");
-    expect(planSource).toContain("plan-step__tool font-mono");
+    expect(planSource).toContain('class="plan-step__tool"');
+    expect(planSource).toContain(".plan-step__tool,");
 
-    expect(artifactSource).toContain('<span class="aw-header__title">成果工作区</span>');
+    expect(artifactSource).toContain('<span class="aw-header__title">成果展示区</span>');
+    expect(streamSource).toContain("可在右侧成果展示区查看和下载结果");
+    expect(workspaceSource).toContain("<span>成果展示区</span>");
+    expect(workspaceSource).toContain("收起成果展示区");
+    expect(workspaceSource).toContain("展开成果展示区");
+    expect(`${artifactSource}${streamSource}${workspaceSource}`).not.toContain("成果工作区");
     expect(artifactSource).not.toContain("WORKSPACE ARTIFACTS");
     expect(artifactHeaderRule).toContain("font-family: var(--font-sans)");
     expect(artifactHeaderRule).toContain("letter-spacing: normal");
-    expect(artifactSource).toContain("aw-kv__key font-mono");
+    expect(artifactSource).toContain("aw-json font-mono");
     expect(artifactSource).toContain("<MetricStrip");
   });
 });

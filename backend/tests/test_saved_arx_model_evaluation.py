@@ -65,7 +65,17 @@ def _fit_saved_model(harness: EvaluationHarness) -> tuple[UUID, UUID, UUID, dict
     assert generated.status_code == 201, generated.text
     data = generated.json()["data"]
     dataset_id = UUID(data["dataset_id"])
-    version_id = UUID(data["version_id"])
+    lagged = harness.client.post(
+        "/api/v1/preprocessing/delay/apply",
+        json={
+            "version_id": data["version_id"],
+            "lag_map": {"u1": 3, "u2": 8},
+            "user_confirmed": True,
+            "recommendation_source": "manual",
+        },
+    )
+    assert lagged.status_code == 201, lagged.text
+    version_id = UUID(lagged.json()["data"]["result_version_id"])
     fitted = harness.client.post(
         "/api/v1/modeling/arx/fit",
         json={
@@ -74,7 +84,7 @@ def _fit_saved_model(harness: EvaluationHarness) -> tuple[UUID, UUID, UUID, dict
             "output_column": "y",
             "na": 2,
             "nb": [2, 2],
-            "delays": [3, 8],
+            "delays": [0, 0],
         },
     )
     assert fitted.status_code == 200, fitted.text
@@ -129,7 +139,23 @@ def test_evaluate_saved_model_uses_fixed_theta_and_persists_test_metrics(
     evaluation_harness: EvaluationHarness,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    dataset_id, version_id, model_id, _ = _fit_saved_model(evaluation_harness)
+    dataset_id, version_id, model_id, artifact = _fit_saved_model(evaluation_harness)
+    saved = modeling_service.load_saved_arx_model(
+        model_id=model_id,
+        artifact_root=evaluation_harness.artifact_root,
+    )
+
+    async def load_source_series():  # type: ignore[no-untyped-def]
+        async with evaluation_harness.session_factory() as session:
+            return await modeling_service.load_version_series(
+                session,
+                version_id=version_id,
+                dataset_id=dataset_id,
+                artifact_root=evaluation_harness.artifact_root,
+            )
+
+    source_series = asyncio.run(load_source_series())
+    n_source_samples = source_series.n_samples
 
     async def before() -> tuple[int, UUID | None]:
         async with evaluation_harness.session_factory() as session:
@@ -152,6 +178,21 @@ def test_evaluate_saved_model_uses_fixed_theta_and_persists_test_metrics(
 
     monkeypatch.setattr(modeling_service, "fit_arx_core", fail_if_refit)
     monkeypatch.setattr(modeling_service, "fit_arx_on_version", fail_if_refit)
+    captured_whiteness_residuals: list[np.ndarray] = []
+    captured_acf_residuals: list[np.ndarray] = []
+    formal_whiteness = modeling_service.residual_whiteness_ratio
+    formal_acf = modeling_service._acf
+
+    def capture_whiteness(residuals: np.ndarray, *, max_lag: int = 20) -> float:
+        captured_whiteness_residuals.append(np.asarray(residuals, dtype=float).copy())
+        return formal_whiteness(residuals, max_lag=max_lag)
+
+    def capture_acf(residuals: np.ndarray):  # type: ignore[no-untyped-def]
+        captured_acf_residuals.append(np.asarray(residuals, dtype=float).copy())
+        return formal_acf(residuals)
+
+    monkeypatch.setattr(modeling_service, "residual_whiteness_ratio", capture_whiteness)
+    monkeypatch.setattr(modeling_service, "_acf", capture_acf)
     result = asyncio.run(
         _evaluate(
             evaluation_harness,
@@ -161,6 +202,21 @@ def test_evaluate_saved_model_uses_fixed_theta_and_persists_test_metrics(
     )
 
     assert result.source_version_id == version_id
+    assert result.evaluation_scope == "test"
+    assert result.model_structure.model_type == "ARX"
+    assert result.model_structure.input_columns == ["u1", "u2"]
+    assert result.model_structure.output_column == "y"
+    assert result.model_structure.na == 2
+    assert result.model_structure.nb == {"u1": 2, "u2": 2}
+    assert result.model_structure.delays == {"u1": 0, "u2": 0}
+    assert result.model_structure.estimator == "ols"
+    assert result.model_structure.ridge_alpha is None
+    assert result.model_structure.parameter_count == saved.structure.parameter_count
+    expected_stable, expected_modulus = modeling_service.is_stable(
+        saved.theta[: saved.structure.na]
+    )
+    assert result.model_health.stable is expected_stable
+    assert result.model_health.max_pole_modulus == pytest.approx(expected_modulus)
     assert result.test.one_step.mae is not None
     assert result.test.one_step.rmse is not None
     assert result.test.one_step.r2 is not None
@@ -171,6 +227,45 @@ def test_evaluate_saved_model_uses_fixed_theta_and_persists_test_metrics(
     assert result.test.free_run.r2 is not None
     assert result.test.free_run.fit is not None
     assert result.test.free_run.nrmse is not None
+    expected_test_start = int(
+        n_source_samples * (saved.payload.train_ratio + saved.payload.validation_ratio)
+    ) + saved.structure.max_history
+    assert result.series.sample_indices == list(range(expected_test_start, n_source_samples))
+    assert result.series.timestamps == [
+        source_series.timestamps[index] for index in result.series.sample_indices
+    ]
+    aligned_lengths = {
+        len(result.series.sample_indices),
+        len(result.series.y_true),
+        len(result.series.one_step_prediction),
+        len(result.series.free_run_prediction),
+        len(result.series.one_step_residual),
+        len(result.series.free_run_residual),
+    }
+    assert aligned_lengths == {result.test.n_samples}
+    assert result.series.one_step_residual == pytest.approx(
+        np.asarray(result.series.y_true) - np.asarray(result.series.one_step_prediction)
+    )
+    assert result.series.free_run_residual == pytest.approx(
+        np.asarray(result.series.y_true) - np.asarray(result.series.free_run_prediction)
+    )
+    assert result.residual_diagnostics.partition == "test"
+    assert result.residual_diagnostics.residual_type == "one_step"
+    assert len(captured_whiteness_residuals) == 1
+    assert len(captured_acf_residuals) == 1
+    np.testing.assert_allclose(
+        captured_whiteness_residuals[0], result.series.one_step_residual
+    )
+    np.testing.assert_allclose(captured_acf_residuals[0], result.series.one_step_residual)
+    assert result.residual_diagnostics.residual_whiteness_ratio == pytest.approx(
+        formal_whiteness(np.asarray(result.series.one_step_residual))
+    )
+    expected_acf = formal_acf(np.asarray(result.series.one_step_residual))
+    assert result.residual_diagnostics.acf_values == pytest.approx(expected_acf.acf_values)
+    assert result.residual_diagnostics.confidence_interval == pytest.approx(
+        expected_acf.confidence_interval
+    )
+    assert artifact["configuration"]["evaluate_test"] is False
 
     async def after() -> None:
         async with evaluation_harness.session_factory() as session:
@@ -180,7 +275,7 @@ def test_evaluate_saved_model_uses_fixed_theta_and_persists_test_metrics(
             assert run.status == "succeeded"
             assert run.source_version_id == version_id
             assert run.parameters == {"model_id": str(model_id), "evaluation_scope": "test"}
-            assert run.result["model_id"] == str(model_id)
+            assert run.result == result.model_dump(mode="json")
             assert run.result["test"]["one_step"]["rmse"] == pytest.approx(result.test.one_step.rmse)
             version_count = int(
                 await session.scalar(

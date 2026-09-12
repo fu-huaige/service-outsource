@@ -51,9 +51,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.dataset import ProcessingRun
 from app.models.operation_log import OperationLog
 from app.schemas.modeling import (
+    ArxEvaluationResidualDiagnostics,
+    ArxEvaluationSeries,
     ArxFitData,
     ArxFitRequest,
     ArxMetrics,
+    ArxModelHealth,
+    ArxModelStructureData,
     ArxPlotData,
     ArxResidualDiagnostics,
     ArxSavedModelEvaluationData,
@@ -338,6 +342,7 @@ async def fit_arx_on_version(
             message="ARX 辨识、自由仿真评价与先验校验已完成。",
         ),
         estimator=result.estimator,
+        model_structure=to_model_structure_data(resolved, result.structure),
         dataset_id=series.dataset_id,
         version_id=series.version_id,
         coefficients=result.coefficients,
@@ -499,25 +504,81 @@ async def evaluate_saved_arx_model(
                 "Test 分区没有可评价的 ARX 样本。",
                 details={"model_id": str(model_id)},
             )
-        one_step = PredictionMetrics(
-            **_scores(regressor.targets[test_rows], (regressor.features @ saved.theta)[test_rows])
+        test_start = splits.val_end + saved.structure.max_history
+        sample_indices_array = regressor.time_indices[test_rows]
+        y_true_array = regressor.targets[test_rows]
+        one_step_prediction_array = (regressor.features @ saved.theta)[test_rows]
+        _, full_free_run_prediction = free_run_simulate(
+            saved.theta,
+            saved.structure,
+            inputs=inputs,
+            output=output,
+            start=test_start,
+            stop=splits.test_end,
         )
-        free_run = PredictionMetrics(
-            **_free_run_scores(
-                saved.theta,
-                saved.structure,
-                inputs=inputs,
-                output=output,
-                start=splits.val_end + saved.structure.max_history,
-                stop=splits.test_end,
+        free_run_offsets = sample_indices_array - test_start
+        if (
+            np.any(free_run_offsets < 0)
+            or np.any(free_run_offsets >= full_free_run_prediction.size)
+        ):
+            raise ModelingDomainError(
+                "MODEL_EVALUATION_ALIGNMENT_FAILED",
+                "Test 自由仿真结果无法与来源数据行确定性对齐。",
+                details={"model_id": str(model_id)},
             )
+        free_run_prediction_array = full_free_run_prediction[free_run_offsets]
+        one_step_residual_array = y_true_array - one_step_prediction_array
+        free_run_residual_array = y_true_array - free_run_prediction_array
+
+        one_step = _to_prediction_metrics(_scores(y_true_array, one_step_prediction_array))
+        free_run_scores = _scores(y_true_array, free_run_prediction_array)
+        free_run_scores["fit"] = fit_percentage(y_true_array, free_run_prediction_array)
+        free_run = _to_prediction_metrics(free_run_scores)
+        sample_indices = [int(value) for value in sample_indices_array]
+        timestamps = (
+            [series.timestamps[index] for index in sample_indices]
+            if series.timestamps and max(sample_indices, default=-1) < len(series.timestamps)
+            else []
         )
-        test = ArxTestEvaluationData(one_step=one_step, free_run=free_run)
+        test = ArxTestEvaluationData(
+            one_step=one_step,
+            free_run=free_run,
+            n_samples=len(sample_indices),
+        )
+        acf = _acf(one_step_residual_array)
+        stable, max_pole_modulus = is_stable(saved.theta[: saved.structure.na])
+        evaluation = ArxSavedModelEvaluationData(
+            model_id=model_id,
+            source_version_id=saved.source_version_id,
+            processing_run_id=run.id,
+            evaluation_scope="test",
+            model_structure=to_model_structure_data(saved.payload, saved.structure),
+            model_health=ArxModelHealth(
+                stable=stable,
+                max_pole_modulus=_finite(max_pole_modulus),
+            ),
+            test=test,
+            series=ArxEvaluationSeries(
+                sample_indices=sample_indices,
+                timestamps=timestamps,
+                y_true=[float(value) for value in y_true_array],
+                one_step_prediction=[float(value) for value in one_step_prediction_array],
+                free_run_prediction=[float(value) for value in free_run_prediction_array],
+                one_step_residual=[float(value) for value in one_step_residual_array],
+                free_run_residual=[float(value) for value in free_run_residual_array],
+            ),
+            residual_diagnostics=ArxEvaluationResidualDiagnostics(
+                partition="test",
+                residual_type="one_step",
+                residual_whiteness_ratio=_finite(
+                    residual_whiteness_ratio(one_step_residual_array)
+                ),
+                acf_values=acf.acf_values,
+                confidence_interval=acf.confidence_interval,
+            ),
+        )
         run.status = "succeeded"
-        run.result = {
-            "model_id": str(model_id),
-            "test": test.model_dump(mode="json"),
-        }
+        run.result = evaluation.model_dump(mode="json")
         run.finished_at = datetime.now(UTC)
         await session.commit()
     except Exception as error:
@@ -530,12 +591,27 @@ async def evaluate_saved_arx_model(
         run.finished_at = datetime.now(UTC)
         await session.commit()
         raise
-    return ArxSavedModelEvaluationData(
-        model_id=model_id,
-        source_version_id=saved.source_version_id,
-        test=test,
-        processing_run_id=run.id,
+    return evaluation
+
+
+def to_model_structure_data(
+    payload: ArxFitRequest,
+    structure: ArxStructure,
+) -> ArxModelStructureData:
+    """Expose the persisted configuration without leaking internal request details."""
+
+    return ArxModelStructureData(
+        model_type="ARX",
+        input_columns=list(payload.input_columns),
+        output_column=payload.output_column,
+        na=payload.na,
+        nb=dict(structure.nb),
+        delays=dict(structure.nk),
+        estimator=payload.resolved_estimator(),
+        ridge_alpha=payload.ridge_alpha,
+        parameter_count=structure.parameter_count,
     )
+
 
 def to_validation_data(
     validation: ModelValidation,

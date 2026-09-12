@@ -259,21 +259,285 @@ describe("ArtifactWorkbench profile_dataset rendering", () => {
     expect(wrapper.get(".aw-json").text()).toContain('"selected_count": 2');
   });
 
-  it("keeps the existing model renderer for ARX artifacts", async () => {
+  it("routes ARX artifacts to the dedicated business renderer", async () => {
     const wrapper = await mountWorkbench(executionWith("arx_fit", {
-      na: 2,
-      nb: 3,
-      nk: 1,
-      fit_pct: 88.4,
+      model_id: "11111111-1111-1111-1111-111111111111",
+      processing_run_id: "22222222-2222-2222-2222-222222222222",
+      version_id: "33333333-3333-3333-3333-333333333333",
+      estimator: "ols",
+      model_structure: {
+        model_type: "ARX",
+        input_columns: ["u1", "u2", "u3"],
+        output_column: "y",
+        na: 2,
+        nb: { u1: 2, u2: 3, u3: 1 },
+        delays: { u1: 0, u2: 4, u3: 1 },
+        estimator: "ols",
+        ridge_alpha: null,
+        parameter_count: 8,
+      },
+      validation: {
+        free_run_fit: 84.237,
+        free_run_rmse: 0.30000000000004,
+        one_step_fit: 92.415,
+        fit_gap: 8.178,
+        residual_whiteness_ratio: 0.81234,
+        stable: true,
+        steady_state_gains: { u1: 1.24, u2: -0.42 },
+      },
+      metrics: { aic: -126.789, bic: -112.456 },
+      coefficients: { a1: -1.2, a2: 0.35, b_u1_0: 0.42 },
+      prior_violations: [],
     }));
 
+    const renderer = wrapper.get('[data-test="arx-model-artifact-renderer"]');
     expect(wrapper.find('[data-test="profile-artifact-renderer"]').exists()).toBe(false);
-    expect(wrapper.find('[data-test="anomaly-artifact-renderer"]').exists()).toBe(false);
-    expect(wrapper.find('[data-test="cleaning-artifact-renderer"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain("模型结构 (Model Structure)");
-    expect(wrapper.text()).toContain("输出阶数 na");
-    expect(wrapper.text()).toContain("FIT 拟合度");
+    expect(renderer.text()).toContain("ARX 模型结果");
+    expect(renderer.text()).not.toContain("Model identification");
+    expect(renderer.text()).toContain("使用验证集评估模型选择效果");
+    expect(renderer.get('[data-test="arx-model-summary"]').text()).toContain("估计方法OLS");
+    expect(renderer.get('[data-test="arx-model-summary"]').text()).toContain("输入通道3");
+    expect(renderer.get('[data-test="arx-model-summary"]').text()).toContain("参数数量8");
+    expect(renderer.get('[data-test="arx-model-summary"]').text()).toContain("稳定性稳定");
+
+    const structure = renderer.get('[data-test="arx-model-structure"]');
+    expect(structure.text()).toContain("u1");
+    expect(structure.text()).toContain("nb = 2");
+    expect(structure.text()).toContain("delay = 4");
+    expect(structure.text()).toContain("na = 2");
+    expect(structure.text()).toContain("输出y");
+    const channelRows = renderer.findAll('[data-test="arx-channel-table"] tbody tr');
+    expect(channelRows[0]?.text()).toContain("u1");
+    expect(channelRows[0]?.text()).toContain("1.24");
+    expect(channelRows[1]?.text()).toContain("u2");
+    expect(channelRows[1]?.text()).toContain("-0.42");
+    expect(channelRows[2]?.text()).toContain("u3");
+    expect(channelRows[2]?.text()).toContain("—");
+
+    const validation = renderer.get('[data-test="arx-validation"]').text();
+    expect(validation).toContain("验证集 · 模型选择依据");
+    expect(validation).not.toContain("Validation · 模型选择依据");
+    expect(validation).toContain("Free-run FIT84.24%");
+    expect(validation).toContain("Free-run RMSE0.3");
+    expect(validation).toContain("One-step FIT92.42%");
+    expect(validation).toContain("Fit Gap8.18 pp");
+    expect(validation).toContain("Residual Whiteness0.8123");
+    expect(validation).not.toContain("AIC");
+    expect(validation).not.toContain("BIC");
+
+    const coefficientOptions = renderer
+      .get('[data-test="arx-coefficients"]')
+      .getComponent(ChartContainerStub)
+      .props("options") as ChartOption;
+    expect(coefficientOptions.yAxis).toEqual(expect.objectContaining({
+      data: ["a1", "a2", "b_u1_0"],
+    }));
+    expect(coefficientOptions.series).toEqual([
+      expect.objectContaining({ type: "bar", data: [-1.2, 0.35, 0.42] }),
+    ]);
+
+    const primaryText = [
+      renderer.get(".arx-model__header").text(),
+      renderer.get('[data-test="arx-model-summary"]').text(),
+      structure.text(),
+      validation,
+      renderer.get('[data-test="arx-coefficients"]').text(),
+    ].join(" ");
+    expect(primaryText).not.toContain("11111111-1111-1111-1111-111111111111");
+    const technical = renderer.get('[data-test="arx-model-technical-details"]');
+    expect(technical.attributes("open")).toBeUndefined();
+    expect(technical.text()).toContain("11111111-1111-1111-1111-111111111111");
+    expect(technical.text()).toContain("AIC -126.789");
     expect(wrapper.find(".aw-json").exists()).toBe(false);
+  });
+
+  it("gracefully degrades historical ARX artifacts without guessing structure", async () => {
+    const wrapper = await mountWorkbench(executionWith("fit_arx", {
+      model_id: "11111111-1111-1111-1111-111111111111",
+      estimator: "ridge",
+      coefficients: { a1: -0.9 },
+    }));
+
+    expect(wrapper.get('[data-test="arx-model-artifact-renderer"]').exists()).toBe(true);
+    expect(wrapper.get('[data-test="arx-model-structure-empty"]').text()).toContain(
+      "该历史任务未记录完整模型结构"
+    );
+    expect(wrapper.find('[data-test="arx-channel-table"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("delay =");
+  });
+});
+
+describe("ArtifactWorkbench model evaluation rendering", () => {
+  const evaluationPayload = () => ({
+    model_id: "44444444-4444-4444-4444-444444444444",
+    source_version_id: "55555555-5555-5555-5555-555555555555",
+    processing_run_id: "66666666-6666-6666-6666-666666666666",
+    evaluation_scope: "test",
+    model_structure: {
+      model_type: "ARX",
+      input_columns: ["u1", "u2"],
+      output_column: "y",
+      na: 2,
+      nb: { u1: 2, u2: 2 },
+      delays: { u1: 0, u2: 0 },
+      estimator: "ols",
+      ridge_alpha: null,
+      parameter_count: 6,
+    },
+    model_health: { stable: true, max_pole_modulus: 0.743210000000004 },
+    test: {
+      free_run: { fit: 84.567, r2: 0.81234, rmse: 0.30000000000004, mae: 0.24567, nrmse: 0.12345 },
+      one_step: { fit: 92.345, r2: 0.92345, rmse: 0.18000000000003, mae: 0.14567, nrmse: 0.07345 },
+      n_samples: 4,
+    },
+    series: {
+      sample_indices: [960, 961, 962, 963],
+      timestamps: [],
+      y_true: [1, 2, 1.5, 2.2],
+      free_run_prediction: [0.8, 1.7, 1.3, 2],
+      one_step_prediction: [0.95, 2.05, 1.48, 2.18],
+      one_step_residual: [0.05, -0.05, 0.02, 0.02],
+      free_run_residual: [0.2, 0.3, 0.2, 0.2],
+    },
+    residual_diagnostics: {
+      partition: "test",
+      residual_type: "one_step",
+      residual_whiteness_ratio: 0.81234,
+      acf_values: [1, 0.24, -0.11],
+      confidence_interval: 0.12,
+    },
+    validation: { residual_whiteness_ratio: 0.11111 },
+  });
+
+  it("defaults to Free-run and switches both metrics and prediction series", async () => {
+    const wrapper = await mountWorkbench(executionWith("evaluate_model", evaluationPayload()));
+    const renderer = wrapper.get('[data-test="model-evaluation-artifact-renderer"]');
+
+    expect(renderer.text()).toContain("最终测试集评价");
+    expect(renderer.text()).not.toContain("Final evaluation");
+    expect(renderer.get('[data-test="evaluation-scope-badge"]').text()).toBe("Held-out Test");
+    expect(renderer.get('[data-test="evaluation-leakage-note"]').text()).toContain(
+      "未参与模型训练、参数选择或闭环寻优"
+    );
+    expect(renderer.get('[data-test="prediction-mode-free-run"]').classes()).toContain("is-active");
+    expect(renderer.get('[data-test="prediction-mode-free-run"]').text()).toBe("Free-run");
+    expect(renderer.get('[data-test="prediction-mode-one-step"]').text()).toBe("One-step");
+    const metrics = renderer.get('[data-test="evaluation-metrics"]');
+    expect(metrics.attributes("data-mode")).toBe("free_run");
+    expect(metrics.text()).toContain("FIT84.57%");
+    expect(metrics.text()).toContain("R²0.8123");
+    expect(metrics.text()).toContain("RMSE0.3");
+    expect(metrics.text()).not.toContain("0.30000000000004");
+
+    const predictionChart = renderer
+      .get('[data-test="evaluation-prediction-section"]')
+      .getComponent(ChartContainerStub);
+    let predictionOptions = predictionChart.props("options") as ChartOption;
+    expect(predictionOptions.legend).toEqual(expect.objectContaining({
+      data: ["真实值", "自由运行预测"],
+    }));
+    expect(predictionOptions.xAxis).toEqual(expect.objectContaining({
+      data: [960, 961, 962, 963],
+    }));
+    expect(predictionOptions.series).toEqual([
+      expect.objectContaining({ name: "真实值", data: [1, 2, 1.5, 2.2] }),
+      expect.objectContaining({ name: "自由运行预测", data: [0.8, 1.7, 1.3, 2] }),
+    ]);
+    expect(predictionOptions.dataZoom).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "inside", filterMode: "none" }),
+      expect.objectContaining({ type: "slider", filterMode: "none" }),
+    ]));
+
+    await renderer.get('[data-test="prediction-mode-one-step"]').trigger("click");
+    await nextTick();
+    expect(metrics.attributes("data-mode")).toBe("one_step");
+    expect(metrics.text()).toContain("FIT92.34%");
+    expect(metrics.text()).toContain("R²0.9235");
+    predictionOptions = predictionChart.props("options") as ChartOption;
+    expect(predictionOptions.series).toEqual([
+      expect.objectContaining({ name: "真实值", data: [1, 2, 1.5, 2.2] }),
+      expect.objectContaining({ name: "单步预测", data: [0.95, 2.05, 1.48, 2.18] }),
+    ]);
+  });
+
+  it("keeps residuals fixed to Test one-step data and reads Test diagnostics", async () => {
+    const wrapper = await mountWorkbench(executionWith("evaluate_model", evaluationPayload()));
+    const renderer = wrapper.get('[data-test="model-evaluation-artifact-renderer"]');
+    const residualChart = renderer
+      .get('[data-test="evaluation-residual-section"]')
+      .getComponent(ChartContainerStub);
+    const before = residualChart.props("options") as ChartOption;
+    expect(before.series).toEqual([
+      expect.objectContaining({
+        name: "一步预测残差",
+        data: [0.05, -0.05, 0.02, 0.02],
+        markLine: expect.objectContaining({ data: [{ yAxis: 0 }] }),
+      }),
+    ]);
+
+    await renderer.get('[data-test="prediction-mode-one-step"]').trigger("click");
+    await nextTick();
+    expect((residualChart.props("options") as ChartOption).series).toEqual(before.series);
+    const diagnostics = renderer.get('[data-test="evaluation-diagnostics"]').text();
+    expect(diagnostics).toContain("残差白度0.8123");
+    expect(diagnostics).not.toContain("0.1111");
+    expect(diagnostics).toContain("模型稳定性稳定");
+    expect(diagnostics).toContain("最大极点模0.7432");
+    expect(diagnostics).toContain("测试样本数4");
+  });
+
+  it("renders Test one-step ACF and keeps complete UUIDs in closed technical details", async () => {
+    const wrapper = await mountWorkbench(executionWith("evaluate_model", evaluationPayload()));
+    const renderer = wrapper.get('[data-test="model-evaluation-artifact-renderer"]');
+    const acfSection = renderer.get('[data-test="evaluation-acf-section"]');
+    expect(acfSection.text()).toContain("Test one-step residual");
+    expect(acfSection.text()).toContain("ACF");
+    const acfOptions = acfSection.getComponent(ChartContainerStub).props("options") as ChartOption;
+    expect(acfOptions.xAxis).toEqual(expect.objectContaining({ data: [0, 1, 2] }));
+    expect(acfOptions.series).toEqual([
+      expect.objectContaining({
+        type: "bar",
+        data: [1, 0.24, -0.11],
+        markLine: expect.objectContaining({
+          data: [{ yAxis: 0.12 }, { yAxis: -0.12 }],
+        }),
+      }),
+    ]);
+
+    const primaryText = [
+      renderer.get(".evaluation-header").text(),
+      renderer.get('[data-test="evaluation-metrics"]').text(),
+      renderer.get('[data-test="evaluation-prediction-section"]').text(),
+      renderer.get('[data-test="evaluation-residual-section"]').text(),
+      renderer.get('[data-test="evaluation-diagnostics"]').text(),
+      acfSection.text(),
+    ].join(" ");
+    expect(primaryText).not.toContain("44444444-4444-4444-4444-444444444444");
+    const technical = renderer.get('[data-test="model-evaluation-technical-details"]');
+    expect(technical.attributes("open")).toBeUndefined();
+    expect(technical.text()).toContain("44444444-4444-4444-4444-444444444444");
+    expect(technical.text()).toContain("55555555-5555-5555-5555-555555555555");
+  });
+
+  it("keeps historical metric-only evaluations usable without fake charts", async () => {
+    const wrapper = await mountWorkbench(executionWith("evaluate_model", {
+      model_id: "44444444-4444-4444-4444-444444444444",
+      test: {
+        free_run: { fit: 70.5, r2: 0.61, rmse: 0.8, mae: 0.6, nrmse: 0.4 },
+        one_step: { fit: 81.2, r2: 0.77, rmse: 0.5, mae: 0.4, nrmse: 0.25 },
+      },
+    }));
+
+    expect(wrapper.get('[data-test="evaluation-metrics"]').text()).toContain("FIT70.50%");
+    expect(wrapper.get('[data-test="evaluation-prediction-empty"]').text()).toContain(
+      "该历史评价未保存测试序列"
+    );
+    expect(wrapper.get('[data-test="evaluation-residual-empty"]').exists()).toBe(true);
+    expect(wrapper.get('[data-test="evaluation-diagnostics-empty"]').text()).toContain(
+      "该历史评价未保存残差诊断数据"
+    );
+    expect(wrapper.find('[data-test="evaluation-prediction-chart"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="evaluation-acf-chart"]').exists()).toBe(false);
   });
 });
 

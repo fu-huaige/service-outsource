@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -89,11 +90,55 @@ class PredictionMetrics(Schema):
     nrmse: float | None = None
 
 
+class ArxModelStructureData(Schema):
+    """Stable public summary of the exact persisted ARX configuration."""
+
+    model_type: Literal["ARX"] = "ARX"
+    input_columns: list[str]
+    output_column: str
+    na: int = Field(ge=1)
+    nb: dict[str, int]
+    delays: dict[str, int]
+    estimator: Literal["ols", "ridge"]
+    ridge_alpha: float | None = Field(default=None, ge=0)
+    parameter_count: int = Field(ge=1)
+
+
+class ArxEvaluationSeries(Schema):
+    """Aligned observations, predictions and residuals from held-out Test only."""
+
+    sample_indices: list[int]
+    timestamps: list[datetime] = Field(default_factory=list)
+    y_true: list[float]
+    one_step_prediction: list[float]
+    free_run_prediction: list[float]
+    one_step_residual: list[float]
+    free_run_residual: list[float]
+
+
+class ArxModelHealth(Schema):
+    """Partition-independent properties of the evaluated model itself."""
+
+    stable: bool
+    max_pole_modulus: float | None = None
+
+
+class ArxEvaluationResidualDiagnostics(Schema):
+    """Held-out Test diagnostics computed from one-step residuals."""
+
+    partition: Literal["test"] = "test"
+    residual_type: Literal["one_step"] = "one_step"
+    residual_whiteness_ratio: float | None = None
+    acf_values: list[float]
+    confidence_interval: float | None = None
+
+
 class ArxTestEvaluationData(Schema):
     """Held-out Test metrics for one immutable, already-trained ARX model."""
 
     one_step: PredictionMetrics
     free_run: PredictionMetrics
+    n_samples: int = Field(ge=0)
 
 
 class ArxSavedModelEvaluationData(Schema):
@@ -101,8 +146,14 @@ class ArxSavedModelEvaluationData(Schema):
 
     model_id: UUID
     source_version_id: UUID
-    test: ArxTestEvaluationData
     processing_run_id: UUID
+    evaluation_scope: Literal["test"] = "test"
+    model_structure: ArxModelStructureData
+    model_health: ArxModelHealth
+    test: ArxTestEvaluationData
+    series: ArxEvaluationSeries
+    residual_diagnostics: ArxEvaluationResidualDiagnostics
+
 
 class ArxMetrics(Schema):
     """Compatibility metrics plus prediction-mode-explicit partition metrics.
@@ -133,6 +184,8 @@ class ArxMetrics(Schema):
     test_free_run_fit: float | None = None
     aic: float | None = None
     bic: float | None = None
+
+
 class SplitIndices(Schema):
     train_end: int = Field(ge=0)
     val_end: int = Field(ge=0)
@@ -158,6 +211,7 @@ class ArxFitData(Schema):
     processing_run_id: UUID
     task: TaskResource
     estimator: Literal["ols", "ridge"]
+    model_structure: ArxModelStructureData
     dataset_id: UUID | None = None
     version_id: UUID | None = None
     coefficients: dict[str, float]

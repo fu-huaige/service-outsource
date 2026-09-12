@@ -185,14 +185,14 @@
             type="button"
             class="ws-top-btn"
             :class="{ 'is-active': showArtifact }"
-            :title="showArtifact ? '收起成果面板' : '展开成果面板'"
-            :aria-label="showArtifact ? '收起成果面板' : '展开成果面板'"
+            :title="showArtifact ? '收起成果展示区' : '展开成果展示区'"
+            :aria-label="showArtifact ? '收起成果展示区' : '展开成果展示区'"
             @click="showArtifact = !showArtifact"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="14" height="14">
               <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="15" y1="3" x2="15" y2="21"/>
             </svg>
-            <span>成果工作区</span>
+            <span>成果展示区</span>
           </button>
         </div>
       </header>

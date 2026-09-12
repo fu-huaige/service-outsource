@@ -20,7 +20,7 @@ from app.main import create_app
 from app.models import Base, DatasetVersion, ProcessingRun
 from app.models.agent_execution import AgentExecutionSession, AgentStepRun
 from app.schemas.copilot import ExecutionPlan, ExecutionPlanStep
-from app.services import agent_service
+from app.services import agent_service, modeling_service
 from app.services.agent_arx_modeling_service import (
     ArxStructureError,
     resolve_arx_lag_provenance,
@@ -936,48 +936,58 @@ def test_agent_evaluation_fails_on_saved_model_source_version_mismatch(
     assert evaluated.status == "FAILED"
     assert evaluated.processing_run_ids == []
 
-def test_explicit_evaluation_trigger_executes_saved_model_once(
+def test_continuation_evaluates_saved_model_once(
     arx_harness: ArxHarness,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     execution = _chat_to_arx_confirmation(arx_harness)
     fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
-    confirmed = _confirm(arx_harness, execution_id=execution.id, step_id=fit.step_id)
-    assert confirmed.status_code == 200, confirmed.text
     source_version_id = execution.current_version_id
     before_bytes = asyncio.run(_version_bytes(arx_harness, source_version_id))
     before_runs = asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id))
     before_versions = asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id))
+    from app.services import agent_tool_adapter
 
-    def fail_if_refit(*args: object, **kwargs: object) -> None:
-        raise AssertionError("evaluate_model trigger must not enter an ARX fitting path")
+    fit_calls = 0
+    formal_fit = agent_tool_adapter.fit_arx_on_version
 
-    monkeypatch.setattr("app.services.agent_tool_adapter.fit_arx_on_version", fail_if_refit)
-    monkeypatch.setattr("app.services.modeling_service.fit_arx_core", fail_if_refit)
-    response = arx_harness.client.post(
-        "/api/v1/copilot/evaluate-model/execute",
-        json={"execution_id": str(execution.id)},
-    )
+    async def count_fit_calls(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+        nonlocal fit_calls
+        fit_calls += 1
+        return await formal_fit(*args, **kwargs)  # type: ignore[arg-type]
 
-    assert response.status_code == 200, response.text
-    data = response.json()["data"]
+    monkeypatch.setattr(agent_tool_adapter, "fit_arx_on_version", count_fit_calls)
+    confirmed = _confirm(arx_harness, execution_id=execution.id, step_id=fit.step_id)
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["data"]["workflow_status"] == "SUCCEEDED"
     persisted = asyncio.run(_load_execution(arx_harness, execution.id))
     fitted = next(step for step in persisted.step_runs if step.tool_name == "fit_arx")
     evaluated = next(step for step in persisted.step_runs if step.tool_name == "evaluate_model")
-    assert data["execution_id"] == str(execution.id)
-    assert data["workflow_status"] == "SUCCEEDED"
-    assert data["step_id"] == evaluated.step_id
-    assert data["step_status"] == "SUCCEEDED"
-    assert data["result_payload"] == evaluated.result_payload
-    assert data["processing_run_ids"] == evaluated.processing_run_ids
+    assert fit_calls == 1
+    assert persisted.workflow_status == "SUCCEEDED"
+    assert evaluated.status == "SUCCEEDED"
     assert evaluated.source_version_id == fitted.source_version_id == source_version_id
     assert evaluated.result_version_id is None
     assert evaluated.result_payload["model_id"] == fitted.result_payload["model_id"]
+    assert fitted.result_payload["model_structure"]["model_type"] == "ARX"
+    assert fitted.result_payload["metrics"]["test_fit"] is None
+    assert fitted.result_payload["metrics"]["test_free_run_fit"] is None
+    assert "evaluation_scope" not in fitted.result_payload
+    assert "series" not in fitted.result_payload
+    assert "model_health" not in fitted.result_payload
+    assert evaluated.result_payload["evaluation_scope"] == "test"
+    assert evaluated.result_payload["model_structure"] == fitted.result_payload["model_structure"]
+    assert evaluated.result_payload["residual_diagnostics"]["partition"] == "test"
+    assert evaluated.result_payload["residual_diagnostics"]["residual_type"] == "one_step"
     assert evaluated.result_payload["test"]["one_step"]["rmse"] is not None
     assert evaluated.result_payload["test"]["free_run"]["rmse"] is not None
+    assert evaluated.result_payload["test"]["n_samples"] == len(
+        evaluated.result_payload["series"]["sample_indices"]
+    )
     assert len(evaluated.processing_run_ids) == 1
     processing_run = asyncio.run(_load_processing_run(arx_harness, UUID(evaluated.processing_run_ids[0])))
     assert processing_run.run_type == "modeling.arx_evaluation"
+    assert processing_run.result == evaluated.result_payload
     assert persisted.current_version_id == source_version_id
     assert asyncio.run(_version_bytes(arx_harness, source_version_id)) == before_bytes
     assert asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id)) == before_runs + 1
@@ -1377,9 +1387,33 @@ def test_optimized_model_is_the_only_new_dag_evaluation_predecessor(
     assert evaluated.source_version_id == optimized.source_version_id == source_version_id
     assert evaluated.result_version_id is None
     assert evaluated.result_payload["model_id"] == optimized.result_payload["model_id"]
+    saved = modeling_service.load_saved_arx_model(
+        model_id=UUID(optimized.result_payload["model_id"]),
+        artifact_root=arx_harness.artifact_root,
+    )
+    expected_stable, expected_modulus = modeling_service.is_stable(
+        saved.theta[: saved.structure.na]
+    )
+    assert evaluated.result_payload["evaluation_scope"] == "test"
+    assert evaluated.result_payload["model_structure"] == {
+        "model_type": "ARX",
+        "input_columns": saved.payload.input_columns,
+        "output_column": saved.payload.output_column,
+        "na": saved.structure.na,
+        "nb": saved.structure.nb,
+        "delays": saved.structure.nk,
+        "estimator": saved.payload.resolved_estimator(),
+        "ridge_alpha": saved.payload.ridge_alpha,
+        "parameter_count": saved.structure.parameter_count,
+    }
+    assert evaluated.result_payload["model_health"]["stable"] is expected_stable
+    assert evaluated.result_payload["model_health"]["max_pole_modulus"] == pytest.approx(
+        expected_modulus
+    )
     assert len(evaluated.processing_run_ids) == 1
     run = asyncio.run(_load_processing_run(arx_harness, UUID(evaluated.processing_run_ids[0])))
     assert run.run_type == "modeling.arx_evaluation"
+    assert run.result == evaluated.result_payload
     assert persisted.current_version_id == source_version_id
     assert asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id)) == before_runs + 1
     assert asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id)) == before_versions
