@@ -237,7 +237,8 @@ const resolvedBody = (body: string) => {
 .fit-val {
   font-weight: 600;
   color: var(--accent);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  letter-spacing: normal;
 }
 
 .artifact-path {

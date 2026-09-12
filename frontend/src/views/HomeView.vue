@@ -87,7 +87,7 @@
         <div v-else class="home-workflows">
           <div class="home-section-header">
             <span class="home-section-label">
-              <span class="home-section-label__technical font-mono">SUGGESTED WORKFLOWS</span>
+              <span class="home-section-label__technical">SUGGESTED WORKFLOWS</span>
               <span class="home-section-label__localized"> · 推荐场景</span>
             </span>
           </div>
@@ -99,7 +99,7 @@
               @click="handleQuickAction({ label: wf.title, prompt: wf.prompt })"
             >
               <div class="workflow-card__top">
-                <span class="workflow-badge font-mono">{{ wf.tag }}</span>
+                <span class="workflow-badge">{{ wf.tag }}</span>
                 <svg class="workflow-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
                   <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
                 </svg>
@@ -343,7 +343,8 @@ onMounted(async () => {
 }
 
 .home-section-label__technical {
-  letter-spacing: 0.08em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
 }
 
 .home-section-label__localized {

@@ -46,7 +46,7 @@
                   </div>
                 </div>
                 <div class="cmd-item-right">
-                  <span v-if="item.shortcut" class="cmd-item-shortcut font-mono">{{ item.shortcut }}</span>
+                  <span v-if="item.shortcut" class="cmd-item-shortcut">{{ item.shortcut }}</span>
                   <el-icon class="cmd-enter-icon"><Right /></el-icon>
                 </div>
               </div>
@@ -66,7 +66,7 @@
             <span><kbd>Enter</kbd> 确认跳转</span>
             <span><kbd>Esc</kbd> 关闭面板</span>
           </div>
-          <div class="footer-brand font-mono">IndusOpt Command Hub</div>
+          <div class="footer-brand">IndusOpt Command Hub</div>
         </div>
       </div>
     </div>
@@ -413,7 +413,7 @@ defineExpose({
 }
 
 .cmd-esc-badge {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 10px;
   font-weight: 700;
   padding: 2px 7px;
@@ -597,7 +597,7 @@ defineExpose({
 }
 
 .footer-keys kbd {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 10px;
   font-weight: 600;
   padding: 1px 5px;
@@ -611,11 +611,9 @@ defineExpose({
 .footer-brand {
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
   color: var(--text-muted);
 }
 
-.font-mono {
-  font-family: var(--font-mono);
-}
 </style>

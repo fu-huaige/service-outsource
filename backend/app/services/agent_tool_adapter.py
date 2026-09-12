@@ -8,9 +8,12 @@ from typing import Any
 from uuid import UUID
 
 from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_execution import AgentExecutionSession, AgentStepRun
+from app.models.dataset import ProcessingRun
+from app.models.optimization import OptimizationStudy, OptimizationTrialRecord
 from app.schemas.modeling import ArxFitRequest
 from app.schemas.optimization import OptimizationStartRequest
 from app.schemas.preprocessing import (
@@ -21,9 +24,10 @@ from app.schemas.preprocessing import (
     LagCompensationRequest,
     SegmentRequest,
 )
-from app.schemas.reporting import ExportDatasetRequest, ReportRequest
+from app.schemas.reporting import ExportDatasetRequest, ExportSelectionProvenance, ReportRequest
 from app.services.cleaning_service import clean_dataset_version
 from app.services.modeling_service import (
+    ModelingDomainError,
     evaluate_saved_arx_model,
     fit_arx_on_version,
     load_saved_arx_model,
@@ -162,6 +166,7 @@ async def execute_agent_tool(
         return await _export_dataset(
             session,
             execution=execution,
+            step=step,
             parameters=parameters,
             artifact_root=artifact_root,
         )
@@ -299,26 +304,223 @@ async def _export_dataset(
     session: AsyncSession,
     *,
     execution: AgentExecutionSession,
+    step: AgentStepRun,
     parameters: dict[str, Any],
     artifact_root: Path,
 ) -> AgentToolResult:
     """Export only a formally selected subset from this execution's current version."""
 
     _validated_parameters(parameters, allowed=frozenset(), tool_name="export_dataset")
+    source_version_id = execution.current_version_id
+    sample_indices: list[int] = []
+    selection_provenance: ExportSelectionProvenance | None = None
+    optimization = _latest_successful_optimization(execution, step)
+    if optimization is not None:
+        source_version_id, sample_indices, selection_provenance = (
+            await _resolve_optimization_best_selection(
+                session,
+                execution=execution,
+                optimization=optimization,
+                artifact_root=artifact_root,
+            )
+        )
+
     data = await export_optimised_dataset(
         session,
         payload=ExportDatasetRequest(
             dataset_id=execution.dataset_id,
-            version_id=execution.current_version_id,
+            version_id=source_version_id,
+            sample_indices=sample_indices,
         ),
         artifact_root=artifact_root,
+        selection_provenance=selection_provenance,
     )
     return AgentToolResult(
         summary=f"正式交付服务已导出 {data.exported_rows} 行优选数据。",
-        source_version_id=execution.current_version_id,
+        source_version_id=source_version_id,
         result_version_id=None,
         processing_run_ids=[str(data.export_id)],
         result_payload=data.model_dump(mode="json"),
+    )
+
+
+def _latest_successful_optimization(
+    execution: AgentExecutionSession, export_step: AgentStepRun
+) -> AgentStepRun | None:
+    """Use only a successful optimization that precedes this export in the same execution."""
+
+    candidates = [
+        item
+        for item in execution.step_runs
+        if item.tool_name == "optimize_pipeline"
+        and item.status == "SUCCEEDED"
+        and item.sequence < export_step.sequence
+    ]
+    return max(candidates, key=lambda item: item.sequence, default=None)
+
+
+def _required_uuid(payload: dict[str, Any], field: str) -> UUID:
+    raw_value = payload.get(field)
+    if not isinstance(raw_value, str):
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_EXPORT_PROVENANCE_INVALID",
+            f"优化步骤结果缺少有效的 {field}。",
+        )
+    try:
+        return UUID(raw_value)
+    except ValueError as error:
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_EXPORT_PROVENANCE_INVALID",
+            f"优化步骤结果包含无效的 {field}。",
+        ) from error
+
+
+async def _resolve_optimization_best_selection(
+    session: AsyncSession,
+    *,
+    execution: AgentExecutionSession,
+    optimization: AgentStepRun,
+    artifact_root: Path,
+) -> tuple[UUID, list[int], ExportSelectionProvenance]:
+    """Resolve and cross-check the exact Best Trial sample selection for delivery."""
+
+    if optimization.source_version_id is None:
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_EXPORT_PROVENANCE_INVALID",
+            "成功的优化步骤缺少来源数据版本。",
+        )
+    study_id = _required_uuid(optimization.result_payload, "study_id")
+    source_version_id = _required_uuid(optimization.result_payload, "source_version_id")
+    optimized_model_id = _required_uuid(optimization.result_payload, "optimized_model_id")
+    model_id = _required_uuid(optimization.result_payload, "model_id")
+    if source_version_id != optimization.source_version_id or model_id != optimized_model_id:
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_EXPORT_PROVENANCE_INVALID",
+            "优化步骤结果中的来源版本或模型标识不一致。",
+        )
+
+    study = await session.get(OptimizationStudy, study_id)
+    if study is None:
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_EXPORT_STUDY_NOT_FOUND",
+            "无法找到优化步骤声明的 Study。",
+        )
+    if study.status != "succeeded":
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_EXPORT_STUDY_NOT_SUCCEEDED",
+            "优化步骤声明的 Study 尚未成功完成。",
+        )
+    if study.best_trial_number is None:
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_EXPORT_BEST_TRIAL_MISSING",
+            "成功的优化 Study 缺少 Best Trial。",
+        )
+    if (
+        study.dataset_id != execution.dataset_id
+        or study.version_id != source_version_id
+        or study.optimized_model_id != optimized_model_id
+    ):
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_EXPORT_PROVENANCE_MISMATCH",
+            "优化 Study 与当前执行、来源版本或优化模型不一致。",
+        )
+
+    best_trial = await session.scalar(
+        select(OptimizationTrialRecord).where(
+            OptimizationTrialRecord.study_id == study.id,
+            OptimizationTrialRecord.trial_number == study.best_trial_number,
+        )
+    )
+    if best_trial is None or best_trial.state != "complete":
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_EXPORT_BEST_TRIAL_INVALID",
+            "优化 Study 的 Best Trial 记录不存在或未完成。",
+        )
+
+    try:
+        saved = load_saved_arx_model(model_id=optimized_model_id, artifact_root=artifact_root)
+    except ModelingDomainError as error:
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_EXPORT_MODEL_ARTIFACT_INVALID",
+            "无法从优化模型 artifact 恢复 Best Trial 优选样本。",
+        ) from error
+    if saved.dataset_id != execution.dataset_id or saved.source_version_id != source_version_id:
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_EXPORT_MODEL_LINEAGE_MISMATCH",
+            "优化模型 artifact 与当前执行的数据集或来源版本不一致。",
+        )
+
+    sample_indices = list(saved.payload.training_sample_indices)
+    if not sample_indices:
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_EXPORT_SELECTION_MISSING",
+            "优化模型 artifact 未保存 Best Trial 的训练样本下标。",
+        )
+    if len(sample_indices) != len(set(sample_indices)):
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_BEST_SELECTION_INVALID",
+            "Optuna Best Trial 的训练样本下标包含重复值。",
+        )
+
+    try:
+        series = await load_version_series(
+            session,
+            version_id=source_version_id,
+            dataset_id=execution.dataset_id,
+            artifact_root=artifact_root,
+        )
+    except VersionDataError:
+        raise
+    invalid_indices = [
+        index for index in sample_indices if index < 0 or index >= series.n_samples
+    ]
+    if invalid_indices:
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_BEST_SELECTION_INVALID",
+            "Optuna Best Trial 的训练样本下标超出来源数据范围。",
+        )
+    train_end = int(series.n_samples * saved.payload.train_ratio)
+    if any(index >= train_end for index in sample_indices):
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_BEST_SELECTION_TEST_LEAKAGE",
+            "Optuna Best Trial 的导出选择包含 Validation/Test 样本。",
+        )
+
+    model_run: ProcessingRun | None = None
+    for raw_run_id in optimization.processing_run_ids:
+        try:
+            run_id = UUID(raw_run_id)
+        except (TypeError, ValueError):
+            continue
+        candidate = await session.get(ProcessingRun, run_id)
+        if (
+            candidate is not None
+            and candidate.run_type == "modeling.arx"
+            and candidate.status == "succeeded"
+            and (candidate.result or {}).get("model_id") == str(optimized_model_id)
+        ):
+            model_run = candidate
+            break
+    if (
+        model_run is None
+        or model_run.dataset_id != execution.dataset_id
+        or model_run.source_version_id != source_version_id
+        or list((model_run.parameters or {}).get("training_sample_indices", []))
+        != sample_indices
+    ):
+        raise AgentToolAdapterError(
+            "OPTIMIZATION_EXPORT_MODEL_RUN_MISMATCH",
+            "优化模型 ProcessingRun 与 Best Trial 模型 artifact 不一致。",
+        )
+
+    return (
+        source_version_id,
+        sample_indices,
+        ExportSelectionProvenance(
+            study_id=study.id,
+            best_trial_number=study.best_trial_number,
+            optimized_model_id=optimized_model_id,
+        ),
     )
 
 

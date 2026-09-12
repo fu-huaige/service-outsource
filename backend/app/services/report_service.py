@@ -42,13 +42,14 @@ from app.models.optimization import OptimizationStudy
 from app.schemas.reporting import (
     ExportDatasetData,
     ExportDatasetRequest,
+    ExportSelectionProvenance,
     ReportBinding,
     ReportData,
     ReportRequest,
     ReportSection,
 )
-from app.services.contract_stubs import completed_task
 from app.services.agent_execution_service import ExecutionStateError, get_execution
+from app.services.contract_stubs import completed_task
 from app.services.version_data import VersionDataError, load_version_series
 
 # Reports cite recent work, not the whole history; this bounds the scan below.
@@ -736,6 +737,7 @@ async def export_optimised_dataset(
     *,
     payload: ExportDatasetRequest,
     artifact_root: Path,
+    selection_provenance: ExportSelectionProvenance | None = None,
 ) -> ExportDatasetData:
     """Write the selected rows to CSV alongside a manifest naming their provenance."""
 
@@ -756,6 +758,13 @@ async def export_optimised_dataset(
         ) from error
 
     indices = sorted(set(payload.sample_indices)) if payload.sample_indices else None
+    selection_metadata: dict[str, object] = (
+        selection_provenance.model_dump(mode="json")
+        if selection_provenance is not None
+        else {"selection_source": "explicit_sample_indices"}
+        if indices is not None
+        else {}
+    )
     if indices is None:
         statement = (
             select(ProcessingRun)
@@ -780,6 +789,10 @@ async def export_optimised_dataset(
             indices = sorted(
                 set(int(v) for v in (run.result or {}).get("selected_sample_indices", []))
             )
+            selection_metadata = {
+                "selection_source": "preprocessing_segment",
+                "selection_processing_run_id": str(run.id),
+            }
     if not indices:
         raise ReportDomainError(
             "EXPORT_NO_SELECTION",
@@ -788,6 +801,14 @@ async def export_optimised_dataset(
         )
 
     n_samples = series.n_samples
+    invalid_indices = [index for index in indices if not 0 <= index < n_samples]
+    if selection_provenance is not None and invalid_indices:
+        raise ReportDomainError(
+            "OPTIMIZATION_BEST_SELECTION_INVALID",
+            "Optuna Best Trial 的优选样本下标超出来源数据范围。",
+            status_code=409,
+            details={"invalid_indices": invalid_indices[:20], "source_rows": n_samples},
+        )
     indices = [index for index in indices if 0 <= index < n_samples]
     if not indices:
         raise ReportDomainError("EXPORT_NO_SELECTION", "优选样本下标全部越界。", status_code=400)
@@ -815,12 +836,15 @@ async def export_optimised_dataset(
         "export_id": str(export_id),
         "dataset_id": str(series.dataset_id),
         "version_id": str(series.version_id),
+        "source_version_id": str(series.version_id),
         "origin": series.origin,
         "input_columns": list(input_columns),
         "output_column": output_column,
         "exported_rows": len(indices),
+        "selected_row_count": len(indices),
         "source_rows": n_samples,
         "coverage_ratio": len(indices) / n_samples if n_samples else 0.0,
+        **selection_metadata,
         "generated_at": datetime.now(UTC).isoformat(),
     }
     manifest_path.write_text(

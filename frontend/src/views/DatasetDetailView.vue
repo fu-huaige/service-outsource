@@ -1034,7 +1034,8 @@ onMounted(() => {
   font-size: 42px;
   font-weight: 800;
   color: var(--color-success);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  letter-spacing: normal;
 }
 
 .score-num.warning {
@@ -1406,7 +1407,8 @@ onMounted(() => {
   font-size: 18px;
   font-weight: 700;
   color: var(--color-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  letter-spacing: normal;
   margin: 4px 0;
 }
 

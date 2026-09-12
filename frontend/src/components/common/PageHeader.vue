@@ -1,7 +1,7 @@
 <template>
   <header class="page-header-unified">
     <div class="page-header-unified__main">
-      <div v-if="eyebrow" class="page-header-unified__eyebrow font-mono">{{ eyebrow }}</div>
+      <div v-if="eyebrow" class="page-header-unified__eyebrow">{{ eyebrow }}</div>
       <h1 class="page-header-unified__title">{{ title }}</h1>
       <p v-if="description || $slots.description" class="page-header-unified__desc">
         <slot name="description">{{ description }}</slot>
@@ -43,7 +43,8 @@ defineProps<{
   gap: 6px;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
   text-transform: uppercase;
   color: #63805E;
   margin-bottom: 8px;

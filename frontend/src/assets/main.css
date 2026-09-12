@@ -114,8 +114,8 @@ a {
 /* Tabular numbers for industrial data */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
-  font-family: var(--font-mono);
-  letter-spacing: -0.01em;
+  font-family: var(--font-sans);
+  letter-spacing: normal;
 }
 
 /* ── Surface Utilities (Warm Light Hierarchy) ─────────────── */
@@ -184,8 +184,8 @@ a {
 
 .panel-title {
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-family: var(--font-mono);
+  letter-spacing: normal;
+  font-family: var(--font-sans);
 }
 
 .industrial-card-title {
@@ -229,11 +229,11 @@ a {
 
 .page-eyebrow {
   display: inline-block;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--accent-dark);
-  letter-spacing: 0.08em;
+  letter-spacing: normal;
   text-transform: uppercase;
   margin-bottom: var(--space-1);
 }

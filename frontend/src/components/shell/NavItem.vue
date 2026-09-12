@@ -56,7 +56,7 @@
       </div>
 
       <span class="nav-item__label" :class="{ 'is-hidden': !isExpanded }">{{ item.label }}</span>
-      <span v-if="item.shortcut && isExpanded" class="nav-item__shortcut font-mono">{{ item.shortcut }}</span>
+      <span v-if="item.shortcut && isExpanded" class="nav-item__shortcut">{{ item.shortcut }}</span>
     </router-link>
   </el-tooltip>
 </template>

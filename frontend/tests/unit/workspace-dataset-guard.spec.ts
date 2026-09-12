@@ -47,8 +47,9 @@ function mountWorkspace(payload: {
 }) {
   const AgentComposer = defineComponent({
     name: "AgentComposer",
+    props: { submitting: Boolean },
     emits: ["submit"],
-    template: '<button class="composer-submit-stub" @click="$emit(\'submit\', payload)">submit</button>',
+    template: '<button class="composer-submit-stub" :disabled="submitting" @click="$emit(\'submit\', payload)">submit</button>',
     setup() {
       return { payload };
     },
@@ -79,8 +80,8 @@ const dataset = (id: string, name: string): DatasetItem => ({
   output_column: "y",
 });
 
-const executionSnapshot = (): CopilotExecutionSnapshot => ({
-  execution_id: "execution-visible-id",
+const executionSnapshot = (executionId = "execution-visible-id"): CopilotExecutionSnapshot => ({
+  execution_id: executionId,
   copilot_run_id: null,
   dataset_id: "dataset-visible-uuid",
   initial_version_id: "version-initial-uuid",
@@ -112,6 +113,7 @@ describe("WorkspaceView dataset context guard", () => {
     route.query = {};
     localStorage.clear();
     copilotApi.chatWithCopilot.mockResolvedValue({ execution_id: "execution-1" });
+    copilotApi.getCopilotExecution.mockResolvedValue(executionSnapshot("execution-1"));
     datasetApi.listDatasets.mockResolvedValue({ items: [] });
   });
 
@@ -141,6 +143,59 @@ describe("WorkspaceView dataset context guard", () => {
       active_version_id: "version-1",
     });
     expect(routerPush).toHaveBeenCalledWith("/workspace/execution-1");
+    expect(copilotApi.getCopilotExecution).toHaveBeenCalledWith("execution-1");
+    expect(wrapper.findComponent({ name: "AgentStream" }).exists()).toBe(true);
+    expect(wrapper.find('[data-test="agent-submit-thinking"]').exists()).toBe(false);
+  });
+
+  it("shows thinking immediately, blocks duplicate submits, then renders the formal execution", async () => {
+    let resolveChat!: (value: { execution_id: string }) => void;
+    copilotApi.chatWithCopilot.mockReturnValue(new Promise(resolve => { resolveChat = resolve; }));
+    const payload = {
+      message: "建立 ARX 模型并寻优",
+      datasetId: "dataset-1",
+      versionId: "version-1",
+    };
+    const wrapper = mountWorkspace(payload);
+    const composer = wrapper.getComponent({ name: "AgentComposer" });
+
+    composer.vm.$emit("submit", payload);
+    composer.vm.$emit("submit", payload);
+    await wrapper.vm.$nextTick();
+
+    const thinking = wrapper.get('[data-test="agent-submit-thinking"]');
+    expect(thinking.text()).toContain("Agent 正在思考…");
+    expect(thinking.text()).toContain("正在理解任务并生成执行计划");
+    expect(wrapper.find(".ws-empty").exists()).toBe(false);
+    expect(copilotApi.chatWithCopilot).toHaveBeenCalledTimes(1);
+
+    resolveChat({ execution_id: "execution-1" });
+    await flushPromises();
+
+    expect(wrapper.find('[data-test="agent-submit-thinking"]').exists()).toBe(false);
+    expect(wrapper.findComponent({ name: "AgentStream" }).exists()).toBe(true);
+  });
+
+  it("clears the thinking state and restores retry UI when submission fails", async () => {
+    let rejectChat!: (reason: Error) => void;
+    copilotApi.chatWithCopilot.mockReturnValue(new Promise((_resolve, reject) => { rejectChat = reject; }));
+    const payload = {
+      message: "建立 ARX 模型并寻优",
+      datasetId: "dataset-1",
+      versionId: "version-1",
+    };
+    const wrapper = mountWorkspace(payload);
+
+    wrapper.getComponent({ name: "AgentComposer" }).vm.$emit("submit", payload);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-test="agent-submit-thinking"]').exists()).toBe(true);
+
+    rejectChat(new Error("Planner unavailable"));
+    await flushPromises();
+
+    expect(wrapper.find('[data-test="agent-submit-thinking"]').exists()).toBe(false);
+    expect(wrapper.find(".ws-empty").exists()).toBe(true);
+    expect(messageApi.error).toHaveBeenCalledWith("Planner unavailable");
   });
 
   it("blocks a direct Home query that has a prompt but no dataset context", async () => {

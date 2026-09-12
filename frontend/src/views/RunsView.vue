@@ -154,9 +154,9 @@
 
           <!-- Artifacts Summary Chips -->
           <div class="run-row__artifacts">
-            <span v-if="exec.artifacts?.arx_model" class="artifact-chip font-mono">ARX Model</span>
-            <span v-if="exec.artifacts?.optimization_study" class="artifact-chip font-mono">Optuna Study</span>
-            <span v-if="exec.artifacts?.report" class="artifact-chip font-mono">Report</span>
+            <span v-if="exec.artifacts?.arx_model" class="artifact-chip">ARX Model</span>
+            <span v-if="exec.artifacts?.optimization_study" class="artifact-chip">Optuna Study</span>
+            <span v-if="exec.artifacts?.report" class="artifact-chip">Report</span>
           </div>
 
           <!-- Status Badge -->

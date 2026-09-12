@@ -117,19 +117,19 @@
           <div class="aw-section__label">模型结构 (Model Structure)</div>
           <div class="aw-kv-list">
             <div v-if="activeArtifact.payload.na !== undefined" class="aw-kv">
-              <span class="aw-kv__key font-mono">输出阶数 na</span>
-              <span class="aw-kv__val font-mono">{{ activeArtifact.payload.na }}</span>
+              <span class="aw-kv__key">输出阶数 na</span>
+              <span class="aw-kv__val">{{ activeArtifact.payload.na }}</span>
             </div>
             <div v-if="activeArtifact.payload.nb !== undefined" class="aw-kv">
-              <span class="aw-kv__key font-mono">输入阶数 nb</span>
-              <span class="aw-kv__val font-mono">{{ activeArtifact.payload.nb }}</span>
+              <span class="aw-kv__key">输入阶数 nb</span>
+              <span class="aw-kv__val">{{ activeArtifact.payload.nb }}</span>
             </div>
             <div v-if="activeArtifact.payload.nk !== undefined" class="aw-kv">
-              <span class="aw-kv__key font-mono">延迟阶数 nk</span>
-              <span class="aw-kv__val font-mono">{{ activeArtifact.payload.nk }}</span>
+              <span class="aw-kv__key">延迟阶数 nk</span>
+              <span class="aw-kv__val">{{ activeArtifact.payload.nk }}</span>
             </div>
             <div v-if="activeArtifact.payload.model_id" class="aw-kv">
-              <span class="aw-kv__key font-mono">模型唯一 ID</span>
+              <span class="aw-kv__key">模型唯一 ID</span>
               <span class="aw-kv__val font-mono" style="font-size:11px">{{ activeArtifact.payload.model_id }}</span>
             </div>
           </div>
@@ -143,8 +143,8 @@
           <div class="aw-section__label">最优参数 (Best Parameters)</div>
           <div class="aw-kv-list">
             <div v-for="(val, key) in activeArtifact.payload.best_params" :key="key" class="aw-kv">
-              <span class="aw-kv__key font-mono">{{ key }}</span>
-              <span class="aw-kv__val font-mono">{{ val }}</span>
+              <span class="aw-kv__key">{{ key }}</span>
+              <span class="aw-kv__val">{{ val }}</span>
             </div>
           </div>
         </div>
@@ -175,8 +175,8 @@
           <div class="aw-section__label">估计纯时滞 (Estimated Delays)</div>
           <div class="aw-kv-list">
             <div v-for="(val, key) in (activeArtifact.payload.best_delays ?? activeArtifact.payload.estimated_delays)" :key="key" class="aw-kv">
-              <span class="aw-kv__key font-mono">{{ key }}</span>
-              <span class="aw-kv__val font-mono">{{ val }} 采样点</span>
+              <span class="aw-kv__key">{{ key }}</span>
+              <span class="aw-kv__val">{{ val }} 采样点</span>
             </div>
           </div>
         </div>
@@ -531,7 +531,8 @@ function optimizationMetrics(art: ArtifactDef) {
 }
 
 .aw-tag {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  letter-spacing: normal;
   font-size: 12px;
   padding: 3px 10px;
   border-radius: 4px;

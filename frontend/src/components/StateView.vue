@@ -146,7 +146,8 @@ const defaultDesc = computed(() => {
   border-radius: 4px;
   font-size: 13px;
   margin: 8px 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  letter-spacing: normal;
 }
 
 .hitl-actions {

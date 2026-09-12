@@ -6,7 +6,7 @@
           <el-icon class="logo-icon"><DataAnalysis /></el-icon>
         </div>
         <span class="logo-text">IndusOpt 工模智优</span>
-        <span class="logo-tag font-mono">A14</span>
+        <span class="logo-tag">A14</span>
       </router-link>
 
       <div class="dataset-selector" v-if="datasetStore.activeDataset">
@@ -15,7 +15,7 @@
           :content="`版本 ID：${datasetStore.activeDataset.version_id}`"
           placement="bottom"
         >
-          <el-tag type="primary" effect="light" class="ds-tag font-mono">
+          <el-tag type="primary" effect="light" class="ds-tag">
             {{ datasetStore.activeDataset.name }}
           </el-tag>
         </el-tooltip>
@@ -28,7 +28,7 @@
       <button class="cmd-trigger-btn" type="button" @click="emit('openCommand')">
         <el-icon><Search /></el-icon>
         <span class="cmd-trigger-text">快速指令 / 页面跳转</span>
-        <span class="cmd-kbd font-mono">{{ isMac ? '⌘K' : 'Ctrl+K' }}</span>
+        <span class="cmd-kbd">{{ isMac ? '⌘K' : 'Ctrl+K' }}</span>
       </button>
 
       <!-- Return to Landing Overview -->
@@ -138,7 +138,8 @@ const statusLabel = computed(() => ({
   border: 1px solid var(--color-primary-border);
   padding: 1px 6px;
   border-radius: 4px;
-  letter-spacing: 0.05em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
 }
 
 .dataset-selector {
@@ -224,7 +225,8 @@ const statusLabel = computed(() => ({
   font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  letter-spacing: normal;
   background: var(--bg-subtle);
   padding: 4px 10px;
   border-radius: 999px;
@@ -276,10 +278,6 @@ const statusLabel = computed(() => ({
     transform: scale(1.8);
     opacity: 0;
   }
-}
-
-.font-mono {
-  font-family: var(--font-mono);
 }
 
 @media (max-width: 980px) {

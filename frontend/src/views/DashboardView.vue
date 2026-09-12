@@ -3,7 +3,7 @@
     <!-- Header with Breadcrumbs & Action Buttons -->
     <div class="dashboard-top-row">
       <div class="page-header">
-        <span class="page-eyebrow font-mono">PROCESS INDUSTRY WORKSPACE</span>
+        <span class="page-eyebrow">PROCESS INDUSTRY WORKSPACE</span>
         <h2>建模工作台</h2>
         <p class="subtitle">从原始工业时序到可验证模型交付，沿着当前数据版本推进工程闭环</p>
       </div>
@@ -24,8 +24,8 @@
       <div class="command-bar-left">
         <div class="command-tag-row">
           <span class="command-status-dot"></span>
-          <span class="command-kicker font-mono">{{ currentDataset ? "ACTIVE TASK" : "INITIALIZE" }}</span>
-          <span v-if="currentDataset" class="dataset-pill font-mono">
+          <span class="command-kicker">{{ currentDataset ? "ACTIVE TASK" : "INITIALIZE" }}</span>
+          <span v-if="currentDataset" class="dataset-pill">
             {{ shortIdentifier(currentDataset.version_id || currentDataset.latest_version_id) }}
           </span>
         </div>
@@ -45,20 +45,20 @@
 
       <div class="command-bar-metrics">
         <div class="metric-chip">
-          <div class="metric-label font-mono">DATA ASSETS</div>
-          <div class="metric-value font-mono">{{ dashboardAvailable ? datasetCount : "暂不可用" }} <span v-if="dashboardAvailable" class="metric-unit">个</span></div>
+          <div class="metric-label">DATA ASSETS</div>
+          <div class="metric-value">{{ dashboardAvailable ? datasetCount : "暂不可用" }} <span v-if="dashboardAvailable" class="metric-unit">个</span></div>
           <div class="metric-hint">已登记数据资产</div>
         </div>
         <div class="metric-divider"></div>
         <div class="metric-chip">
-          <div class="metric-label font-mono">OPTIMIZATIONS</div>
-          <div class="metric-value font-mono">{{ dashboardAvailable ? leaderboardData.length : "暂不可用" }} <span v-if="dashboardAvailable" class="metric-unit">项</span></div>
+          <div class="metric-label">OPTIMIZATIONS</div>
+          <div class="metric-value">{{ dashboardAvailable ? leaderboardData.length : "暂不可用" }} <span v-if="dashboardAvailable" class="metric-unit">项</span></div>
           <div class="metric-hint">已完成闭环寻优</div>
         </div>
         <div class="metric-divider"></div>
         <div class="metric-chip">
-          <div class="metric-label font-mono">TOP FREE-RUN FIT</div>
-          <div class="metric-value font-mono text-primary">{{ dashboardAvailable ? (topEntry ? formatOptionalFit(topEntry.optimized_validation_fit) : "暂无结果") : "暂不可用" }}</div>
+          <div class="metric-label">TOP FREE-RUN FIT</div>
+          <div class="metric-value text-primary">{{ dashboardAvailable ? (topEntry ? formatOptionalFit(topEntry.optimized_validation_fit) : "暂无结果") : "暂不可用" }}</div>
           <div class="metric-hint">{{ dashboardAvailable ? (topEntry ? topEntry.dataset_name : "完成寻优后显示") : "工作台数据暂不可用" }}</div>
         </div>
       </div>
@@ -67,7 +67,7 @@
     <!-- Clean Dual-Mode Segmented Operations Deck -->
     <div class="dashboard-main-deck industrial-card">
       <div class="deck-header">
-        <div class="deck-tabs font-mono">
+        <div class="deck-tabs">
           <button
             type="button"
             class="deck-tab-btn"
@@ -126,22 +126,22 @@
           <el-table-column prop="dataset_name" label="数据集名称" min-width="180" />
           <el-table-column label="基线验证 FIT" width="130">
             <template #default="{ row }">
-              <span class="font-mono">{{ formatOptionalFit(row.baseline_validation_fit) }}</span>
+              <span>{{ formatOptionalFit(row.baseline_validation_fit) }}</span>
             </template>
           </el-table-column>
           <el-table-column label="优化后验证 FIT" width="140">
             <template #default="{ row }">
-              <span class="fit-val font-mono">{{ formatOptionalFit(row.optimized_validation_fit) }}</span>
+              <span class="fit-val">{{ formatOptionalFit(row.optimized_validation_fit) }}</span>
             </template>
           </el-table-column>
           <el-table-column label="测试一步 FIT" width="130">
             <template #default="{ row }">
-              <span class="font-mono">{{ formatOptionalFit(row.optimized_test_one_step_fit) }}</span>
+              <span>{{ formatOptionalFit(row.optimized_test_one_step_fit) }}</span>
             </template>
           </el-table-column>
           <el-table-column label="提升幅度" width="120">
             <template #default="{ row }">
-              <span v-if="row.improvement !== null" :class="row.improvement >= 0 ? 'improvement-text' : 'risk-text'" class="font-mono">
+              <span v-if="row.improvement !== null" :class="row.improvement >= 0 ? 'improvement-text' : 'risk-text'">
                 {{ formatSigned(row.improvement) }}
               </span>
               <span v-else>—</span>
@@ -186,12 +186,12 @@
             @click="$router.push(step.path)"
           >
             <div class="p-card-top">
-              <span class="p-num font-mono">{{ step.num }}</span>
-              <span class="p-guard font-mono">{{ step.guard }}</span>
+              <span class="p-num">{{ step.num }}</span>
+              <span class="p-guard">{{ step.guard }}</span>
             </div>
             <div class="p-card-name">{{ step.name }}</div>
             <div class="p-card-desc">{{ step.desc }}</div>
-            <div class="p-card-footer font-mono">
+            <div class="p-card-footer">
               <span>{{ step.tech }}</span>
               <span class="p-arrow">→</span>
             </div>
@@ -203,7 +203,7 @@
       <div v-show="activeDeckTab === 'telemetry'" class="deck-content-pane">
         <div class="telemetry-tab-grid">
           <div class="copilot-tele-box">
-            <div class="copilot-pill font-mono">
+            <div class="copilot-pill">
               <span class="copilot-dot"></span>
               <span>AI COPILOT 智能工模助手</span>
             </div>
@@ -223,19 +223,19 @@
           </div>
 
           <div class="system-tele-box">
-            <div class="tele-title font-mono">ENGINE STATUS · 运行状态遥测</div>
+            <div class="tele-title">ENGINE STATUS · 运行状态遥测</div>
             <div class="tele-list">
               <div class="tele-item">
                 <span class="t-label">PostgreSQL 关系数据库</span>
-                <span class="t-val font-mono text-green">🟢 CONNECTED (就绪)</span>
+                <span class="t-val text-green">🟢 CONNECTED (就绪)</span>
               </div>
               <div class="tele-item">
                 <span class="t-label">Redis 异步任务队列</span>
-                <span class="t-val font-mono text-green">🟢 READY (0 积压)</span>
+                <span class="t-val text-green">🟢 READY (0 积压)</span>
               </div>
               <div class="tele-item">
                 <span class="t-label">QR 分解矩阵满秩门控</span>
-                <span class="t-val font-mono text-cyan">16/20 满秩保障</span>
+                <span class="t-val text-cyan">16/20 满秩保障</span>
               </div>
             </div>
           </div>
@@ -415,7 +415,8 @@ onMounted(() => {
   font-size: 11px;
   font-weight: 800;
   color: var(--color-primary);
-  letter-spacing: 0.06em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
 }
 
 .dataset-pill {
@@ -470,7 +471,8 @@ onMounted(() => {
   font-size: 10px;
   font-weight: 700;
   color: var(--text-muted);
-  letter-spacing: 0.05em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
 }
 
 .metric-value {
@@ -658,7 +660,8 @@ onMounted(() => {
   font-size: 10px;
   font-weight: 800;
   color: #2563eb;
-  letter-spacing: 0.05em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
   margin-bottom: 8px;
 }
 
@@ -719,7 +722,8 @@ onMounted(() => {
   font-size: 11px;
   font-weight: 700;
   color: var(--text-muted);
-  letter-spacing: 0.06em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
   margin-bottom: 16px;
 }
 

@@ -93,7 +93,7 @@ class TestPlanning:
 
     @pytest.mark.parametrize(
         "message",
-        ["报告交付", "生成报告", "分析报告", "报告生成", "给我报告"],
+        ["报告交付", "生成报告", "生成分析报告", "分析报告", "报告生成", "给我报告"],
     )
     def test_report_delivery_does_not_imply_dataset_export(self, message: str) -> None:
         tools = [step.tool for step in plan_for(message)[0]]
@@ -103,12 +103,46 @@ class TestPlanning:
 
     @pytest.mark.parametrize(
         "message",
-        ["导出数据集", "下载数据集", "导出 CSV", "下载 CSV", "导出清洗后的数据", "导出优选数据集"],
+        [
+            "导出数据集",
+            "导出优选数据集",
+            "导出最优数据集",
+            "导出最优建模数据集",
+            "下载数据集",
+            "下载优选数据集",
+            "下载最优建模数据集",
+            "导出 CSV",
+            "下载 CSV",
+            "导出清洗后的数据",
+        ],
     )
     def test_explicit_dataset_export_intent_is_preserved(self, message: str) -> None:
         tools = [step.tool for step in plan_for(message)[0]]
 
         assert "export_dataset" in tools
+
+    @pytest.mark.parametrize("message", ["输出结果", "查看结果", "保存报告"])
+    def test_ambiguous_result_language_does_not_imply_dataset_export(
+        self, message: str
+    ) -> None:
+        tools = [step.tool for step in plan_for(message)[0]]
+
+        assert "export_dataset" not in tools
+
+    def test_optimized_modeling_dataset_export_is_planned_after_final_evaluation(
+        self,
+    ) -> None:
+        steps, _, _ = plan_for(
+            "基于当前数据建立 ARX 模型并进行 Optuna 闭环寻优，"
+            "寻优完成后导出最优建模数据集。"
+        )
+        tools = [step.tool for step in steps]
+
+        assert tools.index("fit_arx") < tools.index("optimize_pipeline")
+        assert tools.index("optimize_pipeline") < tools.index("evaluate_model")
+        assert tools.index("evaluate_model") < tools.index("export_dataset")
+        export = next(step for step in steps if step.tool == "export_dataset")
+        assert export.requires_confirmation is True
 
     def test_prerequisites_come_first(self) -> None:
         steps, _, _ = plan_for("清洗后建模")

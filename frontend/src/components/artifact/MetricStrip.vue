@@ -6,9 +6,9 @@
       class="metric-item"
       :class="{ 'is-primary': m.primary }"
     >
-      <div class="metric-label font-mono">{{ m.label }}</div>
+      <div class="metric-label">{{ m.label }}</div>
       <div class="metric-value tabular-nums">{{ m.value }}</div>
-      <div v-if="m.sub" class="metric-sub font-mono">{{ m.sub }}</div>
+      <div v-if="m.sub" class="metric-sub">{{ m.sub }}</div>
     </div>
   </div>
 </template>
@@ -54,7 +54,8 @@ defineProps<{
   font-weight: 600;
   color: var(--text-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
   white-space: nowrap;
 }
 
@@ -75,6 +76,8 @@ defineProps<{
 }
 
 .metric-sub {
+  font-family: var(--font-sans);
+  letter-spacing: normal;
   font-size: 11px;
   color: var(--text-muted);
   white-space: nowrap;

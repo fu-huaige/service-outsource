@@ -197,8 +197,22 @@
         </div>
       </header>
 
+      <!-- Immediate acknowledgement while the first task is being created and planned -->
+      <div
+        v-if="isSending && !execution"
+        class="ws-thinking"
+        data-test="agent-submit-thinking"
+        aria-live="polite"
+      >
+        <div class="agent-working-dot" />
+        <div class="ws-thinking__copy">
+          <h3 class="ws-thinking__title">Agent 正在思考…</h3>
+          <p class="ws-thinking__desc">正在理解任务并生成执行计划</p>
+        </div>
+      </div>
+
       <!-- No execution state: show composer in center -->
-      <div v-if="!execution && !loading" class="ws-empty">
+      <div v-else-if="!execution && !loading" class="ws-empty">
         <div class="ws-empty__icon">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <rect width="18" height="10" x="3" y="11" rx="2"/>
@@ -208,7 +222,7 @@
         </div>
         <h3 class="ws-empty__title">新建 Agent 任务</h3>
         <p class="ws-empty__desc">描述你的分析目标，Agent 将自动规划执行数据清洗、时滞补偿、特征筛选、ARX 建模与 Optuna 参数寻优</p>
-        <AgentComposer class="ws-empty__composer" @submit="handleNewTask" />
+        <AgentComposer class="ws-empty__composer" :submitting="isSending" @submit="handleNewTask" />
       </div>
 
       <!-- Loading state -->
@@ -235,6 +249,7 @@
           <AgentComposer
             placeholder="继续对话或发起新分析目标…"
             :rows="2"
+            :submitting="isSending"
             @submit="handleNewTask"
           />
         </div>
@@ -279,6 +294,7 @@ const isConfirming = ref(false);
 const showArtifact = ref(true);
 const sidebarCollapsed = ref(false);
 const activeArtifactStepId = ref<string | null>(null);
+let loadingExecutionId: string | null = null;
 
 // Polling
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -343,6 +359,8 @@ function startNewTask() {
 }
 
 async function loadExecution(executionId: string) {
+  if (loadingExecutionId === executionId) return;
+  loadingExecutionId = executionId;
   loading.value = true;
   try {
     execution.value = await getCopilotExecution(executionId);
@@ -352,6 +370,7 @@ async function loadExecution(executionId: string) {
   } catch (err: any) {
     console.error('Failed to load execution', err);
   } finally {
+    if (loadingExecutionId === executionId) loadingExecutionId = null;
     loading.value = false;
   }
 }
@@ -389,6 +408,7 @@ function stopPolling() {
 }
 
 async function handleNewTask(payload: { message: string; datasetId?: string | null; versionId?: string | null }) {
+  if (isSending.value) return;
   if (!payload.datasetId || !payload.versionId) {
     ElMessage.warning('请先挂载数据集后再发起 Agent 任务。');
     return;
@@ -403,6 +423,9 @@ async function handleNewTask(payload: { message: string; datasetId?: string | nu
     if (res.execution_id) {
       executionStore.setActiveExecutionId(res.execution_id);
       await router.push(`/workspace/${res.execution_id}`);
+      if (execution.value?.execution_id !== res.execution_id) {
+        await loadExecution(res.execution_id);
+      }
     } else {
       ElMessage.warning(
         res.conclusion || '计划已生成！请点击输入框左下角的「📎 挂载数据」选择数据集，Agent 将自动执行全流程任务。'
@@ -993,6 +1016,36 @@ watch(() => route.params.executionId, async (newId) => {
 
 .ws-empty__composer {
   width: 100%;
+}
+
+.ws-thinking {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 32px;
+  color: #171717;
+}
+
+.ws-thinking__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ws-thinking__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  letter-spacing: normal;
+}
+
+.ws-thinking__desc {
+  margin: 0;
+  color: #666666;
+  font-size: 13px;
 }
 
 .ws-loading {

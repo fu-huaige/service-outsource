@@ -92,7 +92,7 @@
             </svg>
           </div>
           <span v-show="isExpanded" class="nav-action-btn__label">搜索</span>
-          <span v-show="isExpanded" class="nav-action-btn__shortcut font-mono">{{ isMac ? '⌘K' : 'Ctrl+K' }}</span>
+          <span v-show="isExpanded" class="nav-action-btn__shortcut">{{ isMac ? '⌘K' : 'Ctrl+K' }}</span>
         </button>
       </el-tooltip>
 

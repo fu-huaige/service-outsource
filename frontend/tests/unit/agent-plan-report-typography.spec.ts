@@ -34,12 +34,15 @@ const stepRun = (stepId: string, tool: string): CopilotExecutionStepSnapshot => 
   finished_at: null,
 });
 
-describe("AgentPlan report typography", () => {
-  it("uses Chinese Sans only for the approved report step and preserves other technical steps", () => {
+describe("Agent business typography", () => {
+  it("uses Sans for raw tool keys and localized execution steps", () => {
     const wrapper = mount(AgentPlan, {
       props: {
         steps: [
-          step("step-profile", "profile_dataset"),
+          step("step-segment", "detect_dynamic_segments"),
+          step("step-fit", "fit_arx"),
+          step("step-optimize", "optimize_pipeline"),
+          step("step-evaluate", "evaluate_model"),
           step("step-report", "generate_report"),
         ],
         stepRuns: [],
@@ -48,17 +51,20 @@ describe("AgentPlan report typography", () => {
     });
     const labels = wrapper.findAll(".plan-step__tool");
 
-    expect(labels[0]!.text()).toBe("profile_dataset");
-    expect(labels[0]!.classes()).toContain("font-mono");
-    expect(labels[1]!.text()).toBe("报告交付");
-    expect(labels[1]!.text()).not.toContain("(Report)");
-    expect(labels[1]!.classes()).not.toContain("font-mono");
-    expect(labels[1]!.classes()).toContain("plan-step__tool--report");
+    expect(labels.map(label => label.text())).toEqual([
+      "detect_dynamic_segments",
+      "fit_arx",
+      "Optuna 闭环寻优 (Optimize)",
+      "模型测试集评价 (Evaluate)",
+      "报告交付",
+    ]);
+    for (const label of labels) expect(label.classes()).not.toContain("font-mono");
+    expect(labels[4]!.classes()).toContain("plan-step__tool--report");
 
     const source = readFileSync(resolve(process.cwd(), "src/components/workspace/AgentPlan.vue"), "utf8");
-    const reportRule = source.match(/\.plan-step__tool--report\s*\{([^}]+)\}/)?.[1] ?? "";
-    expect(reportRule).toContain("font-family: var(--font-sans)");
-    expect(reportRule).toContain("letter-spacing: normal");
+    const businessRule = source.match(/\.plan-count,\s*\.plan-step__tool,\s*\.plan-step__duration\s*\{([^}]+)\}/)?.[1] ?? "";
+    expect(businessRule).toContain("font-family: var(--font-sans)");
+    expect(businessRule).toContain("letter-spacing: normal");
   });
 
   it("normalizes the real execution-stream report label by stable tool key", () => {
@@ -75,20 +81,37 @@ describe("AgentPlan report typography", () => {
     expect(reportLabel.classes()).toContain("te-tool--report");
     expect(reportLabel.classes()).not.toContain("font-mono");
 
-    const technical = mount(ToolExecution, {
+    const businessSteps = [
+      ["step-segment", "detect_dynamic_segments", "detect_dynamic_segments"],
+      ["step-fit", "fit_arx", "fit_arx"],
+      ["step-optimize", "optimize_pipeline", "Optuna 寻优 (Optimize)"],
+      ["step-evaluate", "evaluate_model", "模型评价 (Evaluate)"],
+    ] as const;
+    for (const [stepId, tool, expected] of businessSteps) {
+      const business = mount(ToolExecution, {
+        props: {
+          stepRun: stepRun(stepId, tool),
+          planStep: step(stepId, tool),
+        },
+      });
+      expect(business.get(".te-tool").text()).toBe(expected);
+      expect(business.get(".te-tool").classes()).not.toContain("font-mono");
+    }
+
+    const clean = mount(ToolExecution, {
       props: {
         stepRun: stepRun("step-clean", "clean"),
         planStep: step("step-clean", "clean"),
       },
     });
-    expect(technical.get(".te-tool").text()).toBe("数据清洗 (Clean)");
-    expect(technical.get(".te-tool").classes()).toContain("font-mono");
+    expect(clean.get(".te-tool").text()).toBe("数据清洗 (Clean)");
+    expect(clean.get(".te-tool").classes()).not.toContain("font-mono");
 
     const source = readFileSync(resolve(process.cwd(), "src/components/workspace/ToolExecution.vue"), "utf8");
     expect(source).toContain("generate_report: '报告交付'");
     expect(source).not.toContain("generate_report: '报告交付 (Report)'");
-    const reportRule = source.match(/\.te-tool--report\s*\{([^}]+)\}/)?.[1] ?? "";
-    expect(reportRule).toContain("font-family: var(--font-sans)");
-    expect(reportRule).toContain("letter-spacing: normal");
+    const businessRule = source.match(/\.te-tool,\s*\.te-duration,\s*\.te-metric__value\s*\{([^}]+)\}/)?.[1] ?? "";
+    expect(businessRule).toContain("font-family: var(--font-sans)");
+    expect(businessRule).toContain("letter-spacing: normal");
   });
 });

@@ -2,7 +2,7 @@
   <section class="industrial-card version-compare-workbench" aria-labelledby="version-compare-title">
     <header class="workbench-header">
       <div>
-        <span class="workbench-eyebrow font-mono">VERSION COMPARE</span>
+        <span class="workbench-eyebrow">VERSION COMPARE</span>
         <h3 id="version-compare-title">清洗版本对比</h3>
         <p>比较两个 Cleaning 阶段版本的数据变化与血缘关系。</p>
       </div>
@@ -1264,7 +1264,7 @@ onBeforeUnmount(() => { ++differencePositionRequestId; });
 .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
 .metric-card { display: flex; flex-direction: column; gap: 5px; padding: 12px 14px; border: 1px solid var(--border-light); border-radius: 8px; background: #fafbf8; }
 .metric-card span { color: var(--text-muted); font-size: 10px; }
-.metric-card strong { color: var(--text-primary); font-family: var(--font-mono); font-size: 21px; }
+.metric-card strong { color: var(--text-primary); font-family: var(--font-sans); font-size: 21px; }
 .metric-card.changed { border-top: 2px solid #B5965D; }
 .metric-card.added { border-top: 2px solid #557562; }
 .metric-card.removed { border-top: 2px solid #A8665E; }
@@ -1282,14 +1282,14 @@ onBeforeUnmount(() => { ++differencePositionRequestId; });
 .evidence-card { min-width: 0; padding: 16px; border: 1px solid var(--border-light); border-radius: 9px; background: #fafbf8; }
 .evidence-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .evidence-card h4 { margin: 3px 0 0; font-size: 14px; }
-.evidence-eyebrow { color: var(--color-primary); font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: .09em; }
+.evidence-eyebrow { color: var(--color-primary); font-family: var(--font-sans); font-size: 9px; font-weight: 700; letter-spacing: normal; }
 .evidence-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
 .evidence-metrics > div { display: flex; flex-direction: column; gap: 4px; padding: 9px 10px; border: 1px solid #e1e6df; border-radius: 6px; background: #fff; }
 .evidence-metrics span, .evidence-auxiliary dt, .other-audit-fields dt { color: var(--text-muted); font-size: 10px; }
-.evidence-metrics strong { font-family: var(--font-mono); font-size: 16px; }
+.evidence-metrics strong { font-family: var(--font-sans); font-size: 16px; }
 .evidence-auxiliary, .other-audit-fields dl { display: grid; gap: 6px; margin: 12px 0 0; }
 .evidence-auxiliary > div, .other-audit-fields dl > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
-.evidence-auxiliary dd, .other-audit-fields dd { overflow-wrap: anywhere; margin: 0; font-family: var(--font-mono); font-size: 10px; }
+.evidence-auxiliary dd, .other-audit-fields dd { overflow-wrap: anywhere; margin: 0; font-family: var(--font-sans); font-size: 10px; }
 .direct-evidence-card :deep(.el-alert) { margin-top: 12px; }
 .other-audit-fields { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-light); }
 .other-audit-fields summary { color: var(--text-secondary); font-size: 11px; cursor: pointer; }
@@ -1303,7 +1303,7 @@ onBeforeUnmount(() => { ++differencePositionRequestId; });
 .convergence-side dl { display: grid; gap: 5px; margin: 10px 0 0; padding-top: 9px; border-top: 1px solid #e5e9e4; }
 .convergence-side dl > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .convergence-side dt { color: var(--text-muted); font-size: 9px; }
-.convergence-side dd { overflow-wrap: anywhere; margin: 0; font-family: var(--font-mono); font-size: 9px; }
+.convergence-side dd { overflow-wrap: anywhere; margin: 0; font-family: var(--font-sans); font-size: 9px; }
 .workbench-empty { display: flex; flex-direction: column; align-items: center; gap: 5px; margin-top: 20px; padding: 34px 20px; border: 1px dashed var(--border-default); border-radius: 8px; background: var(--bg-subtle); }
 .workbench-empty strong { font-size: 13px; }
 @media (max-width: 900px) {

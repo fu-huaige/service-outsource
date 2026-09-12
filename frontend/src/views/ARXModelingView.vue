@@ -10,7 +10,7 @@
       <section class="industrial-card source-context-card" aria-labelledby="arx-source-title">
         <div class="source-context-header">
           <div>
-            <span class="source-context-eyebrow font-mono">MODELING CONTEXT</span>
+            <span class="source-context-eyebrow">MODELING CONTEXT</span>
             <h3 id="arx-source-title">ARX 建模上下文</h3>
           </div>
           <p>仅可信时滞补偿版本，或其特征优选后代，可进入 ARX 辨识。</p>
@@ -566,7 +566,8 @@ const plotOptions = computed(() => {
 .source-context-eyebrow {
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
   color: var(--color-primary);
 }
 
@@ -698,7 +699,8 @@ const plotOptions = computed(() => {
   font-size: 22px;
   font-weight: 700;
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  letter-spacing: normal;
   margin-top: 4px;
 }
 

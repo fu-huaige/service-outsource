@@ -2,7 +2,7 @@
   <div class="page-container delay-view">
     <!-- Top Stage Header Navigation -->
     <div class="pipeline-stage-nav">
-      <div class="stage-badge font-mono">STAGE 04 · DELAY ALIGNMENT STUDIO</div>
+      <div class="stage-badge">STAGE 04 · DELAY ALIGNMENT STUDIO</div>
       <div class="stage-links">
         <span class="stage-link" @click="$router.push('/preprocessing/cleaning')">02 时间清洗</span>
         <span class="stage-sep">›</span>
@@ -15,7 +15,7 @@
     </div>
 
     <div class="page-header">
-      <span class="page-eyebrow font-mono">PRE-WHITENING CROSS CORRELATION & PHASE ALIGNMENT</span>
+      <span class="page-eyebrow">PRE-WHITENING CROSS CORRELATION & PHASE ALIGNMENT</span>
       <h2>多变量时滞对齐工作室</h2>
       <p class="subtitle">预白化去除输入慢变自相关伪峰，并结合自由仿真 FIT 精修各通道物理纯滞后 \(n_k\)</p>
     </div>
@@ -129,7 +129,7 @@
                 <el-icon><DataLine /></el-icon>
                 <span>预白化互相关函数响应图谱 (SPECTRUM)</span>
               </div>
-              <div class="spectrum-metrics font-mono">
+              <div class="spectrum-metrics">
                 <span class="text-cyan">VALIDATION FIT: {{ formatNumber(result.validation_fit) }}%</span>
                 <span>REFINEMENT: {{ formatInteger(result.refinement_rounds) }} rounds</span>
               </div>
@@ -150,32 +150,32 @@
                 :class="{ uncertain: row.uncertain }"
               >
                 <div class="channel-top">
-                  <span class="channel-name font-mono">{{ row.column }}</span>
-                  <span class="channel-status-pill font-mono" :class="{ uncertain: row.uncertain }">
+                  <span class="channel-name">{{ row.column }}</span>
+                  <span class="channel-status-pill" :class="{ uncertain: row.uncertain }">
                     {{ row.uncertain ? "UNCERTAIN" : "CONFIRMED" }}
                   </span>
                 </div>
                 <div class="channel-main-lag">
-                  <span class="lag-label font-mono">VALIDATION-REFINED BEST LAG \(n_k\)</span>
-                  <span class="lag-num font-mono">{{ row.refined }} <span class="lag-unit">steps</span></span>
+                  <span class="lag-label">VALIDATION-REFINED BEST LAG \(n_k\)</span>
+                  <span class="lag-num">{{ row.refined }} <span class="lag-unit">steps</span></span>
                 </div>
                 <div class="channel-candidates">
-                  <span class="c-label font-mono">CORRELATION CANDIDATE PEAKS (TOP-K)</span>
+                  <span class="c-label">CORRELATION CANDIDATE PEAKS (TOP-K)</span>
                   <div v-if="row.candidates.length" class="c-chips">
                     <span
                       v-for="(peak, index) in row.candidates"
                       :key="peak.lag"
-                      class="c-chip font-mono"
+                      class="c-chip"
                       :class="{ 'matches-refined': peak.lag === row.refined }"
                     >
                       #{{ index + 1 }} · lag {{ peak.lag }} · r={{ formatNumber(peak.correlation) }}
                     </span>
                   </div>
-                  <span v-else class="c-unavailable font-mono">N/A</span>
+                  <span v-else class="c-unavailable">N/A</span>
                 </div>
                 <div class="channel-evidence">
-                  <span class="evidence-label font-mono">PREWHITENING ORDER</span>
-                  <strong class="evidence-value font-mono">{{ formatInteger(row.prewhiteningOrder) }}</strong>
+                  <span class="evidence-label">PREWHITENING ORDER</span>
+                  <strong class="evidence-value">{{ formatInteger(row.prewhiteningOrder) }}</strong>
                 </div>
               </div>
             </div>
@@ -210,8 +210,8 @@
           <span>复核</span>
         </div>
         <div v-for="row in hitlRows" :key="row.column" class="hitl-review-row" :class="{ uncertain: row.requiresManualReview }">
-          <strong class="font-mono">{{ row.column }}</strong>
-          <span class="font-mono">{{ row.hasRecommendation ? row.refined : "N/A" }}</span>
+          <strong>{{ row.column }}</strong>
+          <span>{{ row.hasRecommendation ? row.refined : "N/A" }}</span>
           <span class="hitl-status" :class="{ uncertain: row.requiresManualReview }">
             {{ row.unavailable ? "UNAVAILABLE · 无可靠估计" : row.uncertain ? "UNCERTAIN · 需人工复核" : "CONFIRMED" }}
           </span>
@@ -226,7 +226,7 @@
             :data-test="`final-lag-${row.column}`"
             @update:model-value="setFinalLag(row.column, $event)"
           />
-          <span v-else class="font-mono">{{ finalLagByColumn[row.column] }}</span>
+          <span v-else>{{ finalLagByColumn[row.column] }}</span>
           <span :class="{ 'manual-source': row.requiresManualReview }" :data-test="`lag-source-${row.column}`">
             {{ lagSourceLabel(row) }}
           </span>
@@ -844,7 +844,8 @@ const formatInteger = (value: number | null | undefined) => {
   background: var(--color-primary-light);
   padding: 2px 8px;
   border-radius: 4px;
-  letter-spacing: 0.04em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
 }
 
 .stage-links {
@@ -965,7 +966,8 @@ const formatInteger = (value: number | null | undefined) => {
 .source-option-meta {
   color: var(--text-muted);
   font-size: 10px;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  letter-spacing: normal;
 }
 
 :global(.delay-source-select-popper .el-select-dropdown__item) {

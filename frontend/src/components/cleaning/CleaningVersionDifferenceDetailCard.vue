@@ -124,10 +124,10 @@ const OccurrenceList = defineComponent({
 .difference-detail-card__eyebrow {
   display: block;
   margin-bottom: 2px;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.09em;
+  letter-spacing: normal;
   color: #65796b;
 }
 
@@ -179,7 +179,7 @@ const OccurrenceList = defineComponent({
 .difference-detail-card dd {
   overflow-wrap: anywhere;
   margin: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 11px;
   color: #34443a;
 }

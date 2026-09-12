@@ -1,5 +1,6 @@
 """Schemas for provenance-bound reports and optimised-dataset delivery."""
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import Field
@@ -62,6 +63,15 @@ class ExportDatasetRequest(Schema):
     output_column: str | None = None
     # Explicit rows to export. When empty the latest selection run's rows are used.
     sample_indices: list[int] = Field(default_factory=list)
+
+
+class ExportSelectionProvenance(Schema):
+    """Server-verified lineage for an Optuna Best Trial dataset export."""
+
+    selection_source: Literal["optimization_best_trial"] = "optimization_best_trial"
+    study_id: UUID
+    best_trial_number: int = Field(ge=0)
+    optimized_model_id: UUID
 
 
 class ExportDatasetData(Schema):

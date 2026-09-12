@@ -173,9 +173,97 @@ class TestLlmPlanning:
                 ]
             }
         )
-        outcome = plan_with(sneaky)
+        message = "导出优选数据集"
+        outcome = LlmPlanner(StaticProvider(responses=[sneaky])).plan(
+            message, parse_intent(message)
+        )
         export = next(step for step in outcome.steps if step.tool == "export_dataset")
         assert export.requires_confirmation is True
+
+    def test_the_model_cannot_infer_dataset_export_from_report_delivery(self) -> None:
+        invented_export = json.dumps(
+            {
+                "steps": [
+                    {"step_id": "s1", "tool": "profile_dataset", "depends_on": []},
+                    {
+                        "step_id": "s2",
+                        "tool": "generate_report",
+                        "depends_on": ["s1"],
+                    },
+                    {
+                        "step_id": "s3",
+                        "tool": "export_dataset",
+                        "depends_on": ["s2"],
+                    },
+                ]
+            }
+        )
+        message = "报告交付"
+        outcome = LlmPlanner(StaticProvider(responses=[invented_export])).plan(
+            message, parse_intent(message)
+        )
+
+        assert not outcome.llm_authored
+        assert "export_dataset" not in [step.tool for step in outcome.steps]
+        assert "未明确要求的数据集导出" in (outcome.fallback_reason or "")
+
+    def test_explicit_export_intent_restores_export_omitted_by_the_model(self) -> None:
+        omitted_export = json.dumps(
+            {
+                "steps": [
+                    {"step_id": "s1", "tool": "profile_dataset", "depends_on": []},
+                    {
+                        "step_id": "s2",
+                        "tool": "estimate_delays",
+                        "depends_on": ["s1"],
+                    },
+                    {
+                        "step_id": "s3",
+                        "tool": "apply_lag_compensation",
+                        "depends_on": ["s2"],
+                    },
+                    {
+                        "step_id": "s4",
+                        "tool": "detect_dynamic_segments",
+                        "depends_on": ["s1"],
+                    },
+                    {
+                        "step_id": "s5",
+                        "tool": "fit_arx",
+                        "depends_on": ["s3", "s4"],
+                    },
+                    {
+                        "step_id": "s6",
+                        "tool": "optimize_pipeline",
+                        "depends_on": ["s5"],
+                    },
+                    {
+                        "step_id": "s7",
+                        "tool": "evaluate_model",
+                        "depends_on": ["s6"],
+                    },
+                ]
+            },
+            ensure_ascii=False,
+        )
+        message = (
+            "基于当前数据建立 ARX 模型并进行 Optuna 闭环寻优，"
+            "寻优完成后导出最优建模数据集。"
+        )
+        outcome = LlmPlanner(StaticProvider(responses=[omitted_export])).plan(
+            message, parse_intent(message)
+        )
+
+        assert outcome.llm_authored
+        assert [step.tool for step in outcome.steps][-3:] == [
+            "optimize_pipeline",
+            "evaluate_model",
+            "export_dataset",
+        ]
+        export = outcome.steps[-1]
+        assert export.depends_on == ("s7",)
+        assert export.requires_confirmation is True
+        assert any("明确的数据集导出意图" in note for note in outcome.assumptions)
 
     def test_malformed_output_falls_back(self) -> None:
         outcome = plan_with("我不太确定，要不你再说一遍？")

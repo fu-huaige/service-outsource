@@ -1,5 +1,5 @@
 <template>
-  <div ref="agentComposerRef" class="agent-composer" :class="{ 'is-focused': isFocused, 'has-content': message.trim().length > 0 }">
+  <div ref="agentComposerRef" class="agent-composer" :class="{ 'is-focused': isFocused, 'has-content': message.trim().length > 0, 'is-submitting': isSubmitting }">
     <div class="composer-body">
       <!-- Attached Dataset Pill (if any) -->
       <div v-if="attachedDataset" class="composer-attachments">
@@ -49,6 +49,7 @@
             :class="{ 'is-active': showDatasetPicker }"
             title="选择要分析的数据集"
             aria-label="挂载数据集"
+            :disabled="isSubmitting"
             @click="showDatasetPicker = !showDatasetPicker"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -60,7 +61,7 @@
 
         <div class="composer-footer__right">
           <span class="composer-hint">
-            <span class="font-mono">↵</span> 发送 · <span class="font-mono">{{ isMac ? '⇧↵' : 'Shift+↵' }}</span> 换行
+            <span>↵</span> 发送 · <span>{{ isMac ? '⇧↵' : 'Shift+↵' }}</span> 换行
           </span>
 
           <!-- Send / Stop Button -->
@@ -116,7 +117,7 @@
         >
           <span class="dataset-picker__name">{{ ds.name }}</span>
           <span v-if="ds.row_count" class="dataset-picker__meta">
-            <span class="font-mono">{{ ds.row_count.toLocaleString() }}</span> 行
+            <span>{{ ds.row_count.toLocaleString() }}</span> 行
           </span>
         </button>
         <div v-if="filteredDatasets.length === 0" class="dataset-picker__empty">
@@ -138,10 +139,12 @@ const props = withDefaults(defineProps<{
   placeholder?: string;
   rows?: number;
   initialPrompt?: string;
+  submitting?: boolean;
 }>(), {
   placeholder: '描述你的工业建模或参数优化目标，例如：分析 S3 时序数据并建立 ARX 动态模型…',
   rows: 3,
   initialPrompt: '',
+  submitting: false,
 });
 
 const emit = defineEmits<{
@@ -153,7 +156,7 @@ const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(na
 
 const message = ref(props.initialPrompt ?? '');
 const isFocused = ref(false);
-const isSubmitting = ref(false);
+const localSubmitting = ref(false);
 const showDatasetPicker = ref(false);
 const datasetSearch = ref('');
 const agentComposerRef = ref<HTMLElement | null>(null);
@@ -170,6 +173,7 @@ const PICKER_MAX_HEIGHT = 288;
 let observedVisualViewport: VisualViewport | null = null;
 let pickerPositionListenersActive = false;
 
+const isSubmitting = computed(() => props.submitting || localSubmitting.value);
 const canSubmit = computed(() => message.value.trim().length > 0 && !isSubmitting.value);
 
 const filteredDatasets = computed(() => {
@@ -195,7 +199,7 @@ async function handleSubmit() {
     ElMessage.warning('请先点击输入框左下角「📎 挂载数据」选择数据集，Agent 将基于该数据集执行全流程建模任务。');
     return;
   }
-  isSubmitting.value = true;
+  localSubmitting.value = true;
   try {
     emit('submit', {
       message: message.value.trim(),
@@ -206,7 +210,7 @@ async function handleSubmit() {
     await nextTick();
     autoResize();
   } finally {
-    isSubmitting.value = false;
+    localSubmitting.value = false;
   }
 }
 
@@ -455,6 +459,11 @@ const vClickOutside = {
   background: #F5F5F7;
   border-color: #D1D1D6;
   color: #171717;
+}
+
+.composer-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .composer-btn svg {

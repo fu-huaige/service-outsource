@@ -8,7 +8,7 @@
         <span class="plan-header__label">执行计划</span>
       </button>
       <div class="plan-header__right">
-        <span class="plan-count font-mono">{{ completedCount }}/{{ steps.length }}</span>
+        <span class="plan-count">{{ completedCount }}/{{ steps.length }}</span>
       </div>
     </div>
 
@@ -48,10 +48,7 @@
           <div class="plan-step__top">
             <span
               class="plan-step__tool"
-              :class="{
-                'font-mono': step.tool !== 'generate_report',
-                'plan-step__tool--report': step.tool === 'generate_report',
-              }"
+              :class="{ 'plan-step__tool--report': step.tool === 'generate_report' }"
             >{{ localizedToolName(step.tool) }}</span>
             <span v-if="step.requires_confirmation" class="plan-step__confirm-badge">需确认</span>
             <span v-if="step.status === 'running'" class="agent-working-dot" style="margin-left: auto" />
@@ -60,7 +57,7 @@
             <span v-if="stepRun(step.step_id)?.summary" class="plan-step__summary">
               {{ stepRun(step.step_id)?.summary }}
             </span>
-            <span v-if="stepRun(step.step_id)?.duration_ms" class="plan-step__duration font-mono">
+            <span v-if="stepRun(step.step_id)?.duration_ms" class="plan-step__duration">
               {{ formatDuration(stepRun(step.step_id)!.duration_ms!) }}
             </span>
           </div>
@@ -269,6 +266,13 @@ function formatDuration(ms: number): string {
 }
 
 .plan-step__tool--report {
+  font-family: var(--font-sans);
+  letter-spacing: normal;
+}
+
+.plan-count,
+.plan-step__tool,
+.plan-step__duration {
   font-family: var(--font-sans);
   letter-spacing: normal;
 }

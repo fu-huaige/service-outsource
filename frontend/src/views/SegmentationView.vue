@@ -2,7 +2,7 @@
   <div class="page-container segmentation-view">
     <!-- Top Stage Header Navigation -->
     <div class="pipeline-stage-nav">
-      <div class="stage-badge font-mono">STAGE 03 · D-OPTIMAL SEGMENTATION</div>
+      <div class="stage-badge">STAGE 03 · D-OPTIMAL SEGMENTATION</div>
       <div class="stage-links">
         <span class="stage-link" @click="$router.push('/preprocessing/cleaning')">02 时间清洗</span>
         <span class="stage-sep">›</span>
@@ -17,7 +17,7 @@
     <!-- Header with Breadcrumb & Quick Action -->
     <div class="page-header-row">
       <div class="page-header">
-        <span class="page-eyebrow font-mono">FISHER INFORMATION MATRIX DET-MAXIMIZATION</span>
+        <span class="page-eyebrow">FISHER INFORMATION MATRIX DET-MAXIMIZATION</span>
         <h2>质量约束 D-最优区间剪辑工作台</h2>
         <p class="subtitle">先做质量门控过滤稳态与坏段，再由 CELF 延迟贪心算法截取信息量极大化高动态过渡带</p>
       </div>
@@ -39,7 +39,7 @@
     <section class="industrial-card source-context-card" aria-labelledby="source-context-title">
       <div class="source-context-header">
         <div>
-          <span class="source-context-eyebrow font-mono">ANALYSIS CONTEXT</span>
+          <span class="source-context-eyebrow">ANALYSIS CONTEXT</span>
           <h3 id="source-context-title">Stage 03 分析上下文</h3>
         </div>
         <p>仅清洗规整完成后的版本可作为 D-最优正式分析源。</p>
@@ -149,28 +149,28 @@
       <!-- Floating 5-KPI HUD -->
       <div class="hud-kpi-bar" v-if="result && result.selection">
         <div class="hud-item">
-          <span class="hud-label font-mono">CANDIDATES</span>
-          <span class="hud-val font-mono">{{ result.selection.candidate_count }}</span>
+          <span class="hud-label">CANDIDATES</span>
+          <span class="hud-val">{{ result.selection.candidate_count }}</span>
         </div>
         <div class="hud-sep"></div>
         <div class="hud-item">
-          <span class="hud-label font-mono">GATED PASS</span>
-          <span class="hud-val font-mono text-cyan">{{ result.selection.gated_count }}</span>
+          <span class="hud-label">GATED PASS</span>
+          <span class="hud-val text-cyan">{{ result.selection.gated_count }}</span>
         </div>
         <div class="hud-sep"></div>
         <div class="hud-item">
-          <span class="hud-label font-mono">SELECTED SEGMENTS</span>
-          <span class="hud-val font-mono text-primary">{{ result.selection.selected_count }}</span>
+          <span class="hud-label">SELECTED SEGMENTS</span>
+          <span class="hud-val text-primary">{{ result.selection.selected_count }}</span>
         </div>
         <div class="hud-sep"></div>
         <div class="hud-item">
-          <span class="hud-label font-mono">SAMPLE COVERAGE</span>
-          <span class="hud-val font-mono text-green">{{ percent(result.selection.coverage_ratio) }}</span>
+          <span class="hud-label">SAMPLE COVERAGE</span>
+          <span class="hud-val text-green">{{ percent(result.selection.coverage_ratio) }}</span>
         </div>
         <div class="hud-sep"></div>
         <div class="hud-item">
-          <span class="hud-label font-mono">COND NUMBER</span>
-          <span class="hud-val font-mono">{{ formatNumber(result.selection.design_matrix_condition_number) }}</span>
+          <span class="hud-label">COND NUMBER</span>
+          <span class="hud-val">{{ formatNumber(result.selection.design_matrix_condition_number) }}</span>
         </div>
       </div>
 
@@ -192,28 +192,28 @@
             <el-icon><TrendCharts /></el-icon>
             <span>优选区间贡献排行榜</span>
           </div>
-          <span class="card-tag font-mono">RANKED LIST</span>
+          <span class="card-tag">RANKED LIST</span>
         </div>
 
         <el-table :data="result.segments" stripe height="280" style="width: 100%">
           <el-table-column prop="rank" label="排名" width="70">
             <template #default="{ row }">
-              <span class="rank-badge font-mono">#{{ row.rank }}</span>
+              <span class="rank-badge">#{{ row.rank }}</span>
             </template>
           </el-table-column>
           <el-table-column label="样本索引区间" width="160">
             <template #default="{ row }">
-              <span class="font-mono">[{{ row.start_index }} - {{ row.end_index }}]</span>
+              <span>[{{ row.start_index }} - {{ row.end_index }}]</span>
             </template>
           </el-table-column>
           <el-table-column label="区间点数" width="100">
             <template #default="{ row }">
-              <span><span class="font-mono">{{ row.end_index - row.start_index }}</span> 点</span>
+              <span><span>{{ row.end_index - row.start_index }}</span> 点</span>
             </template>
           </el-table-column>
           <el-table-column label="信噪比 SNR" width="110">
             <template #default="{ row }">
-              <span class="font-mono text-green">{{ formatNumber(row.snr_db) }} dB</span>
+              <span class="text-green">{{ formatNumber(row.snr_db) }} dB</span>
             </template>
           </el-table-column>
         </el-table>
@@ -233,7 +233,7 @@
           <el-table-column prop="window_index" label="窗口" width="70" />
           <el-table-column label="样本范围" width="140">
             <template #default="{ row }">
-              <span class="font-mono">[{{ row.start_index }} - {{ row.end_index }}]</span>
+              <span>[{{ row.start_index }} - {{ row.end_index }}]</span>
             </template>
           </el-table-column>
           <el-table-column label="门控状态" width="90">
@@ -549,7 +549,8 @@ const formatNumber = (value: number | null | undefined) => {
   background: var(--color-primary-light);
   padding: 2px 8px;
   border-radius: 4px;
-  letter-spacing: 0.04em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
 }
 
 .stage-links {
@@ -619,7 +620,8 @@ const formatNumber = (value: number | null | undefined) => {
 .source-context-eyebrow {
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
   color: var(--color-primary);
 }
 

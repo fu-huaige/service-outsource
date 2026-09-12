@@ -235,7 +235,8 @@ const fmt = (value: number | undefined) => {
 .fit-val {
   font-weight: 600;
   color: var(--color-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  letter-spacing: normal;
 }
 
 .alert-gap {

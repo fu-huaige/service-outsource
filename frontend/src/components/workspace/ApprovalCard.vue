@@ -34,8 +34,8 @@
             :key="item.variable"
             class="ac-lag-row"
           >
-            <span class="font-mono">{{ item.variable }}</span>
-            <span class="font-mono">{{ item.recommended ?? '—' }}</span>
+            <span>{{ item.variable }}</span>
+            <span>{{ item.recommended ?? '—' }}</span>
             <input
               v-model.number="lagOverrides[idx].value"
               type="number"
@@ -61,13 +61,13 @@
         <p class="ac-desc">Agent 推荐了以下 ARX 模型阶次，可手动覆盖后确认：</p>
         <div class="ac-arx-grid">
           <div class="ac-arx-item">
-            <label class="ac-arx-label"><span class="font-mono">na</span>（输出阶）</label>
-            <span class="ac-arx-recommended">推荐: <span class="font-mono">{{ arxRec.na }}</span></span>
+            <label class="ac-arx-label"><span>na</span>（输出阶）</label>
+            <span class="ac-arx-recommended">推荐: <span>{{ arxRec.na }}</span></span>
             <input v-model.number="arxOverride.na" type="number" min="1" max="20" class="ac-lag-input" />
           </div>
           <div v-for="variable in arxVariables" :key="variable" class="ac-arx-item">
-            <label class="ac-arx-label"><span class="font-mono">nb[{{ variable }}]</span>（输入阶）</label>
-            <span class="ac-arx-recommended">推荐: <span class="font-mono">{{ arxRec.nb[variable] }}</span></span>
+            <label class="ac-arx-label"><span>nb[{{ variable }}]</span>（输入阶）</label>
+            <span class="ac-arx-recommended">推荐: <span>{{ arxRec.nb[variable] }}</span></span>
             <input v-model.number="arxOverride.nb[variable]" type="number" min="1" max="100" class="ac-lag-input" />
           </div>
         </div>
@@ -93,7 +93,7 @@
             :data-test="`feature-variable-${col.name}`"
           >
             <input type="checkbox" v-model="col.shouldRemove" class="ac-feature-checkbox" />
-            <span class="ac-feature-name font-mono">{{ col.name }}</span>
+            <span class="ac-feature-name">{{ col.name }}</span>
             <span v-if="col.reason" class="ac-feature-reason">{{ col.reason }}</span>
           </label>
         </div>
@@ -331,6 +331,8 @@ async function handleReject() {
   gap: 12px;
   padding: 8px 12px;
   font-size: 13px;
+  font-family: var(--font-sans);
+  letter-spacing: normal;
   background: #FFFFFF;
   border-bottom: 1px solid #ECECED;
 }
@@ -343,7 +345,7 @@ async function handleReject() {
   font-size: 11px;
   color: #8E8E93;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: normal;
   background: #FAFAFA;
 }
 
@@ -355,7 +357,7 @@ async function handleReject() {
   border-radius: 4px;
   color: #171717;
   font-size: 13px;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   outline: none;
   transition: border-color 0.15s ease;
 }
@@ -400,7 +402,8 @@ async function handleReject() {
   font-size: 11px;
   color: #8E8E93;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
 }
 
 .ac-arx-recommended {

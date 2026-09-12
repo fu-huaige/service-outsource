@@ -2,7 +2,7 @@
   <div class="page-container cleaning-view">
     <!-- Top Stage Header Navigation -->
     <div class="pipeline-stage-nav">
-      <div class="stage-badge font-mono">STAGE 02 · DATA CLEANING LAB</div>
+      <div class="stage-badge">STAGE 02 · DATA CLEANING LAB</div>
       <div class="stage-links">
         <span class="stage-link active">02 时间清洗</span>
         <span class="stage-sep">›</span>
@@ -17,7 +17,7 @@
     <!-- Page Header -->
     <div class="cleaning-hero-bar">
       <div>
-        <span class="page-eyebrow font-mono">EQUISPACED RESAMPLING & 3-SIGMA TRIAGE</span>
+        <span class="page-eyebrow">EQUISPACED RESAMPLING & 3-SIGMA TRIAGE</span>
         <h2>时间规整与清洗实验室</h2>
         <p class="subtitle">消除采样不均匀、补全缺失值并过滤尖峰异常点，生成可追溯的清洗规整版本。</p>
       </div>
@@ -26,7 +26,7 @@
     <section class="industrial-card source-context-card" aria-labelledby="cleaning-source-title">
       <div class="source-context-header">
         <div>
-          <span class="source-context-eyebrow font-mono">CLEANING CONTEXT</span>
+          <span class="source-context-eyebrow">CLEANING CONTEXT</span>
           <h3 id="cleaning-source-title">清洗规整上下文</h3>
         </div>
         <p>原始版本与清洗规整版本可作为新的清洗输入。</p>
@@ -293,25 +293,25 @@
     <!-- FORMAT 1: Bottom 3-Card Telemetry Triage Strip (底部修复三联卡) -->
     <div class="triage-cards-grid">
       <div class="triage-card industrial-card">
-        <div class="triage-num font-mono">01</div>
+        <div class="triage-num">01</div>
         <div class="triage-content">
-          <div class="triage-title font-mono">HAMPEL 3-SIGMA FILTER</div>
+          <div class="triage-title">HAMPEL 3-SIGMA FILTER</div>
           <div class="triage-desc">计算滑窗中位数绝对差 (MAD)，自适应截断偏离 3σ 的高频孤立尖峰，避免极大异常值拉偏最小二乘超平面。</div>
         </div>
       </div>
 
       <div class="triage-card industrial-card">
-        <div class="triage-num font-mono">02</div>
+        <div class="triage-num">02</div>
         <div class="triage-content">
-          <div class="triage-title font-mono">EQUISPACED RESAMPLING</div>
+          <div class="triage-title">EQUISPACED RESAMPLING</div>
           <div class="triage-desc">重构严格单调递增的等间隔时间轴，统一多源 DCS 采样率，为后续差分方程辨识提供稳定的时间步长基准。</div>
         </div>
       </div>
 
       <div class="triage-card industrial-card next-triage-card" @click="$router.push('/preprocessing/segmentation')">
-        <div class="triage-num font-mono">03</div>
+        <div class="triage-num">03</div>
         <div class="triage-content">
-          <div class="triage-title font-mono">NEXT STEP · D-OPTIMAL</div>
+          <div class="triage-title">NEXT STEP · D-OPTIMAL</div>
           <div class="triage-desc">清洗数据已固化至当前资产树。点击直接进入质量门控与 D-最优高动态区间优选 →</div>
         </div>
       </div>
@@ -1167,7 +1167,8 @@ onMounted(() => {
   background: var(--color-primary-light);
   padding: 2px 8px;
   border-radius: 4px;
-  letter-spacing: 0.04em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
 }
 
 .stage-links {
@@ -1236,7 +1237,8 @@ onMounted(() => {
 .source-context-eyebrow {
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
   color: var(--color-primary);
 }
 
@@ -1421,10 +1423,10 @@ onMounted(() => {
 .repair-detail-card__eyebrow {
   display: block;
   margin-bottom: 2px;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.09em;
+  letter-spacing: normal;
   color: #65796b;
 }
 
@@ -1489,7 +1491,7 @@ onMounted(() => {
 .repair-detail-card dd {
   overflow-wrap: anywhere;
   margin: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 11px;
   color: #34443a;
 }
@@ -1602,7 +1604,8 @@ onMounted(() => {
   font-size: 11px;
   font-weight: 800;
   color: var(--text-primary);
-  letter-spacing: 0.04em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
 }
 
 .triage-desc {

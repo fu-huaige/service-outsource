@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -17,10 +18,13 @@ from app.core.config import Settings
 from app.core.db import get_session
 from app.main import create_app
 from app.models import Base, DatasetVersion, ProcessingRun
-from app.models.agent_execution import AgentExecutionSession
+from app.models.agent_execution import AgentExecutionSession, AgentStepRun
+from app.models.optimization import OptimizationStudy, OptimizationTrialRecord
 from app.schemas.copilot import ExecutionPlan, ExecutionPlanStep
+from app.schemas.modeling import ArxFitRequest
 from app.schemas.reporting import ReportData, ReportRequest
 from app.services import agent_service, agent_tool_adapter
+from app.services.agent_arx_modeling_service import ArxStructureError
 from app.services.agent_execution_service import (
     approve_step,
     create_execution,
@@ -29,10 +33,10 @@ from app.services.agent_execution_service import (
     mark_step_succeeded,
     start_step,
 )
-from app.services.agent_tool_adapter import execute_agent_tool
-from app.services.agent_arx_modeling_service import ArxStructureError
+from app.services.agent_tool_adapter import AgentToolAdapterError, execute_agent_tool
 from app.services.cleaning_service import CleaningDomainError
 from app.services.contract_stubs import completed_task
+from app.services.modeling_service import fit_arx_on_version
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -661,6 +665,368 @@ def _benchmark_dataset_version(harness: AdapterHarness) -> tuple[UUID, UUID]:
     assert response.status_code == 201, response.text
     data = response.json()["data"]
     return UUID(data["dataset_id"]), UUID(data["version_id"])
+
+
+@dataclass(frozen=True)
+class OptimizationExportFixture:
+    execution_id: UUID
+    export_step_id: str
+    study_id: UUID
+    best_trial_number: int
+    optimized_model_id: UUID
+    optimized_model_artifact: Path
+    ordinary_indices: list[int]
+    optimized_indices: list[int]
+
+
+async def _seed_optimization_export_fixture(
+    harness: AdapterHarness,
+    *,
+    dataset_id: UUID,
+    version_id: UUID,
+) -> OptimizationExportFixture:
+    ordinary_indices = [20, 21, 22, 23]
+    optimized_indices = list(range(40, 500, 3))
+    async with harness.session_factory() as session:
+        baseline = await fit_arx_on_version(
+            session,
+            payload=ArxFitRequest(
+                version_id=version_id,
+                dataset_id=dataset_id,
+                input_columns=["u1", "u2"],
+                output_column="y",
+                na=1,
+                nb={"u1": 1, "u2": 1},
+                delays={"u1": 0, "u2": 0},
+                evaluate_test=False,
+            ),
+            artifact_root=harness.artifact_root,
+        )
+        optimized = await fit_arx_on_version(
+            session,
+            payload=ArxFitRequest(
+                version_id=version_id,
+                dataset_id=dataset_id,
+                input_columns=["u1", "u2"],
+                output_column="y",
+                na=1,
+                nb={"u1": 1, "u2": 1},
+                delays={"u1": 0, "u2": 0},
+                train_ratio=0.6,
+                validation_ratio=0.2,
+                training_sample_indices=optimized_indices,
+                evaluate_test=False,
+            ),
+            artifact_root=harness.artifact_root,
+        )
+
+        now = datetime.now(UTC)
+        study_id = uuid4()
+        best_trial_number = 2
+        study = OptimizationStudy(
+            id=study_id,
+            dataset_id=dataset_id,
+            version_id=version_id,
+            status="succeeded",
+            objective="val_free_run_fit",
+            parameters={},
+            best_trial_number=best_trial_number,
+            best_value=0.75,
+            best_params={"window_size": 60, "max_segments": 8, "nk": 0},
+            baseline_model_id=baseline.model_id,
+            optimized_model_id=optimized.model_id,
+            fingerprint={},
+            statistics={},
+            created_at=now,
+            finished_at=now,
+        )
+        trial = OptimizationTrialRecord(
+            id=uuid4(),
+            study_id=study_id,
+            trial_number=best_trial_number,
+            state="complete",
+            value=0.75,
+            params=dict(study.best_params),
+            metrics={"val_free_run_fit": 75.0},
+            cache_hit=False,
+            created_at=now,
+            finished_at=now,
+        )
+        ordinary_selection = ProcessingRun(
+            id=uuid4(),
+            dataset_id=dataset_id,
+            source_version_id=version_id,
+            run_type="preprocessing.segment",
+            status="succeeded",
+            parameters={},
+            result={"selected_sample_indices": ordinary_indices},
+            created_at=now,
+            finished_at=now,
+        )
+        execution = AgentExecutionSession(
+            id=uuid4(),
+            dataset_id=dataset_id,
+            initial_version_id=version_id,
+            current_version_id=version_id,
+            planner_source="test",
+            plan_json={"steps": []},
+            workflow_status="RUNNING",
+            artifacts={},
+            created_at=now,
+            updated_at=now,
+        )
+        execution.step_runs = [
+            AgentStepRun(
+                id=uuid4(),
+                execution_id=execution.id,
+                step_id="fit",
+                sequence=1,
+                tool_name="fit_arx",
+                status="SUCCEEDED",
+                requires_confirmation=True,
+                confirmation_status="APPROVED",
+                attempt_count=1,
+                source_version_id=version_id,
+                input_payload={},
+                result_payload={"model_id": str(baseline.model_id)},
+                processing_run_ids=[str(baseline.processing_run_id)],
+                started_at=now,
+                finished_at=now,
+            ),
+            AgentStepRun(
+                id=uuid4(),
+                execution_id=execution.id,
+                step_id="optimize",
+                sequence=2,
+                tool_name="optimize_pipeline",
+                status="SUCCEEDED",
+                requires_confirmation=True,
+                confirmation_status="APPROVED",
+                attempt_count=1,
+                source_version_id=version_id,
+                input_payload={"depends_on": ["fit"]},
+                result_payload={
+                    "study_id": str(study_id),
+                    "baseline_model_id": str(baseline.model_id),
+                    "model_id": str(optimized.model_id),
+                    "optimized_model_id": str(optimized.model_id),
+                    "source_version_id": str(version_id),
+                    "best_params": dict(study.best_params),
+                    "best_value": study.best_value,
+                },
+                processing_run_ids=[
+                    str(baseline.processing_run_id),
+                    str(optimized.processing_run_id),
+                ],
+                started_at=now,
+                finished_at=now,
+            ),
+            AgentStepRun(
+                id=uuid4(),
+                execution_id=execution.id,
+                step_id="export",
+                sequence=3,
+                tool_name="export_dataset",
+                status="RUNNING",
+                requires_confirmation=True,
+                confirmation_status="APPROVED",
+                attempt_count=1,
+                source_version_id=None,
+                input_payload={"depends_on": ["optimize"], "parameters": {}},
+                result_payload={},
+                processing_run_ids=[],
+                started_at=now,
+            ),
+        ]
+        session.add_all([study, trial, ordinary_selection, execution])
+        await session.commit()
+
+    return OptimizationExportFixture(
+        execution_id=execution.id,
+        export_step_id="export",
+        study_id=study_id,
+        best_trial_number=best_trial_number,
+        optimized_model_id=optimized.model_id,
+        optimized_model_artifact=harness.artifact_root / str(optimized.artifact_uri),
+        ordinary_indices=ordinary_indices,
+        optimized_indices=optimized_indices,
+    )
+
+
+async def _execute_seeded_export(
+    harness: AdapterHarness, fixture: OptimizationExportFixture
+) -> object:
+    async with harness.session_factory() as session:
+        execution = await _load_execution(harness, fixture.execution_id)
+        export = next(
+            step for step in execution.step_runs if step.step_id == fixture.export_step_id
+        )
+        return await execute_agent_tool(
+            session,
+            execution=execution,
+            step=export,
+            parameters={},
+            artifact_root=harness.artifact_root,
+        )
+
+
+async def _delivery_export_count(harness: AdapterHarness, dataset_id: UUID) -> int:
+    async with harness.session_factory() as session:
+        return int(
+            await session.scalar(
+                select(func.count())
+                .select_from(ProcessingRun)
+                .where(
+                    ProcessingRun.dataset_id == dataset_id,
+                    ProcessingRun.run_type == "delivery.export",
+                )
+            )
+            or 0
+        )
+
+
+def test_agent_export_uses_optimization_best_selection_and_manifest_provenance(
+    adapter_harness: AdapterHarness,
+) -> None:
+    dataset_id, version_id = _benchmark_dataset_version(adapter_harness)
+    fixture = asyncio.run(
+        _seed_optimization_export_fixture(
+            adapter_harness,
+            dataset_id=dataset_id,
+            version_id=version_id,
+        )
+    )
+
+    result = asyncio.run(_execute_seeded_export(adapter_harness, fixture))
+    export_id = UUID(result.result_payload["export_id"])  # type: ignore[attr-defined]
+
+    async def snapshot() -> tuple[dict[str, object], dict[str, object]]:
+        async with adapter_harness.session_factory() as session:
+            run = await session.get(ProcessingRun, export_id)
+            assert run is not None
+            return dict(run.parameters), dict(run.result)
+
+    parameters, persisted_manifest = asyncio.run(snapshot())
+    artifact = json.loads(fixture.optimized_model_artifact.read_text(encoding="utf-8"))
+    manifest = json.loads(
+        (adapter_harness.artifact_root / result.result_payload["manifest_uri"]).read_text(  # type: ignore[attr-defined]
+            encoding="utf-8"
+        )
+    )
+    csv_lines = (
+        adapter_harness.artifact_root / result.result_payload["csv_uri"]  # type: ignore[attr-defined]
+    ).read_text(encoding="utf-8").splitlines()
+
+    assert fixture.optimized_indices != fixture.ordinary_indices
+    assert artifact["configuration"]["training_sample_indices"] == fixture.optimized_indices
+    assert parameters["sample_indices"] == fixture.optimized_indices
+    assert len(csv_lines) - 1 == len(fixture.optimized_indices)
+    assert manifest == persisted_manifest
+    assert manifest["dataset_id"] == str(dataset_id)
+    assert manifest["source_version_id"] == str(version_id)
+    assert manifest["study_id"] == str(fixture.study_id)
+    assert manifest["best_trial_number"] == fixture.best_trial_number
+    assert manifest["optimized_model_id"] == str(fixture.optimized_model_id)
+    assert manifest["selection_source"] == "optimization_best_trial"
+    assert manifest["selected_row_count"] == len(fixture.optimized_indices)
+    assert manifest["source_rows"] == 900
+
+
+def test_agent_export_never_falls_back_when_optimization_model_provenance_is_corrupt(
+    adapter_harness: AdapterHarness,
+) -> None:
+    dataset_id, version_id = _benchmark_dataset_version(adapter_harness)
+    fixture = asyncio.run(
+        _seed_optimization_export_fixture(
+            adapter_harness,
+            dataset_id=dataset_id,
+            version_id=version_id,
+        )
+    )
+
+    async def corrupt() -> None:
+        async with adapter_harness.session_factory() as session:
+            execution = await session.scalar(
+                select(AgentExecutionSession)
+                .where(AgentExecutionSession.id == fixture.execution_id)
+                .options(selectinload(AgentExecutionSession.step_runs))
+            )
+            assert execution is not None
+            optimization = next(
+                step for step in execution.step_runs if step.tool_name == "optimize_pipeline"
+            )
+            optimization.result_payload = {
+                **optimization.result_payload,
+                "optimized_model_id": str(uuid4()),
+            }
+            await session.commit()
+
+    asyncio.run(corrupt())
+    with pytest.raises(AgentToolAdapterError) as raised:
+        asyncio.run(_execute_seeded_export(adapter_harness, fixture))
+
+    assert raised.value.code == "OPTIMIZATION_EXPORT_PROVENANCE_INVALID"
+    assert asyncio.run(_delivery_export_count(adapter_harness, dataset_id)) == 0
+
+
+def test_agent_export_rejects_missing_optimization_training_indices(
+    adapter_harness: AdapterHarness,
+) -> None:
+    dataset_id, version_id = _benchmark_dataset_version(adapter_harness)
+    fixture = asyncio.run(
+        _seed_optimization_export_fixture(
+            adapter_harness,
+            dataset_id=dataset_id,
+            version_id=version_id,
+        )
+    )
+    artifact = json.loads(fixture.optimized_model_artifact.read_text(encoding="utf-8"))
+    artifact["configuration"]["training_sample_indices"] = []
+    fixture.optimized_model_artifact.write_text(
+        json.dumps(artifact, ensure_ascii=False), encoding="utf-8"
+    )
+
+    with pytest.raises(AgentToolAdapterError) as raised:
+        asyncio.run(_execute_seeded_export(adapter_harness, fixture))
+
+    assert raised.value.code == "OPTIMIZATION_EXPORT_SELECTION_MISSING"
+    assert asyncio.run(_delivery_export_count(adapter_harness, dataset_id)) == 0
+
+
+@pytest.mark.parametrize(
+    ("invalid_index", "expected_code"),
+    [
+        (600, "OPTIMIZATION_BEST_SELECTION_TEST_LEAKAGE"),
+        (900, "OPTIMIZATION_BEST_SELECTION_INVALID"),
+    ],
+)
+def test_agent_export_rejects_non_train_optimization_indices(
+    adapter_harness: AdapterHarness,
+    invalid_index: int,
+    expected_code: str,
+) -> None:
+    dataset_id, version_id = _benchmark_dataset_version(adapter_harness)
+    fixture = asyncio.run(
+        _seed_optimization_export_fixture(
+            adapter_harness,
+            dataset_id=dataset_id,
+            version_id=version_id,
+        )
+    )
+    artifact = json.loads(fixture.optimized_model_artifact.read_text(encoding="utf-8"))
+    artifact["configuration"]["training_sample_indices"] = [
+        *fixture.optimized_indices,
+        invalid_index,
+    ]
+    fixture.optimized_model_artifact.write_text(
+        json.dumps(artifact, ensure_ascii=False), encoding="utf-8"
+    )
+
+    with pytest.raises(AgentToolAdapterError) as raised:
+        asyncio.run(_execute_seeded_export(adapter_harness, fixture))
+
+    assert raised.value.code == expected_code
+    assert asyncio.run(_delivery_export_count(adapter_harness, dataset_id)) == 0
 
 
 def _chat_to_lag_confirmation(

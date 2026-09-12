@@ -2,7 +2,7 @@
   <div class="page-container collinearity-view">
     <!-- Top Stage Header Navigation -->
     <div class="pipeline-stage-nav">
-      <div class="stage-badge font-mono">STAGE 05 · COLLINEARITY & FEATURE REDUCTION</div>
+      <div class="stage-badge">STAGE 05 · COLLINEARITY & FEATURE REDUCTION</div>
       <div class="stage-links">
         <span class="stage-link" @click="$router.push('/preprocessing/cleaning')">02 时间清洗</span>
         <span class="stage-sep">›</span>
@@ -16,7 +16,7 @@
 
     <!-- Header with Quick Action -->
     <div class="page-header">
-      <span class="page-eyebrow font-mono">PEARSON CORRELATION & VARIANCE INFLATION FACTOR</span>
+      <span class="page-eyebrow">PEARSON CORRELATION & VARIANCE INFLATION FACTOR</span>
       <h2>共线性检测与冗余特征剔除面板</h2>
       <p class="subtitle">计算 Pearson 相关系数矩阵、方差膨胀因子 VIF 与矩阵条件数；由工程师安全确认后派生新的特征选择版本</p>
     </div>
@@ -24,7 +24,7 @@
     <div class="industrial-card analysis-context-card">
       <div class="analysis-context-header">
         <div>
-          <span class="context-eyebrow font-mono">ANALYSIS CONTEXT</span>
+          <span class="context-eyebrow">ANALYSIS CONTEXT</span>
           <h3>分析上下文</h3>
         </div>
         <span class="context-note">先选择数据集，再选择后端确认的时滞补偿版本</span>
@@ -50,8 +50,9 @@
             >
               <div class="selector-option">
                 <span class="selector-option-name">{{ dataset.name }}</span>
-                <span class="selector-option-meta font-mono">
-                  {{ dataset.row_count }} rows · {{ dataset.col_count ?? dataset.column_count ?? 0 }} cols · {{ shortId(dataset.id) }}
+                <span class="selector-option-meta">
+                  {{ dataset.row_count }} rows · {{ dataset.col_count ?? dataset.column_count ?? 0 }} cols ·
+                  <span class="font-mono">{{ shortId(dataset.id) }}</span>
                 </span>
               </div>
             </el-option>
@@ -104,7 +105,7 @@
         <div class="cs-item">
           <label>正式输入变量 (u)</label>
           <div class="input-column-chips" data-test="input-columns">
-            <span v-for="column in form.input_columns" :key="column" class="input-column-chip font-mono">
+            <span v-for="column in form.input_columns" :key="column" class="input-column-chip">
               {{ column }}
             </span>
             <span v-if="!form.input_columns.length" class="input-column-placeholder">选择时滞补偿版本后自动读取</span>
@@ -140,12 +141,12 @@
 
     <div v-if="hasInputDiagnostics" class="industrial-card qualification-card" data-test="input-qualification">
       <div>
-        <span class="context-eyebrow font-mono">INPUT QUALIFICATION</span>
+        <span class="context-eyebrow">INPUT QUALIFICATION</span>
         <h3>输入资格判定</h3>
       </div>
       <div class="qualification-list">
         <div v-for="diagnostic in inputDiagnostics" :key="diagnostic.column" class="qualification-item">
-          <span class="qualification-column font-mono">{{ diagnostic.column }}</span>
+          <span class="qualification-column">{{ diagnostic.column }}</span>
           <span class="qualification-status" :class="diagnostic.status">{{ qualificationStatusLabel(diagnostic.status) }}</span>
           <span class="qualification-reason">{{ diagnostic.reason }}</span>
         </div>
@@ -171,11 +172,11 @@
             <span data-test="correlation-title">{{ correlationMatrixTitle }}</span>
           </div>
           <div class="correlation-header-actions">
-            <span class="card-tag font-mono">HEATMAP</span>
+            <span class="card-tag">HEATMAP</span>
             <div class="correlation-mode-switch" role="group" aria-label="相关矩阵显示方式">
               <button
                 type="button"
-                class="correlation-mode-button font-mono"
+                class="correlation-mode-button"
                 :class="{ 'is-active': correlationMode === 'pearson' }"
                 :aria-pressed="correlationMode === 'pearson'"
                 data-test="correlation-mode-pearson"
@@ -186,7 +187,7 @@
               </button>
               <button
                 type="button"
-                class="correlation-mode-button font-mono"
+                class="correlation-mode-button"
                 :class="{ 'is-active': correlationMode === 'spearman' }"
                 :aria-pressed="correlationMode === 'spearman'"
                 data-test="correlation-mode-spearman"
@@ -199,7 +200,7 @@
           </div>
         </div>
         <div v-if="!displayedCorrelationMatrix" class="matrix-unavailable" data-test="matrix-unavailable">
-          <strong class="font-mono">N/A</strong>
+          <strong>N/A</strong>
           <span>当前历史结果没有可用的 {{ correlationMatrixTitle }} 数据。</span>
         </div>
         <ChartContainer
@@ -218,7 +219,7 @@
             <span>各特征 VIF 膨胀因子</span>
           </div>
           <span class="card-tag localized-card-tag">
-            阈值: <span class="font-mono">{{ form.vif_threshold || 10 }}</span>
+            阈值: <span>{{ form.vif_threshold || 10 }}</span>
           </span>
         </div>
         <ChartContainer data-test="vif-chart" :options="vifOptions" height="340px" />
@@ -231,7 +232,7 @@
             <el-icon><TrendCharts /></el-icon>
             <span>特征决策检查</span>
           </div>
-          <el-tag :type="conditionSeverity" effect="light" size="small" class="font-mono">
+          <el-tag :type="conditionSeverity" effect="light" size="small">
             Cond: {{ formatDecisionMetric(result.condition_number) }}
           </el-tag>
         </div>
@@ -263,7 +264,6 @@
                 type="warning"
                 effect="plain"
                 size="small"
-                class="font-mono"
               >
                 {{ group.join(" ↔ ") }}
               </el-tag>
@@ -286,9 +286,9 @@
               :data-test="`decision-row-${row.variable}`"
             >
               <div class="decision-row-summary">
-                <strong class="decision-variable font-mono">{{ row.variable }}</strong>
+                <strong class="decision-variable">{{ row.variable }}</strong>
                 <span>{{ decisionQualificationLabel(row.diagnostic?.status) }}</span>
-                <span class="font-mono">{{ formatVifValue(row.vif) }}</span>
+                <span>{{ formatVifValue(row.vif) }}</span>
                 <span
                   class="decision-action"
                   :class="recommendationActionClass(row.recommendation?.action)"
@@ -318,28 +318,28 @@
                 <dl class="decision-evidence-list">
                   <div><dt>数据资格</dt><dd>{{ decisionQualificationLabel(row.diagnostic?.status) }}</dd></div>
                   <div><dt>资格原因</dt><dd>{{ qualificationReason(row.diagnostic) }}</dd></div>
-                  <div><dt>方差</dt><dd class="font-mono">{{ formatDecisionMetric(row.diagnostic?.variance) }}</dd></div>
-                  <div><dt>VIF</dt><dd class="font-mono">{{ formatVifValue(row.vif) }}</dd></div>
-                  <div><dt>全局诊断</dt><dd class="font-mono">Condition Number = {{ formatDecisionMetric(result.condition_number) }}</dd></div>
+                  <div><dt>方差</dt><dd>{{ formatDecisionMetric(row.diagnostic?.variance) }}</dd></div>
+                  <div><dt>VIF</dt><dd>{{ formatVifValue(row.vif) }}</dd></div>
+                  <div><dt>全局诊断</dt><dd>Condition Number = {{ formatDecisionMetric(result.condition_number) }}</dd></div>
                   <div><dt>系统建议</dt><dd>{{ recommendationActionLabel(row.recommendation?.action) }}</dd></div>
                   <div><dt>决策原因</dt><dd>{{ recommendationReason(row.recommendation) }}</dd></div>
-                  <div><dt>相关变量</dt><dd class="font-mono">{{ relatedVariablesLabel(row.recommendation) }}</dd></div>
+                  <div><dt>相关变量</dt><dd>{{ relatedVariablesLabel(row.recommendation) }}</dd></div>
                 </dl>
 
                 <div class="correlation-evidence-grid">
                   <section :data-test="`decision-pearson-${row.variable}`">
                     <h5>Pearson</h5>
                     <div v-for="entry in correlationEvidence(row.variable, result.matrix)" :key="entry.variable" class="correlation-evidence-row">
-                      <span class="font-mono">{{ row.variable }} ↔ {{ entry.variable }}</span>
-                      <strong class="font-mono">{{ formatCorrelationValue(entry.value) }}</strong>
+                      <span>{{ row.variable }} ↔ {{ entry.variable }}</span>
+                      <strong>{{ formatCorrelationValue(entry.value) }}</strong>
                     </div>
                     <span v-if="!correlationEvidence(row.variable, result.matrix).length" class="evidence-empty">无其他正式输入</span>
                   </section>
                   <section :data-test="`decision-spearman-${row.variable}`">
                     <h5>Spearman</h5>
                     <div v-for="entry in correlationEvidence(row.variable, result.spearman_matrix)" :key="entry.variable" class="correlation-evidence-row">
-                      <span class="font-mono">{{ row.variable }} ↔ {{ entry.variable }}</span>
-                      <strong class="font-mono">{{ formatCorrelationValue(entry.value) }}</strong>
+                      <span>{{ row.variable }} ↔ {{ entry.variable }}</span>
+                      <strong>{{ formatCorrelationValue(entry.value) }}</strong>
                     </div>
                     <span v-if="!correlationEvidence(row.variable, result.spearman_matrix).length" class="evidence-empty">无其他正式输入</span>
                   </section>
@@ -368,7 +368,7 @@
             <div class="apply-decision-summary" data-test="feature-apply-summary">
               <strong>本次建议剔除</strong>
               <div v-for="item in dropCandidates" :key="item.variable" class="apply-decision-item">
-                <span class="font-mono">{{ item.variable }}</span>
+                <span>{{ item.variable }}</span>
                 <span>{{ recommendationReason(item) }}</span>
               </div>
             </div>
@@ -1275,7 +1275,8 @@ const handleApply = async () => {
   background: var(--color-primary-light);
   padding: 2px 8px;
   border-radius: 4px;
-  letter-spacing: 0.04em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
 }
 
 .stage-links {
@@ -1330,7 +1331,8 @@ const handleApply = async () => {
 .context-eyebrow {
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
   color: var(--color-primary);
 }
 
@@ -1696,7 +1698,8 @@ const handleApply = async () => {
 }
 
 .s-v {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  letter-spacing: normal;
   font-size: 16px;
   font-weight: 800;
   color: var(--text-primary);
@@ -1975,11 +1978,6 @@ const handleApply = async () => {
   grid-template-columns: minmax(60px, auto) 1fr;
   gap: 10px;
   line-height: 1.45;
-}
-
-.apply-decision-item .font-mono {
-  color: #795a4e;
-  font-weight: 700;
 }
 
 .collin-empty-card {

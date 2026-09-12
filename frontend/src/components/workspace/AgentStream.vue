@@ -13,7 +13,7 @@
     <!-- Compliance Proof (compact) -->
     <div v-if="execution.artifacts?.compliance" class="stream-compliance">
       <span
-        class="compliance-badge font-mono"
+        class="compliance-badge"
         :class="execution.artifacts.compliance.passed ? 'ok' : 'fail'"
       >
         {{ execution.artifacts.compliance.passed ? '✓ 合规证明通过' : '✗ 合规校验未通过' }}
@@ -60,7 +60,7 @@
           <span class="agent-working-dot" />
         </div>
         <div class="stream-running__text">
-          <span class="stream-running__tool font-mono">{{ currentToolName }}</span>
+          <span class="stream-running__tool">{{ currentToolName }}</span>
           <span class="stream-running__desc">Agent 正在执行…</span>
         </div>
       </div>
@@ -113,10 +113,10 @@
 
     <!-- Conclusion -->
     <div v-if="execution.artifacts?.conclusion" class="stream-conclusion">
-      <div class="stream-conclusion__label font-mono">CONCLUSION · 执行结论</div>
+      <div class="stream-conclusion__label">CONCLUSION · 执行结论</div>
       <div class="stream-conclusion__text">{{ execution.artifacts.conclusion }}</div>
       <div v-if="execution.artifacts?.assumptions?.length" class="stream-conclusion__assumptions">
-        <div class="stream-conclusion__assumptions-label font-mono">ASSUMPTIONS · 建模假设</div>
+        <div class="stream-conclusion__assumptions-label">ASSUMPTIONS · 建模假设</div>
         <ul>
           <li v-for="(a, i) in execution.artifacts.assumptions" :key="i">{{ a }}</li>
         </ul>
@@ -381,7 +381,8 @@ watch(() => props.execution.step_runs.length, async () => {
 .stream-conclusion__label {
   font-size: 11px;
   color: var(--success);
-  letter-spacing: 0.08em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
   margin-bottom: 8px;
   font-weight: 600;
 }
@@ -401,7 +402,8 @@ watch(() => props.execution.step_runs.length, async () => {
 .stream-conclusion__assumptions-label {
   font-size: 11px;
   color: #8E8E93;
-  letter-spacing: 0.08em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
   margin-bottom: 8px;
   font-weight: 600;
 }

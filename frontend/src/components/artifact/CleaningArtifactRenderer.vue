@@ -75,7 +75,7 @@
         </div>
         <div v-for="row in metricRows" :key="row.key" class="cleaning-metric-row" role="row">
           <span role="cell">{{ row.label }}</span>
-          <strong class="font-mono" role="cell">{{ row.value }}</strong>
+          <strong role="cell">{{ row.value }}</strong>
           <span role="cell">{{ row.description }}</span>
         </div>
       </div>

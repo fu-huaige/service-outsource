@@ -15,15 +15,12 @@
         </span>
         <span
           class="te-tool"
-          :class="{
-            'font-mono': toolKey !== 'generate_report',
-            'te-tool--report': toolKey === 'generate_report',
-          }"
+          :class="{ 'te-tool--report': toolKey === 'generate_report' }"
         >{{ localizedTool(toolKey) }}</span>
         <span v-if="stepRun.status === 'waiting_confirmation'" class="te-awaiting">等待确认</span>
       </div>
       <div class="te-header__right">
-        <span v-if="stepRun.duration_ms" class="te-duration font-mono">{{ formatDuration(stepRun.duration_ms) }}</span>
+        <span v-if="stepRun.duration_ms" class="te-duration">{{ formatDuration(stepRun.duration_ms) }}</span>
         <span v-if="hasResult" class="te-view-link">查看成果 →</span>
       </div>
     </div>
@@ -37,7 +34,7 @@
     <div v-if="keyMetrics.length > 0" class="te-metrics">
       <div v-for="m in keyMetrics" :key="m.label" class="te-metric">
         <span class="te-metric__label">{{ m.label }}</span>
-        <span class="te-metric__value font-mono">{{ m.value }}</span>
+        <span class="te-metric__value">{{ m.value }}</span>
       </div>
     </div>
 
@@ -211,6 +208,13 @@ const keyMetrics = computed<{ label: string; value: string }[]>(() => {
   letter-spacing: normal;
 }
 
+.te-tool,
+.te-duration,
+.te-metric__value {
+  font-family: var(--font-sans);
+  letter-spacing: normal;
+}
+
 .te-awaiting {
   font-size: 11px;
   color: var(--warning);
@@ -259,7 +263,8 @@ const keyMetrics = computed<{ label: string; value: string }[]>(() => {
   font-size: 10px;
   color: #8E8E93;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: normal;
+  font-family: var(--font-sans);
 }
 
 .te-metric__value {

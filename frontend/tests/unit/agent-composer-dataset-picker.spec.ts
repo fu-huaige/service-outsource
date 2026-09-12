@@ -97,6 +97,18 @@ describe("AgentComposer dataset picker viewport positioning", () => {
     expect(wrapper.emitted("submit")).toBeUndefined();
   });
 
+  it("keeps the whole composer non-submittable while the parent request is pending", async () => {
+    const wrapper = mount(AgentComposer, {
+      props: { submitting: true },
+      global: { plugins: [createPinia()] },
+    });
+
+    expect(wrapper.get(".composer-textarea").attributes("disabled")).toBeDefined();
+    expect(wrapper.get(".composer-btn--dataset").attributes("disabled")).toBeDefined();
+    expect(wrapper.get(".composer-submit").attributes("disabled")).toBeDefined();
+    expect(wrapper.find(".composer-submit .spin").exists()).toBe(true);
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
