@@ -7,11 +7,13 @@
     <div class="nav-header">
       <router-link to="/home" class="nav-brand" :title="!isExpanded ? 'IndusOpt 首页' : undefined">
         <div class="brand-logo">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-            <path d="M2 17l10 5 10-5"/>
-            <path d="M2 12l10 5 10-5"/>
-          </svg>
+          <img
+            class="brand-logo__image"
+            :src="indusOptMark"
+            alt=""
+            width="24"
+            height="24"
+          />
         </div>
         <div v-show="isExpanded" class="brand-info">
           <span class="brand-name">IndusOpt</span>
@@ -120,6 +122,7 @@
 
 <script setup lang="ts">
 import { ref, computed, inject, onMounted } from 'vue';
+import indusOptMark from '../../assets/brand/indusopt-mark.png';
 import { useSystemStore } from '../../stores/systemStore';
 import NavItem, { type NavItemDef } from './NavItem.vue';
 
@@ -258,6 +261,13 @@ const healthTooltip = computed(() => {
   color: #5E8358;
   flex-shrink: 0;
   transition: all 0.15s ease;
+}
+
+.brand-logo__image {
+  display: block;
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
 }
 
 .nav-brand:hover .brand-logo {

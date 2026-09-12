@@ -196,6 +196,9 @@ describe("Primary navigation", () => {
     expect(wrapper.text()).toContain("功能中心");
     expect(wrapper.text()).not.toContain("资产中心");
     expect(wrapper.get(".brand-name").text()).toBe("IndusOpt");
+    expect(wrapper.get(".brand-logo__image").attributes("src")).toContain("indusopt-mark.png");
+    expect(wrapper.get(".brand-logo__image").attributes("alt")).toBe("");
+    expect(wrapper.get(".brand-logo").find("svg").exists()).toBe(false);
     expect(wrapper.find(".brand-badge").exists()).toBe(false);
     expect(wrapper.text()).not.toContain("A14");
   });
