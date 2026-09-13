@@ -217,6 +217,216 @@ class TestObjective:
         assert free_run_gap > one_step_gap
 
 
+class TestValidationDiagnosisPolicy:
+    def test_maps_only_supported_validation_evidence_to_stable_codes(self) -> None:
+        import inspect
+
+        from app.services.optimization_feedback_policy import (
+            DIAGNOSIS_POLICY_VERSION,
+            diagnose_validation_candidate,
+        )
+
+        assert set(inspect.signature(diagnose_validation_candidate).parameters) == {
+            "validation_feedback",
+            "selection_provenance",
+            "objective_components",
+            "candidate_rejections",
+        }
+        diagnosis = diagnose_validation_candidate(
+            validation_feedback={
+                "free_run": {"fit": float("nan")},
+                "summary": {"stable": False, "max_pole_modulus": 1.02},
+            },
+            selection_provenance={
+                "excitation_satisfied": False,
+                "persistent_excitation_order": {"u1": 1},
+                "required_excitation_order": {"u1": 2},
+            },
+            objective_components={"stability_gate": False, "final_score": None},
+        )
+
+        assert diagnosis.policy_version == DIAGNOSIS_POLICY_VERSION
+        assert [code.value for code in diagnosis.codes] == [
+            "UNSTABLE_MODEL",
+            "FREE_RUN_UNDEFINED",
+            "INSUFFICIENT_EXCITATION",
+        ]
+        assert diagnosis.evidence["UNSTABLE_MODEL"]["max_pole_modulus"] == pytest.approx(
+            1.02
+        )
+        assert diagnosis.evidence["FREE_RUN_UNDEFINED"]["free_run_metric_finite"] is False
+        assert diagnosis.evidence["INSUFFICIENT_EXCITATION"][
+            "excitation_satisfied"
+        ] is False
+
+    @pytest.mark.parametrize(
+        ("reason", "expected_code"),
+        [
+            ("unstable", "UNSTABLE_MODEL"),
+            ("free_run_undefined", "FREE_RUN_UNDEFINED"),
+        ],
+    )
+    def test_all_hard_rejected_structures_preserve_the_original_reason(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        reason: str,
+        expected_code: str,
+    ) -> None:
+        from app.schemas.optimization import OptimizationStartRequest
+        from app.services import optimization_service
+
+        series = make_series(n_samples=1200)
+        monkeypatch.setattr(
+            optimization_service,
+            "_structure_grid",
+            lambda params: [{"na": 2, "nb": 2, "estimator": "ridge", "ridge_alpha": 0.1}],
+        )
+
+        def reject_candidate(result: object) -> tuple[float, dict[str, object]]:
+            return float("-inf"), {
+                "reason": reason,
+                "objective_semantics": dict(optimization_service.OBJECTIVE_SEMANTICS),
+                "objective_components": {
+                    "stability_gate": reason != "unstable",
+                    "final_score": None,
+                },
+            }
+
+        monkeypatch.setattr(optimization_service, "objective_value", reject_candidate)
+        outcome = optimization_service.run_study(
+            series,
+            OptimizationStartRequest(
+                version_id=series.version_id,
+                input_columns=["u1", "u2"],
+                output_column="y",
+                max_trials=1,
+            ),
+            input_columns=["u1", "u2"],
+            output_column="y",
+        )
+
+        assert outcome.best_number is None
+        assert len(outcome.trials) == 1
+        trial = outcome.trials[0]
+        assert trial.state == "failed"
+        assert trial.error_code == expected_code
+        assert trial.metrics["diagnosis_policy_version"] == "validation_diagnosis_v1"
+        assert trial.metrics["diagnosis_codes"] == [expected_code]
+        assert trial.metrics["rejection_provenance"]["reason_counts"] == {
+            expected_code: 1
+        }
+
+    def test_solver_error_is_not_mapped_to_a_hard_gate_diagnosis(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.schemas.optimization import OptimizationStartRequest
+        from app.services import optimization_service
+        from app.services.modeling_service import ModelingDomainError
+
+        series = make_series(n_samples=1200)
+        monkeypatch.setattr(
+            optimization_service,
+            "_structure_grid",
+            lambda params: [{"na": 2, "nb": 2, "estimator": "ridge", "ridge_alpha": 0.1}],
+        )
+
+        def fail_solver(*args: object, **kwargs: object) -> None:
+            raise ModelingDomainError("SOLVER_FAILURE", "solver failed")
+
+        monkeypatch.setattr(optimization_service, "fit_arx_core", fail_solver)
+        outcome = optimization_service.run_study(
+            series,
+            OptimizationStartRequest(
+                version_id=series.version_id,
+                input_columns=["u1", "u2"],
+                output_column="y",
+                max_trials=1,
+            ),
+            input_columns=["u1", "u2"],
+            output_column="y",
+        )
+
+        trial = outcome.trials[0]
+        assert trial.state == "failed"
+        assert trial.error_code == "SOLVER_FAILURE"
+        assert trial.metrics["diagnosis_codes"] == []
+        assert "rejection_provenance" not in trial.metrics
+
+    def test_segmentation_error_is_not_mapped_to_a_hard_gate_diagnosis(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.schemas.optimization import OptimizationStartRequest
+        from app.services import optimization_service
+        from app.services.segment_service import SegmentDomainError
+
+        series = make_series(n_samples=1200)
+
+        def fail_selection(*args: object, **kwargs: object) -> None:
+            raise SegmentDomainError("SEGMENT_FAILURE", "selection failed")
+
+        monkeypatch.setattr(optimization_service, "run_segment_selection", fail_selection)
+        outcome = optimization_service.run_study(
+            series,
+            OptimizationStartRequest(
+                version_id=series.version_id,
+                input_columns=["u1", "u2"],
+                output_column="y",
+                max_trials=1,
+            ),
+            input_columns=["u1", "u2"],
+            output_column="y",
+        )
+
+        trial = outcome.trials[0]
+        assert trial.state == "failed"
+        assert trial.error_code == "SEGMENT_FAILURE"
+        assert trial.metrics["diagnosis_codes"] == []
+        assert "rejection_provenance" not in trial.metrics
+
+    def test_insufficient_excitation_is_diagnostic_only(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.schemas.optimization import OptimizationStartRequest
+        from app.services import optimization_service
+
+        series = make_series(n_samples=1200)
+        original_provenance = optimization_service._selection_provenance
+        monkeypatch.setattr(
+            optimization_service,
+            "_structure_grid",
+            lambda params: [{"na": 2, "nb": 2, "estimator": "ridge", "ridge_alpha": 0.1}],
+        )
+
+        def insufficient_excitation(outcome: object) -> dict[str, object]:
+            provenance = original_provenance(outcome)  # type: ignore[arg-type]
+            provenance["excitation_satisfied"] = False
+            return provenance
+
+        monkeypatch.setattr(
+            optimization_service, "_selection_provenance", insufficient_excitation
+        )
+        outcome = optimization_service.run_study(
+            series,
+            OptimizationStartRequest(
+                version_id=series.version_id,
+                input_columns=["u1", "u2"],
+                output_column="y",
+                max_trials=1,
+            ),
+            input_columns=["u1", "u2"],
+            output_column="y",
+        )
+
+        trial = outcome.trials[0]
+        assert trial.state == "complete"
+        assert outcome.best_number == trial.number == 0
+        assert outcome.best_value == pytest.approx(trial.value)
+        assert trial.metrics["diagnosis_codes"] == ["INSUFFICIENT_EXCITATION"]
+        assert trial.value == pytest.approx(
+            trial.metrics["objective_components"]["final_score"]
+        )
+
+
 class TestFormalEvaluation:
     def test_baseline_is_test_free_and_ignores_the_held_out_tail(
         self, monkeypatch: pytest.MonkeyPatch
@@ -409,6 +619,10 @@ def test_legacy_optimization_contract_without_feedback_fields_remains_readable()
     assert trial.validation_feedback is None
     assert trial.objective_semantics is None
     assert trial.objective_components is None
+    assert trial.diagnosis_policy_version is None
+    assert trial.diagnosis_codes is None
+    assert trial.diagnosis_evidence is None
+    assert trial.rejection_provenance is None
 
     status = OptimizationStatusData(
         study_id=uuid4(),

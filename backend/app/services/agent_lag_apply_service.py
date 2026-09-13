@@ -125,7 +125,7 @@ async def approve_and_execute_lag_step(
     if validation.overall_status == "INVALID":
         raise LagOverrideError(
             "LAG_OVERRIDE_INVALID",
-            "人工时滞覆盖未通过硬约束校验。",
+            "时滞补偿参数未通过硬约束校验。",
             status_code=422,
             details={"validation": validation.model_dump(mode="json")},
         )
@@ -139,6 +139,29 @@ async def approve_and_execute_lag_step(
     input_payload = _completed_input_payload(step, validation, warning_acknowledged)
     execution = await approve_step(session, execution_id=execution.id, step_id=step.step_id)
     approved_step = _step(execution, step.step_id)
+    if validation.disposition == "CONFIRMED_NO_OP":
+        source_version_id = execution.current_version_id
+        result_payload = {
+            "disposition": "CONFIRMED_NO_OP",
+            "final_lag_map": dict(validation.final_lag_map),
+            "parameter_sources": dict(validation.parameter_sources),
+            "user_confirmed": True,
+            "source_version_id": str(source_version_id),
+            "effective_version_id": str(source_version_id),
+            "lag_override_validation": validation.model_dump(mode="json"),
+        }
+        execution = await mark_step_succeeded(
+            session,
+            execution_id=execution.id,
+            step_id=approved_step.step_id,
+            input_payload=input_payload,
+            result_payload=result_payload,
+            source_version_id=source_version_id,
+            result_version_id=None,
+            processing_run_ids=[],
+        )
+        return LagApplyOutcome(execution=execution, validation=validation)
+
     try:
         result = await execute_agent_tool(
             session,
@@ -258,11 +281,12 @@ async def _validate(
     sources: dict[str, str] = {name: "delay_recommendation" for name in recommended}
     sources.update({name: "manual_override" for name in accepted})
     issues = [issue for item in per_parameter for issue in item.issues]
+    disposition = "APPLY_VERSION"
     if any(item.status == "INVALID" for item in per_parameter):
         overall_status = "INVALID"
     elif final_lag_map and max(final_lag_map.values()) == 0:
-        overall_status = "INVALID"
-        issues.append("所有最终时滞均为 0，正式服务不会生成空补偿版本。")
+        overall_status = "VALID"
+        disposition = "CONFIRMED_NO_OP"
     elif any(item.status == "WARNING" for item in per_parameter):
         overall_status = "WARNING"
     else:
@@ -273,6 +297,7 @@ async def _validate(
         manual_overrides=accepted,
         final_lag_map=final_lag_map,
         parameter_sources=sources,
+        disposition=disposition,
         per_parameter_validation=per_parameter,
         overall_status=overall_status,
         issues=issues,

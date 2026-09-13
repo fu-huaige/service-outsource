@@ -30,6 +30,8 @@ from app.services.optimization_service import _structure_grid, objective_value
 from app.services.version_data import load_version_series
 from app.services.version_provenance_service import (
     VersionProvenanceError,
+)
+from app.services.version_provenance_service import (
     resolve_arx_lag_provenance as _resolve_arx_lag_provenance,
 )
 
@@ -80,9 +82,10 @@ async def prepare_arx_confirmation(
         input_columns=None,
         output_column=None,
     )
-    delays, lag_version_id = await resolve_arx_lag_provenance(
+    delays, lag_version_id, delay_source = await resolve_agent_arx_lag_provenance(
         session,
-        version_id=execution.current_version_id,
+        execution=execution,
+        fit_step=step,
         input_columns=input_columns,
     )
     recommendation = _recommend_structure(
@@ -93,6 +96,7 @@ async def prepare_arx_confirmation(
         output=series.values[output_column],
         delays=delays,
         lag_version_id=lag_version_id,
+        delay_source=delay_source,
     )
     return {"arx_structure_recommendation": recommendation}
 
@@ -230,6 +234,7 @@ def _recommend_structure(
     output: Any,
     delays: dict[str, int],
     lag_version_id: UUID,
+    delay_source: str,
 ) -> dict[str, Any]:
     best_value = float("-inf")
     best_candidate: dict[str, Any] | None = None
@@ -308,8 +313,13 @@ def _recommend_structure(
         "recommended_delays": dict(delays),
         "recommended_estimator": str(best_candidate["estimator"]),
         "recommended_ridge_alpha": best_candidate.get("ridge_alpha"),
-        "delay_source": "derived_from_lag_compensated_version",
-        "lag_compensation_version_id": str(lag_version_id),
+        "delay_source": delay_source,
+        "lag_compensation_version_id": (
+            str(lag_version_id)
+            if delay_source == "derived_from_lag_compensated_version"
+            else None
+        ),
+        "effective_lag_version_id": str(lag_version_id),
         "selection_method": "existing_deterministic_arx_structure_grid",
         "validation_metric": "optimization_objective_validation_only",
         "tie_break": "first_candidate_in_fixed_grid_on_equal_objective",
@@ -454,6 +464,94 @@ async def resolve_arx_lag_provenance(
             status_code=error.status_code,
             details=error.details,
         ) from error
+
+
+async def resolve_agent_arx_lag_provenance(
+    session: AsyncSession,
+    *,
+    execution: AgentExecutionSession,
+    fit_step: AgentStepRun,
+    input_columns: list[str],
+) -> tuple[dict[str, int], UUID, str]:
+    """Resolve global Lag lineage or a version-scoped confirmation from this execution."""
+
+    try:
+        delays, lag_version_id = await resolve_arx_lag_provenance(
+            session,
+            version_id=execution.current_version_id,
+            input_columns=input_columns,
+        )
+    except ArxStructureError:
+        delays = _confirmed_zero_lag_noop(
+            execution,
+            fit_step=fit_step,
+            version_id=execution.current_version_id,
+            input_columns=input_columns,
+        )
+        if delays is None:
+            raise
+        return delays, execution.current_version_id, "confirmed_zero_lag_no_op"
+    return delays, lag_version_id, "derived_from_lag_compensated_version"
+
+
+def _confirmed_zero_lag_noop(
+    execution: AgentExecutionSession,
+    *,
+    fit_step: AgentStepRun,
+    version_id: UUID,
+    input_columns: list[str],
+) -> dict[str, int] | None:
+    candidates = sorted(
+        (
+            step
+            for step in execution.step_runs
+            if step.sequence < fit_step.sequence
+            and step.tool_name == "apply_lag_compensation"
+            and step.status == "SUCCEEDED"
+            and step.confirmation_status == "APPROVED"
+        ),
+        key=lambda step: step.sequence,
+        reverse=True,
+    )
+    for candidate in candidates:
+        payload = candidate.result_payload
+        if (
+            payload.get("disposition") != "CONFIRMED_NO_OP"
+            or payload.get("user_confirmed") is not True
+            or payload.get("source_version_id") != str(version_id)
+            or payload.get("effective_version_id") != str(version_id)
+            or candidate.source_version_id != version_id
+            or candidate.result_version_id is not None
+        ):
+            continue
+        lag_map = payload.get("final_lag_map")
+        sources = payload.get("parameter_sources")
+        if (
+            not isinstance(lag_map, dict)
+            or set(lag_map) != set(input_columns)
+            or any(
+                isinstance(lag_map[column], bool)
+                or not isinstance(lag_map[column], int)
+                or lag_map[column] != 0
+                for column in input_columns
+            )
+            or not isinstance(sources, dict)
+            or set(sources) != set(input_columns)
+            or any(
+                sources[column] not in {"delay_recommendation", "manual_override"}
+                for column in input_columns
+            )
+        ):
+            continue
+        if any(
+            step.sequence > candidate.sequence
+            and step.sequence < fit_step.sequence
+            and step.result_version_id is not None
+            for step in execution.step_runs
+        ):
+            return None
+        return {column: 0 for column in input_columns}
+    return None
 
 
 def _stored_recommendation(step: AgentStepRun) -> dict[str, Any]:

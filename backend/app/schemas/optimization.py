@@ -80,6 +80,25 @@ class OptimizationValidationFeedback(Schema):
     summary: ModelValidationData
 
 
+OptimizationDiagnosisCode = Literal[
+    "UNSTABLE_MODEL",
+    "FREE_RUN_UNDEFINED",
+    "INSUFFICIENT_EXCITATION",
+]
+
+
+class OptimizationDiagnosis(Schema):
+    policy_version: str
+    codes: list[OptimizationDiagnosisCode] = Field(default_factory=list)
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class OptimizationRejectionProvenance(Schema):
+    rejected_structure_count: int = Field(ge=1)
+    reason_counts: dict[OptimizationDiagnosisCode, int] = Field(default_factory=dict)
+    examples: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class OptimizationTrial(Schema):
     trial_id: int = Field(ge=0)
     state: Literal["queued", "running", "complete", "pruned", "failed"]
@@ -90,6 +109,10 @@ class OptimizationTrial(Schema):
     validation_feedback: OptimizationValidationFeedback | None = None
     objective_semantics: OptimizationObjectiveSemantics | None = None
     objective_components: OptimizationObjectiveComponents | None = None
+    diagnosis_policy_version: str | None = None
+    diagnosis_codes: list[OptimizationDiagnosisCode] | None = None
+    diagnosis_evidence: dict[str, Any] | None = None
+    rejection_provenance: OptimizationRejectionProvenance | None = None
     created_at: datetime
     finished_at: datetime | None = None
     error_code: str | None = None

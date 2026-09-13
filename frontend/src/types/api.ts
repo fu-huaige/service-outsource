@@ -1068,6 +1068,7 @@ export interface LagOverrideValidationResponse {
   manual_overrides: Record<string, number | string>;
   final_lag_map: Record<string, number>;
   parameter_sources: Record<string, "delay_recommendation" | "manual_override">;
+  disposition?: "APPLY_VERSION" | "CONFIRMED_NO_OP";
   per_parameter_validation: LagOverrideParameterValidation[];
   overall_status: LagOverrideStatus;
   issues: string[];

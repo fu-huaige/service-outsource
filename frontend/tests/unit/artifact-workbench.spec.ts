@@ -1026,6 +1026,80 @@ describe("ArtifactWorkbench cleaning rendering", () => {
   });
 });
 
+describe("ArtifactWorkbench lag compensation rendering", () => {
+  it("renders confirmed zero-lag no-op semantics without inventing a version or download", async () => {
+    const wrapper = await mountWorkbench(executionWith("apply_lag_compensation", {
+      disposition: "CONFIRMED_NO_OP",
+      final_lag_map: { u1: 0, u2: 0, u3: 0 },
+      parameter_sources: {
+        u1: "delay_recommendation",
+        u2: "delay_recommendation",
+        u3: "delay_recommendation",
+      },
+      user_confirmed: true,
+      source_version_id: "version-0",
+      effective_version_id: "version-0",
+    }));
+
+    expect(wrapper.get('[data-test="lag-no-op-result"]').text()).toContain("已确认无需额外时滞补偿");
+    expect(wrapper.get('[data-test="lag-no-op-description"]').text()).toContain("未执行数据平移或边界裁剪");
+    const lagRows = wrapper.get('[data-test="lag-no-op-lags"]').findAll(".aw-kv");
+    expect(lagRows.map(row => row.text())).toEqual([
+      "u10 个采样点",
+      "u20 个采样点",
+      "u30 个采样点",
+    ]);
+    expect(wrapper.get('[data-test="lag-no-op-version-status"]').text()).toContain("数据版本保持不变");
+    expect(wrapper.get('[data-test="lag-no-op-version-status"]').text()).toContain("下载当前数据集");
+    expect(wrapper.text()).not.toContain("补偿前样本数");
+    expect(wrapper.text()).not.toContain("补偿后样本数");
+    expect(wrapper.text()).not.toContain("已生成补偿后数据版本");
+    expect(wrapper.text()).not.toContain("下载补偿后 CSV");
+    expect(wrapper.html()).not.toContain("version_id=undefined");
+  });
+
+  it("preserves the existing renderer for legacy artifacts without disposition", async () => {
+    const wrapper = await mountWorkbench(executionWith("apply_lag_compensation", {
+      summary: {
+        rows_before: 1200,
+        rows_after: 1192,
+        removed_boundary_rows: 8,
+        lag_map: { u1: 3, u2: 8, u3: 5 },
+      },
+      result_version_id: "version-1",
+    }));
+
+    expect(wrapper.text()).toContain("补偿前样本数1200");
+    expect(wrapper.text()).toContain("补偿后样本数1192");
+    expect(wrapper.text()).toContain("裁剪边界行数8");
+    expect(wrapper.text()).toContain("u13 采样点");
+    expect(wrapper.get('[data-test="lag-result-version"]').text()).toBe("version-1");
+    expect(wrapper.get('a[href="/api/v1/datasets/dataset-1/download?version_id=version-1"]').text()).toBe("下载补偿后 CSV");
+    expect(wrapper.find('[data-test="lag-no-op-result"]').exists()).toBe(false);
+  });
+
+  it("preserves the existing renderer for explicit APPLY_VERSION artifacts", async () => {
+    const wrapper = await mountWorkbench(executionWith("apply_lag_compensation", {
+      disposition: "APPLY_VERSION",
+      summary: {
+        rows_before: 800,
+        rows_after: 796,
+        removed_boundary_rows: 4,
+        lag_map: { u1: 4 },
+      },
+      result_version_id: "version-2",
+    }));
+
+    expect(wrapper.text()).toContain("补偿前样本数800");
+    expect(wrapper.text()).toContain("补偿后样本数796");
+    expect(wrapper.text()).toContain("裁剪边界行数4");
+    expect(wrapper.text()).toContain("u14 采样点");
+    expect(wrapper.get('[data-test="lag-result-version"]').text()).toBe("version-2");
+    expect(wrapper.text()).toContain("下载补偿后 CSV");
+    expect(wrapper.find('[data-test="lag-no-op-result"]').exists()).toBe(false);
+  });
+});
+
 describe("ArtifactWorkbench optimization artifact", () => {
   it("groups best parameters and presents composite objective semantics for non-specialists", async () => {
     const wrapper = await mountWorkbench(executionWith("optimize_pipeline", {

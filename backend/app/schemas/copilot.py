@@ -130,6 +130,7 @@ class LagOverrideValidationData(Schema):
     manual_overrides: dict[str, Any]
     final_lag_map: dict[str, int]
     parameter_sources: dict[str, Literal["delay_recommendation", "manual_override"]]
+    disposition: Literal["APPLY_VERSION", "CONFIRMED_NO_OP"] = "APPLY_VERSION"
     per_parameter_validation: list[LagOverrideParameterValidation] = Field(default_factory=list)
     overall_status: Literal["VALID", "WARNING", "INVALID"]
     issues: list[str] = Field(default_factory=list)

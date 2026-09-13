@@ -65,6 +65,13 @@ from app.services.modeling_service import (
     fit_arx_on_version,
     to_validation_data,
 )
+from app.services.optimization_feedback_policy import (
+    DIAGNOSIS_POLICY_VERSION,
+    CandidateRejectionEvidence,
+    diagnose_validation_candidate,
+    rejection_from_objective,
+    rejection_provenance,
+)
 from app.services.segment_service import (
     SegmentDomainError,
     SegmentSelectionOutcome,
@@ -201,6 +208,7 @@ class AgentOptimizationStudyResult:
     best_selection_summary: dict[str, Any]
     best_objective_components: dict[str, Any]
     processing_run_ids: list[str]
+    best_diagnosis: dict[str, Any] = field(default_factory=dict)
     error_code: str | None = None
     error_message: str | None = None
 
@@ -633,7 +641,12 @@ def run_study(
         started = time.perf_counter()
         sampled_params = _suggest(trial, payload.search_space)
         params = dict(sampled_params)
-        metrics: dict[str, Any] = {"objective_semantics": dict(OBJECTIVE_SEMANTICS)}
+        metrics: dict[str, Any] = {
+            "objective_semantics": dict(OBJECTIVE_SEMANTICS),
+            "diagnosis_policy_version": DIAGNOSIS_POLICY_VERSION,
+            "diagnosis_codes": [],
+            "diagnosis_evidence": {},
+        }
         cache_hit = False
         try:
             selection_params = _selection_params(
@@ -668,6 +681,7 @@ def run_study(
             best_structure_value = float("-inf")
             best_breakdown: dict[str, Any] = {}
             last_error: SegmentDomainError | ModelingDomainError | None = None
+            structure_rejections: list[CandidateRejectionEvidence] = []
             for structure in _structure_grid(sampled_params):
                 candidate_params = {**sampled_params, **structure}
                 if candidate_params["estimator"] != "ridge":
@@ -698,13 +712,46 @@ def run_study(
                     continue
                 structure_evaluations += 1
                 candidate_value, candidate_breakdown = objective_value(candidate)
+                if not np.isfinite(candidate_value):
+                    rejection = rejection_from_objective(
+                        reason=candidate_breakdown.get("reason"),
+                        structure=candidate_params,
+                        stable=candidate.validation.stable,
+                        max_pole_modulus=candidate.validation.max_pole_modulus,
+                        free_run_fit=candidate.metrics.val_free_run_fit,
+                    )
+                    if rejection is not None:
+                        structure_rejections.append(rejection)
+                    continue
                 if candidate_value > best_structure_value:
                     best_structure_value = candidate_value
                     best_breakdown = candidate_breakdown
                     result = candidate
                     params = candidate_params
+            rejected = rejection_provenance(structure_rejections)
+            if rejected is not None:
+                metrics["rejection_provenance"] = rejected
             if result is None:
-                raise last_error or ModelingDomainError(
+                diagnosis = diagnose_validation_candidate(
+                    validation_feedback=None,
+                    selection_provenance=metrics.get("selection_provenance"),
+                    objective_components=None,
+                    candidate_rejections=structure_rejections,
+                )
+                metrics.update(diagnosis.to_metrics())
+                if last_error is not None:
+                    raise last_error
+                rejection_codes = {item.code.value for item in structure_rejections}
+                if rejection_codes:
+                    error_code = (
+                        next(iter(rejection_codes))
+                        if len(rejection_codes) == 1
+                        else "ARX_STRUCTURES_REJECTED"
+                    )
+                    raise ModelingDomainError(
+                        error_code, "该配置下所有模型结构均被现有工程硬门控拒绝。"
+                    )
+                raise ModelingDomainError(
                     "NUMERICAL_INSTABILITY", "该配置下所有模型结构均求解失败。"
                 )
         except (SegmentDomainError, ModelingDomainError) as error:
@@ -728,6 +775,12 @@ def run_study(
         value, breakdown = best_structure_value, best_breakdown
         metrics.update(breakdown)
         metrics["validation_feedback"] = _validation_feedback(result)
+        diagnosis = diagnose_validation_candidate(
+            validation_feedback=metrics["validation_feedback"],
+            selection_provenance=metrics.get("selection_provenance"),
+            objective_components=metrics.get("objective_components"),
+        )
+        metrics.update(diagnosis.to_metrics())
         duration = (time.perf_counter() - started) * 1000.0
         if not np.isfinite(value):
             trials.append(
@@ -945,6 +998,7 @@ async def execute_agent_optimization_study(
             str(execution.baseline_processing_run_id),
             str(execution.optimized_model_processing_run_id),
         ],
+        best_diagnosis=_diagnosis_payload(execution.best_metrics),
     )
 
 async def execute_study(
@@ -1169,6 +1223,10 @@ async def get_optimization_status(
                 validation_feedback=record.metrics.get("validation_feedback"),
                 objective_semantics=record.metrics.get("objective_semantics"),
                 objective_components=record.metrics.get("objective_components"),
+                diagnosis_policy_version=record.metrics.get("diagnosis_policy_version"),
+                diagnosis_codes=record.metrics.get("diagnosis_codes"),
+                diagnosis_evidence=record.metrics.get("diagnosis_evidence"),
+                rejection_provenance=record.metrics.get("rejection_provenance"),
                 created_at=record.created_at,
                 finished_at=record.finished_at,
                 error_code=record.error_code,
@@ -1195,6 +1253,14 @@ async def get_optimization_status(
 
 def _trial_state(value: str) -> str:
     return value if value in {"queued", "running", "complete", "pruned", "failed"} else "complete"
+
+
+def _diagnosis_payload(metrics: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "policy_version": metrics.get("diagnosis_policy_version"),
+        "codes": list(metrics.get("diagnosis_codes", [])),
+        "evidence": dict(metrics.get("diagnosis_evidence", {})),
+    }
 
 
 def _suggest(trial: optuna.Trial, overrides: dict[str, Any]) -> dict[str, Any]:

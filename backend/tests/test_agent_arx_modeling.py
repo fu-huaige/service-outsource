@@ -1249,6 +1249,13 @@ def test_optimization_adapter_exposes_winner_feedback_contract(
         "stability_gate": True,
         "final_score": 0.299,
     }
+    best_diagnosis = {
+        "policy_version": "validation_diagnosis_v1",
+        "codes": ["INSUFFICIENT_EXCITATION"],
+        "evidence": {
+            "INSUFFICIENT_EXCITATION": {"excitation_satisfied": False}
+        },
+    }
 
     monkeypatch.setattr(
         agent_tool_adapter,
@@ -1278,6 +1285,7 @@ def test_optimization_adapter_exposes_winner_feedback_contract(
             best_validation_feedback=validation_feedback,
             best_selection_summary=selection_summary,
             best_objective_components=objective_components,
+            best_diagnosis=best_diagnosis,
         )
 
     monkeypatch.setattr(
@@ -1301,6 +1309,7 @@ def test_optimization_adapter_exposes_winner_feedback_contract(
     assert result.result_payload["best_validation_feedback"] == validation_feedback
     assert result.result_payload["best_selection_summary"] == selection_summary
     assert result.result_payload["best_objective_components"] == objective_components
+    assert result.result_payload["best_diagnosis"] == best_diagnosis
 
 
 def test_explicit_optimization_trigger_persists_business_failure_without_replay(

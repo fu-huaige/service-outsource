@@ -1121,6 +1121,230 @@ def _different_valid_lag(recommended: int, analyzed_max: int) -> int:
     return next(value for value in range(analyzed_max + 1) if value != recommended)
 
 
+def _chat_to_zero_lag_confirmation(
+    harness: AdapterHarness,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[AgentExecutionSession, AgentStepRun]:
+    from app.schemas.preprocessing import DelayData, DelayPeak
+
+    async def zero_lag_result(*args: object, **kwargs: object) -> DelayData:
+        payload = kwargs["payload"]
+        columns = list(payload.input_columns)
+        return DelayData(
+            source_version_id=payload.version_id,
+            processing_run_id=None,
+            task=completed_task(stage="estimate_delays", message="zero lag"),
+            delays=[0 for _ in columns],
+            correlations={column: [0.8, 0.2] for column in columns},
+            best_delays={column: 0 for column in columns},
+            candidate_peaks={
+                column: [DelayPeak(lag=0, correlation=0.8, confidence=0.9)]
+                for column in columns
+            },
+            dataset_id=payload.dataset_id,
+            validation_fit=80.0,
+            refinement_rounds=1,
+            uncertain_columns=[],
+            prewhitening_orders={column: 1 for column in columns},
+        )
+
+    monkeypatch.setattr(agent_tool_adapter, "run_delay_estimation", zero_lag_result)
+    generated = harness.client.post(
+        "/api/v1/simulation/generate",
+        json={"scenario": "S2", "n_steps": 900, "seed": 181, "input_count": 3},
+    )
+    assert generated.status_code == 201, generated.text
+    dataset = generated.json()["data"]
+    response = harness.client.post(
+        "/api/v1/copilot/chat",
+        json={
+            "message": "基于当前数据建立 ARX 模型",
+            "dataset_id": dataset["dataset_id"],
+            "active_version_id": dataset["version_id"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    execution = asyncio.run(_load_execution(harness, UUID(response.json()["data"]["execution_id"])))
+    lag = next(
+        step for step in execution.step_runs if step.tool_name == "apply_lag_compensation"
+    )
+    assert lag.status == "WAITING_CONFIRMATION"
+    assert lag.input_payload["recommended_lag_map"] == {"u1": 0, "u2": 0, "u3": 0}
+    return execution, lag
+
+
+class TestConfirmedZeroLagNoOp:
+    def test_confirmed_recommendation_continues_to_agent_arx_without_a_version(
+        self,
+        adapter_harness: AdapterHarness,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        execution, lag = _chat_to_zero_lag_confirmation(adapter_harness, monkeypatch)
+        source_version_id = execution.current_version_id
+        before = asyncio.run(_counts(adapter_harness, execution.dataset_id))
+
+        preview = _lag_validation(
+            adapter_harness,
+            execution_id=execution.id,
+            step_id=lag.step_id,
+            overrides=[],
+        )
+        assert preview.status_code == 200, preview.text
+        assert preview.json()["data"]["overall_status"] == "VALID"
+        assert preview.json()["data"]["disposition"] == "CONFIRMED_NO_OP"
+
+        manual_preview = _lag_validation(
+            adapter_harness,
+            execution_id=execution.id,
+            step_id=lag.step_id,
+            overrides=[
+                {"variable": variable, "value": 0}
+                for variable in ("u1", "u2", "u3")
+            ],
+        )
+        assert manual_preview.status_code == 200, manual_preview.text
+        assert manual_preview.json()["data"]["disposition"] == "CONFIRMED_NO_OP"
+        assert set(manual_preview.json()["data"]["parameter_sources"].values()) == {
+            "manual_override"
+        }
+
+        confirmed = _lag_confirm(
+            adapter_harness,
+            execution_id=execution.id,
+            step_id=lag.step_id,
+        )
+        assert confirmed.status_code == 200, confirmed.text
+        data = confirmed.json()["data"]
+        assert data["step_status"] == "SUCCEEDED"
+        assert data["result_version_id"] is None
+        assert data["current_version_id"] == str(source_version_id)
+        assert data["result_payload"]["disposition"] == "CONFIRMED_NO_OP"
+        assert data["result_payload"]["final_lag_map"] == {
+            "u1": 0,
+            "u2": 0,
+            "u3": 0,
+        }
+        assert set(data["result_payload"]["parameter_sources"].values()) == {
+            "delay_recommendation"
+        }
+        assert data["result_payload"]["user_confirmed"] is True
+        assert data["result_payload"]["source_version_id"] == str(source_version_id)
+        assert data["result_payload"]["effective_version_id"] == str(source_version_id)
+        assert asyncio.run(_counts(adapter_harness, execution.dataset_id)) == before
+
+        persisted = asyncio.run(_load_execution(adapter_harness, execution.id))
+        persisted_lag = next(
+            step
+            for step in persisted.step_runs
+            if step.tool_name == "apply_lag_compensation"
+        )
+        fit = next(step for step in persisted.step_runs if step.tool_name == "fit_arx")
+        assert persisted_lag.confirmation_status == "APPROVED"
+        assert persisted_lag.processing_run_ids == []
+        assert persisted.current_version_id == source_version_id
+        assert fit.status == "WAITING_CONFIRMATION"
+        recommendation = fit.input_payload["arx_structure_recommendation"]
+        assert recommendation["recommended_delays"] == {"u1": 0, "u2": 0, "u3": 0}
+        assert recommendation["delay_source"] == "confirmed_zero_lag_no_op"
+        assert recommendation["lag_compensation_version_id"] is None
+        assert recommendation["effective_lag_version_id"] == str(source_version_id)
+
+        fitted = adapter_harness.client.post(
+            "/api/v1/copilot/confirm",
+            json={
+                "copilot_run_id": str(execution.id),
+                "confirmation_id": fit.step_id,
+                "execution_id": str(execution.id),
+                "step_id": fit.step_id,
+                "approved": True,
+                "arx_structure_overrides": {},
+            },
+        )
+        assert fitted.status_code == 200, fitted.text
+        after_fit = asyncio.run(_load_execution(adapter_harness, execution.id))
+        fitted_step = next(
+            step for step in after_fit.step_runs if step.tool_name == "fit_arx"
+        )
+        assert fitted_step.status == "SUCCEEDED"
+        assert fitted_step.source_version_id == source_version_id
+        assert asyncio.run(_counts(adapter_harness, execution.dataset_id)) == before
+
+    def test_intervening_version_result_invalidates_zero_lag_evidence(self) -> None:
+        from types import SimpleNamespace
+
+        from app.services.agent_arx_modeling_service import _confirmed_zero_lag_noop
+
+        source_version_id = uuid4()
+        derived_version_id = uuid4()
+        noop = SimpleNamespace(
+            sequence=2,
+            tool_name="apply_lag_compensation",
+            status="SUCCEEDED",
+            confirmation_status="APPROVED",
+            source_version_id=source_version_id,
+            result_version_id=None,
+            result_payload={
+                "disposition": "CONFIRMED_NO_OP",
+                "user_confirmed": True,
+                "source_version_id": str(source_version_id),
+                "effective_version_id": str(source_version_id),
+                "final_lag_map": {"u1": 0},
+                "parameter_sources": {"u1": "delay_recommendation"},
+            },
+        )
+        version_change = SimpleNamespace(
+            sequence=3,
+            tool_name="clean_data",
+            result_version_id=derived_version_id,
+        )
+        fit = SimpleNamespace(sequence=4)
+
+        without_change = SimpleNamespace(step_runs=[noop, fit])
+        assert _confirmed_zero_lag_noop(
+            without_change,
+            fit_step=fit,
+            version_id=source_version_id,
+            input_columns=["u1"],
+        ) == {"u1": 0}
+
+        with_change = SimpleNamespace(step_runs=[noop, version_change, fit])
+        assert (
+            _confirmed_zero_lag_noop(
+                with_change,
+                fit_step=fit,
+                version_id=source_version_id,
+                input_columns=["u1"],
+            )
+            is None
+        )
+
+    def test_rejecting_zero_lag_confirmation_persists_no_noop_provenance(
+        self,
+        adapter_harness: AdapterHarness,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        execution, lag = _chat_to_zero_lag_confirmation(adapter_harness, monkeypatch)
+        before = asyncio.run(_counts(adapter_harness, execution.dataset_id))
+
+        rejected = _lag_confirm(
+            adapter_harness,
+            execution_id=execution.id,
+            step_id=lag.step_id,
+            approved=False,
+        )
+        assert rejected.status_code == 200, rejected.text
+        persisted = asyncio.run(_load_execution(adapter_harness, execution.id))
+        rejected_lag = next(
+            step
+            for step in persisted.step_runs
+            if step.tool_name == "apply_lag_compensation"
+        )
+        assert rejected_lag.status == "CANCELLED"
+        assert rejected_lag.confirmation_status == "REJECTED"
+        assert rejected_lag.result_payload.get("disposition") is None
+        assert asyncio.run(_counts(adapter_harness, execution.dataset_id)) == before
+
+
 def test_planner_emits_confirmed_lag_apply_after_delay() -> None:
     steps, _, _ = RuleBasedPlanner().plan(parse_intent("估计时滞并应用补偿"))
     by_tool = {step.tool: step for step in steps}

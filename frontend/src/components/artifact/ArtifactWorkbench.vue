@@ -164,22 +164,52 @@
       </template>
 
       <template v-else-if="activeArtifact.type === 'lag'">
-        <MetricStrip :metrics="[
-          { label: '补偿前样本数', value: String(activeArtifact.payload.summary?.rows_before ?? '—') },
-          { label: '补偿后样本数', value: String(activeArtifact.payload.summary?.rows_after ?? '—'), primary: true },
-          { label: '裁剪边界行数', value: String(activeArtifact.payload.summary?.removed_boundary_rows ?? '—') },
-        ]" />
-        <div class="aw-section">
-          <div class="aw-section__label">已应用的时滞补偿</div>
-          <div class="aw-kv-list">
-            <div v-for="(val, key) in activeArtifact.payload.summary?.lag_map" :key="key" class="aw-kv">
-              <span>{{ key }}</span><span>{{ val }} 采样点</span>
+        <template v-if="activeArtifact.payload.disposition === 'CONFIRMED_NO_OP'">
+          <div class="aw-section" data-test="lag-no-op-result">
+            <div class="aw-section__label">处理结论</div>
+            <div class="aw-kv">
+              <span class="aw-kv__key">确认结果</span>
+              <span class="aw-kv__val">已确认无需额外时滞补偿</span>
+            </div>
+            <div data-test="lag-no-op-description">时滞分析结果显示当前各输入通道无需进一步时间平移，并已通过人工确认。本次处理未改变数据，未执行数据平移或边界裁剪，因此未生成新的数据版本。</div>
+          </div>
+          <div class="aw-section" data-test="lag-no-op-lags">
+            <div class="aw-section__label">已确认时滞</div>
+            <div class="aw-kv-list">
+              <div v-for="(val, key) in activeArtifact.payload.final_lag_map" :key="key" class="aw-kv">
+                <span class="aw-kv__key">{{ key }}</span>
+                <span class="aw-kv__val">{{ val }} 个采样点</span>
+              </div>
             </div>
           </div>
-          <div>已生成补偿后数据版本</div>
-          <code data-test="lag-result-version">{{ activeArtifact.payload.result_version_id }}</code>
-          <a :href="`${apiBase}/datasets/${encodeURIComponent(execution.dataset_id)}/download?version_id=${encodeURIComponent(activeArtifact.payload.result_version_id)}`">下载补偿后 CSV</a>
-        </div>
+          <div class="aw-section" data-test="lag-no-op-version-status">
+            <div class="aw-section__label">版本状态</div>
+            <div class="aw-kv">
+              <span class="aw-kv__key">当前状态</span>
+              <span class="aw-kv__val">数据版本保持不变</span>
+            </div>
+            <div>本次处理为确认型操作，源数据版本继续作为后续建模输入。</div>
+            <div>数据未发生变化，如需下载可使用顶部“下载当前数据集”。</div>
+          </div>
+        </template>
+        <template v-else>
+          <MetricStrip :metrics="[
+            { label: '补偿前样本数', value: String(activeArtifact.payload.summary?.rows_before ?? '—') },
+            { label: '补偿后样本数', value: String(activeArtifact.payload.summary?.rows_after ?? '—'), primary: true },
+            { label: '裁剪边界行数', value: String(activeArtifact.payload.summary?.removed_boundary_rows ?? '—') },
+          ]" />
+          <div class="aw-section">
+            <div class="aw-section__label">已应用的时滞补偿</div>
+            <div class="aw-kv-list">
+              <div v-for="(val, key) in activeArtifact.payload.summary?.lag_map" :key="key" class="aw-kv">
+                <span>{{ key }}</span><span>{{ val }} 采样点</span>
+              </div>
+            </div>
+            <div>已生成补偿后数据版本</div>
+            <code data-test="lag-result-version">{{ activeArtifact.payload.result_version_id }}</code>
+            <a :href="`${apiBase}/datasets/${encodeURIComponent(execution.dataset_id)}/download?version_id=${encodeURIComponent(activeArtifact.payload.result_version_id)}`">下载补偿后 CSV</a>
+          </div>
+        </template>
       </template>
 
       <!-- Delay Artifact -->

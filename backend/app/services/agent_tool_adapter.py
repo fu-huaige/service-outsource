@@ -129,6 +129,7 @@ async def execute_agent_tool(
         return await _fit_arx(
             session,
             execution=execution,
+            step=step,
             parameters=parameters,
             artifact_root=artifact_root,
         )
@@ -859,6 +860,7 @@ async def _optimize_pipeline(
             "best_validation_feedback": result.best_validation_feedback,
             "best_selection_summary": result.best_selection_summary,
             "best_objective_components": result.best_objective_components,
+            "best_diagnosis": result.best_diagnosis,
         },
     )
 
@@ -906,6 +908,7 @@ async def _fit_arx(
     session: AsyncSession,
     *,
     execution: AgentExecutionSession,
+    step: AgentStepRun,
     parameters: dict[str, Any],
     artifact_root: Path,
 ) -> AgentToolResult:
@@ -925,7 +928,7 @@ async def _fit_arx(
     except ValidationError as error:
         raise AgentToolAdapterError("INVALID_AGENT_TOOL_PARAMETERS", str(error)) from error
 
-    from app.services.agent_arx_modeling_service import resolve_arx_lag_provenance
+    from app.services.agent_arx_modeling_service import resolve_agent_arx_lag_provenance
 
     series = await load_version_series(
         session,
@@ -937,9 +940,10 @@ async def _fit_arx(
         input_columns=payload.input_columns or None,
         output_column=payload.output_column,
     )
-    await resolve_arx_lag_provenance(
+    await resolve_agent_arx_lag_provenance(
         session,
-        version_id=execution.current_version_id,
+        execution=execution,
+        fit_step=step,
         input_columns=input_columns,
     )
     data = await fit_arx_on_version(session, payload=payload, artifact_root=artifact_root)
