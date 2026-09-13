@@ -182,6 +182,33 @@ class TestPlanning:
         assert by_tool["fit_arx"].requires_confirmation is True
         assert by_tool["optimize_pipeline"].requires_confirmation is True
         assert by_tool["evaluate_model"].requires_confirmation is False
+
+    def test_lag_ready_normalization_removes_redundant_direct_lag_chain(self) -> None:
+        from app.services.agent_service import _normalize_plan_for_lag_context
+
+        steps, _, _ = plan_for("进行 ARX 建模")
+        normalized, removed = _normalize_plan_for_lag_context(steps, lag_ready=True)
+        tools = [step.tool for step in normalized]
+
+        assert removed is True
+        assert "estimate_delays" not in tools
+        assert "apply_lag_compensation" not in tools
+        assert "fit_arx" in tools
+        assert verify_plan(as_raw(normalized), lag_ready=True).passed
+
+    def test_lag_ready_normalization_preserves_post_clean_lag_chain(self) -> None:
+        from app.services.agent_service import _normalize_plan_for_lag_context
+
+        steps, _, _ = plan_for("清洗后进行 ARX 建模")
+        normalized, removed = _normalize_plan_for_lag_context(steps, lag_ready=True)
+        tools = [step.tool for step in normalized]
+
+        assert removed is False
+        assert normalized == steps
+        assert tools.index("clean_data") < tools.index("estimate_delays")
+        assert tools.index("estimate_delays") < tools.index("apply_lag_compensation")
+        assert tools.index("apply_lag_compensation") < tools.index("fit_arx")
+
     def test_modelling_implies_segment_selection(self) -> None:
         steps, assumptions, _ = plan_for("直接做 ARX 辨识")
         assert "detect_dynamic_segments" in [step.tool for step in steps]
@@ -279,6 +306,92 @@ class TestCompliance:
         )
 
         assert proof.passed, [check.detail for check in proof.failures]
+
+    def test_clean_invalidates_initial_lag_ready_context(self) -> None:
+        proof = verify_plan(
+            [
+                {"step_id": "s1", "tool": "profile_dataset", "depends_on": []},
+                {"step_id": "s2", "tool": "detect_anomalies", "depends_on": ["s1"]},
+                {"step_id": "s3", "tool": "clean_data", "depends_on": ["s2"]},
+                {
+                    "step_id": "s4",
+                    "tool": "fit_arx",
+                    "depends_on": ["s3"],
+                    "requires_confirmation": True,
+                },
+            ],
+            lag_ready=True,
+        )
+
+        assert not proof.passed
+        lag_check = next(check for check in proof.failures if check.name == "arx_lag_ready")
+        assert "s4" in lag_check.detail
+        assert "Cleaning" in lag_check.detail
+
+    def test_each_fit_uses_the_lag_state_at_its_own_position(self) -> None:
+        proof = verify_plan(
+            [
+                {"step_id": "s1", "tool": "profile_dataset", "depends_on": []},
+                {
+                    "step_id": "s2",
+                    "tool": "fit_arx",
+                    "depends_on": ["s1"],
+                    "requires_confirmation": True,
+                },
+                {"step_id": "s3", "tool": "detect_anomalies", "depends_on": ["s2"]},
+                {"step_id": "s4", "tool": "clean_data", "depends_on": ["s3"]},
+                {
+                    "step_id": "s5",
+                    "tool": "fit_arx",
+                    "depends_on": ["s4"],
+                    "requires_confirmation": True,
+                },
+            ],
+            lag_ready=True,
+        )
+
+        assert not proof.passed
+        lag_check = next(check for check in proof.failures if check.name == "arx_lag_ready")
+        assert "s5" in lag_check.detail
+        assert "s2" not in lag_check.detail
+
+    @pytest.mark.parametrize("initial_lag_ready", [True, False])
+    def test_clean_then_relag_is_valid_for_arx(
+        self, initial_lag_ready: bool
+    ) -> None:
+        steps, _, _ = plan_for("清洗后进行 ARX 建模")
+
+        proof = verify_plan(as_raw(steps), lag_ready=initial_lag_ready)
+
+        assert proof.passed, [check.detail for check in proof.failures]
+
+    def test_invalid_llm_clean_then_fit_candidate_falls_back_before_execution(self) -> None:
+        from algorithms.agent.llm import StaticProvider
+        from algorithms.agent.llm_planner import LlmPlanner
+
+        candidate = """{
+          "steps": [
+            {"step_id": "s1", "tool": "profile_dataset", "depends_on": []},
+            {"step_id": "s2", "tool": "detect_anomalies", "depends_on": ["s1"]},
+            {"step_id": "s3", "tool": "clean_data", "depends_on": ["s2"]},
+            {"step_id": "s4", "tool": "fit_arx", "depends_on": ["s3"]},
+            {"step_id": "s5", "tool": "optimize_pipeline", "depends_on": ["s4"]},
+            {"step_id": "s6", "tool": "evaluate_model", "depends_on": ["s5"]}
+          ]
+        }"""
+        message = "基于当前数据建立 ARX 模型并进行 Optuna 闭环寻优。"
+
+        outcome = LlmPlanner(StaticProvider(responses=[candidate])).plan(
+            message,
+            parse_intent(message),
+            lag_ready=True,
+        )
+
+        assert not outcome.llm_authored
+        assert "合规校验" in (outcome.fallback_reason or "")
+        assert "Cleaning" in (outcome.fallback_reason or "")
+        assert "clean_data" not in [step.tool for step in outcome.steps]
+        assert "apply_lag_compensation" in [step.tool for step in outcome.steps]
 
     def test_pointing_a_step_at_the_test_partition_is_rejected(self) -> None:
         proof = verify_plan(

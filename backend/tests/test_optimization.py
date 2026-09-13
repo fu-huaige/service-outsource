@@ -187,6 +187,19 @@ class TestObjective:
         value, breakdown = objective_value(self._result())
         assert value > 0
         assert breakdown["val_free_run_fit"] > 80
+        assert breakdown["objective_semantics"] == {
+            "name": "composite_identification_score",
+            "version": "v1",
+            "direction": "maximize",
+        }
+        components = breakdown["objective_components"]
+        assert components["final_score"] == pytest.approx(value)
+        assert value == pytest.approx(
+            components["validation_free_run_fit_component"]
+            + components["normalized_error_component"]
+            + components["residual_whiteness_component"]
+            + components["complexity_component"]
+        )
 
     def test_objective_is_driven_by_free_run_not_one_step(self) -> None:
         from app.services.optimization_service import objective_value
@@ -340,6 +353,33 @@ class TestFormalEvaluation:
         assert completed
         assert all("test_free_run_fit" not in trial.metrics for trial in completed)
         assert all("test_rmse" not in trial.metrics for trial in completed)
+        for trial in completed:
+            feedback = trial.metrics["validation_feedback"]
+            assert feedback["partition"] == "validation"
+            assert feedback["summary"]["partition"] == "validation"
+            assert set(feedback["one_step"]) == {"mae", "rmse", "r2", "fit", "nrmse"}
+            assert set(feedback["free_run"]) == {"mae", "rmse", "r2", "fit", "nrmse"}
+            assert "test" not in feedback
+
+            selection = trial.metrics["selection_provenance"]
+            assert selection["candidate_count"] >= selection["gated_count"]
+            assert selection["gated_count"] >= selection["selected_segment_count"]
+            assert selection["selected_sample_count"] > 0
+            assert len(selection["selected_indices_hash"]) == 64
+            assert "selected_sample_indices" not in selection
+
+            semantics = trial.metrics["objective_semantics"]
+            assert semantics["name"] == "composite_identification_score"
+            assert semantics["version"] == "v1"
+            assert semantics["direction"] == "maximize"
+            components = trial.metrics["objective_components"]
+            assert components["final_score"] == pytest.approx(trial.value)
+            assert trial.value == pytest.approx(
+                components["validation_free_run_fit_component"]
+                + components["normalized_error_component"]
+                + components["residual_whiteness_component"]
+                + components["complexity_component"]
+            )
         assert all(
             trial.params.get("estimator") == "ridge" or "ridge_alpha" not in trial.params
             for trial in completed
@@ -347,6 +387,42 @@ class TestFormalEvaluation:
         assert changed.best_number == outcome.best_number
         assert changed.best_value == pytest.approx(outcome.best_value)
         assert changed.best_params == outcome.best_params
+
+
+def test_legacy_optimization_contract_without_feedback_fields_remains_readable() -> None:
+    from datetime import UTC, datetime
+
+    from app.schemas.optimization import OptimizationStatusData, OptimizationTrial
+    from app.services.contract_stubs import completed_task
+
+    trial = OptimizationTrial.model_validate(
+        {
+            "trial_id": 0,
+            "state": "complete",
+            "value": 0.25,
+            "params": {"window_size": 60},
+            "created_at": datetime.now(UTC),
+        }
+    )
+    assert trial.metrics == {}
+    assert trial.selection_provenance is None
+    assert trial.validation_feedback is None
+    assert trial.objective_semantics is None
+    assert trial.objective_components is None
+
+    status = OptimizationStatusData(
+        study_id=uuid4(),
+        task=completed_task(stage="optimize_pipeline", message="legacy"),
+        trials=[trial],
+        best_trial_id=0,
+        best_value=0.25,
+        best_curve=[0.25],
+        param_importances={},
+    )
+    assert status.objective_semantics is None
+    assert status.best_validation_feedback is None
+    assert status.best_selection_summary is None
+    assert status.best_objective_components is None
 
 
 @pytest.fixture
@@ -527,6 +603,19 @@ class TestAgentSafeOptimizationEntry:
         assert result.baseline_model_id == baseline_model_id
         assert result.optimized_model_id
         assert len(result.processing_run_ids) == 2
+        assert result.objective_semantics == {
+            "name": "composite_identification_score",
+            "version": "v1",
+            "direction": "maximize",
+        }
+        assert result.best_validation_feedback["partition"] == "validation"
+        assert result.best_validation_feedback["summary"]["partition"] == "validation"
+        assert "test" not in result.best_validation_feedback
+        assert result.best_selection_summary["selected_sample_count"] > 0
+        assert len(result.best_selection_summary["selected_indices_hash"]) == 64
+        assert result.best_objective_components["final_score"] == pytest.approx(
+            result.best_value
+        )
         assert (tmp_path / "models" / f"{result.optimized_model_id}.json").is_file()
 
         snapshot = asyncio.run(
@@ -665,6 +754,22 @@ class TestOptimizationApi:
         complete = [trial for trial in data["trials"] if trial["state"] == "complete"]
         selected = max(complete, key=lambda trial: trial["value"])
         assert data["best_trial_id"] == selected["trial_id"]
+        assert data["objective_semantics"] == {
+            "name": "composite_identification_score",
+            "version": "v1",
+            "direction": "maximize",
+        }
+        assert data["best_validation_feedback"] == selected["validation_feedback"]
+        assert data["best_selection_summary"] == selected["selection_provenance"]
+        assert data["best_objective_components"] == selected["objective_components"]
+        assert selected["metrics"]["validation_feedback"] == selected["validation_feedback"]
+        assert selected["validation_feedback"]["partition"] == "validation"
+        assert selected["validation_feedback"]["summary"]["partition"] == "validation"
+        assert selected["selection_provenance"]["selected_sample_count"] > 0
+        assert len(selected["selection_provenance"]["selected_indices_hash"]) == 64
+        assert selected["objective_components"]["final_score"] == pytest.approx(
+            selected["value"]
+        )
         assert data["final_test_evaluation"] is None
         assert data["baseline_model_id"] is None
         assert data["optimized_model_id"]

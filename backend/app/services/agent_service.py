@@ -526,10 +526,19 @@ async def execute_approved_export_step(
 def _normalize_plan_for_lag_context(
     steps: list[PlannedStep], *, lag_ready: bool | None
 ) -> tuple[list[PlannedStep], bool]:
-    """Remove redundant lag work only when immutable server lineage proves readiness."""
+    """Remove redundant lag work only while the initial lineage remains valid."""
 
     if lag_ready is not True or not any(step.tool == "fit_arx" for step in steps):
         return steps, False
+    clean_seen = False
+    for step in steps:
+        if step.tool == "clean_data":
+            clean_seen = True
+        elif step.tool == "fit_arx" and clean_seen:
+            # Cleaning produces a preprocessing.clean version, which is intentionally not
+            # ARX-eligible. Preserve the plan's post-clean Delay -> Lag chain so it can
+            # establish fresh provenance for the version the fit will actually consume.
+            return steps, False
     removed_ids = {
         step.step_id
         for step in steps

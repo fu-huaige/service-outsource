@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import Field, model_validator
 
 from app.schemas.common import Schema, TaskResource
+from app.schemas.modeling import ModelValidationData, PredictionMetrics
 
 
 class OptimizationStartRequest(Schema):
@@ -30,11 +31,65 @@ class OptimizationStartData(Schema):
     task: TaskResource
 
 
+class OptimizationObjectiveSemantics(Schema):
+    """Authoritative meaning of the score stored in ``value``/``best_value``."""
+
+    name: Literal["composite_identification_score"] = "composite_identification_score"
+    version: Literal["v1"] = "v1"
+    direction: Literal["maximize"] = "maximize"
+
+
+class OptimizationObjectiveComponents(Schema):
+    """Raw inputs and weighted terms from the existing composite objective."""
+
+    validation_free_run_fit: float | None = None
+    validation_free_run_fit_component: float | None = None
+    normalized_error: float | None = None
+    normalized_error_component: float | None = None
+    residual_whiteness_ratio: float | None = None
+    residual_whiteness_component: float | None = None
+    parameter_count: int | None = Field(default=None, ge=1)
+    complexity: float | None = None
+    complexity_component: float | None = None
+    stability_gate: bool
+    final_score: float | None = None
+
+
+class OptimizationSelectionProvenance(Schema):
+    """Compact, replayable evidence for the rows selected by one trial."""
+
+    candidate_count: int = Field(ge=0)
+    gated_count: int = Field(ge=0)
+    selected_segment_count: int = Field(ge=0)
+    selected_sample_count: int = Field(ge=0)
+    selected_indices_hash: str = Field(min_length=64, max_length=64)
+    coverage_ratio: float | None = None
+    gating_rejection_counts: dict[str, int] = Field(default_factory=dict)
+    excitation_satisfied: bool | None = None
+    persistent_excitation_order: dict[str, int] = Field(default_factory=dict)
+    required_excitation_order: dict[str, int] = Field(default_factory=dict)
+    condition_number: float | None = None
+
+
+class OptimizationValidationFeedback(Schema):
+    """Validation-only evidence already computed while evaluating one candidate."""
+
+    partition: Literal["validation"] = "validation"
+    one_step: PredictionMetrics
+    free_run: PredictionMetrics
+    summary: ModelValidationData
+
+
 class OptimizationTrial(Schema):
     trial_id: int = Field(ge=0)
     state: Literal["queued", "running", "complete", "pruned", "failed"]
     value: float | None = None
     params: dict[str, Any]
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    selection_provenance: OptimizationSelectionProvenance | None = None
+    validation_feedback: OptimizationValidationFeedback | None = None
+    objective_semantics: OptimizationObjectiveSemantics | None = None
+    objective_components: OptimizationObjectiveComponents | None = None
     created_at: datetime
     finished_at: datetime | None = None
     error_code: str | None = None
@@ -106,3 +161,7 @@ class OptimizationStatusData(Schema):
     warm_started_from: UUID | None = None
     baseline: BaselineEvaluation | None = None
     final_test_evaluation: FinalTestEvaluation | None = None
+    objective_semantics: OptimizationObjectiveSemantics | None = None
+    best_validation_feedback: OptimizationValidationFeedback | None = None
+    best_selection_summary: OptimizationSelectionProvenance | None = None
+    best_objective_components: OptimizationObjectiveComponents | None = None

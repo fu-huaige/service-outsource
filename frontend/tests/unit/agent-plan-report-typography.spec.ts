@@ -114,4 +114,39 @@ describe("Agent business typography", () => {
     expect(businessRule).toContain("font-family: var(--font-sans)");
     expect(businessRule).toContain("letter-spacing: normal");
   });
+
+  it("renders the optimize step composite score as a decimal instead of FIT percent", () => {
+    const optimized = stepRun("step-optimize", "optimize_pipeline");
+    optimized.result_payload = {
+      best_value: 0.394,
+      objective_semantics: {
+        name: "composite_identification_score",
+        version: "v1",
+        direction: "maximize",
+      },
+    };
+    const wrapper = mount(ToolExecution, {
+      props: {
+        stepRun: optimized,
+        planStep: step("step-optimize", "optimize_pipeline"),
+      },
+    });
+
+    expect(wrapper.get(".te-metrics").text()).toContain("综合辨识得分");
+    expect(wrapper.get(".te-metrics").text()).toContain("0.394");
+    expect(wrapper.get(".te-metrics").text()).not.toContain("BEST FIT");
+    expect(wrapper.get(".te-metrics").text()).not.toContain("39.4%");
+
+    const legacy = stepRun("step-optimize-legacy", "optimize_pipeline");
+    legacy.result_payload = { best_value: 0.394 };
+    const legacyWrapper = mount(ToolExecution, {
+      props: {
+        stepRun: legacy,
+        planStep: step("step-optimize-legacy", "optimize_pipeline"),
+      },
+    });
+    expect(legacyWrapper.get(".te-metrics").text()).toContain("优化目标值");
+    expect(legacyWrapper.get(".te-metrics").text()).toContain("0.394");
+    expect(legacyWrapper.get(".te-metrics").text()).not.toContain("FIT");
+  });
 });

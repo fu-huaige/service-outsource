@@ -1026,6 +1026,76 @@ describe("ArtifactWorkbench cleaning rendering", () => {
   });
 });
 
+describe("ArtifactWorkbench optimization artifact", () => {
+  it("groups best parameters and presents composite objective semantics for non-specialists", async () => {
+    const wrapper = await mountWorkbench(executionWith("optimize_pipeline", {
+      objective_semantics: {
+        name: "composite_identification_score",
+        version: "v1",
+        direction: "maximize",
+      },
+      best_value: 0.394,
+      n_trials: 20,
+      best_params: {
+        window_size: 180,
+        max_segments: 6,
+        max_anomaly_ratio: 0.04,
+        max_missing_ratio: 0.30000000000000004,
+        min_input_activity_ratio: 0.1,
+        nk: 0,
+        na: 2,
+        nb: 2,
+        estimator: "ridge",
+        ridge_alpha: 0.1,
+        future_parameter: 7.500000000000001,
+      },
+    }));
+
+    expect(wrapper.text()).toContain("综合辨识得分（Composite Identification Score）");
+    expect(wrapper.text()).toContain("0.394");
+    expect(wrapper.text()).not.toContain("最优目标 FIT");
+    expect(wrapper.text()).not.toContain("39.4%");
+    expect(wrapper.get('[data-test="optimization-objective-note"]').text()).toContain("验证集自由运行拟合能力");
+
+    const parameters = wrapper.get('[data-test="optimization-parameters"]');
+    expect(parameters.text()).toContain("最优策略参数");
+    expect(parameters.get('[data-test="optimization-group-data-selection"]').text()).toContain("数据优选参数");
+    expect(parameters.get('[data-test="optimization-group-arx-model"]').text()).toContain("ARX 模型参数");
+    expect(parameters.get('[data-test="optimization-group-other"]').text()).toContain("其他参数");
+
+    const windowSize = parameters.get('[data-test="optimization-param-window_size"]');
+    expect(windowSize.text()).toContain("滑动窗口长度（window_size）");
+    expect(windowSize.text()).toContain("控制动态区段分析时每个候选窗口包含的采样点数。");
+    expect(windowSize.text()).toContain("180 个采样点");
+    expect(parameters.get('[data-test="optimization-param-max_segments"]').text()).toContain("6 个区段");
+    expect(parameters.get('[data-test="optimization-param-max_anomaly_ratio"]').text()).toContain("4%");
+    expect(parameters.get('[data-test="optimization-param-max_missing_ratio"]').text()).toContain("30%");
+    expect(parameters.get('[data-test="optimization-param-min_input_activity_ratio"]').text()).toContain("10%");
+    expect(parameters.get('[data-test="optimization-param-nk"]').text()).toContain("0 阶");
+    expect(parameters.get('[data-test="optimization-param-na"]').text()).toContain("2 阶");
+    expect(parameters.get('[data-test="optimization-param-nb"]').text()).toContain("2 阶");
+    expect(parameters.get('[data-test="optimization-param-estimator"]').text()).toContain("岭回归（Ridge）");
+    expect(parameters.get('[data-test="optimization-param-ridge_alpha"]').text()).toContain("0.1");
+    expect(parameters.get('[data-test="optimization-param-future_parameter"]').text()).toContain("future_parameter");
+    expect(parameters.get('[data-test="optimization-param-future_parameter"]').text()).toContain("7.5");
+    expect(parameters.text()).not.toContain("0.30000000000000004");
+  });
+
+  it("formats OLS and safely falls back when legacy objective semantics are absent", async () => {
+    const wrapper = await mountWorkbench(executionWith("optimize_pipeline", {
+      best_value: 0.394,
+      best_params: { estimator: "ols" },
+    }));
+
+    expect(wrapper.text()).toContain("优化目标值");
+    expect(wrapper.text()).toContain("0.394");
+    expect(wrapper.text()).toContain("普通最小二乘（OLS）");
+    expect(wrapper.text()).not.toContain("综合辨识得分（Composite Identification Score）");
+    expect(wrapper.text()).not.toContain("FIT");
+    expect(wrapper.find('[data-test="optimization-objective-note"]').exists()).toBe(false);
+  });
+});
+
 describe("ArtifactWorkbench report and delivery actions", () => {
   it("uses the dedicated report renderer and restores real sibling results from a persisted snapshot", async () => {
     const wrapper = await mountWorkbench(reportExecution());

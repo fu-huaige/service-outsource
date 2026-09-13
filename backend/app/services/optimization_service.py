@@ -5,9 +5,9 @@ a model, feed the identification metric back, and repeat until the best strategy
 
 Three things make it practical rather than merely correct:
 
-* **The objective is validation free-run FIT**, not one-step prediction. Measured on the S6
-  benchmark, one-step FIT spans 0.46 points across strategies where free-run spans 12.83,
-  so optimising one-step is close to optimising noise.
+* **The objective is a composite identification score** led by validation free-run FIT,
+  with bounded validation-error, residual-whiteness and complexity terms plus a stability
+  gate. Test data never contributes to the score.
 * **Lineage-as-cache.** Consecutive trials usually change only model orders while the
   gating and selection parameters stay put; those stages are memoised by content-addressed
   key, so the expensive part runs once per distinct head configuration.
@@ -20,6 +20,7 @@ a formal model without opening the held-out Test split.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from dataclasses import dataclass, field
@@ -30,7 +31,7 @@ from uuid import UUID, uuid4
 
 import numpy as np
 import optuna
-from algorithms.pipeline.cache import LineageCache, stage_key
+from algorithms.pipeline.cache import LineageCache, canonical_json, stage_key
 from algorithms.pipeline.fingerprint import (
     ProfileFingerprint,
     build_fingerprint,
@@ -62,8 +63,13 @@ from app.services.modeling_service import (
     ModelingDomainError,
     fit_arx_core,
     fit_arx_on_version,
+    to_validation_data,
 )
-from app.services.segment_service import SegmentDomainError, run_segment_selection
+from app.services.segment_service import (
+    SegmentDomainError,
+    SegmentSelectionOutcome,
+    run_segment_selection,
+)
 from app.services.version_data import VersionDataError, VersionSeries, load_version_series
 
 TOOL_VERSION = "1.0.0"
@@ -73,6 +79,11 @@ WARM_START_MAX_DISTANCE = 0.35
 WARM_START_LIMIT = 3
 # Quantisation of the gating thresholds in the search space. See _suggest() for why.
 THRESHOLD_STEP = 0.02
+OBJECTIVE_SEMANTICS = {
+    "name": "composite_identification_score",
+    "version": "v1",
+    "direction": "maximize",
+}
 # The formal baseline remains OLS when the selected design is identifiable.  Sparse,
 # heterogeneous excitation can make that exact selected matrix rank deficient even though
 # the closed-loop search still has viable Ridge candidates.  Use the same conservative
@@ -168,6 +179,7 @@ class OptimizationStudyExecution:
     statistics: dict[str, Any]
     best_params: dict[str, Any]
     best_value: float | None
+    best_metrics: dict[str, Any]
     baseline_processing_run_id: UUID
     optimized_model_id: UUID | None
     optimized_model_processing_run_id: UUID | None
@@ -184,9 +196,14 @@ class AgentOptimizationStudyResult:
     optimized_model_id: UUID
     best_params: dict[str, Any]
     best_value: float | None
+    objective_semantics: dict[str, Any]
+    best_validation_feedback: dict[str, Any]
+    best_selection_summary: dict[str, Any]
+    best_objective_components: dict[str, Any]
     processing_run_ids: list[str]
     error_code: str | None = None
     error_message: str | None = None
+
 
 def objective_value(result: ArxCoreResult) -> tuple[float, dict[str, Any]]:
     """Score a candidate model the way an APC engineer would rank it.
@@ -198,9 +215,24 @@ def objective_value(result: ArxCoreResult) -> tuple[float, dict[str, Any]]:
 
     free_run = result.metrics.val_free_run_fit
     if free_run is None or not np.isfinite(free_run):
-        return float("-inf"), {"reason": "free_run_undefined"}
+        return float("-inf"), {
+            "reason": "free_run_undefined",
+            "objective_semantics": dict(OBJECTIVE_SEMANTICS),
+            "objective_components": {
+                "stability_gate": result.validation.stable,
+                "final_score": None,
+            },
+        }
     if not result.validation.stable:
-        return float("-inf"), {"reason": "unstable"}
+        return float("-inf"), {
+            "reason": "unstable",
+            "objective_semantics": dict(OBJECTIVE_SEMANTICS),
+            "objective_components": {
+                "validation_free_run_fit": float(free_run),
+                "stability_gate": False,
+                "final_score": None,
+            },
+        }
 
     nrmse = result.metrics.val_rmse or 0.0
     spread = abs(result.metrics.val_fit or 0.0)
@@ -209,11 +241,15 @@ def objective_value(result: ArxCoreResult) -> tuple[float, dict[str, Any]]:
     whiteness = 1.0 if whiteness is None or not np.isfinite(whiteness) else whiteness
     complexity = result.structure.parameter_count / 40.0
 
+    free_run_component = 0.45 * float(np.clip(free_run / 100.0, -1.0, 1.0))
+    normalized_error_component = -0.20 * float(np.clip(normalised_error, 0.0, 3.0))
+    whiteness_component = -0.10 * (1.0 - float(np.clip(whiteness, 0.0, 1.0)))
+    complexity_component = -0.10 * float(np.clip(complexity, 0.0, 1.0))
     value = (
-        0.45 * float(np.clip(free_run / 100.0, -1.0, 1.0))
-        - 0.20 * float(np.clip(normalised_error, 0.0, 3.0))
-        - 0.10 * (1.0 - float(np.clip(whiteness, 0.0, 1.0)))
-        - 0.10 * float(np.clip(complexity, 0.0, 1.0))
+        free_run_component
+        + normalized_error_component
+        + whiteness_component
+        + complexity_component
     )
     breakdown = {
         "val_free_run_fit": float(free_run),
@@ -223,8 +259,57 @@ def objective_value(result: ArxCoreResult) -> tuple[float, dict[str, Any]]:
         "stable": result.validation.stable,
         "max_pole_modulus": result.validation.max_pole_modulus,
         "training_rows": result.training_rows,
+        "objective_semantics": dict(OBJECTIVE_SEMANTICS),
+        "objective_components": {
+            "validation_free_run_fit": float(free_run),
+            "validation_free_run_fit_component": free_run_component,
+            "normalized_error": float(normalised_error),
+            "normalized_error_component": normalized_error_component,
+            "residual_whiteness_ratio": float(whiteness),
+            "residual_whiteness_component": whiteness_component,
+            "parameter_count": result.structure.parameter_count,
+            "complexity": float(complexity),
+            "complexity_component": complexity_component,
+            "stability_gate": True,
+            "final_score": float(value),
+        },
     }
     return float(value), breakdown
+
+
+def _selection_provenance(outcome: SegmentSelectionOutcome) -> dict[str, Any]:
+    selected_indices = list(outcome.selected_sample_indices)
+    excitation = outcome.selection.excitation
+    condition_number = excitation.condition_number
+    coverage = outcome.selection.coverage_ratio
+    return {
+        "candidate_count": len(outcome.gating.windows),
+        "gated_count": outcome.gating.accepted_count,
+        "selected_segment_count": len(outcome.selection.selected),
+        "selected_sample_count": len(selected_indices),
+        "selected_indices_hash": hashlib.sha256(
+            canonical_json(selected_indices).encode("utf-8")
+        ).hexdigest(),
+        "coverage_ratio": float(coverage) if np.isfinite(coverage) else None,
+        "gating_rejection_counts": dict(outcome.gating.rejection_counts),
+        "excitation_satisfied": excitation.excitation_satisfied,
+        "persistent_excitation_order": dict(excitation.persistent_excitation_order),
+        "required_excitation_order": dict(excitation.required_excitation_order),
+        "condition_number": (
+            float(condition_number) if np.isfinite(condition_number) else None
+        ),
+    }
+
+
+def _validation_feedback(result: ArxCoreResult) -> dict[str, Any]:
+    return {
+        "partition": "validation",
+        "one_step": result.metrics.one_step["validation"].model_dump(mode="json"),
+        "free_run": result.metrics.free_run["validation"].model_dump(mode="json"),
+        "summary": to_validation_data(
+            result.validation, result.excitation_shortfall
+        ).model_dump(mode="json"),
+    }
 
 
 def run_baseline(
@@ -548,6 +633,7 @@ def run_study(
         started = time.perf_counter()
         sampled_params = _suggest(trial, payload.search_space)
         params = dict(sampled_params)
+        metrics: dict[str, Any] = {"objective_semantics": dict(OBJECTIVE_SEMANTICS)}
         cache_hit = False
         try:
             selection_params = _selection_params(
@@ -563,12 +649,13 @@ def run_study(
                 parameters=selection_params,
             )
 
-            def compute_selection() -> list[int]:
+            def compute_selection() -> SegmentSelectionOutcome:
                 request = SegmentRequest(version_id=series.version_id, **selection_params)
-                outcome = run_segment_selection(series, request)
-                return outcome.selected_sample_indices
+                return run_segment_selection(series, request)
 
-            selected, cache_hit = cache.get_or_compute(key, compute_selection)
+            selection_outcome, cache_hit = cache.get_or_compute(key, compute_selection)
+            selected = selection_outcome.selected_sample_indices
+            metrics["selection_provenance"] = _selection_provenance(selection_outcome)
 
             # Staged search. Gating and selection are the expensive head of the pipeline;
             # fitting a model on already-chosen rows is cheap. So the sampler explores the
@@ -628,7 +715,7 @@ def run_study(
                     state="failed",
                     value=None,
                     params=params,
-                    metrics={},
+                    metrics=metrics,
                     cache_hit=cache_hit,
                     duration_ms=duration,
                     error_code=error.code,
@@ -639,6 +726,8 @@ def run_study(
             raise optuna.TrialPruned() from error
 
         value, breakdown = best_structure_value, best_breakdown
+        metrics.update(breakdown)
+        metrics["validation_feedback"] = _validation_feedback(result)
         duration = (time.perf_counter() - started) * 1000.0
         if not np.isfinite(value):
             trials.append(
@@ -647,7 +736,7 @@ def run_study(
                     state="pruned",
                     value=None,
                     params=params,
-                    metrics=breakdown,
+                    metrics=metrics,
                     cache_hit=cache_hit,
                     duration_ms=duration,
                     error_code=str(breakdown.get("reason", "not_finite")),
@@ -661,7 +750,7 @@ def run_study(
                 state="complete",
                 value=value,
                 params=params,
-                metrics=breakdown,
+                metrics=metrics,
                 cache_hit=cache_hit,
                 duration_ms=duration,
             )
@@ -842,6 +931,16 @@ async def execute_agent_optimization_study(
         optimized_model_id=study.optimized_model_id,
         best_params=dict(study.best_params),
         best_value=study.best_value,
+        objective_semantics=dict(execution.best_metrics.get("objective_semantics", {})),
+        best_validation_feedback=dict(
+            execution.best_metrics.get("validation_feedback", {})
+        ),
+        best_selection_summary=dict(
+            execution.best_metrics.get("selection_provenance", {})
+        ),
+        best_objective_components=dict(
+            execution.best_metrics.get("objective_components", {})
+        ),
         processing_run_ids=[
             str(execution.baseline_processing_run_id),
             str(execution.optimized_model_processing_run_id),
@@ -970,6 +1069,7 @@ async def _execute_study(
             statistics=dict(outcome.statistics),
             best_params=dict(outcome.best_params),
             best_value=outcome.best_value,
+            best_metrics=dict(outcome.best_metrics),
             baseline_processing_run_id=baseline_processing_run_id,
             optimized_model_id=None,
             optimized_model_processing_run_id=None,
@@ -1016,6 +1116,7 @@ async def _execute_study(
         statistics=dict(outcome.statistics),
         best_params=dict(outcome.best_params),
         best_value=outcome.best_value,
+        best_metrics=dict(outcome.best_metrics),
         baseline_processing_run_id=baseline_processing_run_id,
         optimized_model_id=optimized.model_id,
         optimized_model_processing_run_id=optimized.processing_run_id,
@@ -1041,6 +1142,11 @@ async def get_optimization_status(
             )
         ).all()
     )
+    best_record = next(
+        (record for record in records if record.trial_number == study.best_trial_number),
+        None,
+    )
+    best_metrics = dict(best_record.metrics) if best_record is not None else {}
 
     curve: list[float | None] = []
     best_so_far: float | None = None
@@ -1058,6 +1164,11 @@ async def get_optimization_status(
                 state=_trial_state(record.state),
                 value=record.value,
                 params=record.params,
+                metrics=dict(record.metrics),
+                selection_provenance=record.metrics.get("selection_provenance"),
+                validation_feedback=record.metrics.get("validation_feedback"),
+                objective_semantics=record.metrics.get("objective_semantics"),
+                objective_components=record.metrics.get("objective_components"),
                 created_at=record.created_at,
                 finished_at=record.finished_at,
                 error_code=record.error_code,
@@ -1075,6 +1186,10 @@ async def get_optimization_status(
         warm_started_from=study.warm_started_from,
         baseline=_stored_baseline(study.statistics),
         final_test_evaluation=_stored_final_evaluation(study.statistics),
+        objective_semantics=study.statistics.get("objective_semantics"),
+        best_validation_feedback=best_metrics.get("validation_feedback"),
+        best_selection_summary=best_metrics.get("selection_provenance"),
+        best_objective_components=best_metrics.get("objective_components"),
     )
 
 
@@ -1253,7 +1368,10 @@ async def _reserve_study(
             baseline_model_id=baseline_model_id,
             best_params={},
             fingerprint={},
-            statistics={"target_trials": payload.max_trials},
+            statistics={
+                "target_trials": payload.max_trials,
+                "objective_semantics": dict(OBJECTIVE_SEMANTICS),
+            },
             created_at=datetime.now(UTC),
         )
     )
@@ -1399,6 +1517,7 @@ async def _persist_study(
         "target_trials": payload.max_trials,
         **dict(study.statistics),
         **outcome.statistics,
+        "objective_semantics": dict(OBJECTIVE_SEMANTICS),
     }
     study.warm_started_from = outcome.warm_started_from
     study.finished_at = now

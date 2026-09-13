@@ -91,6 +91,14 @@ const hasResult = computed(() =>
   !!props.stepRun.result_payload && Object.keys(props.stepRun.result_payload).length > 0
 );
 
+function isCompositeObjective(payload: Record<string, any>): boolean {
+  return payload.objective_semantics?.name === 'composite_identification_score';
+}
+
+function formatObjectiveValue(value: unknown): string {
+  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(3) : '—';
+}
+
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
@@ -101,7 +109,7 @@ const keyMetrics = computed<{ label: string; value: string }[]>(() => {
   const p = props.stepRun.result_payload;
   if (!p) return [];
   const results: { label: string; value: string }[] = [];
-  const tool = props.planStep?.tool ?? '';
+  const tool = toolKey.value;
 
   if (tool === 'arx_fit' || tool === 'evaluate_model') {
     if (p.fit_pct !== undefined) results.push({ label: 'FIT', value: `${p.fit_pct.toFixed(1)}%` });
@@ -123,7 +131,12 @@ const keyMetrics = computed<{ label: string; value: string }[]>(() => {
       results.push({ label: '保留特征', value: `${p.kept_columns.length} 列` });
     }
   } else if (tool === 'optimize_pipeline') {
-    if (p.best_value !== undefined) results.push({ label: 'Best FIT', value: `${(p.best_value * 100).toFixed(1)}%` });
+    if ('best_value' in p) {
+      results.push({
+        label: isCompositeObjective(p) ? '综合辨识得分' : '优化目标值',
+        value: formatObjectiveValue(p.best_value),
+      });
+    }
   } else if (tool === 'clean') {
     if (p.replaced_count !== undefined) results.push({ label: '修正异常点', value: String(p.replaced_count) });
   } else if (tool === 'segment') {

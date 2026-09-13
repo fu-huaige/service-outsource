@@ -1212,6 +1212,97 @@ def test_explicit_optimization_trigger_requires_confirmation_and_persists_real_r
     assert len(calls) == 1
 
 
+def test_optimization_adapter_exposes_winner_feedback_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from app.services import agent_tool_adapter
+
+    dataset_id = uuid4()
+    source_version_id = uuid4()
+    baseline_model_id = uuid4()
+    optimized_model_id = uuid4()
+    study_id = uuid4()
+    objective_semantics = {
+        "name": "composite_identification_score",
+        "version": "v1",
+        "direction": "maximize",
+    }
+    validation_feedback = {
+        "partition": "validation",
+        "one_step": {"rmse": 0.2},
+        "free_run": {"fit": 82.0},
+        "summary": {"stable": True, "partition": "validation"},
+    }
+    selection_summary = {
+        "selected_segment_count": 4,
+        "selected_sample_count": 320,
+        "selected_indices_hash": "a" * 64,
+    }
+    objective_components = {
+        "validation_free_run_fit_component": 0.369,
+        "normalized_error_component": -0.04,
+        "residual_whiteness_component": -0.01,
+        "complexity_component": -0.02,
+        "stability_gate": True,
+        "final_score": 0.299,
+    }
+
+    monkeypatch.setattr(
+        agent_tool_adapter,
+        "_optimization_fit_predecessor",
+        lambda execution, step: (baseline_model_id, source_version_id),
+    )
+    monkeypatch.setattr(
+        agent_tool_adapter,
+        "load_saved_arx_model",
+        lambda **kwargs: SimpleNamespace(
+            source_version_id=source_version_id,
+            dataset_id=dataset_id,
+            payload=SimpleNamespace(input_columns=["u1"], output_column="y"),
+        ),
+    )
+
+    async def fake_execute(*args: object, **kwargs: object) -> object:
+        return SimpleNamespace(
+            study_id=study_id,
+            source_version_id=source_version_id,
+            baseline_model_id=baseline_model_id,
+            optimized_model_id=optimized_model_id,
+            processing_run_ids=[str(uuid4()), str(uuid4())],
+            best_params={"window_size": 60, "na": 2, "nb": 2},
+            best_value=0.299,
+            objective_semantics=objective_semantics,
+            best_validation_feedback=validation_feedback,
+            best_selection_summary=selection_summary,
+            best_objective_components=objective_components,
+        )
+
+    monkeypatch.setattr(
+        agent_tool_adapter, "execute_agent_optimization_study", fake_execute
+    )
+    result = asyncio.run(
+        agent_tool_adapter._optimize_pipeline(
+            None,  # type: ignore[arg-type]
+            execution=SimpleNamespace(dataset_id=dataset_id),
+            step=SimpleNamespace(input_payload={"optimization_study_id": str(study_id)}),
+            parameters={},
+            artifact_root=tmp_path,
+        )
+    )
+
+    assert result.result_payload["study_id"] == str(study_id)
+    assert result.result_payload["optimized_model_id"] == str(optimized_model_id)
+    assert result.result_payload["best_params"] == {"window_size": 60, "na": 2, "nb": 2}
+    assert result.result_payload["best_value"] == pytest.approx(0.299)
+    assert result.result_payload["objective_semantics"] == objective_semantics
+    assert result.result_payload["best_validation_feedback"] == validation_feedback
+    assert result.result_payload["best_selection_summary"] == selection_summary
+    assert result.result_payload["best_objective_components"] == objective_components
+
+
 def test_explicit_optimization_trigger_persists_business_failure_without_replay(
     arx_harness: ArxHarness,
     monkeypatch: pytest.MonkeyPatch,

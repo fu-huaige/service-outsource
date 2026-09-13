@@ -855,6 +855,10 @@ async def _optimize_pipeline(
             "source_version_id": str(result.source_version_id),
             "best_params": result.best_params,
             "best_value": result.best_value,
+            "objective_semantics": result.objective_semantics,
+            "best_validation_feedback": result.best_validation_feedback,
+            "best_selection_summary": result.best_selection_summary,
+            "best_objective_components": result.best_objective_components,
         },
     )
 

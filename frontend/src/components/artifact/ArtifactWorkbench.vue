@@ -130,12 +130,34 @@
       <!-- Optimization Artifact -->
       <template v-else-if="activeArtifact.type === 'optimization'">
         <MetricStrip :metrics="optimizationMetrics(activeArtifact)" />
-        <div class="aw-section">
-          <div class="aw-section__label">最优参数 (Best Parameters)</div>
-          <div class="aw-kv-list">
-            <div v-for="(val, key) in activeArtifact.payload.best_params" :key="key" class="aw-kv">
-              <span class="aw-kv__key">{{ key }}</span>
-              <span class="aw-kv__val">{{ val }}</span>
+        <p
+          v-if="isCompositeObjective(activeArtifact.payload)"
+          class="aw-optimization-objective-note"
+          data-test="optimization-objective-note"
+        >综合考虑验证集自由运行拟合能力、预测误差、残差白度、模型复杂度与稳定性。</p>
+        <div class="aw-section" data-test="optimization-parameters">
+          <div class="aw-section__label">最优策略参数</div>
+          <p class="aw-optimization-intro">由闭环寻优综合比较数据优选策略与 ARX 模型结构后得到的最佳参数组合。</p>
+          <div
+            v-for="group in optimizationParameterGroups(activeArtifact)"
+            :key="group.key"
+            class="aw-optimization-group"
+            :data-test="`optimization-group-${group.key}`"
+          >
+            <div class="aw-optimization-group__title">{{ group.label }}</div>
+            <div class="aw-kv-list">
+              <div
+                v-for="parameter in group.parameters"
+                :key="parameter.key"
+                class="aw-kv aw-optimization-param"
+                :data-test="`optimization-param-${parameter.key}`"
+              >
+                <div class="aw-optimization-param__main">
+                  <span class="aw-kv__key">{{ parameter.label }}</span>
+                  <span class="aw-kv__val">{{ parameter.value }}</span>
+                </div>
+                <p v-if="parameter.description" class="aw-optimization-param__description">{{ parameter.description }}</p>
+              </div>
             </div>
           </div>
         </div>
@@ -342,9 +364,187 @@ watch(() => props.activeStepId, (id) => {
 function optimizationMetrics(art: ArtifactDef) {
   const p = art.payload;
   const metrics: { label: string; value: string; primary?: boolean }[] = [];
-  if (p.best_value !== undefined) metrics.push({ label: '最优目标 FIT', value: `${(p.best_value * 100).toFixed(1)}%`, primary: true });
+  if ('best_value' in p) {
+    metrics.push({
+      label: isCompositeObjective(p)
+        ? '综合辨识得分（Composite Identification Score）'
+        : '优化目标值',
+      value: formatObjectiveValue(p.best_value),
+      primary: true,
+    });
+  }
   if (p.n_trials !== undefined)   metrics.push({ label: '试验次数', value: `${p.n_trials} 次` });
   return metrics;
+}
+
+type OptimizationParameterGroupKey = 'data-selection' | 'arx-model' | 'other';
+type OptimizationParameterFormatter = (value: unknown) => string;
+
+interface OptimizationParameterDefinition {
+  label: string;
+  description: string;
+  group: OptimizationParameterGroupKey;
+  format: OptimizationParameterFormatter;
+}
+
+interface OptimizationParameterDisplay {
+  key: string;
+  label: string;
+  description: string;
+  value: string;
+}
+
+interface OptimizationParameterGroup {
+  key: OptimizationParameterGroupKey;
+  label: string;
+  parameters: OptimizationParameterDisplay[];
+}
+
+const EMPTY_VALUE = '—';
+const compactNumber = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 8 });
+const compactPercent = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 });
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function formatNumberWithUnit(value: unknown, unit: string): string {
+  const number = finiteNumber(value);
+  return number === null ? EMPTY_VALUE : `${compactNumber.format(number)} ${unit}`;
+}
+
+function formatRatio(value: unknown): string {
+  const number = finiteNumber(value);
+  return number === null ? EMPTY_VALUE : `${compactPercent.format(number * 100)}%`;
+}
+
+function formatCompactNumber(value: unknown): string {
+  const number = finiteNumber(value);
+  return number === null ? EMPTY_VALUE : compactNumber.format(number);
+}
+
+function formatEstimator(value: unknown): string {
+  if (typeof value !== 'string' || value.length === 0) return EMPTY_VALUE;
+  const estimator = value.toLowerCase();
+  if (estimator === 'ridge') return '岭回归（Ridge）';
+  if (estimator === 'ols') return '普通最小二乘（OLS）';
+  return value;
+}
+
+function formatRawParameter(value: unknown): string {
+  if (value === null || value === undefined) return EMPTY_VALUE;
+  if (typeof value === 'number') return Number.isFinite(value) ? compactNumber.format(value) : EMPTY_VALUE;
+  if (typeof value === 'string') return value || EMPTY_VALUE;
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+const OPTIMIZATION_PARAMETER_DEFINITIONS: Record<string, OptimizationParameterDefinition> = {
+  window_size: {
+    label: '滑动窗口长度（window_size）',
+    description: '控制动态区段分析时每个候选窗口包含的采样点数。',
+    group: 'data-selection',
+    format: value => formatNumberWithUnit(value, '个采样点'),
+  },
+  max_segments: {
+    label: '最大优选区段数（max_segments）',
+    description: '限制最多选取多少个高价值动态区段参与建模。',
+    group: 'data-selection',
+    format: value => formatNumberWithUnit(value, '个区段'),
+  },
+  max_anomaly_ratio: {
+    label: '最大异常比例（max_anomaly_ratio）',
+    description: '异常数据超过该比例的候选区段将被质量门控过滤。',
+    group: 'data-selection',
+    format: formatRatio,
+  },
+  max_missing_ratio: {
+    label: '最大缺失比例（max_missing_ratio）',
+    description: '缺失数据超过该比例的候选区段将被质量门控过滤。',
+    group: 'data-selection',
+    format: formatRatio,
+  },
+  min_input_activity_ratio: {
+    label: '最小输入活跃比例（min_input_activity_ratio）',
+    description: '保证入选区段具有足够输入变化，避免大量稳态数据进入建模。',
+    group: 'data-selection',
+    format: formatRatio,
+  },
+  nk: {
+    label: '输入时滞阶数（nk）',
+    description: '表示输入作用于输出前需要延迟的采样周期数。',
+    group: 'arx-model',
+    format: value => formatNumberWithUnit(value, '阶'),
+  },
+  na: {
+    label: '输出阶数（na）',
+    description: '决定模型参考多少阶历史输出描述系统自身动态。',
+    group: 'arx-model',
+    format: value => formatNumberWithUnit(value, '阶'),
+  },
+  nb: {
+    label: '输入阶数（nb）',
+    description: '决定模型使用多少阶历史输入描述输入对输出的动态影响。',
+    group: 'arx-model',
+    format: value => formatNumberWithUnit(value, '阶'),
+  },
+  estimator: {
+    label: '参数估计方法（estimator）',
+    description: '决定采用何种方法估计 ARX 模型参数。',
+    group: 'arx-model',
+    format: formatEstimator,
+  },
+  ridge_alpha: {
+    label: '岭回归正则强度（ridge_alpha）',
+    description: '控制 Ridge 对模型参数的正则化程度，降低参数估计过度波动。',
+    group: 'arx-model',
+    format: formatCompactNumber,
+  },
+};
+
+const OPTIMIZATION_GROUP_LABELS: Record<OptimizationParameterGroupKey, string> = {
+  'data-selection': '数据优选参数',
+  'arx-model': 'ARX 模型参数',
+  other: '其他参数',
+};
+
+function isCompositeObjective(payload: Record<string, any>): boolean {
+  return payload.objective_semantics?.name === 'composite_identification_score';
+}
+
+function formatObjectiveValue(value: unknown): string {
+  const number = finiteNumber(value);
+  return number === null ? EMPTY_VALUE : number.toFixed(3);
+}
+
+function optimizationParameterGroups(art: ArtifactDef): OptimizationParameterGroup[] {
+  const params = art.payload.best_params;
+  if (!params || typeof params !== 'object' || Array.isArray(params)) return [];
+
+  const grouped: Record<OptimizationParameterGroupKey, OptimizationParameterDisplay[]> = {
+    'data-selection': [],
+    'arx-model': [],
+    other: [],
+  };
+
+  Object.entries(params).forEach(([key, value]) => {
+    const definition = OPTIMIZATION_PARAMETER_DEFINITIONS[key];
+    const group = definition?.group ?? 'other';
+    grouped[group].push({
+      key,
+      label: definition?.label ?? key,
+      description: definition?.description ?? '',
+      value: definition ? definition.format(value) : formatRawParameter(value),
+    });
+  });
+
+  return (Object.keys(OPTIMIZATION_GROUP_LABELS) as OptimizationParameterGroupKey[])
+    .filter(key => grouped[key].length > 0)
+    .map(key => ({ key, label: OPTIMIZATION_GROUP_LABELS[key], parameters: grouped[key] }));
 }
 </script>
 
@@ -505,6 +705,74 @@ function optimizationMetrics(art: ArtifactDef) {
 .aw-kv__val {
   color: #171717;
   font-weight: 600;
+}
+
+.aw-optimization-objective-note,
+.aw-optimization-intro,
+.aw-optimization-param__description {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.aw-optimization-objective-note {
+  margin-top: -8px;
+  color: #8E8E93;
+}
+
+.aw-optimization-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.aw-optimization-group + .aw-optimization-group {
+  margin-top: 4px;
+}
+
+.aw-optimization-group__title {
+  padding-bottom: 5px;
+  border-bottom: 1px solid #ECECED;
+  color: #666666;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.aw-optimization-param {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.aw-optimization-param__main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.aw-optimization-param__description {
+  padding-right: 12px;
+}
+
+.aw-optimization-intro,
+.aw-optimization-param__description {
+  font-weight: 500;
+}
+
+.aw-optimization-param .aw-kv__key {
+  font-weight: 600;
+}
+
+.aw-section[data-test="optimization-parameters"] > .aw-section__label,
+.aw-optimization-intro,
+.aw-optimization-group__title,
+.aw-optimization-param .aw-kv__key,
+.aw-optimization-param .aw-kv__val,
+.aw-optimization-param__description {
+  color: var(--text-primary);
 }
 
 /* Tag list */

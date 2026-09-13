@@ -224,37 +224,55 @@ def _check_arx_lag_semantics(
             passed=True,
             detail="计划不包含 ARX 拟合，无需检查时滞来源",
         )
-    if lag_ready is True:
-        return ProofCheck(
-            name="arx_lag_ready",
-            passed=True,
-            detail="当前 DatasetVersion 已由服务器验证为 ARX lag-ready",
-        )
+    initial_lineage_ready = lag_ready is True
+    active_lag_step_id: str | None = None
+    latest_clean_index = -1
+    invalid_fits: list[str] = []
 
-    by_tool = {str(step.get("tool")): step for step in steps}
-    estimate = by_tool.get("estimate_delays")
-    apply = by_tool.get("apply_lag_compensation")
-    valid = estimate is not None and apply is not None
-    if valid:
-        estimate_id = str(estimate.get("step_id"))
-        apply_id = str(apply.get("step_id"))
-        valid = _depends_transitively_on(
-            steps, step_id=apply_id, prerequisite_step_id=estimate_id
-        ) and all(
-            _depends_transitively_on(
-                steps,
-                step_id=str(fit.get("step_id")),
-                prerequisite_step_id=apply_id,
-            )
-            for fit in fit_steps
-        )
+    for index, step in enumerate(steps):
+        tool = str(step.get("tool"))
+        step_id = str(step.get("step_id"))
+        if tool == "clean_data":
+            initial_lineage_ready = False
+            active_lag_step_id = None
+            latest_clean_index = index
+            continue
+        if tool == "apply_lag_compensation":
+            valid_estimates = [
+                str(candidate.get("step_id"))
+                for candidate_index, candidate in enumerate(steps[:index])
+                if candidate_index > latest_clean_index
+                and str(candidate.get("tool")) == "estimate_delays"
+                and _depends_transitively_on(
+                    steps,
+                    step_id=step_id,
+                    prerequisite_step_id=str(candidate.get("step_id")),
+                )
+            ]
+            active_lag_step_id = step_id if valid_estimates else None
+            continue
+        if tool != "fit_arx" or initial_lineage_ready:
+            continue
+        if active_lag_step_id is not None and _depends_transitively_on(
+            steps,
+            step_id=step_id,
+            prerequisite_step_id=active_lag_step_id,
+        ):
+            continue
+        invalid_fits.append(step_id)
+
+    valid = not invalid_fits
     return ProofCheck(
         name="arx_lag_ready",
         passed=valid,
         detail=(
-            "ARX 拟合由计划内 estimate_delays → apply_lag_compensation 链保护"
+            "每个 ARX 拟合均由有效的初始 lag-ready 版本或计划内重新建立的"
+            " estimate_delays → apply_lag_compensation 链保护"
             if valid
-            else "ARX 拟合缺少可信 lag-ready 版本或完整时滞估计与补偿依赖链"
+            else (
+                f"ARX 拟合步骤 {', '.join(invalid_fits)} 缺少可信 lag-ready 版本，"
+                "或在 Cleaning 后缺少完整的时滞估计与补偿依赖链"
+            )
         ),
     )
 
