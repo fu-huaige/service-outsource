@@ -71,6 +71,7 @@ from app.services.optimization_feedback_policy import (
     CandidateRejectionEvidence,
     advance_trial_bookkeeping,
     diagnose_validation_candidate,
+    observe_convergence,
     rejection_from_objective,
     rejection_provenance,
 )
@@ -210,6 +211,7 @@ class AgentOptimizationStudyResult:
     best_selection_summary: dict[str, Any]
     best_objective_components: dict[str, Any]
     best_bookkeeping: dict[str, Any]
+    convergence: dict[str, Any]
     processing_run_ids: list[str]
     best_diagnosis: dict[str, Any] = field(default_factory=dict)
     error_code: str | None = None
@@ -847,6 +849,13 @@ def run_study(
 
     completed = [trial for trial in trials if trial.state == "complete"]
     best = _annotate_trial_bookkeeping(trials)
+    convergence = observe_convergence(
+        [
+            (trial.number, trial.metrics["bookkeeping"])
+            for trial in sorted(trials, key=lambda item: item.number)
+        ],
+        best_trial_number=best.number if best else None,
+    )
     selection_computations = cache.misses
     statistics = {
         **cache.statistics(),
@@ -864,6 +873,7 @@ def run_study(
         "evaluations_per_selection": (
             structure_evaluations / selection_computations if selection_computations else 0.0
         ),
+        "convergence": convergence.to_payload(),
     }
     return StudyOutcome(
         study_id=study_id or uuid4(),
@@ -995,6 +1005,13 @@ async def execute_agent_optimization_study(
         raise OptimizationDomainError(
             "OPTIMIZED_MODEL_REQUIRED", "Agent 优化研究未产生正式优化模型。", status_code=500
         )
+    convergence = study.statistics.get("convergence")
+    if not isinstance(convergence, dict):
+        raise OptimizationDomainError(
+            "OPTIMIZATION_CONVERGENCE_REQUIRED",
+            "Agent 优化研究缺少正式 observed convergence contract。",
+            status_code=500,
+        )
 
     return AgentOptimizationStudyResult(
         study_id=study.id,
@@ -1018,6 +1035,7 @@ async def execute_agent_optimization_study(
             "trial_number": study.best_trial_number,
             **dict(execution.best_metrics.get("bookkeeping", {})),
         },
+        convergence=dict(convergence),
         processing_run_ids=[
             str(execution.baseline_processing_run_id),
             str(execution.optimized_model_processing_run_id),
@@ -1277,6 +1295,7 @@ async def get_optimization_status(
         best_validation_feedback=best_metrics.get("validation_feedback"),
         best_selection_summary=best_metrics.get("selection_provenance"),
         best_objective_components=best_metrics.get("objective_components"),
+        convergence=study.statistics.get("convergence"),
     )
 
 

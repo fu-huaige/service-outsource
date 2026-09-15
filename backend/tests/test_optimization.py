@@ -521,6 +521,122 @@ class TestTrialBestSoFarBookkeeping:
         assert trials[5].metrics["bookkeeping"]["decision"] is None
 
 
+class TestObservedConvergencePolicy:
+    @staticmethod
+    def _bookkeeping(
+        *,
+        decision: str | None,
+        best_so_far: float | None,
+    ) -> dict[str, object]:
+        return {
+            "previous_best": None,
+            "absolute_improvement": None,
+            "best_so_far": best_so_far,
+            "decision": decision,
+        }
+
+    def test_meaningful_anchor_accumulates_small_new_bests_and_ignores_invalid_trials(
+        self,
+    ) -> None:
+        from app.services.optimization_feedback_policy import observe_convergence
+
+        new_best = "CANDIDATE_VALID_NEW_BEST"
+        not_best = "CANDIDATE_VALID_NOT_BEST"
+        observations = [
+            (0, self._bookkeeping(decision=new_best, best_so_far=0.2000)),
+            (1, self._bookkeeping(decision=not_best, best_so_far=0.2000)),
+            (2, self._bookkeeping(decision=None, best_so_far=0.2000)),
+            (3, self._bookkeeping(decision=new_best, best_so_far=0.2004)),
+            (4, self._bookkeeping(decision=None, best_so_far=0.2004)),
+            (5, self._bookkeeping(decision=new_best, best_so_far=0.2008)),
+            (6, self._bookkeeping(decision=new_best, best_so_far=0.2011)),
+            (7, self._bookkeeping(decision=not_best, best_so_far=0.2011)),
+        ]
+
+        result = observe_convergence(observations, best_trial_number=6)
+
+        assert result.valid_trial_count == 6
+        assert result.observed_at_trial_count == 8
+        assert result.no_improvement_streak == 1
+        assert result.last_meaningful_improvement_trial == 6
+        assert result.best_trial_number == 6
+
+    @pytest.mark.parametrize(
+        ("valid_trial_count", "tail_streak", "expected_status"),
+        [
+            (16, 15, "INSUFFICIENT_EVIDENCE"),
+            (17, 15, "NOT_CONVERGED"),
+            (17, 16, "CONVERGED"),
+        ],
+    )
+    def test_status_requires_fixed_minimum_valid_trials_and_patience(
+        self,
+        valid_trial_count: int,
+        tail_streak: int,
+        expected_status: str,
+    ) -> None:
+        from app.services.optimization_feedback_policy import observe_convergence
+
+        observations = [
+            (
+                0,
+                self._bookkeeping(
+                    decision="CANDIDATE_VALID_NEW_BEST",
+                    best_so_far=0.2,
+                ),
+            )
+        ]
+        prefix_count = valid_trial_count - tail_streak - 1
+        for offset in range(prefix_count):
+            index = len(observations)
+            observations.append(
+                (
+                    index,
+                    self._bookkeeping(
+                        decision="CANDIDATE_VALID_NEW_BEST",
+                        best_so_far=0.202 + offset * 0.002,
+                    ),
+                )
+            )
+        tail_best = float(observations[-1][1]["best_so_far"])
+        for _ in range(tail_streak):
+            observations.append(
+                (
+                    len(observations),
+                    self._bookkeeping(
+                        decision="CANDIDATE_VALID_NOT_BEST",
+                        best_so_far=tail_best,
+                    ),
+                )
+            )
+
+        result = observe_convergence(observations, best_trial_number=0)
+
+        assert result.status.value == expected_status
+        assert result.valid_trial_count == valid_trial_count
+        assert result.no_improvement_streak == tail_streak
+        assert result.best_trial_number == 0
+
+    def test_contract_exposes_fixed_observed_only_policy(self) -> None:
+        from app.services.optimization_feedback_policy import observe_convergence
+
+        result = observe_convergence([], best_trial_number=None)
+
+        assert result.to_payload() == {
+            "policy_version": "optimization_convergence_v1",
+            "mode": "observed_only",
+            "status": "INSUFFICIENT_EVIDENCE",
+            "no_improvement_streak": 0,
+            "patience": 16,
+            "min_meaningful_improvement": 0.001,
+            "min_valid_trials": 17,
+            "valid_trial_count": 0,
+            "last_meaningful_improvement_trial": None,
+            "best_trial_number": None,
+            "observed_at_trial_count": 0,
+        }
+
+
 class TestFormalEvaluation:
     def test_baseline_is_test_free_and_ignores_the_held_out_tail(
         self, monkeypatch: pytest.MonkeyPatch
@@ -732,6 +848,7 @@ def test_legacy_optimization_contract_without_feedback_fields_remains_readable()
     assert status.best_validation_feedback is None
     assert status.best_selection_summary is None
     assert status.best_objective_components is None
+    assert status.convergence is None
 
 
 @pytest.fixture
@@ -818,6 +935,31 @@ async def _optimization_snapshot(
                 "processing_run_status": run.status if run is not None else None,
                 "processing_run_source_version_id": run.source_version_id if run is not None else None,
             }
+    finally:
+        await engine.dispose()
+
+
+async def _insert_legacy_optimization_study(database_path: Path) -> UUID:
+    from app.models.optimization import OptimizationStudy
+
+    study_id = uuid4()
+    engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}")
+    try:
+        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+            session.add(
+                OptimizationStudy(
+                    id=study_id,
+                    version_id=uuid4(),
+                    status="succeeded",
+                    objective="val_free_run_fit",
+                    parameters={},
+                    best_params={},
+                    fingerprint={},
+                    statistics={},
+                )
+            )
+            await session.commit()
+        return study_id
     finally:
         await engine.dispose()
 
@@ -1007,6 +1149,18 @@ class TestAgentSafeOptimizationEntry:
         assert snapshot["final_test_run_count"] == 0
 
 class TestOptimizationApi:
+    def test_legacy_study_without_convergence_returns_null(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        study_id = asyncio.run(
+            _insert_legacy_optimization_study(tmp_path / "optimize.db")
+        )
+
+        response = client.get(f"/api/v1/optimization/optuna/{study_id}/status")
+
+        assert response.status_code == 200, response.text
+        assert response.json()["data"]["convergence"] is None
+
     def test_persists_optimized_model_without_opening_test(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
@@ -1075,6 +1229,22 @@ class TestOptimizationApi:
         assert data["best_curve"] == [
             trial["bookkeeping"]["best_so_far"] for trial in data["trials"]
         ]
+        assert data["convergence"] == data["statistics"]["convergence"]
+        assert data["convergence"] == {
+            "policy_version": "optimization_convergence_v1",
+            "mode": "observed_only",
+            "status": "INSUFFICIENT_EVIDENCE",
+            "no_improvement_streak": data["convergence"]["no_improvement_streak"],
+            "patience": 16,
+            "min_meaningful_improvement": 0.001,
+            "min_valid_trials": 17,
+            "valid_trial_count": len(complete),
+            "last_meaningful_improvement_trial": data["convergence"][
+                "last_meaningful_improvement_trial"
+            ],
+            "best_trial_number": data["best_trial_id"],
+            "observed_at_trial_count": len(data["trials"]),
+        }
         assert selected["metrics"]["validation_feedback"] == selected["validation_feedback"]
         assert selected["validation_feedback"]["partition"] == "validation"
         assert selected["validation_feedback"]["summary"]["partition"] == "validation"

@@ -10,6 +10,11 @@ from enum import StrEnum
 from typing import Any
 
 DIAGNOSIS_POLICY_VERSION = "validation_diagnosis_v1"
+CONVERGENCE_POLICY_VERSION = "optimization_convergence_v1"
+CONVERGENCE_MODE = "observed_only"
+MIN_MEANINGFUL_IMPROVEMENT = 0.001
+CONVERGENCE_PATIENCE = 16
+CONVERGENCE_MIN_VALID_TRIALS = 17
 
 
 class DiagnosisCode(StrEnum):
@@ -21,6 +26,12 @@ class DiagnosisCode(StrEnum):
 class CandidateDecision(StrEnum):
     CANDIDATE_VALID_NEW_BEST = "CANDIDATE_VALID_NEW_BEST"
     CANDIDATE_VALID_NOT_BEST = "CANDIDATE_VALID_NOT_BEST"
+
+
+class ConvergenceStatus(StrEnum):
+    INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
+    NOT_CONVERGED = "NOT_CONVERGED"
+    CONVERGED = "CONVERGED"
 
 
 @dataclass(frozen=True)
@@ -43,6 +54,100 @@ class TrialBookkeepingResult:
             "best_so_far": self.best_so_far,
             "decision": self.decision.value if self.decision is not None else None,
         }
+
+
+@dataclass(frozen=True)
+class ObservedConvergenceResult:
+    policy_version: str
+    mode: str
+    status: ConvergenceStatus
+    no_improvement_streak: int
+    patience: int
+    min_meaningful_improvement: float
+    min_valid_trials: int
+    valid_trial_count: int
+    last_meaningful_improvement_trial: int | None
+    best_trial_number: int | None
+    observed_at_trial_count: int
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "policy_version": self.policy_version,
+            "mode": self.mode,
+            "status": self.status.value,
+            "no_improvement_streak": self.no_improvement_streak,
+            "patience": self.patience,
+            "min_meaningful_improvement": self.min_meaningful_improvement,
+            "min_valid_trials": self.min_valid_trials,
+            "valid_trial_count": self.valid_trial_count,
+            "last_meaningful_improvement_trial": (
+                self.last_meaningful_improvement_trial
+            ),
+            "best_trial_number": self.best_trial_number,
+            "observed_at_trial_count": self.observed_at_trial_count,
+        }
+
+
+def observe_convergence(
+    observations: Sequence[tuple[int, Mapping[str, Any]]],
+    *,
+    best_trial_number: int | None,
+) -> ObservedConvergenceResult:
+    """Observe the completed Phase 2B history without changing search behavior."""
+
+    valid_trial_count = 0
+    no_improvement_streak = 0
+    last_meaningful_best: float | None = None
+    last_meaningful_improvement_trial: int | None = None
+
+    for trial_number, bookkeeping in observations:
+        decision = bookkeeping.get("decision")
+        if decision is None:
+            continue
+
+        best_so_far = bookkeeping.get("best_so_far")
+        if not _is_finite(best_so_far):
+            raise ValueError("Business-valid bookkeeping must contain a finite best_so_far.")
+        current_best = float(best_so_far)
+        valid_trial_count += 1
+
+        if last_meaningful_best is None:
+            last_meaningful_best = current_best
+            last_meaningful_improvement_trial = trial_number
+            no_improvement_streak = 0
+            continue
+
+        meaningful_delta = current_best - last_meaningful_best
+        if (
+            decision == CandidateDecision.CANDIDATE_VALID_NEW_BEST
+            and meaningful_delta >= MIN_MEANINGFUL_IMPROVEMENT
+        ):
+            last_meaningful_best = current_best
+            last_meaningful_improvement_trial = trial_number
+            no_improvement_streak = 0
+        else:
+            no_improvement_streak += 1
+
+    if valid_trial_count < CONVERGENCE_MIN_VALID_TRIALS:
+        status = ConvergenceStatus.INSUFFICIENT_EVIDENCE
+    elif no_improvement_streak >= CONVERGENCE_PATIENCE:
+        status = ConvergenceStatus.CONVERGED
+    else:
+        status = ConvergenceStatus.NOT_CONVERGED
+
+    return ObservedConvergenceResult(
+        policy_version=CONVERGENCE_POLICY_VERSION,
+        mode=CONVERGENCE_MODE,
+        status=status,
+        no_improvement_streak=no_improvement_streak,
+        patience=CONVERGENCE_PATIENCE,
+        min_meaningful_improvement=MIN_MEANINGFUL_IMPROVEMENT,
+        min_valid_trials=CONVERGENCE_MIN_VALID_TRIALS,
+        valid_trial_count=valid_trial_count,
+        last_meaningful_improvement_trial=last_meaningful_improvement_trial,
+        best_trial_number=best_trial_number,
+        observed_at_trial_count=len(observations),
+    )
 
 
 def advance_trial_bookkeeping(

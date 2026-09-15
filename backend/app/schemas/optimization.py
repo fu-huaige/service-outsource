@@ -112,6 +112,27 @@ class OptimizationTrialBookkeeping(Schema):
     decision: OptimizationTrialDecision | None = None
 
 
+OptimizationConvergenceStatus = Literal[
+    "INSUFFICIENT_EVIDENCE",
+    "NOT_CONVERGED",
+    "CONVERGED",
+]
+
+
+class OptimizationConvergence(Schema):
+    policy_version: Literal["optimization_convergence_v1"]
+    mode: Literal["observed_only"]
+    status: OptimizationConvergenceStatus
+    no_improvement_streak: int = Field(ge=0)
+    patience: Literal[16]
+    min_meaningful_improvement: Literal[0.001]
+    min_valid_trials: Literal[17]
+    valid_trial_count: int = Field(ge=0)
+    last_meaningful_improvement_trial: int | None = Field(default=None, ge=0)
+    best_trial_number: int | None = Field(default=None, ge=0)
+    observed_at_trial_count: int = Field(ge=0)
+
+
 class OptimizationTrial(Schema):
     trial_id: int = Field(ge=0)
     state: Literal["queued", "running", "complete", "pruned", "failed"]
@@ -202,3 +223,4 @@ class OptimizationStatusData(Schema):
     best_validation_feedback: OptimizationValidationFeedback | None = None
     best_selection_summary: OptimizationSelectionProvenance | None = None
     best_objective_components: OptimizationObjectiveComponents | None = None
+    convergence: OptimizationConvergence | None = None

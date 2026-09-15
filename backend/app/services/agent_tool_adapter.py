@@ -862,6 +862,7 @@ async def _optimize_pipeline(
             "best_objective_components": result.best_objective_components,
             "best_diagnosis": result.best_diagnosis,
             "best_bookkeeping": result.best_bookkeeping,
+            "convergence": result.convergence,
         },
     )
 

@@ -1263,6 +1263,19 @@ def test_optimization_adapter_exposes_winner_feedback_contract(
         "best_so_far": 0.299,
         "decision": "CANDIDATE_VALID_NEW_BEST",
     }
+    convergence = {
+        "policy_version": "optimization_convergence_v1",
+        "mode": "observed_only",
+        "status": "INSUFFICIENT_EVIDENCE",
+        "no_improvement_streak": 0,
+        "patience": 16,
+        "min_meaningful_improvement": 0.001,
+        "min_valid_trials": 17,
+        "valid_trial_count": 1,
+        "last_meaningful_improvement_trial": 0,
+        "best_trial_number": 0,
+        "observed_at_trial_count": 1,
+    }
 
     monkeypatch.setattr(
         agent_tool_adapter,
@@ -1294,6 +1307,7 @@ def test_optimization_adapter_exposes_winner_feedback_contract(
             best_objective_components=objective_components,
             best_diagnosis=best_diagnosis,
             best_bookkeeping=best_bookkeeping,
+            convergence=convergence,
         )
 
     monkeypatch.setattr(
@@ -1319,6 +1333,7 @@ def test_optimization_adapter_exposes_winner_feedback_contract(
     assert result.result_payload["best_objective_components"] == objective_components
     assert result.result_payload["best_diagnosis"] == best_diagnosis
     assert result.result_payload["best_bookkeeping"] == best_bookkeeping
+    assert result.result_payload["convergence"] == convergence
 
 
 def test_explicit_optimization_trigger_persists_business_failure_without_replay(
