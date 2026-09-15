@@ -67,7 +67,9 @@ from app.services.modeling_service import (
 )
 from app.services.optimization_feedback_policy import (
     DIAGNOSIS_POLICY_VERSION,
+    BestSoFarState,
     CandidateRejectionEvidence,
+    advance_trial_bookkeeping,
     diagnose_validation_candidate,
     rejection_from_objective,
     rejection_provenance,
@@ -207,6 +209,7 @@ class AgentOptimizationStudyResult:
     best_validation_feedback: dict[str, Any]
     best_selection_summary: dict[str, Any]
     best_objective_components: dict[str, Any]
+    best_bookkeeping: dict[str, Any]
     processing_run_ids: list[str]
     best_diagnosis: dict[str, Any] = field(default_factory=dict)
     error_code: str | None = None
@@ -318,6 +321,23 @@ def _validation_feedback(result: ArxCoreResult) -> dict[str, Any]:
             result.validation, result.excitation_shortfall
         ).model_dump(mode="json"),
     }
+
+
+def _annotate_trial_bookkeeping(trials: list[TrialOutcome]) -> TrialOutcome | None:
+    state = BestSoFarState()
+    trials_by_number: dict[int, TrialOutcome] = {}
+    for trial in sorted(trials, key=lambda item: item.number):
+        state, bookkeeping = advance_trial_bookkeeping(
+            state,
+            trial_number=trial.number,
+            trial_state=trial.state,
+            objective_score=trial.value,
+        )
+        trial.metrics["bookkeeping"] = bookkeeping.to_payload()
+        trials_by_number[trial.number] = trial
+    if state.winner_trial_number is None:
+        return None
+    return trials_by_number[state.winner_trial_number]
 
 
 def run_baseline(
@@ -826,7 +846,7 @@ def run_study(
     )
 
     completed = [trial for trial in trials if trial.state == "complete"]
-    best = max(completed, key=lambda item: item.value or float("-inf"), default=None)
+    best = _annotate_trial_bookkeeping(trials)
     selection_computations = cache.misses
     statistics = {
         **cache.statistics(),
@@ -994,6 +1014,10 @@ async def execute_agent_optimization_study(
         best_objective_components=dict(
             execution.best_metrics.get("objective_components", {})
         ),
+        best_bookkeeping={
+            "trial_number": study.best_trial_number,
+            **dict(execution.best_metrics.get("bookkeeping", {})),
+        },
         processing_run_ids=[
             str(execution.baseline_processing_run_id),
             str(execution.optimized_model_processing_run_id),
@@ -1203,11 +1227,15 @@ async def get_optimization_status(
     best_metrics = dict(best_record.metrics) if best_record is not None else {}
 
     curve: list[float | None] = []
-    best_so_far: float | None = None
+    curve_state = BestSoFarState()
     for record in records:
-        if record.value is not None and (best_so_far is None or record.value > best_so_far):
-            best_so_far = record.value
-        curve.append(best_so_far)
+        curve_state, bookkeeping = advance_trial_bookkeeping(
+            curve_state,
+            trial_number=record.trial_number,
+            trial_state=record.state,
+            objective_score=record.value,
+        )
+        curve.append(bookkeeping.best_so_far)
 
     return OptimizationStatusData(
         study_id=study_id,
@@ -1227,6 +1255,7 @@ async def get_optimization_status(
                 diagnosis_codes=record.metrics.get("diagnosis_codes"),
                 diagnosis_evidence=record.metrics.get("diagnosis_evidence"),
                 rejection_provenance=record.metrics.get("rejection_provenance"),
+                bookkeeping=record.metrics.get("bookkeeping"),
                 created_at=record.created_at,
                 finished_at=record.finished_at,
                 error_code=record.error_code,

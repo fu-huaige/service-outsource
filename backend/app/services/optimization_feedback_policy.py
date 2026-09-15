@@ -18,6 +18,75 @@ class DiagnosisCode(StrEnum):
     INSUFFICIENT_EXCITATION = "INSUFFICIENT_EXCITATION"
 
 
+class CandidateDecision(StrEnum):
+    CANDIDATE_VALID_NEW_BEST = "CANDIDATE_VALID_NEW_BEST"
+    CANDIDATE_VALID_NOT_BEST = "CANDIDATE_VALID_NOT_BEST"
+
+
+@dataclass(frozen=True)
+class BestSoFarState:
+    best_value: float | None = None
+    winner_trial_number: int | None = None
+
+
+@dataclass(frozen=True)
+class TrialBookkeepingResult:
+    previous_best: float | None
+    absolute_improvement: float | None
+    best_so_far: float | None
+    decision: CandidateDecision | None
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "previous_best": self.previous_best,
+            "absolute_improvement": self.absolute_improvement,
+            "best_so_far": self.best_so_far,
+            "decision": self.decision.value if self.decision is not None else None,
+        }
+
+
+def advance_trial_bookkeeping(
+    state: BestSoFarState,
+    *,
+    trial_number: int,
+    trial_state: str,
+    objective_score: float | None,
+) -> tuple[BestSoFarState, TrialBookkeepingResult]:
+    """Record objective progress without applying Phase 2C significance or stop policy."""
+
+    previous_best = state.best_value
+    if trial_state != "complete" or not _is_finite(objective_score):
+        return state, TrialBookkeepingResult(
+            previous_best=previous_best,
+            absolute_improvement=None,
+            best_so_far=previous_best,
+            decision=None,
+        )
+
+    current_score = float(objective_score)
+    absolute_improvement = (
+        None if previous_best is None else current_score - previous_best
+    )
+    if previous_best is None or current_score > previous_best:
+        updated = BestSoFarState(
+            best_value=current_score,
+            winner_trial_number=trial_number,
+        )
+        return updated, TrialBookkeepingResult(
+            previous_best=previous_best,
+            absolute_improvement=absolute_improvement,
+            best_so_far=current_score,
+            decision=CandidateDecision.CANDIDATE_VALID_NEW_BEST,
+        )
+
+    return state, TrialBookkeepingResult(
+        previous_best=previous_best,
+        absolute_improvement=absolute_improvement,
+        best_so_far=previous_best,
+        decision=CandidateDecision.CANDIDATE_VALID_NOT_BEST,
+    )
+
+
 @dataclass(frozen=True)
 class CandidateRejectionEvidence:
     """Compact evidence for one structure rejected by an existing hard gate."""

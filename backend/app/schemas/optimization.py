@@ -99,6 +99,19 @@ class OptimizationRejectionProvenance(Schema):
     examples: list[dict[str, Any]] = Field(default_factory=list)
 
 
+OptimizationTrialDecision = Literal[
+    "CANDIDATE_VALID_NEW_BEST",
+    "CANDIDATE_VALID_NOT_BEST",
+]
+
+
+class OptimizationTrialBookkeeping(Schema):
+    previous_best: float | None = None
+    absolute_improvement: float | None = None
+    best_so_far: float | None = None
+    decision: OptimizationTrialDecision | None = None
+
+
 class OptimizationTrial(Schema):
     trial_id: int = Field(ge=0)
     state: Literal["queued", "running", "complete", "pruned", "failed"]
@@ -113,6 +126,7 @@ class OptimizationTrial(Schema):
     diagnosis_codes: list[OptimizationDiagnosisCode] | None = None
     diagnosis_evidence: dict[str, Any] | None = None
     rejection_provenance: OptimizationRejectionProvenance | None = None
+    bookkeeping: OptimizationTrialBookkeeping | None = None
     created_at: datetime
     finished_at: datetime | None = None
     error_code: str | None = None

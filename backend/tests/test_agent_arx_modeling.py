@@ -1256,6 +1256,13 @@ def test_optimization_adapter_exposes_winner_feedback_contract(
             "INSUFFICIENT_EXCITATION": {"excitation_satisfied": False}
         },
     }
+    best_bookkeeping = {
+        "trial_number": 0,
+        "previous_best": None,
+        "absolute_improvement": None,
+        "best_so_far": 0.299,
+        "decision": "CANDIDATE_VALID_NEW_BEST",
+    }
 
     monkeypatch.setattr(
         agent_tool_adapter,
@@ -1286,6 +1293,7 @@ def test_optimization_adapter_exposes_winner_feedback_contract(
             best_selection_summary=selection_summary,
             best_objective_components=objective_components,
             best_diagnosis=best_diagnosis,
+            best_bookkeeping=best_bookkeeping,
         )
 
     monkeypatch.setattr(
@@ -1310,6 +1318,7 @@ def test_optimization_adapter_exposes_winner_feedback_contract(
     assert result.result_payload["best_selection_summary"] == selection_summary
     assert result.result_payload["best_objective_components"] == objective_components
     assert result.result_payload["best_diagnosis"] == best_diagnosis
+    assert result.result_payload["best_bookkeeping"] == best_bookkeeping
 
 
 def test_explicit_optimization_trigger_persists_business_failure_without_replay(

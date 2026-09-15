@@ -315,6 +315,12 @@ class TestValidationDiagnosisPolicy:
         assert trial.metrics["rejection_provenance"]["reason_counts"] == {
             expected_code: 1
         }
+        assert trial.metrics["bookkeeping"] == {
+            "previous_best": None,
+            "absolute_improvement": None,
+            "best_so_far": None,
+            "decision": None,
+        }
 
     def test_solver_error_is_not_mapped_to_a_hard_gate_diagnosis(
         self, monkeypatch: pytest.MonkeyPatch
@@ -425,6 +431,94 @@ class TestValidationDiagnosisPolicy:
         assert trial.value == pytest.approx(
             trial.metrics["objective_components"]["final_score"]
         )
+        assert trial.metrics["bookkeeping"]["decision"] == "CANDIDATE_VALID_NEW_BEST"
+
+
+class TestTrialBestSoFarBookkeeping:
+    def test_reducer_records_numeric_progress_and_ignores_invalid_trials(self) -> None:
+        from app.services.optimization_feedback_policy import (
+            BestSoFarState,
+            advance_trial_bookkeeping,
+        )
+
+        state = BestSoFarState()
+        results = []
+        for number, trial_state, score in [
+            (0, "failed", None),
+            (1, "complete", -0.5),
+            (2, "pruned", None),
+            (3, "complete", -0.2),
+            (4, "complete", -0.2),
+            (5, "complete", 0.0),
+            (6, "complete", -0.4),
+            (7, "complete", float("inf")),
+        ]:
+            state, result = advance_trial_bookkeeping(
+                state,
+                trial_number=number,
+                trial_state=trial_state,
+                objective_score=score,
+            )
+            results.append(result.to_payload())
+
+        assert results[0] == {
+            "previous_best": None,
+            "absolute_improvement": None,
+            "best_so_far": None,
+            "decision": None,
+        }
+        assert results[1] == {
+            "previous_best": None,
+            "absolute_improvement": None,
+            "best_so_far": -0.5,
+            "decision": "CANDIDATE_VALID_NEW_BEST",
+        }
+        assert results[2]["best_so_far"] == pytest.approx(-0.5)
+        assert results[2]["decision"] is None
+        assert results[3]["previous_best"] == pytest.approx(-0.5)
+        assert results[3]["absolute_improvement"] == pytest.approx(0.3)
+        assert results[3]["best_so_far"] == pytest.approx(-0.2)
+        assert results[3]["decision"] == "CANDIDATE_VALID_NEW_BEST"
+        assert results[4]["absolute_improvement"] == pytest.approx(0.0)
+        assert results[4]["decision"] == "CANDIDATE_VALID_NOT_BEST"
+        assert results[5]["absolute_improvement"] == pytest.approx(0.2)
+        assert results[5]["best_so_far"] == pytest.approx(0.0)
+        assert results[5]["decision"] == "CANDIDATE_VALID_NEW_BEST"
+        assert results[6]["absolute_improvement"] == pytest.approx(-0.4)
+        assert results[6]["best_so_far"] == pytest.approx(0.0)
+        assert results[6]["decision"] == "CANDIDATE_VALID_NOT_BEST"
+        assert results[7]["absolute_improvement"] is None
+        assert results[7]["best_so_far"] == pytest.approx(0.0)
+        assert results[7]["decision"] is None
+        assert state.best_value == pytest.approx(0.0)
+        assert state.winner_trial_number == 5
+
+    def test_study_winner_uses_the_same_reducer_and_keeps_the_earlier_tie(self) -> None:
+        from app.services.optimization_service import (
+            TrialOutcome,
+            _annotate_trial_bookkeeping,
+        )
+
+        trials = [
+            TrialOutcome(0, "complete", -0.5, {}, {}, False, 1.0),
+            TrialOutcome(1, "complete", 0.0, {}, {}, False, 1.0),
+            TrialOutcome(2, "complete", 0.0, {}, {}, False, 1.0),
+            TrialOutcome(3, "failed", None, {}, {}, False, 1.0, "SOLVER_FAILURE"),
+            TrialOutcome(4, "pruned", None, {}, {}, False, 1.0),
+            TrialOutcome(5, "complete", float("nan"), {}, {}, False, 1.0),
+        ]
+
+        winner = _annotate_trial_bookkeeping(trials)
+
+        assert winner is trials[1]
+        assert trials[0].metrics["bookkeeping"]["decision"] == "CANDIDATE_VALID_NEW_BEST"
+        assert trials[1].metrics["bookkeeping"]["decision"] == "CANDIDATE_VALID_NEW_BEST"
+        assert trials[2].metrics["bookkeeping"]["decision"] == "CANDIDATE_VALID_NOT_BEST"
+        assert trials[2].metrics["bookkeeping"]["absolute_improvement"] == pytest.approx(0.0)
+        assert trials[3].metrics["bookkeeping"]["best_so_far"] == pytest.approx(0.0)
+        assert trials[3].metrics["bookkeeping"]["decision"] is None
+        assert trials[4].metrics["bookkeeping"]["decision"] is None
+        assert trials[5].metrics["bookkeeping"]["decision"] is None
 
 
 class TestFormalEvaluation:
@@ -623,6 +717,7 @@ def test_legacy_optimization_contract_without_feedback_fields_remains_readable()
     assert trial.diagnosis_codes is None
     assert trial.diagnosis_evidence is None
     assert trial.rejection_provenance is None
+    assert trial.bookkeeping is None
 
     status = OptimizationStatusData(
         study_id=uuid4(),
@@ -976,6 +1071,10 @@ class TestOptimizationApi:
         assert data["best_validation_feedback"] == selected["validation_feedback"]
         assert data["best_selection_summary"] == selected["selection_provenance"]
         assert data["best_objective_components"] == selected["objective_components"]
+        assert selected["bookkeeping"]["decision"] == "CANDIDATE_VALID_NEW_BEST"
+        assert data["best_curve"] == [
+            trial["bookkeeping"]["best_so_far"] for trial in data["trials"]
+        ]
         assert selected["metrics"]["validation_feedback"] == selected["validation_feedback"]
         assert selected["validation_feedback"]["partition"] == "validation"
         assert selected["validation_feedback"]["summary"]["partition"] == "validation"
