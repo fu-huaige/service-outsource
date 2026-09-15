@@ -118,6 +118,87 @@ def test_openapi_contains_all_phase_one_paths() -> None:
     assert schema["openapi"] == "3.1.0"
 
 
+def test_optimization_status_exposes_phase_2c2b1_lifecycle_contract() -> None:
+    from datetime import UTC, datetime
+
+    from app.schemas.optimization import (
+        OptimizationJobObservation,
+        OptimizationStatusData,
+        OptimizationTerminalReason,
+        OptimizationTerminalReasonV1,
+        OptimizationTerminalReasonV2,
+    )
+    from pydantic import TypeAdapter
+
+    status_schema = OptimizationStatusData.model_json_schema()
+    job_schema = OptimizationJobObservation.model_json_schema()
+    terminal_v1_schema = OptimizationTerminalReasonV1.model_json_schema()
+    terminal_v2_schema = OptimizationTerminalReasonV2.model_json_schema()
+
+    assert status_schema["properties"]["study_status"]["enum"] == [
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+    ]
+    assert terminal_v1_schema["properties"]["code"]["enum"] == [
+        "COMPLETED",
+        "NO_VALID_CANDIDATE",
+        "FAILED",
+    ]
+    assert terminal_v1_schema["properties"]["phase"]["enum"] == [
+        "preparation",
+        "baseline",
+        "search",
+        "winner_persistence",
+        "study_persistence",
+    ]
+    assert terminal_v2_schema["properties"]["code"]["enum"] == [
+        "COMPLETED",
+        "NO_VALID_CANDIDATE",
+        "FAILED",
+        "RQ_TIMEOUT",
+        "WORKER_CRASH",
+    ]
+    assert terminal_v2_schema["properties"]["phase"]["enum"] == [
+        "preparation",
+        "baseline",
+        "search",
+        "winner_persistence",
+        "study_persistence",
+        "queue_submission",
+        "rq_execution",
+    ]
+    terminal_union = status_schema["properties"]["terminal_reason"]["anyOf"][0]
+    assert terminal_union["discriminator"] == {
+        "mapping": {
+            "optimization_terminal_reason_v1": "#/$defs/OptimizationTerminalReasonV1",
+            "optimization_terminal_reason_v2": "#/$defs/OptimizationTerminalReasonV2",
+        },
+        "propertyName": "policy_version",
+    }
+    historical = TypeAdapter(OptimizationTerminalReason).validate_python(
+        {
+            "policy_version": "optimization_terminal_reason_v1",
+            "code": "FAILED",
+            "category": "SYSTEM_FAILURE",
+            "phase": "search",
+            "error_code": "STUDY_EXECUTION_FAILED",
+            "recorded_at": datetime.now(UTC),
+        }
+    )
+    assert isinstance(historical, OptimizationTerminalReasonV1)
+    assert "job" in status_schema["properties"]
+    assert job_schema["properties"]["availability"]["enum"] == [
+        "AVAILABLE",
+        "NOT_FOUND",
+        "UNAVAILABLE",
+        "IDENTITY_MISMATCH",
+        "NOT_APPLICABLE",
+        "LEGACY",
+    ]
+
+
 def test_copilot_contract_has_a_whitelisted_plan(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     # The agent persists its plan, proof and step records, so it needs a session.
     import asyncio
@@ -195,14 +276,27 @@ def test_api_runs_real_simulation_and_arx_baseline(tmp_path, monkeypatch) -> Non
         )
         assert simulation.status_code == 201
         generated = simulation.json()["data"]
+        lagged = client.post(
+            "/api/v1/preprocessing/delay/apply",
+            json={
+                "dataset_id": generated["dataset_id"],
+                "version_id": generated["version_id"],
+                "lag_map": {"u1": 3},
+                "user_confirmed": True,
+                "recommendation_source": "manual",
+                "evidence_summary": {"fixture": "known_simulation_lag"},
+            },
+        )
+        assert lagged.status_code == 201, lagged.text
+        lagged_version_id = lagged.json()["data"]["result_version_id"]
         fitted = client.post(
             "/api/v1/modeling/arx/fit",
             json={
                 "dataset_id": generated["dataset_id"],
-                "version_id": generated["version_id"],
+                "version_id": lagged_version_id,
                 "na": 2,
                 "nb": [2],
-                "delays": [3],
+                "delays": [0],
                 "estimation_method": "ols",
                 "evaluate_test": True,
             },

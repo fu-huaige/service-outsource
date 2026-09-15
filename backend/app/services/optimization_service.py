@@ -45,19 +45,33 @@ from starlette.concurrency import run_in_threadpool
 from app.models.dataset import ProcessingRun
 from app.models.operation_log import OperationLog
 from app.models.optimization import OptimizationStudy, OptimizationTrialRecord, StrategyMemory
+from app.schemas.common import ErrorDetail, TaskProgress, TaskResource
 from app.schemas.modeling import ArxFitData, ArxFitRequest
 from app.schemas.optimization import (
     BaselineEvaluation,
     FinalTestEvaluation,
+    OptimizationJobObservation,
     OptimizationStartData,
     OptimizationStartRequest,
     OptimizationStatusData,
+    OptimizationTerminalPhase,
+    OptimizationTerminalReasonCategory,
+    OptimizationTerminalReasonCode,
+    OptimizationTerminalReasonV2,
     OptimizationTrial,
 )
 from app.schemas.preprocessing import SegmentRequest
-from app.services.contract_stubs import completed_task, queued_task
 from app.services.evaluation_policy import DEFAULT_BASELINE_CONFIG
-from app.services.job_queue import submit_optimization
+from app.services.job_queue import (
+    JOB_TIMEOUT_SECONDS,
+    QUEUE_NAME,
+    JobObservation,
+    RqTerminalEvidence,
+    background_optimization_enabled,
+    observe_optimization_job,
+    reconcile_optimization_job,
+    submit_optimization,
+)
 from app.services.modeling_service import (
     ArxCoreResult,
     ModelingDomainError,
@@ -94,6 +108,23 @@ OBJECTIVE_SEMANTICS = {
     "name": "composite_identification_score",
     "version": "v1",
     "direction": "maximize",
+}
+TERMINAL_REASON_POLICY_VERSION = "optimization_terminal_reason_v2"
+_TERMINAL_REASON_CATEGORY: dict[
+    OptimizationTerminalReasonCode, OptimizationTerminalReasonCategory
+] = {
+    "COMPLETED": "SUCCESS",
+    "NO_VALID_CANDIDATE": "BUSINESS_FAILURE",
+    "FAILED": "SYSTEM_FAILURE",
+    "RQ_TIMEOUT": "INFRASTRUCTURE_FAILURE",
+    "WORKER_CRASH": "INFRASTRUCTURE_FAILURE",
+}
+_TERMINAL_REASON_STATUS = {
+    "COMPLETED": "succeeded",
+    "NO_VALID_CANDIDATE": "failed",
+    "FAILED": "failed",
+    "RQ_TIMEOUT": "failed",
+    "WORKER_CRASH": "failed",
 }
 # The formal baseline remains OLS when the selected design is identifiable.  Sparse,
 # heterogeneous excitation can make that exact selected matrix rank deficient even though
@@ -927,27 +958,80 @@ async def start_optimization_study(
         ) from error
 
     study_id = uuid4()
-    await _reserve_study(session, study_id=study_id, payload=payload)
+    rq_enabled = background_optimization_enabled()
+    await _reserve_study(
+        session,
+        study_id=study_id,
+        payload=payload,
+        job=_study_job_contract(
+            study_id=study_id,
+            execution_mode="rq" if rq_enabled else "inline_http",
+            submission_state=(
+                "SUBMISSION_REQUESTED" if rq_enabled else "CONFIRMED_NOT_ENQUEUED"
+            ),
+        ),
+    )
 
     submission = submit_optimization(study_id, payload.model_dump(mode="json"))
     if submission.queued:
+        study = await session.get(OptimizationStudy, study_id)
+        assert study is not None
+        observation = _schema_job_observation(
+            execution_mode="rq",
+            observation=submission.observation,
+        )
         return OptimizationStartData(
             study_id=study_id,
-            task=queued_task(
-                status="queued",
-                stage="optimize_pipeline",
-                message=f"闭环寻优已提交后台执行（作业 {submission.job_id}），请轮询研究状态。",
+            task=_optimization_task(
+                study=study,
+                job=observation,
+                message=(
+                    f"闭环寻优已提交后台执行（作业 {submission.job_id}），请轮询研究状态。"
+                ),
             ),
         )
+
+    if not submission.allows_inline:
+        await _update_study_job_contract(
+            session,
+            study_id=study_id,
+            submission_state=submission.outcome,
+        )
+        study = await session.get(OptimizationStudy, study_id)
+        assert study is not None
+        observation = _schema_job_observation(
+            execution_mode="rq",
+            observation=submission.observation,
+        )
+        return OptimizationStartData(
+            study_id=study_id,
+            task=_optimization_task(
+                study=study,
+                job=observation,
+                message=submission.reason or "RQ 作业提交结果暂不可确认。",
+            ),
+        )
+
+    await _update_study_job_contract(
+        session,
+        study_id=study_id,
+        execution_mode="inline_http",
+        submission_state="INLINE_FALLBACK",
+        clear_rq_identity=True,
+    )
 
     statistics = await execute_study(
         session, study_id=study_id, payload=payload, artifact_root=artifact_root
     )
     suffix = f"（{submission.reason}，已同步执行）" if submission.reason else ""
+    study = await session.get(OptimizationStudy, study_id)
+    assert study is not None
+    observation = _schema_job_observation(execution_mode="inline_http", observation=None)
     return OptimizationStartData(
         study_id=study_id,
-        task=completed_task(
-            stage="optimize_pipeline",
+        task=_optimization_task(
+            study=study,
+            job=observation,
             message=(
                 f"闭环寻优完成：{statistics['completed_trials']} 个有效试验，"
                 f"缓存命中率 {statistics['hit_rate']:.0%}。{suffix}"
@@ -973,6 +1057,11 @@ async def execute_agent_optimization_study(
             study_id=study_id,
             payload=payload,
             baseline_model_id=baseline_model_id,
+            job=_study_job_contract(
+                study_id=study_id,
+                execution_mode="inline_agent",
+                submission_state="CONFIRMED_NOT_ENQUEUED",
+            ),
         )
         execution = await _execute_study(
             session,
@@ -1094,57 +1183,55 @@ async def _execute_study(
     subtly different from the synchronous path would be worse than having no worker.
     """
 
+    current_phase: OptimizationTerminalPhase = "preparation"
     try:
-        series = await load_version_series(
-            session, version_id=payload.version_id, artifact_root=artifact_root
-        )
-        input_columns, output_column = series.resolve_columns(
-            input_columns=payload.input_columns, output_column=payload.output_column
-        )
-    except VersionDataError as error:
-        await _mark_study_failed(session, study_id=study_id, reason=error.code)
-        raise OptimizationDomainError(
-            error.code, error.message, status_code=error.status_code, details=error.details
-        ) from error
+        try:
+            series = await load_version_series(
+                session, version_id=payload.version_id, artifact_root=artifact_root
+            )
+            input_columns, output_column = series.resolve_columns(
+                input_columns=payload.input_columns, output_column=payload.output_column
+            )
+        except VersionDataError as error:
+            raise OptimizationDomainError(
+                error.code, error.message, status_code=error.status_code, details=error.details
+            ) from error
 
-    await _mark_study_running(session, study_id=study_id)
+        await _mark_study_running(session, study_id=study_id)
 
-    baseline = run_baseline(
-        series,
-        payload,
-        input_columns=input_columns,
-        output_column=output_column,
-    )
-    baseline_processing_run_id = await _persist_evaluation(
-        session,
-        study_id=study_id,
-        series=series,
-        evaluation=baseline,
-        kind="baseline",
-    )
-    if baseline.status != "succeeded":
-        await _mark_study_failed(
+        current_phase = "baseline"
+        baseline = run_baseline(
+            series,
+            payload,
+            input_columns=input_columns,
+            output_column=output_column,
+        )
+        baseline_processing_run_id = await _persist_evaluation(
             session,
             study_id=study_id,
-            reason=baseline.error_code or "BASELINE_EVALUATION_FAILED",
+            series=series,
+            evaluation=baseline,
+            kind="baseline",
         )
-        raise OptimizationDomainError(
-            baseline.error_code or "BASELINE_EVALUATION_FAILED",
-            "默认基线流程失败，未开始 Optuna 寻优。",
-            details={"baseline": _evaluation_payload(baseline)},
+        if baseline.status != "succeeded":
+            raise OptimizationDomainError(
+                baseline.error_code or "BASELINE_EVALUATION_FAILED",
+                "默认基线流程失败，未开始 Optuna 寻优。",
+                details={"baseline": _evaluation_payload(baseline)},
+            )
+
+        current_phase = "preparation"
+        fingerprint = build_fingerprint(
+            inputs={column: series.values[column] for column in input_columns},
+            output=series.values[output_column],
+        )
+        warm_start, source = (
+            await _retrieve_warm_start(session, series=series, fingerprint=fingerprint)
+            if use_warm_start
+            else ([], None)
         )
 
-    fingerprint = build_fingerprint(
-        inputs={column: series.values[column] for column in input_columns},
-        output=series.values[output_column],
-    )
-    warm_start, source = (
-        await _retrieve_warm_start(session, series=series, fingerprint=fingerprint)
-        if use_warm_start
-        else ([], None)
-    )
-
-    try:
+        current_phase = "search"
         # run_study is a synchronous, CPU-bound Optuna loop (it never touches the
         # AsyncSession — see its signature above). Calling it inline here would block the
         # whole ASGI event loop for the duration of the search, freezing every other
@@ -1162,19 +1249,71 @@ async def _execute_study(
             warm_start_source=source,
             study_id=study_id,
         )
-    except Exception:
-        # A crash mid-search must not leave the row stuck at "running" forever; the client
-        # polling /status has to be able to tell "still working" from "this one died".
-        await _mark_study_failed(session, study_id=study_id, reason="STUDY_EXECUTION_FAILED")
-        raise
 
-    if outcome.best_number is None:
+        if outcome.best_number is None:
+            current_phase = "study_persistence"
+            await _persist_study(
+                session,
+                series=series,
+                payload=payload,
+                outcome=outcome,
+                optimized_model_id=None,
+                terminal_code="NO_VALID_CANDIDATE",
+                terminal_phase="search",
+            )
+            return OptimizationStudyExecution(
+                study_id=study_id,
+                source_version_id=series.version_id,
+                statistics=dict(outcome.statistics),
+                best_params=dict(outcome.best_params),
+                best_value=outcome.best_value,
+                best_metrics=dict(outcome.best_metrics),
+                baseline_processing_run_id=baseline_processing_run_id,
+                optimized_model_id=None,
+                optimized_model_processing_run_id=None,
+            )
+
+        current_phase = "winner_persistence"
+        try:
+            optimized = await _persist_optimized_model(
+                session,
+                series=series,
+                payload=payload,
+                outcome=outcome,
+                input_columns=input_columns,
+                output_column=output_column,
+                artifact_root=artifact_root,
+            )
+        except Exception as error:
+            error_code = _study_failure_error_code(error, phase=current_phase)
+            await _persist_failed_outcome_best_effort(
+                session,
+                series=series,
+                payload=payload,
+                outcome=outcome,
+                error=error,
+                error_code=error_code,
+            )
+            if isinstance(error, OptimizationDomainError):
+                raise
+            if isinstance(error, ModelingDomainError):
+                raise OptimizationDomainError(
+                    error.code,
+                    error.message,
+                    status_code=error.status_code,
+                    details=error.details,
+                ) from error
+            raise
+
+        current_phase = "study_persistence"
         await _persist_study(
             session,
             series=series,
             payload=payload,
             outcome=outcome,
-            optimized_model_id=None,
+            optimized_model_id=optimized.model_id,
+            terminal_code="COMPLETED",
+            terminal_phase="study_persistence",
         )
         return OptimizationStudyExecution(
             study_id=study_id,
@@ -1184,56 +1323,17 @@ async def _execute_study(
             best_value=outcome.best_value,
             best_metrics=dict(outcome.best_metrics),
             baseline_processing_run_id=baseline_processing_run_id,
-            optimized_model_id=None,
-            optimized_model_processing_run_id=None,
-        )
-
-    try:
-        optimized = await _persist_optimized_model(
-            session,
-            series=series,
-            payload=payload,
-            outcome=outcome,
-            input_columns=input_columns,
-            output_column=output_column,
-            artifact_root=artifact_root,
+            optimized_model_id=optimized.model_id,
+            optimized_model_processing_run_id=optimized.processing_run_id,
         )
     except Exception as error:
-        await _persist_study(
+        await _persist_study_failure_best_effort(
             session,
-            series=series,
-            payload=payload,
-            outcome=outcome,
-            optimized_model_id=None,
+            study_id=study_id,
+            phase=current_phase,
+            error=error,
         )
-        error_code = getattr(error, "code", "OPTIMIZED_MODEL_PERSISTENCE_FAILED")
-        await _mark_study_failed(session, study_id=study_id, reason=error_code)
-        if isinstance(error, OptimizationDomainError):
-            raise
-        if isinstance(error, ModelingDomainError):
-            raise OptimizationDomainError(
-                error.code, error.message, status_code=error.status_code, details=error.details
-            ) from error
         raise
-
-    await _persist_study(
-        session,
-        series=series,
-        payload=payload,
-        outcome=outcome,
-        optimized_model_id=optimized.model_id,
-    )
-    return OptimizationStudyExecution(
-        study_id=study_id,
-        source_version_id=series.version_id,
-        statistics=dict(outcome.statistics),
-        best_params=dict(outcome.best_params),
-        best_value=outcome.best_value,
-        best_metrics=dict(outcome.best_metrics),
-        baseline_processing_run_id=baseline_processing_run_id,
-        optimized_model_id=optimized.model_id,
-        optimized_model_processing_run_id=optimized.processing_run_id,
-    )
 
 
 async def get_optimization_status(
@@ -1246,6 +1346,19 @@ async def get_optimization_status(
         raise OptimizationDomainError(
             "OPTIMIZATION_STUDY_NOT_FOUND", "寻优任务不存在。", status_code=404
         )
+    job_observation, terminal_evidence = await _observe_study_job(
+        study,
+        allow_reconciliation=_study_allows_rq_reconciliation(study),
+    )
+    if terminal_evidence is not None:
+        await persist_rq_terminal_evidence(
+            session,
+            study_id=study_id,
+            evidence=terminal_evidence,
+        )
+    # The failure callback may have committed while registry cleanup ran in the threadpool.
+    # Refresh before projecting PostgreSQL's authoritative lifecycle fact.
+    await session.refresh(study)
     records = list(
         (
             await session.scalars(
@@ -1260,7 +1373,6 @@ async def get_optimization_status(
         None,
     )
     best_metrics = dict(best_record.metrics) if best_record is not None else {}
-
     curve: list[float | None] = []
     curve_state = BestSoFarState()
     for record in records:
@@ -1274,7 +1386,12 @@ async def get_optimization_status(
 
     return OptimizationStatusData(
         study_id=study_id,
-        task=completed_task(stage="optimize_pipeline", message=f"研究状态：{study.status}。"),
+        study_status=study.status,
+        task=_optimization_task(
+            study=study,
+            job=job_observation,
+            message=f"研究状态：{study.status}。",
+        ),
         trials=[
             OptimizationTrial(
                 trial_id=record.trial_number,
@@ -1314,6 +1431,195 @@ async def get_optimization_status(
         best_objective_components=best_metrics.get("objective_components"),
         convergence=study.statistics.get("convergence"),
         stop_reason=study.statistics.get("stop_reason"),
+        terminal_reason=study.statistics.get("terminal_reason"),
+        job=job_observation,
+    )
+
+
+async def _observe_study_job(
+    study: OptimizationStudy, *, allow_reconciliation: bool
+) -> tuple[OptimizationJobObservation, RqTerminalEvidence | None]:
+    contract = study.statistics.get("job")
+    if not isinstance(contract, dict):
+        return (
+            _schema_job_observation(execution_mode="legacy_unknown", observation=None),
+            None,
+        )
+
+    execution_mode = contract.get("execution_mode")
+    if execution_mode in {"inline_http", "inline_agent"}:
+        return _schema_job_observation(execution_mode=execution_mode, observation=None), None
+    if execution_mode != "rq":
+        return (
+            OptimizationJobObservation(
+                execution_mode="legacy_unknown",
+                availability="LEGACY",
+                observed_at=datetime.now(UTC),
+                error_code="OPTIMIZATION_JOB_CONTRACT_INVALID",
+            ),
+            None,
+        )
+
+    job_id = contract.get("rq_job_id")
+    queue_name = contract.get("queue_name")
+    if not isinstance(job_id, str) or not isinstance(queue_name, str):
+        return (
+            OptimizationJobObservation(
+                execution_mode="rq",
+                availability="IDENTITY_MISMATCH",
+                rq_job_id=job_id if isinstance(job_id, str) else None,
+                queue_name=queue_name if isinstance(queue_name, str) else None,
+                observed_at=datetime.now(UTC),
+                error_code="RQ_JOB_IDENTITY_MISMATCH",
+            ),
+            None,
+        )
+
+    if allow_reconciliation:
+        timeout = contract.get("job_timeout_seconds")
+        if not isinstance(timeout, int) or timeout <= 0:
+            return (
+                OptimizationJobObservation(
+                    execution_mode="rq",
+                    availability="IDENTITY_MISMATCH",
+                    rq_job_id=job_id,
+                    queue_name=queue_name,
+                    observed_at=datetime.now(UTC),
+                    error_code="RQ_JOB_IDENTITY_MISMATCH",
+                ),
+                None,
+            )
+        observation = await run_in_threadpool(
+            reconcile_optimization_job,
+            study_id=study.id,
+            job_id=job_id,
+            queue_name=queue_name,
+            expected_timeout_seconds=timeout,
+        )
+    else:
+        observation = await run_in_threadpool(
+            observe_optimization_job,
+            study_id=study.id,
+            job_id=job_id,
+            queue_name=queue_name,
+        )
+    return (
+        _schema_job_observation(execution_mode="rq", observation=observation),
+        observation.terminal_evidence,
+    )
+
+
+def _study_allows_rq_reconciliation(study: OptimizationStudy) -> bool:
+    contract = study.statistics.get("job")
+    if not isinstance(contract, dict) or contract.get("execution_mode") != "rq":
+        return False
+    existing = study.statistics.get("terminal_reason")
+    if not isinstance(existing, dict):
+        return study.status not in {"succeeded", "failed"}
+    if existing.get("policy_version") != TERMINAL_REASON_POLICY_VERSION:
+        return False
+    return existing.get("code") == "FAILED"
+
+
+def _schema_job_observation(
+    *,
+    execution_mode: str,
+    observation: JobObservation | None,
+) -> OptimizationJobObservation:
+    if observation is None:
+        availability = "LEGACY" if execution_mode == "legacy_unknown" else "NOT_APPLICABLE"
+        return OptimizationJobObservation(
+            execution_mode=execution_mode,
+            availability=availability,
+            observed_at=datetime.now(UTC),
+        )
+    return OptimizationJobObservation(
+        execution_mode=execution_mode,
+        availability=observation.availability,
+        rq_job_id=observation.job_id,
+        queue_name=observation.queue_name,
+        raw_status=observation.raw_status,
+        observed_at=datetime.now(UTC),
+        created_at=observation.created_at,
+        enqueued_at=observation.enqueued_at,
+        started_at=observation.started_at,
+        ended_at=observation.ended_at,
+        error_code=observation.error_code,
+    )
+
+
+def _optimization_task(
+    *,
+    study: OptimizationStudy,
+    job: OptimizationJobObservation,
+    message: str,
+) -> TaskResource:
+    rq_status_map = {
+        "created": "queued",
+        "deferred": "queued",
+        "scheduled": "queued",
+        "queued": "queued",
+        "started": "running",
+        "finished": "succeeded",
+        "failed": "failed",
+        "stopped": "cancelled",
+        "canceled": "cancelled",
+    }
+    task_status = (
+        rq_status_map[job.raw_status]
+        if job.availability == "AVAILABLE" and job.raw_status is not None
+        else study.status
+    )
+    is_terminal = task_status in {"succeeded", "failed", "cancelled"}
+    task_error: ErrorDetail | None = None
+    if job.availability == "AVAILABLE" and job.raw_status == "failed":
+        task_error = ErrorDetail(
+            code="RQ_JOB_FAILED",
+            message="RQ 后台作业执行失败。",
+            details={"rq_status": job.raw_status},
+        )
+    elif job.availability in {"UNAVAILABLE", "IDENTITY_MISMATCH"}:
+        task_error = ErrorDetail(
+            code=job.error_code or "RQ_RECONCILIATION_UNAVAILABLE",
+            message="当前无法确认 RQ 后台作业状态。",
+            details={"availability": job.availability},
+        )
+    elif job.availability == "NOT_FOUND" and study.status not in {"succeeded", "failed"}:
+        task_error = ErrorDetail(
+            code="RQ_JOB_NOT_FOUND",
+            message="未找到该 OptimizationStudy 对应的 RQ 作业。",
+            details={},
+        )
+    elif job.availability != "AVAILABLE" and study.status == "failed":
+        terminal_reason = study.statistics.get("terminal_reason")
+        terminal = terminal_reason if isinstance(terminal_reason, dict) else {}
+        task_error = ErrorDetail(
+            code=str(terminal.get("error_code") or terminal.get("code") or "OPTIMIZATION_STUDY_FAILED"),
+            message="OptimizationStudy 未成功完成。",
+            details={},
+        )
+
+    if task_status == "queued":
+        stage_message = "等待 RQ Worker 执行。" if job.execution_mode == "rq" else message
+    elif task_status == "running":
+        stage_message = "RQ 正在执行；Trial 明细将在正式持久化后可用。"
+    else:
+        stage_message = message
+
+    return TaskResource(
+        id=study.id,
+        status=task_status,
+        progress=TaskProgress(
+            current=1 if is_terminal else 0,
+            total=1,
+            percent=100 if is_terminal else 0,
+            stage="optimize_pipeline",
+            message=stage_message,
+        ),
+        created_at=job.created_at or job.enqueued_at or study.created_at,
+        started_at=job.started_at,
+        finished_at=job.ended_at if job.availability == "AVAILABLE" else study.finished_at,
+        error=task_error,
     )
 
 
@@ -1482,6 +1788,7 @@ async def _reserve_study(
     study_id: UUID,
     payload: OptimizationStartRequest,
     baseline_model_id: UUID | None = None,
+    job: dict[str, Any],
 ) -> None:
     """Write the study row before any long work starts.
 
@@ -1503,10 +1810,59 @@ async def _reserve_study(
             statistics={
                 "target_trials": payload.max_trials,
                 "objective_semantics": dict(OBJECTIVE_SEMANTICS),
+                "job": job,
             },
             created_at=datetime.now(UTC),
         )
     )
+    await session.commit()
+
+
+def _study_job_contract(
+    *,
+    study_id: UUID,
+    execution_mode: str,
+    submission_state: str,
+) -> dict[str, Any]:
+    rq_mode = execution_mode == "rq"
+    return {
+        "contract_version": "optimization_job_v1",
+        "execution_mode": execution_mode,
+        "rq_job_id": str(study_id) if rq_mode else None,
+        "queue_name": QUEUE_NAME if rq_mode else None,
+        "job_timeout_seconds": JOB_TIMEOUT_SECONDS if rq_mode else None,
+        "submission_state": submission_state,
+        "submission_requested_at": datetime.now(UTC).isoformat() if rq_mode else None,
+    }
+
+
+async def _update_study_job_contract(
+    session: AsyncSession,
+    *,
+    study_id: UUID,
+    submission_state: str,
+    execution_mode: str | None = None,
+    clear_rq_identity: bool = False,
+) -> None:
+    study = await session.get(OptimizationStudy, study_id)
+    if study is None:
+        raise OptimizationDomainError(
+            "OPTIMIZATION_STUDY_NOT_FOUND",
+            "寻优研究不存在，无法更新作业提交事实。",
+            status_code=404,
+        )
+    statistics = dict(study.statistics)
+    job = dict(statistics.get("job", {}))
+    job["submission_state"] = submission_state
+    if execution_mode is not None:
+        job["execution_mode"] = execution_mode
+    if clear_rq_identity:
+        job["rq_job_id"] = None
+        job["queue_name"] = None
+        job["job_timeout_seconds"] = None
+        job["submission_requested_at"] = None
+    statistics["job"] = job
+    study.statistics = statistics
     await session.commit()
 
 
@@ -1517,16 +1873,297 @@ async def _mark_study_running(session: AsyncSession, *, study_id: UUID) -> None:
         await session.commit()
 
 
-async def _mark_study_failed(session: AsyncSession, *, study_id: UUID, reason: str) -> None:
-    """Never leave a row at ``running`` after a crash; polling clients cannot tell the
-    difference between "still working" and "died an hour ago"."""
+def _study_failure_error_code(
+    error: Exception, *, phase: OptimizationTerminalPhase
+) -> str:
+    code = getattr(error, "code", None)
+    if isinstance(code, str) and code:
+        return code
+    return {
+        "preparation": "STUDY_PREPARATION_FAILED",
+        "baseline": "BASELINE_EXECUTION_FAILED",
+        "search": "STUDY_EXECUTION_FAILED",
+        "winner_persistence": "OPTIMIZED_MODEL_PERSISTENCE_FAILED",
+        "study_persistence": "STUDY_PERSISTENCE_FAILED",
+    }[phase]
 
-    study = await session.get(OptimizationStudy, study_id)
-    if study is not None:
-        study.status = "failed"
-        study.statistics = {**dict(study.statistics), "error_code": reason}
-        study.finished_at = datetime.now(UTC)
+
+async def _transition_study_terminal(
+    session: AsyncSession,
+    *,
+    study_id: UUID,
+    code: OptimizationTerminalReasonCode,
+    phase: OptimizationTerminalPhase,
+    error_code: str | None = None,
+    study: OptimizationStudy | None = None,
+    commit: bool = True,
+) -> None:
+    """Apply one typed, conflict-safe terminal transition to an optimization study."""
+
+    if code in {"RQ_TIMEOUT", "WORKER_CRASH"}:
+        raise OptimizationDomainError(
+            "OPTIMIZATION_TERMINAL_EVIDENCE_REQUIRED",
+            "基础设施终态只能由受控 RQ 证据入口写入。",
+            status_code=409,
+        )
+    target = study or await session.get(OptimizationStudy, study_id)
+    if target is None:
+        return
+
+    existing = target.statistics.get("terminal_reason")
+    if target.status in {"succeeded", "failed"} and isinstance(existing, dict):
+        if (
+            existing.get("code") == code
+            and existing.get("phase") == phase
+            and existing.get("error_code") == error_code
+        ):
+            return
+        raise OptimizationDomainError(
+            "OPTIMIZATION_TERMINAL_TRANSITION_CONFLICT",
+            "寻优研究已经进入不可覆盖的终态。",
+            status_code=409,
+            details={
+                "study_id": str(study_id),
+                "existing_terminal_reason": existing,
+                "requested_terminal_code": code,
+            },
+        )
+
+    recorded_at = datetime.now(UTC)
+    terminal_reason = OptimizationTerminalReasonV2(
+        policy_version=TERMINAL_REASON_POLICY_VERSION,
+        code=code,
+        category=_TERMINAL_REASON_CATEGORY[code],
+        phase=phase,
+        error_code=error_code,
+        recorded_at=recorded_at,
+    ).model_dump(mode="json")
+    statistics = dict(target.statistics)
+    if error_code is None:
+        statistics.pop("error_code", None)
+    else:
+        statistics["error_code"] = error_code
+    statistics["terminal_reason"] = terminal_reason
+    target.status = _TERMINAL_REASON_STATUS[code]
+    target.statistics = statistics
+    target.finished_at = recorded_at
+    if commit:
         await session.commit()
+
+
+async def persist_rq_terminal_evidence(
+    session: AsyncSession,
+    *,
+    study_id: UUID,
+    evidence: RqTerminalEvidence,
+) -> bool:
+    """Atomically reconcile one typed RQ fact into the Study terminal contract."""
+
+    await session.rollback()
+    target = await session.scalar(
+        select(OptimizationStudy)
+        .where(OptimizationStudy.id == study_id)
+        .with_for_update()
+    )
+    if target is None or not _rq_evidence_matches_study(target, evidence):
+        return False
+
+    requested = _terminal_from_rq_evidence(evidence)
+    if requested is None:
+        return False
+    code, error_code = requested
+    existing = target.statistics.get("terminal_reason")
+
+    if isinstance(existing, dict):
+        if existing.get("policy_version") != TERMINAL_REASON_POLICY_VERSION:
+            return False
+        existing_code = existing.get("code")
+        if (
+            existing_code == code
+            and existing.get("phase") == "rq_execution"
+            and existing.get("error_code") == error_code
+        ):
+            return False
+        if existing_code in {
+            "COMPLETED",
+            "NO_VALID_CANDIDATE",
+            "RQ_TIMEOUT",
+            "WORKER_CRASH",
+        }:
+            return False
+        if existing_code != "FAILED":
+            return False
+        if code == "FAILED":
+            return False
+        if code == "WORKER_CRASH" and not _is_provisional_rq_failure(existing):
+            return False
+        if code == "RQ_TIMEOUT" and existing.get("category") != "SYSTEM_FAILURE":
+            return False
+    elif target.status in {"succeeded", "failed"}:
+        # Historical terminal rows without a typed reason are not reinterpreted from Redis.
+        return False
+
+    statistics = dict(target.statistics)
+    job = dict(statistics.get("job", {}))
+    job["terminal_evidence"] = evidence.to_payload()
+    statistics["job"] = job
+    if isinstance(existing, dict) and existing.get("code") == "FAILED":
+        history = list(statistics.get("terminal_reason_history", []))
+        history.append(dict(existing))
+        statistics["terminal_reason_history"] = history
+
+    recorded_at = datetime.now(UTC)
+    terminal_reason = OptimizationTerminalReasonV2(
+        policy_version=TERMINAL_REASON_POLICY_VERSION,
+        code=code,
+        category=_TERMINAL_REASON_CATEGORY[code],
+        phase="rq_execution",
+        error_code=error_code,
+        recorded_at=recorded_at,
+    ).model_dump(mode="json")
+    statistics["error_code"] = error_code
+    statistics["terminal_reason"] = terminal_reason
+    target.statistics = statistics
+    target.status = "failed"
+    target.finished_at = recorded_at
+    await session.commit()
+    return True
+
+
+def _rq_evidence_matches_study(
+    study: OptimizationStudy, evidence: RqTerminalEvidence
+) -> bool:
+    contract = study.statistics.get("job")
+    if not isinstance(contract, dict):
+        return False
+    if (
+        contract.get("execution_mode") != "rq"
+        or contract.get("rq_job_id") != str(study.id)
+        or contract.get("rq_job_id") != evidence.rq_job_id
+        or contract.get("queue_name") != QUEUE_NAME
+    ):
+        return False
+    allowed_sources = {
+        "job_timeout": {
+            "failure_callback",
+            "failed_registry",
+            "started_registry_cleanup",
+        },
+        "work_horse_terminated": {"failed_registry", "started_registry_cleanup"},
+        "abandoned_execution": {
+            "failure_callback",
+            "failed_registry",
+            "started_registry_cleanup",
+        },
+        "ordinary_exception": {"failure_callback"},
+    }
+    sources = allowed_sources.get(evidence.kind)
+    if sources is None or evidence.source not in sources:
+        return False
+    if evidence.source != "failure_callback" and evidence.rq_status != "failed":
+        return False
+    timeout = contract.get("job_timeout_seconds")
+    if evidence.kind == "job_timeout":
+        return (
+            isinstance(timeout, int)
+            and timeout == evidence.job_timeout_seconds
+            and evidence.confidence == "HIGH"
+        )
+    return True
+
+
+def _terminal_from_rq_evidence(
+    evidence: RqTerminalEvidence,
+) -> tuple[OptimizationTerminalReasonCode, str] | None:
+    if evidence.kind == "job_timeout":
+        if evidence.confidence != "HIGH" or evidence.error_code != "RQ_JOB_TIMEOUT":
+            return None
+        return "RQ_TIMEOUT", "RQ_JOB_TIMEOUT"
+    if evidence.kind == "work_horse_terminated":
+        if (
+            evidence.confidence != "HIGH"
+            or evidence.error_code != "RQ_WORK_HORSE_TERMINATED"
+        ):
+            return None
+        return "WORKER_CRASH", "RQ_WORK_HORSE_TERMINATED"
+    if evidence.kind == "abandoned_execution":
+        if (
+            evidence.confidence != "HIGH"
+            or evidence.error_code != "RQ_ABANDONED_EXECUTION"
+        ):
+            return None
+        return "WORKER_CRASH", "RQ_ABANDONED_EXECUTION"
+    if (
+        evidence.kind == "ordinary_exception"
+        and evidence.confidence == "GENERIC"
+        and evidence.error_code == "RQ_JOB_EXECUTION_FAILED"
+    ):
+        return "FAILED", "RQ_JOB_EXECUTION_FAILED"
+    return None
+
+
+def _is_provisional_rq_failure(existing: dict[str, Any]) -> bool:
+    return (
+        existing.get("category") == "SYSTEM_FAILURE"
+        and existing.get("phase") == "rq_execution"
+        and existing.get("error_code") == "RQ_JOB_EXECUTION_FAILED"
+    )
+
+
+async def _persist_study_failure_best_effort(
+    session: AsyncSession,
+    *,
+    study_id: UUID,
+    phase: OptimizationTerminalPhase,
+    error: Exception,
+) -> None:
+    """Persist an application failure without replacing the exception that caused it."""
+
+    error_code = _study_failure_error_code(error, phase=phase)
+    try:
+        await session.rollback()
+        await _transition_study_terminal(
+            session,
+            study_id=study_id,
+            code="FAILED",
+            phase=phase,
+            error_code=error_code,
+        )
+    except Exception as persistence_error:
+        error.add_note(
+            "OptimizationStudy failure persistence also failed: "
+            f"{type(persistence_error).__name__}"
+        )
+
+
+async def _persist_failed_outcome_best_effort(
+    session: AsyncSession,
+    *,
+    series: VersionSeries,
+    payload: OptimizationStartRequest,
+    outcome: StudyOutcome,
+    error: Exception,
+    error_code: str,
+) -> None:
+    """Keep completed trial evidence when winner persistence fails, if the DB permits."""
+
+    try:
+        await _persist_study(
+            session,
+            series=series,
+            payload=payload,
+            outcome=outcome,
+            optimized_model_id=None,
+            terminal_code="FAILED",
+            terminal_phase="winner_persistence",
+            terminal_error_code=error_code,
+        )
+    except Exception as persistence_error:
+        await session.rollback()
+        error.add_note(
+            "OptimizationStudy trial-outcome persistence also failed: "
+            f"{type(persistence_error).__name__}"
+        )
 
 
 async def _persist_evaluation(
@@ -1623,6 +2260,9 @@ async def _persist_study(
     payload: OptimizationStartRequest,
     outcome: StudyOutcome,
     optimized_model_id: UUID | None,
+    terminal_code: OptimizationTerminalReasonCode,
+    terminal_phase: OptimizationTerminalPhase,
+    terminal_error_code: str | None = None,
 ) -> None:
     now = datetime.now(UTC)
     # The row already exists when the API or the worker reserved it. Updating in place is
@@ -1634,7 +2274,6 @@ async def _persist_study(
         session.add(study)
     study.dataset_id = series.dataset_id
     study.version_id = series.version_id
-    study.status = ("succeeded" if outcome.best_number is not None and optimized_model_id else "failed")
     study.objective = "val_free_run_fit"
     study.parameters = payload.model_dump(mode="json")
     study.best_trial_number = outcome.best_number
@@ -1652,7 +2291,15 @@ async def _persist_study(
         "objective_semantics": dict(OBJECTIVE_SEMANTICS),
     }
     study.warm_started_from = outcome.warm_started_from
-    study.finished_at = now
+    await _transition_study_terminal(
+        session,
+        study_id=outcome.study_id,
+        code=terminal_code,
+        phase=terminal_phase,
+        error_code=terminal_error_code,
+        study=study,
+        commit=False,
+    )
 
     # Trials from an earlier attempt at the same study id would otherwise accumulate.
     await session.execute(

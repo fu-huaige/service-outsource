@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import Field, model_validator
@@ -154,6 +154,116 @@ class OptimizationStopReason(Schema):
     timeout_seconds: int | None = Field(default=None, ge=1)
 
 
+OptimizationStudyStatus = Literal["queued", "running", "succeeded", "failed"]
+OptimizationExecutionMode = Literal["rq", "inline_http", "inline_agent", "legacy_unknown"]
+OptimizationJobAvailability = Literal[
+    "AVAILABLE",
+    "NOT_FOUND",
+    "UNAVAILABLE",
+    "IDENTITY_MISMATCH",
+    "NOT_APPLICABLE",
+    "LEGACY",
+]
+OptimizationRqJobStatus = Literal[
+    "created",
+    "queued",
+    "finished",
+    "failed",
+    "started",
+    "deferred",
+    "scheduled",
+    "stopped",
+    "canceled",
+]
+OptimizationTerminalReasonCodeV1 = Literal["COMPLETED", "NO_VALID_CANDIDATE", "FAILED"]
+OptimizationTerminalReasonCategoryV1 = Literal[
+    "SUCCESS",
+    "BUSINESS_FAILURE",
+    "SYSTEM_FAILURE",
+]
+OptimizationTerminalPhaseV1 = Literal[
+    "preparation",
+    "baseline",
+    "search",
+    "winner_persistence",
+    "study_persistence",
+]
+
+
+class OptimizationTerminalReasonV1(Schema):
+    """Historical terminal contract retained verbatim for persisted v1 studies."""
+
+    policy_version: Literal["optimization_terminal_reason_v1"]
+    code: OptimizationTerminalReasonCodeV1
+    category: OptimizationTerminalReasonCategoryV1
+    phase: OptimizationTerminalPhaseV1
+    error_code: str | None = None
+    recorded_at: datetime
+
+
+OptimizationTerminalReasonCodeV2 = Literal[
+    "COMPLETED",
+    "NO_VALID_CANDIDATE",
+    "FAILED",
+    "RQ_TIMEOUT",
+    "WORKER_CRASH",
+]
+OptimizationTerminalReasonCategoryV2 = Literal[
+    "SUCCESS",
+    "BUSINESS_FAILURE",
+    "SYSTEM_FAILURE",
+    "INFRASTRUCTURE_FAILURE",
+]
+OptimizationTerminalPhaseV2 = Literal[
+    "preparation",
+    "baseline",
+    "search",
+    "winner_persistence",
+    "study_persistence",
+    "queue_submission",
+    "rq_execution",
+]
+
+
+class OptimizationTerminalReasonV2(Schema):
+    """Authoritative terminal outcome, including proven RQ infrastructure loss."""
+
+    policy_version: Literal["optimization_terminal_reason_v2"]
+    code: OptimizationTerminalReasonCodeV2
+    category: OptimizationTerminalReasonCategoryV2
+    phase: OptimizationTerminalPhaseV2
+    error_code: str | None = None
+    recorded_at: datetime
+
+
+OptimizationTerminalReason = Annotated[
+    OptimizationTerminalReasonV1 | OptimizationTerminalReasonV2,
+    Field(discriminator="policy_version"),
+]
+
+# New writers use v2 names. The v1 aliases above remain explicit so historical payloads
+# continue to validate without reinterpretation.
+OptimizationTerminalReasonCode = OptimizationTerminalReasonCodeV2
+OptimizationTerminalReasonCategory = OptimizationTerminalReasonCategoryV2
+OptimizationTerminalPhase = OptimizationTerminalPhaseV2
+
+
+class OptimizationJobObservation(Schema):
+    """Read-only projection of the RQ execution associated with one study."""
+
+    execution_mode: OptimizationExecutionMode
+    availability: OptimizationJobAvailability
+    rq_job_id: str | None = None
+    queue_name: str | None = None
+    raw_status: OptimizationRqJobStatus | None = None
+    observed_at: datetime
+    created_at: datetime | None = None
+    enqueued_at: datetime | None = None
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    error_code: str | None = None
+
+
 class OptimizationTrial(Schema):
     trial_id: int = Field(ge=0)
     state: Literal["queued", "running", "complete", "pruned", "failed"]
@@ -225,6 +335,7 @@ class FinalTestEvaluation(Schema):
 
 class OptimizationStatusData(Schema):
     study_id: UUID
+    study_status: OptimizationStudyStatus
     task: TaskResource
     trials: list[OptimizationTrial]
     best_trial_id: int | None = None
@@ -246,3 +357,5 @@ class OptimizationStatusData(Schema):
     best_objective_components: OptimizationObjectiveComponents | None = None
     convergence: OptimizationConvergence | None = None
     stop_reason: OptimizationStopReason | None = None
+    terminal_reason: OptimizationTerminalReason | None = None
+    job: OptimizationJobObservation | None = None

@@ -924,6 +924,7 @@ def test_legacy_optimization_contract_without_feedback_fields_remains_readable()
 
     status = OptimizationStatusData(
         study_id=uuid4(),
+        study_status="succeeded",
         task=completed_task(stage="optimize_pipeline", message="legacy"),
         trials=[trial],
         best_trial_id=0,
@@ -937,11 +938,13 @@ def test_legacy_optimization_contract_without_feedback_fields_remains_readable()
     assert status.best_objective_components is None
     assert status.convergence is None
     assert status.stop_reason is None
+    assert status.terminal_reason is None
 
 
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'optimize.db'}")
+    database_url = f"sqlite+aiosqlite:///{tmp_path / 'optimize.db'}"
+    engine = create_async_engine(database_url)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
     async def prepare() -> None:
@@ -954,7 +957,13 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
         async with session_factory() as session:
             yield session
 
-    monkeypatch.setattr("app.api.routes.get_settings", lambda: Settings(artifact_root=tmp_path))
+    settings = Settings(
+        artifact_root=tmp_path,
+        database_url=database_url,
+        background_optimization=False,
+    )
+    monkeypatch.setattr("app.api.routes.get_settings", lambda: settings)
+    monkeypatch.setattr("app.services.job_queue.get_settings", lambda: settings)
     app = create_app()
     app.dependency_overrides[get_session] = session_override
     with TestClient(app) as client:
@@ -1019,6 +1028,10 @@ async def _optimization_snapshot(
                 "optimized_model_id": study.optimized_model_id,
                 "error_code": study.statistics.get("error_code"),
                 "stop_reason": study.statistics.get("stop_reason"),
+                "terminal_reason": study.statistics.get("terminal_reason"),
+                "terminal_reason_history": study.statistics.get("terminal_reason_history"),
+                "job": study.statistics.get("job"),
+                "finished_at": study.finished_at,
                 "final_test_run_count": int(final_test_runs or 0),
                 "processing_run_type": run.run_type if run is not None else None,
                 "processing_run_status": run.status if run is not None else None,
@@ -1049,6 +1062,74 @@ async def _insert_legacy_optimization_study(database_path: Path) -> UUID:
             )
             await session.commit()
         return study_id
+    finally:
+        await engine.dispose()
+
+
+async def _insert_rq_optimization_study(
+    database_path: Path,
+    *,
+    status: str = "running",
+    terminal_reason: dict[str, object] | None = None,
+) -> UUID:
+    from datetime import UTC, datetime
+
+    from app.models.optimization import OptimizationStudy
+
+    study_id = uuid4()
+    statistics: dict[str, object] = {
+        "job": {
+            "contract_version": "optimization_job_v1",
+            "execution_mode": "rq",
+            "rq_job_id": str(study_id),
+            "queue_name": "indusopt",
+            "job_timeout_seconds": 3600,
+            "submission_state": "SUBMITTED",
+        }
+    }
+    if terminal_reason is not None:
+        statistics["terminal_reason"] = terminal_reason
+    engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}")
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        async with session_factory() as session:
+            session.add(
+                OptimizationStudy(
+                    id=study_id,
+                    version_id=uuid4(),
+                    status=status,
+                    objective="val_free_run_fit",
+                    parameters={},
+                    best_params={},
+                    fingerprint={},
+                    statistics=statistics,
+                    created_at=datetime.now(UTC),
+                    finished_at=(
+                        datetime.now(UTC) if status in {"succeeded", "failed"} else None
+                    ),
+                )
+            )
+            await session.commit()
+        return study_id
+    finally:
+        await engine.dispose()
+
+
+async def _persist_rq_evidence(
+    database_path: Path, *, study_id: UUID, evidence: object
+) -> bool:
+    from app.services.optimization_service import persist_rq_terminal_evidence
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}")
+    try:
+        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+            return await persist_rq_terminal_evidence(
+                session,
+                study_id=study_id,
+                evidence=evidence,  # type: ignore[arg-type]
+            )
     finally:
         await engine.dispose()
 
@@ -1090,6 +1171,8 @@ async def _agent_optimization_snapshot(
                 "baseline_model_id": study.baseline_model_id,
                 "optimized_model_id": study.optimized_model_id,
                 "stop_reason": study.statistics.get("stop_reason"),
+                "terminal_reason": study.statistics.get("terminal_reason"),
+                "job": study.statistics.get("job"),
                 "processing_run_types": [run.run_type for run in runs if run is not None],
                 "completed_trial_nks": [params.get("nk") for params in completed_params],
                 "final_test_run_count": int(final_test_runs or 0),
@@ -1179,6 +1262,12 @@ class TestAgentSafeOptimizationEntry:
         assert snapshot["baseline_model_id"] == baseline_model_id
         assert snapshot["optimized_model_id"] == result.optimized_model_id
         assert snapshot["stop_reason"] == result.stop_reason
+        assert snapshot["terminal_reason"]["code"] == "COMPLETED"  # type: ignore[index]
+        assert snapshot["terminal_reason"]["category"] == "SUCCESS"  # type: ignore[index]
+        assert snapshot["terminal_reason"]["phase"] == "study_persistence"  # type: ignore[index]
+        assert snapshot["terminal_reason"]["error_code"] is None  # type: ignore[index]
+        assert snapshot["job"]["execution_mode"] == "inline_agent"  # type: ignore[index]
+        assert snapshot["job"]["rq_job_id"] is None  # type: ignore[index]
         assert snapshot["processing_run_types"] == ["optimization.baseline", "modeling.arx"]
         completed_nks = snapshot["completed_trial_nks"]
         assert completed_nks and all(value == 0 for value in completed_nks)
@@ -1259,8 +1348,111 @@ class TestOptimizationApi:
         response = client.get(f"/api/v1/optimization/optuna/{study_id}/status")
 
         assert response.status_code == 200, response.text
-        assert response.json()["data"]["convergence"] is None
-        assert response.json()["data"]["stop_reason"] is None
+        data = response.json()["data"]
+        assert data["study_status"] == "succeeded"
+        assert data["convergence"] is None
+        assert data["stop_reason"] is None
+        assert data["terminal_reason"] is None
+
+    @pytest.mark.parametrize(
+        ("failure_target", "expected_phase", "expected_error_code"),
+        [
+            ("build_fingerprint", "preparation", "STUDY_PREPARATION_FAILED"),
+            ("run_baseline", "baseline", "BASELINE_EXECUTION_FAILED"),
+            ("run_study", "search", "STUDY_EXECUTION_FAILED"),
+        ],
+    )
+    def test_application_exception_persists_failed_terminal_reason(
+        self,
+        client: TestClient,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        failure_target: str,
+        expected_phase: str,
+        expected_error_code: str,
+    ) -> None:
+        from app.services import optimization_service
+
+        reserved_study_ids: list[UUID] = []
+        reserve = optimization_service._reserve_study
+
+        async def spy_reserve_study(*args: object, **kwargs: object) -> None:
+            reserved_study_ids.append(kwargs["study_id"])  # type: ignore[index]
+            await reserve(*args, **kwargs)  # type: ignore[arg-type]
+
+        def fail_lifecycle_phase(*args: object, **kwargs: object) -> None:
+            raise RuntimeError(f"forced {failure_target} failure")
+
+        monkeypatch.setattr(optimization_service, "_reserve_study", spy_reserve_study)
+        monkeypatch.setattr(optimization_service, failure_target, fail_lifecycle_phase)
+        version_id = generate(client, seed=201)
+
+        with pytest.raises(RuntimeError, match=f"forced {failure_target} failure"):
+            client.post(
+                "/api/v1/optimization/optuna/start",
+                json={
+                    "version_id": version_id,
+                    "input_columns": ["u1", "u2"],
+                    "output_column": "y",
+                    "max_trials": 1,
+                    "random_seed": 201,
+                },
+            )
+
+        assert len(reserved_study_ids) == 1
+        snapshot = asyncio.run(
+            _optimization_snapshot(tmp_path / "optimize.db", study_id=reserved_study_ids[0])
+        )
+        terminal_reason = snapshot["terminal_reason"]
+        assert snapshot["study_status"] == "failed"
+        assert snapshot["error_code"] == expected_error_code
+        assert snapshot["finished_at"] is not None
+        assert terminal_reason["policy_version"] == "optimization_terminal_reason_v2"  # type: ignore[index]
+        assert terminal_reason["code"] == "FAILED"  # type: ignore[index]
+        assert terminal_reason["category"] == "SYSTEM_FAILURE"  # type: ignore[index]
+        assert terminal_reason["phase"] == expected_phase  # type: ignore[index]
+        assert terminal_reason["error_code"] == expected_error_code  # type: ignore[index]
+
+    def test_study_persistence_exception_uses_study_persistence_phase(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from app.services import optimization_service
+
+        reserved_study_ids: list[UUID] = []
+        reserve = optimization_service._reserve_study
+
+        async def spy_reserve_study(*args: object, **kwargs: object) -> None:
+            reserved_study_ids.append(kwargs["study_id"])  # type: ignore[index]
+            await reserve(*args, **kwargs)  # type: ignore[arg-type]
+
+        async def fail_study_persistence(*args: object, **kwargs: object) -> None:
+            raise RuntimeError("forced study persistence failure")
+
+        monkeypatch.setattr(optimization_service, "_reserve_study", spy_reserve_study)
+        monkeypatch.setattr(optimization_service, "_persist_study", fail_study_persistence)
+        version_id = generate(client, seed=202)
+
+        with pytest.raises(RuntimeError, match="forced study persistence failure"):
+            client.post(
+                "/api/v1/optimization/optuna/start",
+                json={
+                    "version_id": version_id,
+                    "input_columns": ["u1", "u2"],
+                    "output_column": "y",
+                    "max_trials": 1,
+                    "random_seed": 202,
+                },
+            )
+
+        assert len(reserved_study_ids) == 1
+        snapshot = asyncio.run(
+            _optimization_snapshot(tmp_path / "optimize.db", study_id=reserved_study_ids[0])
+        )
+        terminal_reason = snapshot["terminal_reason"]
+        assert snapshot["study_status"] == "failed"
+        assert snapshot["error_code"] == "STUDY_PERSISTENCE_FAILED"
+        assert terminal_reason["code"] == "FAILED"  # type: ignore[index]
+        assert terminal_reason["phase"] == "study_persistence"  # type: ignore[index]
 
     def test_no_valid_candidate_preserves_normal_budget_stop_reason(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -1317,6 +1509,13 @@ class TestOptimizationApi:
         )
         assert snapshot["study_status"] == "failed"
         assert snapshot["stop_reason"] == data["stop_reason"]
+        assert data["study_status"] == "failed"
+        assert data["terminal_reason"]["code"] == "NO_VALID_CANDIDATE"
+        assert data["terminal_reason"]["category"] == "BUSINESS_FAILURE"
+        assert data["terminal_reason"]["phase"] == "search"
+        assert data["terminal_reason"]["error_code"] is None
+        assert data["terminal_reason"] == data["statistics"]["terminal_reason"]
+        assert snapshot["terminal_reason"] == data["terminal_reason"]
 
     def test_persists_optimized_model_without_opening_test(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -1447,6 +1646,12 @@ class TestOptimizationApi:
             )
         )
         assert snapshot["study_status"] == "succeeded"
+        assert data["study_status"] == "succeeded"
+        assert data["terminal_reason"]["code"] == "COMPLETED"
+        assert data["terminal_reason"]["category"] == "SUCCESS"
+        assert data["terminal_reason"]["phase"] == "study_persistence"
+        assert data["terminal_reason"]["error_code"] is None
+        assert data["terminal_reason"] == data["statistics"]["terminal_reason"]
         assert snapshot["baseline_model_id"] is None
         assert snapshot["optimized_model_id"] == fitted.model_id
         assert snapshot["processing_run_type"] == "modeling.arx"
@@ -1492,6 +1697,13 @@ class TestOptimizationApi:
         )
         assert snapshot["study_status"] == "failed"
         assert snapshot["error_code"] == "OPTIMIZED_MODEL_PERSISTENCE_FAILED"
+        assert snapshot["terminal_reason"]["code"] == "FAILED"  # type: ignore[index]
+        assert snapshot["terminal_reason"]["category"] == "SYSTEM_FAILURE"  # type: ignore[index]
+        assert snapshot["terminal_reason"]["phase"] == "winner_persistence"  # type: ignore[index]
+        assert snapshot["terminal_reason"]["error_code"] == (  # type: ignore[index]
+            "OPTIMIZED_MODEL_PERSISTENCE_FAILED"
+        )
+        assert snapshot["finished_at"] is not None
         assert snapshot["optimized_model_id"] is None
         assert snapshot["final_test_run_count"] == 0
 
@@ -1678,10 +1890,18 @@ class TestJobQueueFallback:
     success while the work was silently dropped.
     """
 
-    def test_disabled_by_default_so_a_deployment_without_a_worker_still_works(self) -> None:
-        from app.services.job_queue import submit_optimization
+    def test_disabled_by_default_so_a_deployment_without_a_worker_still_works(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.services import job_queue
 
-        submission = submit_optimization(uuid4(), {"version_id": str(uuid4())})
+        monkeypatch.setattr(
+            job_queue,
+            "get_settings",
+            lambda: Settings(background_optimization=False),
+        )
+
+        submission = job_queue.submit_optimization(uuid4(), {"version_id": str(uuid4())})
         assert submission.queued is False
         assert submission.job_id is None
         assert submission.reason  # the caller has to be able to say why
@@ -1704,7 +1924,27 @@ class TestJobQueueFallback:
         assert submission.queued is False
         assert "队列不可用" in (submission.reason or "")
 
-    def test_the_study_runs_inline_when_the_queue_is_unavailable(self, client: TestClient) -> None:
+    def test_the_study_runs_inline_when_the_queue_is_unavailable(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.services import optimization_service
+        from app.services.job_queue import Submission
+
+        monkeypatch.setattr(
+            optimization_service,
+            "background_optimization_enabled",
+            lambda: True,
+        )
+        monkeypatch.setattr(
+            optimization_service,
+            "submit_optimization",
+            lambda study_id, payload: Submission(
+                outcome="CONFIRMED_NOT_ENQUEUED",
+                job_id=None,
+                reason="队列不可用（test fixture）",
+            ),
+        )
+
         version_id = generate(client, seed=21)
         started = client.post(
             "/api/v1/optimization/optuna/start",
@@ -1718,9 +1958,23 @@ class TestJobQueueFallback:
         assert started.status_code == 202, started.text
         payload = started.json()["data"]
         assert payload["task"]["status"] == "succeeded"
+        assert payload["task"]["id"] == payload["study_id"]
+
+        def fail_if_redis_is_queried(*args: object, **kwargs: object) -> None:
+            raise AssertionError("inline HTTP status must not query Redis")
+
+        monkeypatch.setattr(
+            optimization_service,
+            "observe_optimization_job",
+            fail_if_redis_is_queried,
+        )
 
         status = client.get(f"/api/v1/optimization/optuna/{payload['study_id']}/status")
-        assert len(status.json()["data"]["trials"]) == 3
+        status_payload = status.json()["data"]
+        assert len(status_payload["trials"]) == 3
+        assert status_payload["task"]["id"] == payload["study_id"]
+        assert status_payload["job"]["execution_mode"] == "inline_http"
+        assert status_payload["job"]["availability"] == "NOT_APPLICABLE"
 
     def test_a_bad_version_never_leaves_an_orphan_queued_study(self, client: TestClient) -> None:
         """Reserving the row before validating would strand studies no worker can finish."""
@@ -1738,6 +1992,1035 @@ class TestJobQueueFallback:
         assert response.status_code == 404
         # The id the client would have polled must not exist either.
         assert client.get(f"/api/v1/optimization/optuna/{missing}/status").status_code == 404
+
+
+class TestRqIdentityAndTruthfulStatus:
+    @staticmethod
+    def _fake_job(study_id: UUID, *, status: str = "queued") -> object:
+        from datetime import UTC, datetime
+        from types import SimpleNamespace
+
+        timestamp = datetime.now(UTC)
+
+        class FakeJob:
+            id = str(study_id)
+            meta = {"study_id": str(study_id), "job_kind": "optimization"}
+            func_name = "app.worker.run_optimization_job"
+            origin = "indusopt"
+            timeout = 3600
+            created_at = timestamp
+            enqueued_at = timestamp
+            started_at = timestamp if status == "started" else None
+            ended_at = (
+                timestamp if status in {"finished", "failed", "stopped", "canceled"} else None
+            )
+
+            def get_status(self, *, refresh: bool = True) -> object:
+                assert refresh is True
+                return SimpleNamespace(value=status)
+
+        return FakeJob()
+
+    def test_enqueue_uses_study_id_unique_identity_and_metadata(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import rq
+        from app.services import job_queue
+        from redis import Redis
+
+        study_id = uuid4()
+        captured: dict[str, object] = {}
+
+        class Connection:
+            def ping(self) -> bool:
+                return True
+
+        class Queue:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                captured["queue_init"] = (args, kwargs)
+
+            def enqueue(self, *args: object, **kwargs: object) -> object:
+                captured["enqueue"] = (args, kwargs)
+                return TestRqIdentityAndTruthfulStatus._fake_job(study_id)
+
+        monkeypatch.setattr(
+            job_queue,
+            "get_settings",
+            lambda: Settings(background_optimization=True),
+        )
+        monkeypatch.setattr(Redis, "from_url", lambda *args, **kwargs: Connection())
+        monkeypatch.setattr(rq, "Queue", Queue)
+
+        submission = job_queue.submit_optimization(study_id, {"max_trials": 3})
+
+        assert submission.outcome == "SUBMITTED"
+        assert submission.job_id == str(study_id)
+        args, kwargs = captured["enqueue"]  # type: ignore[misc]
+        assert args == (
+            "app.worker.run_optimization_job",
+            str(study_id),
+            {"max_trials": 3},
+        )
+        assert kwargs["job_id"] == str(study_id)  # type: ignore[index]
+        assert kwargs["unique"] is True  # type: ignore[index]
+        assert kwargs["meta"] == {  # type: ignore[index]
+            "study_id": str(study_id),
+            "job_kind": "optimization",
+        }
+        callback = kwargs["on_failure"]  # type: ignore[index]
+        assert callback.name == "app.worker.handle_optimization_job_failure"
+        assert callback.timeout == 30
+
+    def test_duplicate_enqueue_recovers_matching_existing_job(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import rq
+        from app.services import job_queue
+        from redis import Redis
+        from rq.exceptions import DuplicateJobError
+        from rq.job import Job
+
+        study_id = uuid4()
+        existing = self._fake_job(study_id, status="started")
+
+        class Connection:
+            def ping(self) -> bool:
+                return True
+
+        class Queue:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                pass
+
+            def enqueue(self, *args: object, **kwargs: object) -> object:
+                raise DuplicateJobError("duplicate")
+
+        monkeypatch.setattr(
+            job_queue,
+            "get_settings",
+            lambda: Settings(background_optimization=True),
+        )
+        monkeypatch.setattr(Redis, "from_url", lambda *args, **kwargs: Connection())
+        monkeypatch.setattr(rq, "Queue", Queue)
+        monkeypatch.setattr(Job, "fetch", classmethod(lambda cls, *args, **kwargs: existing))
+
+        submission = job_queue.submit_optimization(study_id, {})
+
+        assert submission.outcome == "SUBMITTED"
+        assert submission.observation is not None
+        assert submission.observation.raw_status == "started"
+
+    @pytest.mark.parametrize(
+        ("fetch_error", "expected_outcome", "allows_inline"),
+        [
+            ("missing", "CONFIRMED_NOT_ENQUEUED", True),
+            ("unavailable", "SUBMISSION_UNKNOWN", False),
+        ],
+    )
+    def test_enqueue_error_only_allows_inline_after_confirmed_absence(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fetch_error: str,
+        expected_outcome: str,
+        allows_inline: bool,
+    ) -> None:
+        import rq
+        from app.services import job_queue
+        from redis import Redis
+        from rq.exceptions import NoSuchJobError
+        from rq.job import Job
+
+        study_id = uuid4()
+
+        class Connection:
+            def ping(self) -> bool:
+                return True
+
+        class Queue:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                pass
+
+            def enqueue(self, *args: object, **kwargs: object) -> object:
+                raise RuntimeError("enqueue acknowledgement lost")
+
+        def fetch(*args: object, **kwargs: object) -> object:
+            if fetch_error == "missing":
+                raise NoSuchJobError("missing")
+            raise ConnectionError("redis unavailable")
+
+        monkeypatch.setattr(
+            job_queue,
+            "get_settings",
+            lambda: Settings(background_optimization=True),
+        )
+        monkeypatch.setattr(Redis, "from_url", lambda *args, **kwargs: Connection())
+        monkeypatch.setattr(rq, "Queue", Queue)
+        monkeypatch.setattr(Job, "fetch", classmethod(lambda cls, *args, **kwargs: fetch()))
+
+        submission = job_queue.submit_optimization(study_id, {})
+
+        assert submission.outcome == expected_outcome
+        assert submission.allows_inline is allows_inline
+        if not allows_inline:
+            assert submission.job_id == str(study_id)
+
+    @pytest.mark.parametrize(
+        ("raw_status", "task_status"),
+        [
+            ("created", "queued"),
+            ("deferred", "queued"),
+            ("scheduled", "queued"),
+            ("queued", "queued"),
+            ("started", "running"),
+            ("finished", "succeeded"),
+            ("failed", "failed"),
+            ("stopped", "cancelled"),
+            ("canceled", "cancelled"),
+        ],
+    )
+    def test_task_projection_uses_real_rq_status(
+        self, raw_status: str, task_status: str
+    ) -> None:
+        from datetime import UTC, datetime
+
+        from app.models.optimization import OptimizationStudy
+        from app.schemas.optimization import OptimizationJobObservation
+        from app.services.optimization_service import _optimization_task
+
+        study_id = uuid4()
+        timestamp = datetime.now(UTC)
+        study = OptimizationStudy(
+            id=study_id,
+            version_id=uuid4(),
+            status="failed" if raw_status == "finished" else "queued",
+            statistics={},
+            parameters={},
+            best_params={},
+            fingerprint={},
+            created_at=timestamp,
+        )
+        job = OptimizationJobObservation(
+            execution_mode="rq",
+            availability="AVAILABLE",
+            rq_job_id=str(study_id),
+            queue_name="indusopt",
+            raw_status=raw_status,
+            observed_at=timestamp,
+            created_at=timestamp,
+            started_at=timestamp if raw_status == "started" else None,
+            ended_at=(
+                timestamp
+                if raw_status in {"finished", "failed", "stopped", "canceled"}
+                else None
+            ),
+        )
+
+        task = _optimization_task(study=study, job=job, message="status")
+
+        assert task.id == study_id
+        assert task.status == task_status
+        if raw_status == "finished":
+            assert study.status == "failed"
+            assert task.status == "succeeded"
+
+    @pytest.mark.parametrize(
+        ("availability", "study_status", "expected_status", "expected_error"),
+        [
+            ("UNAVAILABLE", "queued", "queued", "RQ_RECONCILIATION_UNAVAILABLE"),
+            ("NOT_FOUND", "running", "running", "RQ_JOB_NOT_FOUND"),
+            ("NOT_FOUND", "succeeded", "succeeded", None),
+        ],
+    )
+    def test_unavailable_or_missing_job_uses_db_without_guessing_a_terminal_reason(
+        self,
+        availability: str,
+        study_status: str,
+        expected_status: str,
+        expected_error: str | None,
+    ) -> None:
+        from datetime import UTC, datetime
+
+        from app.models.optimization import OptimizationStudy
+        from app.schemas.optimization import OptimizationJobObservation
+        from app.services.optimization_service import _optimization_task
+
+        study_id = uuid4()
+        timestamp = datetime.now(UTC)
+        study = OptimizationStudy(
+            id=study_id,
+            version_id=uuid4(),
+            status=study_status,
+            statistics={"job": {"execution_mode": "rq"}},
+            parameters={},
+            best_params={},
+            fingerprint={},
+            created_at=timestamp,
+            finished_at=timestamp if study_status in {"succeeded", "failed"} else None,
+        )
+        job = OptimizationJobObservation(
+            execution_mode="rq",
+            availability=availability,
+            rq_job_id=str(study_id),
+            queue_name="indusopt",
+            observed_at=timestamp,
+            error_code=(
+                "RQ_RECONCILIATION_UNAVAILABLE"
+                if availability == "UNAVAILABLE"
+                else "RQ_JOB_NOT_FOUND"
+            ),
+        )
+
+        task = _optimization_task(study=study, job=job, message="status")
+
+        assert task.status == expected_status
+        assert (task.error.code if task.error else None) == expected_error
+        assert study.status == study_status
+        assert "terminal_reason" not in study.statistics
+
+    def test_start_and_status_keep_stable_id_without_writing_observation(
+        self,
+        client: TestClient,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        from datetime import UTC, datetime
+
+        from app.services import optimization_service
+        from app.services.job_queue import JobObservation, Submission
+
+        timestamp = datetime.now(UTC)
+        observed_study_ids: list[UUID] = []
+
+        def submit(study_id: UUID, payload: dict[str, object]) -> Submission:
+            del payload
+            return Submission(
+                outcome="SUBMITTED",
+                job_id=str(study_id),
+                reason=None,
+                observation=JobObservation(
+                    availability="AVAILABLE",
+                    job_id=str(study_id),
+                    queue_name="indusopt",
+                    raw_status="queued",
+                    created_at=timestamp,
+                    enqueued_at=timestamp,
+                ),
+            )
+
+        def observe(
+            *,
+            study_id: UUID,
+            job_id: str,
+            queue_name: str,
+            expected_timeout_seconds: int,
+        ) -> JobObservation:
+            observed_study_ids.append(study_id)
+            assert job_id == str(study_id)
+            assert queue_name == "indusopt"
+            assert expected_timeout_seconds == 3600
+            return JobObservation(
+                availability="AVAILABLE",
+                job_id=job_id,
+                queue_name=queue_name,
+                raw_status="started",
+                created_at=timestamp,
+                enqueued_at=timestamp,
+                started_at=timestamp,
+            )
+
+        monkeypatch.setattr(optimization_service, "background_optimization_enabled", lambda: True)
+        monkeypatch.setattr(optimization_service, "submit_optimization", submit)
+        monkeypatch.setattr(optimization_service, "reconcile_optimization_job", observe)
+        version_id = generate(client, seed=301)
+
+        started = client.post(
+            "/api/v1/optimization/optuna/start",
+            json={
+                "version_id": version_id,
+                "input_columns": ["u1", "u2"],
+                "output_column": "y",
+                "max_trials": 3,
+            },
+        ).json()["data"]
+        study_id = UUID(started["study_id"])
+        before = asyncio.run(
+            _optimization_snapshot(tmp_path / "optimize.db", study_id=study_id)
+        )
+
+        status = client.get(f"/api/v1/optimization/optuna/{study_id}/status").json()["data"]
+        after = asyncio.run(_optimization_snapshot(tmp_path / "optimize.db", study_id=study_id))
+
+        assert started["task"]["id"] == str(study_id)
+        assert status["task"]["id"] == str(study_id)
+        assert status["task"]["status"] == "running"
+        assert status["study_status"] == "queued"
+        assert status["job"]["raw_status"] == "started"
+        assert before["job"]["contract_version"] == "optimization_job_v1"  # type: ignore[index]
+        assert before["job"]["execution_mode"] == "rq"  # type: ignore[index]
+        assert before["job"]["rq_job_id"] == str(study_id)  # type: ignore[index]
+        assert before["job"]["queue_name"] == "indusopt"  # type: ignore[index]
+        assert before["job"]["job_timeout_seconds"] == 3600  # type: ignore[index]
+        assert before["job"]["submission_state"] == "SUBMISSION_REQUESTED"  # type: ignore[index]
+        assert before == after
+        assert observed_study_ids == [study_id]
+
+    def test_unknown_enqueue_outcome_never_runs_inline(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from app.services import optimization_service
+        from app.services.job_queue import JobObservation, Submission
+
+        def submit(study_id: UUID, payload: dict[str, object]) -> Submission:
+            del payload
+            return Submission(
+                outcome="SUBMISSION_UNKNOWN",
+                job_id=str(study_id),
+                reason="unknown",
+                observation=JobObservation(
+                    availability="UNAVAILABLE",
+                    job_id=str(study_id),
+                    queue_name="indusopt",
+                    error_code="RQ_RECONCILIATION_UNAVAILABLE",
+                ),
+            )
+
+        async def fail_if_inline(*args: object, **kwargs: object) -> None:
+            raise AssertionError("ambiguous enqueue outcome must not execute inline")
+
+        monkeypatch.setattr(optimization_service, "background_optimization_enabled", lambda: True)
+        monkeypatch.setattr(optimization_service, "submit_optimization", submit)
+        monkeypatch.setattr(optimization_service, "execute_study", fail_if_inline)
+        version_id = generate(client, seed=302)
+
+        started = client.post(
+            "/api/v1/optimization/optuna/start",
+            json={
+                "version_id": version_id,
+                "input_columns": ["u1", "u2"],
+                "output_column": "y",
+                "max_trials": 3,
+            },
+        )
+
+        assert started.status_code == 202, started.text
+        payload = started.json()["data"]
+        snapshot = asyncio.run(
+            _optimization_snapshot(
+                tmp_path / "optimize.db", study_id=UUID(payload["study_id"])
+            )
+        )
+        assert payload["task"]["id"] == payload["study_id"]
+        assert payload["task"]["status"] == "queued"
+        assert payload["task"]["error"]["code"] == "RQ_RECONCILIATION_UNAVAILABLE"
+        assert snapshot["study_status"] == "queued"
+        assert snapshot["job"]["submission_state"] == "SUBMISSION_UNKNOWN"  # type: ignore[index]
+
+    def test_historical_study_uses_stable_legacy_projection_without_backfill(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        study_id = asyncio.run(_insert_legacy_optimization_study(tmp_path / "optimize.db"))
+        before = asyncio.run(_optimization_snapshot(tmp_path / "optimize.db", study_id=study_id))
+
+        first = client.get(f"/api/v1/optimization/optuna/{study_id}/status").json()["data"]
+        second = client.get(f"/api/v1/optimization/optuna/{study_id}/status").json()["data"]
+        after = asyncio.run(_optimization_snapshot(tmp_path / "optimize.db", study_id=study_id))
+
+        assert first["task"]["id"] == str(study_id)
+        assert second["task"]["id"] == str(study_id)
+        assert first["job"]["availability"] == "LEGACY"
+        assert first["terminal_reason"] is None
+        assert first["stop_reason"] is None
+        assert before == after
+
+
+class TestRqFailureCallbackAndEvidence:
+    @staticmethod
+    def _callback_job(study_id: UUID, *, valid: bool = True) -> object:
+        from types import SimpleNamespace
+
+        class FakeJob:
+            id = str(study_id)
+            meta = {
+                "study_id": str(study_id) if valid else str(uuid4()),
+                "job_kind": "optimization",
+            }
+            func_name = "app.worker.run_optimization_job"
+            origin = "indusopt"
+            timeout = 3600
+            _status = SimpleNamespace(value="started")
+
+            def save_meta(self) -> None:
+                return None
+
+        return FakeJob()
+
+    @pytest.mark.parametrize(
+        ("exception_type", "expected_kind", "expected_error"),
+        [
+            ("timeout", "job_timeout", "RQ_JOB_TIMEOUT"),
+            ("abandoned", "abandoned_execution", "RQ_ABANDONED_EXECUTION"),
+            ("ordinary", "ordinary_exception", "RQ_JOB_EXECUTION_FAILED"),
+        ],
+    )
+    def test_callback_classifies_typed_job_body_exception(
+        self, exception_type: str, expected_kind: str, expected_error: str
+    ) -> None:
+        from app.services.job_queue import callback_terminal_evidence
+        from rq.exceptions import AbandonedJobError
+        from rq.timeouts import JobTimeoutException
+
+        study_id = uuid4()
+        exc_type = {
+            "timeout": JobTimeoutException,
+            "abandoned": AbandonedJobError,
+            "ordinary": RuntimeError,
+        }[exception_type]
+
+        evidence = callback_terminal_evidence(
+            self._callback_job(study_id),
+            exc_type=exc_type,
+        )
+
+        assert evidence is not None
+        assert evidence.kind == expected_kind
+        assert evidence.error_code == expected_error
+        assert evidence.rq_job_id == str(study_id)
+
+    def test_callback_rejects_identity_mismatch(self) -> None:
+        from app.services.job_queue import callback_terminal_evidence
+
+        assert (
+            callback_terminal_evidence(
+                self._callback_job(uuid4(), valid=False),
+                exc_type=RuntimeError,
+            )
+            is None
+        )
+
+    def test_worker_callback_identity_mismatch_never_reaches_database(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app import worker
+
+        async def fail_if_called(*args: object, **kwargs: object) -> None:
+            raise AssertionError("identity mismatch must not reach persistence")
+
+        monkeypatch.setattr(worker, "_persist_failure_evidence", fail_if_called)
+
+        worker.handle_optimization_job_failure(
+            self._callback_job(uuid4(), valid=False),
+            object(),
+            RuntimeError,
+            RuntimeError("original job failure"),
+            None,
+        )
+
+    @pytest.mark.parametrize("failure_target", ["database", "job_meta"])
+    def test_failure_callback_never_reraises_its_own_failure(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        failure_target: str,
+    ) -> None:
+        from app import worker
+        from app.services import job_queue
+
+        study_id = uuid4()
+        job = self._callback_job(study_id)
+        persisted: list[str] = []
+
+        async def persist(*args: object, **kwargs: object) -> None:
+            if failure_target == "database":
+                raise RuntimeError("database unavailable")
+            persisted.append("database")
+
+        def persist_meta(*args: object, **kwargs: object) -> None:
+            if failure_target == "job_meta":
+                raise RuntimeError("redis unavailable")
+            persisted.append("job_meta")
+
+        monkeypatch.setattr(worker, "_persist_failure_evidence", persist)
+        monkeypatch.setattr(
+            job_queue,
+            "persist_job_terminal_evidence_best_effort",
+            persist_meta,
+        )
+
+        worker.handle_optimization_job_failure(
+            job,
+            object(),
+            RuntimeError,
+            RuntimeError("original job failure"),
+            None,
+        )
+
+        assert persisted == (["job_meta"] if failure_target == "database" else ["database"])
+
+    @pytest.mark.parametrize(
+        ("exc_string", "expected_kind"),
+        [
+            (
+                "Traceback (most recent call last):\n"
+                "rq.timeouts.JobTimeoutException: Task exceeded maximum timeout value "
+                "(3600 seconds)",
+                "job_timeout",
+            ),
+            (
+                "Work-horse terminated unexpectedly; waitpid returned 9 (signal 9); ",
+                "work_horse_terminated",
+            ),
+            (
+                "Moved to FailedJobRegistry, due to AbandonedJobError, at "
+                "2026-09-15 12:00:00+00:00",
+                "abandoned_execution",
+            ),
+            ("builtins.RuntimeError: ordinary failure", None),
+        ],
+    )
+    def test_failed_registry_uses_only_strict_persisted_failure_evidence(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        exc_string: str,
+        expected_kind: str | None,
+    ) -> None:
+        from types import SimpleNamespace
+
+        from app.services.job_queue import _failed_registry_evidence
+        from rq import registry
+
+        class FailedRegistry:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                pass
+
+            def __contains__(self, job_id: str) -> bool:
+                return True
+
+        job = SimpleNamespace(
+            id=str(uuid4()),
+            connection=object(),
+            timeout=3600,
+            latest_result=lambda timeout=0: SimpleNamespace(exc_string=exc_string),
+        )
+        monkeypatch.setattr(registry, "FailedJobRegistry", FailedRegistry)
+
+        evidence = _failed_registry_evidence(
+            job,
+            queue_name="indusopt",
+            expected_timeout_seconds=3600,
+            source="failed_registry",
+        )
+
+        assert (evidence.kind if evidence is not None else None) == expected_kind
+
+    def test_started_registry_cleanup_refetches_abandoned_job_evidence(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from types import SimpleNamespace
+
+        from app.services import job_queue
+        from redis import Redis
+        from rq import registry
+        from rq.job import Job
+
+        study_id = uuid4()
+        state = {"status": "started", "cleaned": False}
+
+        class Connection:
+            def ping(self) -> bool:
+                return True
+
+        connection = Connection()
+
+        class FakeJob:
+            id = str(study_id)
+            meta = {"study_id": str(study_id), "job_kind": "optimization"}
+            func_name = "app.worker.run_optimization_job"
+            origin = "indusopt"
+            timeout = 3600
+            created_at = None
+            enqueued_at = None
+            started_at = None
+            ended_at = None
+
+            def __init__(self) -> None:
+                self.connection = connection
+
+            def get_status(self, *, refresh: bool = True) -> object:
+                return SimpleNamespace(value=state["status"])
+
+            def latest_result(self, timeout: int = 0) -> object:
+                return SimpleNamespace(
+                    exc_string=(
+                        "Moved to FailedJobRegistry, due to AbandonedJobError, at "
+                        "2026-09-15 12:00:00+00:00"
+                    )
+                )
+
+        job = FakeJob()
+
+        class StartedRegistry:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                pass
+
+            def cleanup(self) -> None:
+                state["status"] = "failed"
+                state["cleaned"] = True
+
+        class FailedRegistry:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                pass
+
+            def __contains__(self, job_id: str) -> bool:
+                return state["cleaned"] and job_id == str(study_id)
+
+        monkeypatch.setattr(Redis, "from_url", lambda *args, **kwargs: connection)
+        monkeypatch.setattr(Job, "fetch", classmethod(lambda cls, *args, **kwargs: job))
+        monkeypatch.setattr(registry, "StartedJobRegistry", StartedRegistry)
+        monkeypatch.setattr(registry, "FailedJobRegistry", FailedRegistry)
+
+        observation = job_queue.reconcile_optimization_job(
+            study_id=study_id,
+            job_id=str(study_id),
+            queue_name="indusopt",
+            expected_timeout_seconds=3600,
+        )
+
+        assert state["cleaned"] is True
+        assert observation.raw_status == "failed"
+        assert observation.terminal_evidence is not None
+        assert observation.terminal_evidence.kind == "abandoned_execution"
+        assert observation.terminal_evidence.source == "started_registry_cleanup"
+
+
+class TestRqFailureReconciliation:
+    @staticmethod
+    def _evidence(
+        study_id: UUID,
+        *,
+        kind: str,
+        source: str = "failure_callback",
+    ) -> object:
+        from datetime import UTC, datetime
+
+        from app.services.job_queue import RqTerminalEvidence
+
+        facts = {
+            "job_timeout": (
+                "HIGH",
+                "rq.timeouts.JobTimeoutException",
+                "RQ_JOB_TIMEOUT",
+            ),
+            "work_horse_terminated": (
+                "HIGH",
+                "rq.worker.WorkHorseTerminated",
+                "RQ_WORK_HORSE_TERMINATED",
+            ),
+            "abandoned_execution": (
+                "HIGH",
+                "rq.exceptions.AbandonedJobError",
+                "RQ_ABANDONED_EXECUTION",
+            ),
+            "ordinary_exception": (
+                "GENERIC",
+                "builtins.RuntimeError",
+                "RQ_JOB_EXECUTION_FAILED",
+            ),
+        }
+        confidence, exception_type, error_code = facts[kind]
+        return RqTerminalEvidence(
+            source=source,
+            kind=kind,
+            confidence=confidence,
+            rq_job_id=str(study_id),
+            rq_status="failed" if source != "failure_callback" else "started",
+            exception_type=exception_type,
+            observed_at=datetime.now(UTC),
+            error_code=error_code,
+            job_timeout_seconds=3600,
+        )
+
+    @pytest.mark.parametrize("initial_status", ["queued", "running"])
+    @pytest.mark.parametrize(
+        ("kind", "source", "expected_code", "expected_error"),
+        [
+            ("ordinary_exception", "failure_callback", "FAILED", "RQ_JOB_EXECUTION_FAILED"),
+            ("job_timeout", "failure_callback", "RQ_TIMEOUT", "RQ_JOB_TIMEOUT"),
+            (
+                "work_horse_terminated",
+                "failed_registry",
+                "WORKER_CRASH",
+                "RQ_WORK_HORSE_TERMINATED",
+            ),
+            (
+                "abandoned_execution",
+                "started_registry_cleanup",
+                "WORKER_CRASH",
+                "RQ_ABANDONED_EXECUTION",
+            ),
+        ],
+    )
+    def test_nonterminal_study_accepts_only_typed_rq_terminal_evidence(
+        self,
+        tmp_path: Path,
+        initial_status: str,
+        kind: str,
+        source: str,
+        expected_code: str,
+        expected_error: str,
+    ) -> None:
+        database_path = tmp_path / f"{initial_status}-{kind}.db"
+        study_id = asyncio.run(
+            _insert_rq_optimization_study(database_path, status=initial_status)
+        )
+
+        changed = asyncio.run(
+            _persist_rq_evidence(
+                database_path,
+                study_id=study_id,
+                evidence=self._evidence(study_id, kind=kind, source=source),
+            )
+        )
+        snapshot = asyncio.run(_optimization_snapshot(database_path, study_id=study_id))
+
+        assert changed is True
+        terminal = snapshot["terminal_reason"]
+        assert terminal["policy_version"] == "optimization_terminal_reason_v2"  # type: ignore[index]
+        assert terminal["code"] == expected_code  # type: ignore[index]
+        assert terminal["phase"] == "rq_execution"  # type: ignore[index]
+        assert terminal["error_code"] == expected_error  # type: ignore[index]
+        assert snapshot["job"]["terminal_evidence"]["kind"] == kind  # type: ignore[index]
+
+    @pytest.mark.parametrize(
+        ("kind", "source", "expected_code"),
+        [
+            ("job_timeout", "failure_callback", "RQ_TIMEOUT"),
+            ("work_horse_terminated", "failed_registry", "WORKER_CRASH"),
+        ],
+    )
+    def test_generic_rq_failure_can_be_refined_with_history(
+        self, tmp_path: Path, kind: str, source: str, expected_code: str
+    ) -> None:
+        from datetime import UTC, datetime
+
+        database_path = tmp_path / f"refine-{kind}.db"
+        generic = {
+            "policy_version": "optimization_terminal_reason_v2",
+            "code": "FAILED",
+            "category": "SYSTEM_FAILURE",
+            "phase": "rq_execution",
+            "error_code": "RQ_JOB_EXECUTION_FAILED",
+            "recorded_at": datetime.now(UTC).isoformat(),
+        }
+        study_id = asyncio.run(
+            _insert_rq_optimization_study(
+                database_path,
+                status="failed",
+                terminal_reason=generic,
+            )
+        )
+
+        changed = asyncio.run(
+            _persist_rq_evidence(
+                database_path,
+                study_id=study_id,
+                evidence=self._evidence(study_id, kind=kind, source=source),
+            )
+        )
+        snapshot = asyncio.run(_optimization_snapshot(database_path, study_id=study_id))
+
+        assert changed is True
+        assert snapshot["terminal_reason"]["code"] == expected_code  # type: ignore[index]
+        assert snapshot["terminal_reason_history"] == [generic]
+
+    def test_application_failed_cannot_be_reclassified_as_worker_crash(
+        self, tmp_path: Path
+    ) -> None:
+        from datetime import UTC, datetime
+
+        database_path = tmp_path / "application-failed.db"
+        application_failure = {
+            "policy_version": "optimization_terminal_reason_v2",
+            "code": "FAILED",
+            "category": "SYSTEM_FAILURE",
+            "phase": "search",
+            "error_code": "STUDY_EXECUTION_FAILED",
+            "recorded_at": datetime.now(UTC).isoformat(),
+        }
+        study_id = asyncio.run(
+            _insert_rq_optimization_study(
+                database_path,
+                status="failed",
+                terminal_reason=application_failure,
+            )
+        )
+
+        changed = asyncio.run(
+            _persist_rq_evidence(
+                database_path,
+                study_id=study_id,
+                evidence=self._evidence(
+                    study_id,
+                    kind="work_horse_terminated",
+                    source="failed_registry",
+                ),
+            )
+        )
+        snapshot = asyncio.run(_optimization_snapshot(database_path, study_id=study_id))
+
+        assert changed is False
+        assert snapshot["terminal_reason"] == application_failure
+        assert snapshot["terminal_reason_history"] is None
+
+    @pytest.mark.parametrize(
+        "immutable_code",
+        ["COMPLETED", "NO_VALID_CANDIDATE", "RQ_TIMEOUT", "WORKER_CRASH"],
+    )
+    def test_immutable_terminal_reason_cannot_be_overwritten(
+        self, tmp_path: Path, immutable_code: str
+    ) -> None:
+        from datetime import UTC, datetime
+
+        database_path = tmp_path / f"immutable-{immutable_code}.db"
+        existing = {
+            "policy_version": "optimization_terminal_reason_v2",
+            "code": immutable_code,
+            "category": (
+                "SUCCESS"
+                if immutable_code == "COMPLETED"
+                else "BUSINESS_FAILURE"
+                if immutable_code == "NO_VALID_CANDIDATE"
+                else "INFRASTRUCTURE_FAILURE"
+            ),
+            "phase": "search" if immutable_code == "NO_VALID_CANDIDATE" else "rq_execution",
+            "error_code": None,
+            "recorded_at": datetime.now(UTC).isoformat(),
+        }
+        study_id = asyncio.run(
+            _insert_rq_optimization_study(
+                database_path,
+                status="succeeded" if immutable_code == "COMPLETED" else "failed",
+                terminal_reason=existing,
+            )
+        )
+
+        changed = asyncio.run(
+            _persist_rq_evidence(
+                database_path,
+                study_id=study_id,
+                evidence=self._evidence(study_id, kind="job_timeout"),
+            )
+        )
+        snapshot = asyncio.run(_optimization_snapshot(database_path, study_id=study_id))
+
+        assert changed is False
+        assert snapshot["terminal_reason"] == existing
+
+    def test_same_terminal_evidence_is_idempotent(self, tmp_path: Path) -> None:
+        database_path = tmp_path / "idempotent.db"
+        study_id = asyncio.run(_insert_rq_optimization_study(database_path))
+        evidence = self._evidence(study_id, kind="job_timeout")
+
+        first = asyncio.run(
+            _persist_rq_evidence(database_path, study_id=study_id, evidence=evidence)
+        )
+        second = asyncio.run(
+            _persist_rq_evidence(database_path, study_id=study_id, evidence=evidence)
+        )
+
+        assert first is True
+        assert second is False
+        snapshot = asyncio.run(_optimization_snapshot(database_path, study_id=study_id))
+        assert snapshot["terminal_reason_history"] is None
+
+    @pytest.mark.parametrize(
+        ("kind", "source", "expected_code"),
+        [
+            ("job_timeout", "failed_registry", "RQ_TIMEOUT"),
+            ("work_horse_terminated", "failed_registry", "WORKER_CRASH"),
+        ],
+    )
+    def test_status_get_lazily_persists_strict_rq_evidence(
+        self,
+        client: TestClient,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        kind: str,
+        source: str,
+        expected_code: str,
+    ) -> None:
+        from datetime import UTC, datetime
+
+        from app.services import optimization_service
+        from app.services.job_queue import JobObservation
+
+        database_path = tmp_path / "optimize.db"
+        study_id = asyncio.run(_insert_rq_optimization_study(database_path))
+        evidence = self._evidence(
+            study_id,
+            kind=kind,
+            source=source,
+        )
+
+        def reconcile(**kwargs: object) -> JobObservation:
+            assert kwargs["study_id"] == study_id
+            assert kwargs["expected_timeout_seconds"] == 3600
+            return JobObservation(
+                availability="AVAILABLE",
+                job_id=str(study_id),
+                queue_name="indusopt",
+                raw_status="failed",
+                ended_at=datetime.now(UTC),
+                terminal_evidence=evidence,  # type: ignore[arg-type]
+            )
+
+        monkeypatch.setattr(optimization_service, "reconcile_optimization_job", reconcile)
+
+        response = client.get(f"/api/v1/optimization/optuna/{study_id}/status")
+
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+        assert data["task"]["status"] == "failed"
+        assert data["study_status"] == "failed"
+        assert data["terminal_reason"]["code"] == expected_code
+        assert data["statistics"]["job"]["terminal_evidence"]["kind"] == kind
+
+    @pytest.mark.parametrize(
+        ("availability", "error_code"),
+        [
+            ("UNAVAILABLE", "RQ_RECONCILIATION_UNAVAILABLE"),
+            ("NOT_FOUND", "RQ_JOB_NOT_FOUND"),
+        ],
+    )
+    def test_status_does_not_infer_terminal_from_unavailable_or_missing_job(
+        self,
+        client: TestClient,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        availability: str,
+        error_code: str,
+    ) -> None:
+        from app.services import optimization_service
+        from app.services.job_queue import JobObservation
+
+        database_path = tmp_path / "optimize.db"
+        study_id = asyncio.run(_insert_rq_optimization_study(database_path))
+
+        monkeypatch.setattr(
+            optimization_service,
+            "reconcile_optimization_job",
+            lambda **kwargs: JobObservation(
+                availability=availability,
+                job_id=str(study_id),
+                queue_name="indusopt",
+                error_code=error_code,
+            ),
+        )
+
+        response = client.get(f"/api/v1/optimization/optuna/{study_id}/status")
+        snapshot = asyncio.run(_optimization_snapshot(database_path, study_id=study_id))
+
+        assert response.status_code == 200
+        assert response.json()["data"]["terminal_reason"] is None
+        assert snapshot["study_status"] == "running"
+        assert snapshot["terminal_reason"] is None
 
 
 class TestStudyReservation:
