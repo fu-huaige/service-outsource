@@ -12,6 +12,7 @@ from typing import Any
 DIAGNOSIS_POLICY_VERSION = "validation_diagnosis_v1"
 CONVERGENCE_POLICY_VERSION = "optimization_convergence_v1"
 CONVERGENCE_MODE = "observed_only"
+STOP_REASON_POLICY_VERSION = "optimization_stop_reason_v1"
 MIN_MEANINGFUL_IMPROVEMENT = 0.001
 CONVERGENCE_PATIENCE = 16
 CONVERGENCE_MIN_VALID_TRIALS = 17
@@ -32,6 +33,16 @@ class ConvergenceStatus(StrEnum):
     INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
     NOT_CONVERGED = "NOT_CONVERGED"
     CONVERGED = "CONVERGED"
+
+
+class NormalStopReasonCode(StrEnum):
+    TRIAL_BUDGET_EXHAUSTED = "TRIAL_BUDGET_EXHAUSTED"
+    TIMEOUT_REACHED = "TIMEOUT_REACHED"
+
+
+class NormalStopReasonOutcome(StrEnum):
+    WINNER_SELECTED = "WINNER_SELECTED"
+    NO_VALID_CANDIDATE = "NO_VALID_CANDIDATE"
 
 
 @dataclass(frozen=True)
@@ -86,6 +97,69 @@ class ObservedConvergenceResult:
             "best_trial_number": self.best_trial_number,
             "observed_at_trial_count": self.observed_at_trial_count,
         }
+
+
+@dataclass(frozen=True)
+class NormalStopReasonResult:
+    policy_version: str
+    code: NormalStopReasonCode
+    category: str
+    outcome: NormalStopReasonOutcome
+    observed_trial_count: int
+    target_trial_count: int
+    timeout_seconds: int | None
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "policy_version": self.policy_version,
+            "code": self.code.value,
+            "category": self.category,
+            "outcome": self.outcome.value,
+            "observed_trial_count": self.observed_trial_count,
+            "target_trial_count": self.target_trial_count,
+            "timeout_seconds": self.timeout_seconds,
+        }
+
+
+def determine_normal_stop_reason(
+    *,
+    observed_trial_count: int,
+    target_trial_count: int,
+    timeout_seconds: int | None,
+    best_trial_number: int | None,
+) -> NormalStopReasonResult:
+    """Describe only a normal ``study.optimize`` return, without inferring failures."""
+
+    if observed_trial_count < 0:
+        raise ValueError("observed_trial_count must be non-negative.")
+    if target_trial_count < 1:
+        raise ValueError("target_trial_count must be positive.")
+    if timeout_seconds is not None and timeout_seconds < 1:
+        raise ValueError("timeout_seconds must be positive when provided.")
+
+    if observed_trial_count >= target_trial_count:
+        code = NormalStopReasonCode.TRIAL_BUDGET_EXHAUSTED
+    elif timeout_seconds is not None:
+        code = NormalStopReasonCode.TIMEOUT_REACHED
+    else:
+        raise ValueError(
+            "A normal study return below its trial budget requires a configured timeout."
+        )
+
+    outcome = (
+        NormalStopReasonOutcome.WINNER_SELECTED
+        if best_trial_number is not None
+        else NormalStopReasonOutcome.NO_VALID_CANDIDATE
+    )
+    return NormalStopReasonResult(
+        policy_version=STOP_REASON_POLICY_VERSION,
+        code=code,
+        category="NORMAL_LIMIT",
+        outcome=outcome,
+        observed_trial_count=observed_trial_count,
+        target_trial_count=target_trial_count,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def observe_convergence(

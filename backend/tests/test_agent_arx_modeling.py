@@ -1276,6 +1276,15 @@ def test_optimization_adapter_exposes_winner_feedback_contract(
         "best_trial_number": 0,
         "observed_at_trial_count": 1,
     }
+    stop_reason = {
+        "policy_version": "optimization_stop_reason_v1",
+        "code": "TRIAL_BUDGET_EXHAUSTED",
+        "category": "NORMAL_LIMIT",
+        "outcome": "WINNER_SELECTED",
+        "observed_trial_count": 1,
+        "target_trial_count": 1,
+        "timeout_seconds": None,
+    }
 
     monkeypatch.setattr(
         agent_tool_adapter,
@@ -1308,6 +1317,7 @@ def test_optimization_adapter_exposes_winner_feedback_contract(
             best_diagnosis=best_diagnosis,
             best_bookkeeping=best_bookkeeping,
             convergence=convergence,
+            stop_reason=stop_reason,
         )
 
     monkeypatch.setattr(
@@ -1334,6 +1344,7 @@ def test_optimization_adapter_exposes_winner_feedback_contract(
     assert result.result_payload["best_diagnosis"] == best_diagnosis
     assert result.result_payload["best_bookkeeping"] == best_bookkeeping
     assert result.result_payload["convergence"] == convergence
+    assert result.result_payload["stop_reason"] == stop_reason
 
 
 def test_explicit_optimization_trigger_persists_business_failure_without_replay(

@@ -133,6 +133,27 @@ class OptimizationConvergence(Schema):
     observed_at_trial_count: int = Field(ge=0)
 
 
+OptimizationStopReasonCode = Literal[
+    "TRIAL_BUDGET_EXHAUSTED",
+    "TIMEOUT_REACHED",
+]
+
+OptimizationStopReasonOutcome = Literal[
+    "WINNER_SELECTED",
+    "NO_VALID_CANDIDATE",
+]
+
+
+class OptimizationStopReason(Schema):
+    policy_version: Literal["optimization_stop_reason_v1"]
+    code: OptimizationStopReasonCode
+    category: Literal["NORMAL_LIMIT"]
+    outcome: OptimizationStopReasonOutcome
+    observed_trial_count: int = Field(ge=0)
+    target_trial_count: int = Field(ge=1)
+    timeout_seconds: int | None = Field(default=None, ge=1)
+
+
 class OptimizationTrial(Schema):
     trial_id: int = Field(ge=0)
     state: Literal["queued", "running", "complete", "pruned", "failed"]
@@ -224,3 +245,4 @@ class OptimizationStatusData(Schema):
     best_selection_summary: OptimizationSelectionProvenance | None = None
     best_objective_components: OptimizationObjectiveComponents | None = None
     convergence: OptimizationConvergence | None = None
+    stop_reason: OptimizationStopReason | None = None

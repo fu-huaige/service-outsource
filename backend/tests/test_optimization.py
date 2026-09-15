@@ -637,6 +637,93 @@ class TestObservedConvergencePolicy:
         }
 
 
+class TestNormalStopReasonPolicy:
+    @pytest.mark.parametrize(
+        (
+            "observed_trial_count",
+            "target_trial_count",
+            "timeout_seconds",
+            "best_trial_number",
+            "expected_code",
+            "expected_outcome",
+        ),
+        [
+            (50, 50, None, 7, "TRIAL_BUDGET_EXHAUSTED", "WINNER_SELECTED"),
+            (50, 50, 300, 7, "TRIAL_BUDGET_EXHAUSTED", "WINNER_SELECTED"),
+            (32, 50, 300, 7, "TIMEOUT_REACHED", "WINNER_SELECTED"),
+            (50, 50, None, None, "TRIAL_BUDGET_EXHAUSTED", "NO_VALID_CANDIDATE"),
+        ],
+    )
+    def test_reducer_uses_budget_first_and_phase_2b_winner_for_outcome(
+        self,
+        observed_trial_count: int,
+        target_trial_count: int,
+        timeout_seconds: int | None,
+        best_trial_number: int | None,
+        expected_code: str,
+        expected_outcome: str,
+    ) -> None:
+        from app.services.optimization_feedback_policy import determine_normal_stop_reason
+
+        result = determine_normal_stop_reason(
+            observed_trial_count=observed_trial_count,
+            target_trial_count=target_trial_count,
+            timeout_seconds=timeout_seconds,
+            best_trial_number=best_trial_number,
+        )
+
+        assert result.to_payload() == {
+            "policy_version": "optimization_stop_reason_v1",
+            "code": expected_code,
+            "category": "NORMAL_LIMIT",
+            "outcome": expected_outcome,
+            "observed_trial_count": observed_trial_count,
+            "target_trial_count": target_trial_count,
+            "timeout_seconds": timeout_seconds,
+        }
+
+    def test_observed_convergence_does_not_change_budget_stop_reason(self) -> None:
+        from app.services.optimization_feedback_policy import (
+            determine_normal_stop_reason,
+            observe_convergence,
+        )
+
+        observations = [
+            (
+                0,
+                {
+                    "previous_best": None,
+                    "absolute_improvement": None,
+                    "best_so_far": 0.2,
+                    "decision": "CANDIDATE_VALID_NEW_BEST",
+                },
+            ),
+            *[
+                (
+                    index,
+                    {
+                        "previous_best": 0.2,
+                        "absolute_improvement": 0.0,
+                        "best_so_far": 0.2,
+                        "decision": "CANDIDATE_VALID_NOT_BEST",
+                    },
+                )
+                for index in range(1, 17)
+            ],
+        ]
+
+        convergence = observe_convergence(observations, best_trial_number=0)
+        stop_reason = determine_normal_stop_reason(
+            observed_trial_count=17,
+            target_trial_count=17,
+            timeout_seconds=None,
+            best_trial_number=0,
+        )
+
+        assert convergence.status.value == "CONVERGED"
+        assert stop_reason.code.value == "TRIAL_BUDGET_EXHAUSTED"
+
+
 class TestFormalEvaluation:
     def test_baseline_is_test_free_and_ignores_the_held_out_tail(
         self, monkeypatch: pytest.MonkeyPatch
@@ -849,6 +936,7 @@ def test_legacy_optimization_contract_without_feedback_fields_remains_readable()
     assert status.best_selection_summary is None
     assert status.best_objective_components is None
     assert status.convergence is None
+    assert status.stop_reason is None
 
 
 @pytest.fixture
@@ -930,6 +1018,7 @@ async def _optimization_snapshot(
                 "baseline_model_id": study.baseline_model_id,
                 "optimized_model_id": study.optimized_model_id,
                 "error_code": study.statistics.get("error_code"),
+                "stop_reason": study.statistics.get("stop_reason"),
                 "final_test_run_count": int(final_test_runs or 0),
                 "processing_run_type": run.run_type if run is not None else None,
                 "processing_run_status": run.status if run is not None else None,
@@ -1000,6 +1089,7 @@ async def _agent_optimization_snapshot(
                 "study_status": study.status,
                 "baseline_model_id": study.baseline_model_id,
                 "optimized_model_id": study.optimized_model_id,
+                "stop_reason": study.statistics.get("stop_reason"),
                 "processing_run_types": [run.run_type for run in runs if run is not None],
                 "completed_trial_nks": [params.get("nk") for params in completed_params],
                 "final_test_run_count": int(final_test_runs or 0),
@@ -1067,6 +1157,15 @@ class TestAgentSafeOptimizationEntry:
         assert result.best_objective_components["final_score"] == pytest.approx(
             result.best_value
         )
+        assert result.stop_reason == {
+            "policy_version": "optimization_stop_reason_v1",
+            "code": "TRIAL_BUDGET_EXHAUSTED",
+            "category": "NORMAL_LIMIT",
+            "outcome": "WINNER_SELECTED",
+            "observed_trial_count": 3,
+            "target_trial_count": 3,
+            "timeout_seconds": None,
+        }
         assert (tmp_path / "models" / f"{result.optimized_model_id}.json").is_file()
 
         snapshot = asyncio.run(
@@ -1079,6 +1178,7 @@ class TestAgentSafeOptimizationEntry:
         assert snapshot["study_status"] == "succeeded"
         assert snapshot["baseline_model_id"] == baseline_model_id
         assert snapshot["optimized_model_id"] == result.optimized_model_id
+        assert snapshot["stop_reason"] == result.stop_reason
         assert snapshot["processing_run_types"] == ["optimization.baseline", "modeling.arx"]
         completed_nks = snapshot["completed_trial_nks"]
         assert completed_nks and all(value == 0 for value in completed_nks)
@@ -1160,6 +1260,63 @@ class TestOptimizationApi:
 
         assert response.status_code == 200, response.text
         assert response.json()["data"]["convergence"] is None
+        assert response.json()["data"]["stop_reason"] is None
+
+    def test_no_valid_candidate_preserves_normal_budget_stop_reason(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from app.services import optimization_service
+
+        formal_objective = optimization_service.objective_value
+        objective_calls = 0
+
+        def reject_candidate(result: object) -> tuple[float, dict[str, object]]:
+            nonlocal objective_calls
+            objective_calls += 1
+            if objective_calls == 1:
+                return formal_objective(result)  # type: ignore[arg-type]
+            return float("-inf"), {
+                "reason": "unstable",
+                "objective_semantics": dict(optimization_service.OBJECTIVE_SEMANTICS),
+                "objective_components": {
+                    "stability_gate": False,
+                    "final_score": None,
+                },
+            }
+
+        monkeypatch.setattr(optimization_service, "objective_value", reject_candidate)
+        version_id = generate(client, seed=153)
+        started = client.post(
+            "/api/v1/optimization/optuna/start",
+            json={
+                "version_id": version_id,
+                "input_columns": ["u1", "u2"],
+                "output_column": "y",
+                "max_trials": 1,
+                "random_seed": 153,
+            },
+        )
+
+        assert started.status_code == 202, started.text
+        study_id = UUID(started.json()["data"]["study_id"])
+        status = client.get(f"/api/v1/optimization/optuna/{study_id}/status")
+        assert status.status_code == 200, status.text
+        data = status.json()["data"]
+        assert data["best_trial_id"] is None
+        assert data["stop_reason"] == {
+            "policy_version": "optimization_stop_reason_v1",
+            "code": "TRIAL_BUDGET_EXHAUSTED",
+            "category": "NORMAL_LIMIT",
+            "outcome": "NO_VALID_CANDIDATE",
+            "observed_trial_count": 1,
+            "target_trial_count": 1,
+            "timeout_seconds": None,
+        }
+        snapshot = asyncio.run(
+            _optimization_snapshot(tmp_path / "optimize.db", study_id=study_id)
+        )
+        assert snapshot["study_status"] == "failed"
+        assert snapshot["stop_reason"] == data["stop_reason"]
 
     def test_persists_optimized_model_without_opening_test(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -1244,6 +1401,16 @@ class TestOptimizationApi:
             ],
             "best_trial_number": data["best_trial_id"],
             "observed_at_trial_count": len(data["trials"]),
+        }
+        assert data["stop_reason"] == data["statistics"]["stop_reason"]
+        assert data["stop_reason"] == {
+            "policy_version": "optimization_stop_reason_v1",
+            "code": "TRIAL_BUDGET_EXHAUSTED",
+            "category": "NORMAL_LIMIT",
+            "outcome": "WINNER_SELECTED",
+            "observed_trial_count": 4,
+            "target_trial_count": 4,
+            "timeout_seconds": None,
         }
         assert selected["metrics"]["validation_feedback"] == selected["validation_feedback"]
         assert selected["validation_feedback"]["partition"] == "validation"

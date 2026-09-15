@@ -863,6 +863,7 @@ async def _optimize_pipeline(
             "best_diagnosis": result.best_diagnosis,
             "best_bookkeeping": result.best_bookkeeping,
             "convergence": result.convergence,
+            "stop_reason": result.stop_reason,
         },
     )
 
