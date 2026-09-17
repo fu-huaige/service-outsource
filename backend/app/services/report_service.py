@@ -14,6 +14,7 @@ shaped it.
 from __future__ import annotations
 
 import csv
+import html as html_lib
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -36,24 +37,29 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_execution import AgentStepRun
-from app.models.dataset import ProcessingRun
+from app.models.dataset import Dataset, DatasetVersion, ProcessingRun
 from app.models.operation_log import OperationLog
-from app.models.optimization import OptimizationStudy
+from app.models.optimization import OptimizationStudy, OptimizationTrialRecord
 from app.schemas.reporting import (
+    DeliveryStudyListData,
+    DeliveryStudyOption,
     ExportDatasetData,
     ExportDatasetRequest,
     ExportSelectionProvenance,
     ReportBinding,
+    ReportChart,
     ReportData,
     ReportRequest,
     ReportSection,
 )
 from app.services.agent_execution_service import ExecutionStateError, get_execution
 from app.services.contract_stubs import completed_task
+from app.services.modeling_service import ModelingDomainError, load_saved_arx_model
 from app.services.version_data import VersionDataError, load_version_series
 
 # Reports cite recent work, not the whole history; this bounds the scan below.
 RUN_SCAN_LIMIT = 500
+NON_ANALYSIS_RUN_TYPES = frozenset({"reporting.generate", "delivery.export"})
 
 
 class ReportDomainError(Exception):
@@ -87,6 +93,16 @@ class RunIndex:
         return self.by_type.get(run_type)
 
 
+@dataclass(frozen=True)
+class OptimizationBestSelection:
+    sample_indices: list[int]
+    provenance: ExportSelectionProvenance
+    input_columns: list[str]
+    output_column: str
+    best_trial: OptimizationTrialRecord
+    model_run: ProcessingRun
+
+
 async def build_run_index(
     session: AsyncSession,
     *,
@@ -96,7 +112,13 @@ async def build_run_index(
     """Load the runs a report may cite, newest first per type."""
 
     statement = (
-        select(ProcessingRun).order_by(ProcessingRun.created_at.desc()).limit(RUN_SCAN_LIMIT)
+        select(ProcessingRun)
+        .where(
+            ProcessingRun.status == "succeeded",
+            ProcessingRun.run_type.notin_(NON_ANALYSIS_RUN_TYPES),
+        )
+        .order_by(ProcessingRun.created_at.desc())
+        .limit(RUN_SCAN_LIMIT)
     )
     runs = list((await session.scalars(statement)).all())
     runs = [run for run in runs if _matches(run, dataset_id=dataset_id, version_id=version_id)]
@@ -166,7 +188,9 @@ async def build_execution_run_index(
     by_type: dict[str, str] = {}
     for run_id in referenced_run_ids:
         run = await session.get(ProcessingRun, run_id)
-        if run is None:
+        if run is None or run.status != "succeeded":
+            continue
+        if not _matches(run, dataset_id=dataset_id, version_id=version_id):
             continue
         short = _short_id(run.id)
         records[short] = {
@@ -192,8 +216,12 @@ def _step_record(step: AgentStepRun) -> dict[str, Any]:
     summary_data = result.get("summary") if isinstance(result.get("summary"), Mapping) else None
     summary = payload.get("summary")
     if not isinstance(summary, str) or not summary.strip():
-        task = result.get("task") if isinstance(result.get("task"), Mapping) else {}
-        progress = task.get("progress") if isinstance(task.get("progress"), Mapping) else {}
+        task_value = result.get("task")
+        task: Mapping[str, Any] = task_value if isinstance(task_value, Mapping) else {}
+        progress_value = task.get("progress")
+        progress: Mapping[str, Any] = (
+            progress_value if isinstance(progress_value, Mapping) else {}
+        )
         summary = progress.get("message") if isinstance(progress.get("message"), str) else ""
     record: dict[str, Any] = {
         "step_id": step.step_id,
@@ -244,18 +272,32 @@ async def generate_report(
             status_code=404,
         )
 
-    study = None
+    if payload.execution_id is None:
+        await _add_dataset_context(session, index=index, payload=payload)
     if payload.execution_id is None and payload.study_id is not None:
-        study = await session.get(OptimizationStudy, payload.study_id)
-        if study is None:
+        if payload.dataset_id is None or payload.version_id is None:
             raise ReportDomainError(
-                "OPTIMIZATION_STUDY_NOT_FOUND", "寻优任务不存在。", status_code=404
+                "REPORT_STUDY_SCOPE_REQUIRED",
+                "关联寻优任务时必须同时指定数据集和数据版本。",
             )
+        selection = await resolve_optimization_best_selection(
+            session,
+            dataset_id=payload.dataset_id,
+            version_id=payload.version_id,
+            study_id=payload.study_id,
+            artifact_root=artifact_root,
+        )
+        study = await session.get(OptimizationStudy, payload.study_id)
+        assert study is not None
         index.records["study"] = {
             "best_value": study.best_value,
             "best_params": dict(study.best_params or {}),
             "statistics": dict(study.statistics or {}),
             "objective": study.objective,
+            "best_trial_number": study.best_trial_number,
+            "finished_at": study.finished_at.isoformat() if study.finished_at else "",
+            "optimized_model_id": str(study.optimized_model_id),
+            "best_trial_metrics": dict(selection.best_trial.metrics or {}),
         }
 
     sections = _compose(index, payload)
@@ -289,14 +331,17 @@ async def generate_report(
         runs=index.records,
         formatters=_presentation_formatters(index),
     )
+    charts = _build_report_charts(index)
     report_id = uuid4()
-    artifact_uri = _write_report(
+    artifact_uri, html_artifact_uri, html_document = _write_report(
         artifact_root,
         report_id=report_id,
         rendered=rendered,
         payload=payload,
         index=index,
         title=title,
+        sections=sections,
+        charts=charts,
     )
     await _persist(session, report_id=report_id, payload=payload, rendered=rendered)
 
@@ -307,11 +352,14 @@ async def generate_report(
         task=completed_task(stage="generate_report", message="图文报告已生成，全部数值均已溯源。"),
         title=title,
         markdown=rendered.text,
+        html=html_document,
         sections=sections,
+        charts=charts,
         bindings=[ReportBinding(**binding.to_payload()) for binding in rendered.bindings],
         unresolved=list(rendered.unresolved),
         fully_resolved=rendered.fully_resolved,
         artifact_uri=artifact_uri,
+        html_artifact_uri=html_artifact_uri,
         cited_runs=sorted(
             {
                 binding.run_id
@@ -359,7 +407,7 @@ def _leaf_paths(record: Mapping[str, Any], prefix: str = "", depth: int = 0) -> 
         path = f"{prefix}{key}"
         if isinstance(value, Mapping):
             paths.extend(_leaf_paths(value, f"{path}.", depth + 1))
-        elif isinstance(value, (int, float, bool, str)):
+        elif isinstance(value, int | float | bool | str):
             paths.append(path)
     return paths
 
@@ -385,6 +433,38 @@ def _presentation_formatters(
     if segment is not None:
         formatters[("run", segment, "selection.coverage_ratio")] = format_fraction_percent
     return formatters
+
+
+async def _add_dataset_context(
+    session: AsyncSession,
+    *,
+    index: RunIndex,
+    payload: ReportRequest,
+) -> None:
+    """Bind report identity to a real DatasetVersion when the standalone UI supplies it."""
+
+    if payload.dataset_id is None or payload.version_id is None:
+        return
+    dataset = await session.get(Dataset, payload.dataset_id)
+    version = await session.get(DatasetVersion, payload.version_id)
+    if dataset is None:
+        raise ReportDomainError("DATASET_NOT_FOUND", "报告数据集不存在。", status_code=404)
+    if version is None or version.dataset_id != dataset.id:
+        raise ReportDomainError(
+            "REPORT_VERSION_SCOPE_MISMATCH",
+            "报告版本不属于所选数据集。",
+            status_code=409,
+        )
+    index.records["dataset"] = {
+        "run_type": "dataset.version",
+        "dataset_id": str(dataset.id),
+        "dataset_name": dataset.name,
+        "version_id": str(version.id),
+        "version_name": version.name,
+        "row_count": version.row_count,
+        "column_count": version.column_count,
+        "created_at": version.created_at.isoformat(),
+    }
 
 
 def _compose(index: RunIndex, payload: ReportRequest) -> list[ReportSection]:
@@ -550,22 +630,26 @@ def _execution_limitations(tools: set[str]) -> str:
 
 
 def _compose_standalone(index: RunIndex, payload: ReportRequest) -> list[ReportSection]:
-    sections = [
-        ReportSection(
-            key="overview",
-            title="分析概述",
-            body=(
-                f"本报告由 IndusOpt 自动生成，引用了 "
-                f"{{{{run:{next(iter(index.records))}.run_type}}}} 等当前数据资源范围内的处理记录。"
-                "报告数值均通过持久化证据占位符解析。"
-            ),
+    if "dataset" in index.records:
+        overview = (
+            "本报告对应数据集 {{run:dataset.dataset_name}}、版本 "
+            "{{run:dataset.version_name}}，该版本包含 {{run:dataset.row_count}} 行、"
+            "{{run:dataset.column_count}} 列。报告只引用该作用域内成功完成的持久化记录。"
         )
-    ]
+    else:
+        record_key = next(iter(index.records))
+        overview = (
+            f"本报告由 IndusOpt 自动生成，引用了 "
+            f"{{{{run:{record_key}.run_type}}}} 等当前数据资源范围内的成功处理记录。"
+            "报告数值均通过持久化证据占位符解析。"
+        )
+    sections = [ReportSection(key="overview", title="数据概况与来源", body=overview)]
     clean = index.latest("preprocessing.clean")
     segment = index.latest("preprocessing.segment")
     delay = index.latest("preprocessing.delay")
     collinearity = index.latest("preprocessing.collinearity")
     modeling = index.latest("modeling.arx")
+    evaluation = index.latest("modeling.arx_evaluation")
     standalone_sections = [
         (clean, "cleaning", "数据清洗与规整", [("total_cleaned_points", "清洗修改数据点", "个")]),
         (
@@ -584,7 +668,7 @@ def _compose_standalone(index: RunIndex, payload: ReportRequest) -> list[ReportS
         (
             modeling,
             "model",
-            "模型辨识与评价",
+            "ARX 模型辨识与验证",
             [
                 ("validation.free_run_fit", "验证集自由仿真 FIT", ""),
                 ("validation.one_step_fit", "一步预测 FIT", ""),
@@ -592,14 +676,29 @@ def _compose_standalone(index: RunIndex, payload: ReportRequest) -> list[ReportS
                 ("training_rows", "训练样本", "条"),
             ],
         ),
+        (
+            evaluation,
+            "evaluation",
+            "模型评价（Test）",
+            [
+                ("test.free_run.fit", "Test 自由仿真 FIT", ""),
+                ("test.one_step.fit", "Test 一步预测 FIT", ""),
+                ("test.free_run.rmse", "Test 自由仿真 RMSE", ""),
+                ("test.n_samples", "Test 样本", "条"),
+            ],
+        ),
     ]
-    for record_key, section_key, title, metrics in standalone_sections:
-        if record_key:
+    for optional_record_key, section_key, title, metrics in standalone_sections:
+        if optional_record_key:
             sections.append(
                 ReportSection(
                     key=section_key,
                     title=title,
-                    body=_run_body(record_key, index.records[record_key], metrics),
+                    body=_run_body(
+                        optional_record_key,
+                        index.records[optional_record_key],
+                        metrics,
+                    ),
                 )
             )
     if "study" in index.records:
@@ -610,10 +709,24 @@ def _compose_standalone(index: RunIndex, payload: ReportRequest) -> list[ReportS
                 body=_run_body(
                     "study",
                     index.records["study"],
-                    [("objective", "寻优目标", ""), ("best_value", "最优目标值", "")],
+                    [
+                        ("objective", "寻优目标", ""),
+                        ("best_value", "Best 目标值", ""),
+                        ("best_trial_number", "Best Trial 编号", ""),
+                    ],
                 ),
             )
         )
+    sections.append(
+        ReportSection(
+            key="provenance",
+            title="数据来源与处理溯源",
+            body=(
+                "本报告章节由同一数据集、同一版本下成功完成的 ProcessingRun 动态组成；"
+                "每个图表标注唯一来源运行和字段路径，未执行或缺少可恢复数据的阶段不生成图表。"
+            ),
+        )
+    )
     limitations = _standalone_limitations(index)
     if limitations:
         sections.append(ReportSection(key="limitations", title="局限与风险提示", body=limitations))
@@ -667,6 +780,407 @@ def _number_sections(sections: list[ReportSection]) -> list[ReportSection]:
     ]
 
 
+def _build_report_charts(index: RunIndex) -> list[ReportChart]:
+    charts: list[ReportChart] = []
+    segment_key = index.latest("preprocessing.segment")
+    if segment_key is not None:
+        record = index.records[segment_key]
+        indices = record.get("selected_sample_indices")
+        if isinstance(indices, list) and indices and all(
+            isinstance(value, int) and not isinstance(value, bool) for value in indices
+        ):
+            charts.append(
+                ReportChart(
+                    key="selection",
+                    title="优选样本在来源序列中的分布",
+                    svg=_selection_svg(indices),
+                    source_run_id=str(record.get("run_id") or segment_key),
+                    source_path="selected_sample_indices",
+                    description="柱高表示各等宽样本区间内被真实优选的样本数量。",
+                )
+            )
+
+    delay_key = index.latest("preprocessing.delay")
+    if delay_key is not None:
+        record = index.records[delay_key]
+        correlations = record.get("correlations")
+        if isinstance(correlations, Mapping):
+            series = {
+                str(column): values
+                for column, values in correlations.items()
+                if isinstance(values, list) and values
+            }
+            lag_values = list(range(len(next(iter(series.values()))))) if series else []
+            svg = (
+                _line_chart_svg(
+                    series,
+                    y_label="相关系数",
+                    x_values=lag_values,
+                    x_label="滞后步数 Lag（步）",
+                )
+                if lag_values
+                else ""
+            )
+            if svg:
+                charts.append(
+                    ReportChart(
+                        key="delay",
+                        title="预白化互相关谱",
+                        svg=svg,
+                        source_run_id=str(record.get("run_id") or delay_key),
+                        source_path="correlations",
+                        description="各曲线直接来自该时滞分析运行持久化的 correlation spectrum。",
+                    )
+                )
+
+    collinearity_key = index.latest("preprocessing.collinearity")
+    if collinearity_key is not None:
+        record = index.records[collinearity_key]
+        variables = record.get("variables")
+        matrix = record.get("pearson")
+        if isinstance(variables, list) and isinstance(matrix, list):
+            svg = _heatmap_svg(variables, matrix)
+            if svg:
+                charts.append(
+                    ReportChart(
+                        key="collinearity",
+                        title="Pearson 相关矩阵",
+                        svg=svg,
+                        source_run_id=str(record.get("run_id") or collinearity_key),
+                        source_path="pearson",
+                        description="色块和标注值均来自同一共线性分析运行。",
+                    )
+                )
+
+    evaluation_key = index.latest("modeling.arx_evaluation")
+    if evaluation_key is not None:
+        record = index.records[evaluation_key]
+        series_record = record.get("series")
+        if isinstance(series_record, Mapping):
+            svg = _line_chart_svg(
+                {
+                    "真实输出": series_record.get("y_true"),
+                    "自由仿真": series_record.get("free_run_prediction"),
+                },
+                y_label="输出",
+            )
+            if svg:
+                charts.append(
+                    ReportChart(
+                        key="evaluation",
+                        title="Test 真实输出与自由仿真",
+                        svg=svg,
+                        source_run_id=str(record.get("run_id") or evaluation_key),
+                        source_path="series.y_true + series.free_run_prediction",
+                        description="两条曲线来自同一次已持久化的 held-out Test 评价。",
+                    )
+                )
+    return charts
+
+
+def _selection_svg(indices: list[int]) -> str:
+    values = sorted(indices)
+    bin_count = min(36, max(8, int(len(values) ** 0.5)))
+    lower, upper = values[0], values[-1]
+    span = max(upper - lower + 1, 1)
+    counts = [0] * bin_count
+    for value in values:
+        position = min(bin_count - 1, int((value - lower) * bin_count / span))
+        counts[position] += 1
+    width, height, left, top, bottom = 760, 250, 54, 22, 42
+    plot_width, plot_height = width - left - 20, height - top - bottom
+    maximum = max(counts) or 1
+    bar_width = plot_width / bin_count
+    bars = []
+    for index, count in enumerate(counts):
+        bar_height = plot_height * count / maximum
+        x = left + index * bar_width + 1
+        y = top + plot_height - bar_height
+        bars.append(
+            f'<rect x="{x:.2f}" y="{y:.2f}" width="{max(bar_width - 2, 1):.2f}" '
+            f'height="{bar_height:.2f}" fill="#5f835b"><title>{count}</title></rect>'
+        )
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" role="img" '
+        'aria-label="优选样本索引分布">'
+        '<rect width="100%" height="100%" fill="#fff"/>'
+        f'<line x1="{left}" y1="{top + plot_height}" x2="{width - 20}" '
+        f'y2="{top + plot_height}" stroke="#879187"/>{"".join(bars)}'
+        f'<text x="{left}" y="{height - 14}" font-size="12" fill="#526052">{lower}</text>'
+        f'<text x="{width - 20}" y="{height - 14}" text-anchor="end" font-size="12" '
+        f'fill="#526052">{upper}</text>'
+        f'<text x="16" y="{top + 12}" font-size="12" fill="#526052">数量</text>'
+        '</svg>'
+    )
+
+
+def _line_chart_svg(
+    series: Mapping[str, object],
+    *,
+    y_label: str,
+    x_values: list[int] | None = None,
+    x_label: str | None = None,
+) -> str:
+    if (x_values is None) != (x_label is None):
+        return ""
+
+    shared_x_values: list[float] | None = None
+    shared_sample_indices: list[int] | None = None
+    if x_values is not None:
+        if not x_values or any(
+            isinstance(value, bool) or not isinstance(value, int)
+            for value in x_values
+        ):
+            return ""
+        shared_x_values = [float(value) for value in x_values]
+        if any(
+            current <= previous
+            for previous, current in zip(shared_x_values, shared_x_values[1:], strict=False)
+        ):
+            return ""
+        if len(shared_x_values) <= 241:
+            shared_sample_indices = list(range(len(shared_x_values)))
+        else:
+            last_index = len(shared_x_values) - 1
+            shared_sample_indices = [
+                round(position * last_index / 240) for position in range(241)
+            ]
+
+    normalized: dict[str, list[tuple[float, float]]] = {}
+    for label, raw_values in series.items():
+        if not isinstance(raw_values, list):
+            continue
+        if shared_x_values is not None and shared_sample_indices is not None:
+            if len(raw_values) != len(shared_x_values) or any(
+                isinstance(value, bool)
+                or not isinstance(value, int | float)
+                or not np.isfinite(value)
+                for value in raw_values
+            ):
+                return ""
+            normalized[str(label)] = [
+                (shared_x_values[index], float(raw_values[index]))
+                for index in shared_sample_indices
+            ]
+        else:
+            values = [
+                float(value)
+                for value in raw_values
+                if isinstance(value, int | float)
+                and not isinstance(value, bool)
+                and np.isfinite(value)
+            ]
+            if len(values) < 2:
+                continue
+            step = max(1, len(values) // 240)
+            normalized[str(label)] = [
+                (float(index), value) for index, value in enumerate(values[::step][:241])
+            ]
+    if not normalized:
+        return ""
+    all_values = [value for points in normalized.values() for _, value in points]
+    minimum, maximum = min(all_values), max(all_values)
+    if minimum == maximum:
+        minimum -= 1.0
+        maximum += 1.0
+    has_x_axis = shared_x_values is not None and x_label is not None
+    width, height, left, right, top, bottom = (
+        (760, 330, 96, 24, 24, 102) if has_x_axis else (760, 280, 96, 24, 24, 52)
+    )
+    plot_width, plot_height = width - left - right, height - top - bottom
+    y_axis_title_x = 18
+    y_axis_tick_x = left - 10
+    y_axis_midpoint = top + plot_height / 2
+    x_minimum = min(point[0] for points in normalized.values() for point in points)
+    x_maximum = max(point[0] for points in normalized.values() for point in points)
+
+    def x_coordinate(value: float) -> float:
+        if x_minimum == x_maximum:
+            return float(left)
+        return left + plot_width * (value - x_minimum) / (x_maximum - x_minimum)
+
+    colors = ("#496f47", "#b46f3c", "#557da5", "#8a5f91")
+    paths: list[str] = []
+    legends: list[str] = []
+    for series_index, (label, points_with_values) in enumerate(normalized.items()):
+        color = colors[series_index % len(colors)]
+        points = " ".join(
+            f"{x_coordinate(x_value):.2f},"
+            f"{top + plot_height * (maximum - value) / (maximum - minimum):.2f}"
+            for x_value, value in points_with_values
+        )
+        paths.append(
+            f'<polyline points="{points}" fill="none" stroke="{color}" '
+            'stroke-width="1.8" vector-effect="non-scaling-stroke"/>'
+        )
+        if len(points_with_values) == 1:
+            x_value, value = points_with_values[0]
+            paths.append(
+                f'<circle cx="{x_coordinate(x_value):.2f}" '
+                f'cy="{top + plot_height * (maximum - value) / (maximum - minimum):.2f}" '
+                f'r="2.5" fill="{color}"/>'
+            )
+        legend_x = left + series_index * 170
+        legends.append(
+            f'<line x1="{legend_x}" y1="{height - 18}" x2="{legend_x + 22}" '
+            f'y2="{height - 18}" stroke="{color}" stroke-width="3"/>'
+            f'<text x="{legend_x + 28}" y="{height - 14}" font-size="12" fill="#394339">'
+            f'{html_lib.escape(label)}</text>'
+        )
+    x_axis_elements = ""
+    if has_x_axis:
+        integer_minimum = int(x_minimum)
+        integer_maximum = int(x_maximum)
+        if integer_minimum == integer_maximum:
+            tick_values = [integer_minimum]
+        else:
+            tick_values = sorted(
+                {
+                    round(integer_minimum + (integer_maximum - integer_minimum) * index / 5)
+                    for index in range(6)
+                }
+            )
+        ticks = "".join(
+            f'<line x1="{x_coordinate(float(value)):.2f}" y1="{top + plot_height}" '
+            f'x2="{x_coordinate(float(value)):.2f}" y2="{top + plot_height + 6}" '
+            f'stroke="#879187"/>'
+            f'<text x="{x_coordinate(float(value)):.2f}" y="{top + plot_height + 20}" '
+            f'text-anchor="middle" font-size="11" fill="#687568">{value}</text>'
+            for value in tick_values
+        )
+        x_axis_elements = (
+            f'{ticks}<text x="{left + plot_width / 2:.2f}" y="{top + plot_height + 46}" '
+            f'text-anchor="middle" font-size="12" fill="#526052">'
+            f'{html_lib.escape(x_label or "")}</text>'
+        )
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" role="img">'
+        '<rect width="100%" height="100%" fill="#fff"/>'
+        f'<line x1="{left}" y1="{top}" x2="{left}" y2="{top + plot_height}" stroke="#879187"/>'
+        f'<line x1="{left}" y1="{top + plot_height}" x2="{left + plot_width}" '
+        f'y2="{top + plot_height}" stroke="#879187"/>{"".join(paths)}'
+        f'<text x="{y_axis_title_x}" y="{y_axis_midpoint:.2f}" text-anchor="middle" '
+        f'transform="rotate(-90 {y_axis_title_x} {y_axis_midpoint:.2f})" font-size="12" '
+        f'fill="#526052">{html_lib.escape(y_label)}</text>'
+        f'<text x="{y_axis_tick_x}" y="{top + 8}" text-anchor="end" font-size="11" fill="#687568">'
+        f'{maximum:.4g}</text>'
+        f'<text x="{y_axis_tick_x}" y="{top + plot_height}" text-anchor="end" font-size="11" '
+        f'fill="#687568">{minimum:.4g}</text>{x_axis_elements}{"".join(legends)}</svg>'
+    )
+
+
+def _heatmap_svg(variables: list[object], matrix: list[object]) -> str:
+    labels = [str(value) for value in variables]
+    size = len(labels)
+    if size == 0 or size > 16 or len(matrix) != size:
+        return ""
+    cells: list[str] = []
+    cell = min(54, max(30, int(560 / size)))
+    left, top = 130, 70
+    for row_index, row in enumerate(matrix):
+        if not isinstance(row, list) or len(row) != size:
+            return ""
+        for column_index, raw in enumerate(row):
+            if raw is None:
+                fill, label = "#eef0ed", "—"
+            elif isinstance(raw, int | float) and not isinstance(raw, bool) and np.isfinite(raw):
+                value = max(-1.0, min(1.0, float(raw)))
+                intensity = int(235 - 105 * abs(value))
+                fill = (
+                    f"rgb({intensity},{intensity + 18},{intensity})"
+                    if value >= 0
+                    else f"rgb({intensity + 20},{intensity},{intensity})"
+                )
+                label = f"{value:.2f}"
+            else:
+                return ""
+            x, y = left + column_index * cell, top + row_index * cell
+            cells.append(
+                f'<rect x="{x}" y="{y}" width="{cell}" height="{cell}" fill="{fill}" '
+                'stroke="#fff"/>'
+                f'<text x="{x + cell / 2}" y="{y + cell / 2 + 4}" text-anchor="middle" '
+                f'font-size="10" fill="#263226">{label}</text>'
+            )
+    width, height = left + size * cell + 20, top + size * cell + 20
+    axis = []
+    for index, label in enumerate(labels):
+        escaped = html_lib.escape(label)
+        axis.append(
+            f'<text x="{left - 8}" y="{top + index * cell + cell / 2 + 4}" '
+            f'text-anchor="end" font-size="11" fill="#394339">{escaped}</text>'
+            f'<text x="{left + index * cell + cell / 2}" y="{top - 10}" '
+            f'text-anchor="middle" font-size="11" fill="#394339">{escaped}</text>'
+        )
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" role="img" '
+        'aria-label="Pearson 相关矩阵">'
+        '<rect width="100%" height="100%" fill="#fff"/>'
+        f'{"".join(axis)}{"".join(cells)}</svg>'
+    )
+
+
+def _render_html_report(
+    *,
+    title: str,
+    sections: list[ReportSection],
+    charts: list[ReportChart],
+    index: RunIndex,
+    payload: ReportRequest,
+) -> str:
+    charts_by_key: dict[str, list[ReportChart]] = {}
+    for chart in charts:
+        charts_by_key.setdefault(chart.key, []).append(chart)
+    section_html: list[str] = []
+    for section in sections:
+        rendered_body = render_template(
+            section.body,
+            runs=index.records,
+            formatters=_presentation_formatters(index),
+        ).text
+        paragraphs = "".join(
+            f"<p>{html_lib.escape(paragraph).replace(chr(10), '<br>')}</p>"
+            for paragraph in rendered_body.split("\n\n")
+            if paragraph.strip()
+        )
+        figures = "".join(
+            "<figure>"
+            f"<h3>{html_lib.escape(chart.title)}</h3>{chart.svg}"
+            f"<figcaption>{html_lib.escape(chart.description)} "
+            f"来源运行：<code>{html_lib.escape(chart.source_run_id)}</code>；"
+            f"字段：<code>{html_lib.escape(chart.source_path)}</code></figcaption>"
+            "</figure>"
+            for chart in charts_by_key.get(section.key, [])
+        )
+        section_html.append(
+            f'<section><h2>{html_lib.escape(section.title)}</h2>{paragraphs}{figures}</section>'
+        )
+    metadata = ""
+    if payload.dataset_id is not None and payload.version_id is not None:
+        metadata = (
+            f"<p class=meta>数据集：<code>{html_lib.escape(str(payload.dataset_id))}</code> · "
+            f"版本：<code>{html_lib.escape(str(payload.version_id))}</code></p>"
+        )
+    return (
+        "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">"
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f"<title>{html_lib.escape(title)}</title><style>"
+        "@page{size:A4;margin:16mm 15mm 18mm}*{box-sizing:border-box}"
+        "body{margin:0;color:#263226;background:#f4f5f2;font-family:'Noto Sans SC','Microsoft YaHei',sans-serif;line-height:1.75}"
+        "main{max-width:900px;margin:24px auto;padding:36px 44px;background:#fff;box-shadow:0 4px 24px #1f2b2014}"
+        "h1{margin:0 0 8px;font-size:28px}h2{margin:28px 0 10px;padding-bottom:7px;border-bottom:1px solid #dfe4dc;font-size:20px}"
+        "h3{margin:0 0 8px;font-size:15px}p{margin:8px 0}.meta{color:#647064;font-size:12px}"
+        "section,figure{break-inside:avoid-page}figure{margin:18px 0;padding:14px;border:1px solid #dfe4dc;border-radius:8px;background:#fff}"
+        "svg{display:block;width:100%;height:auto;max-height:420px}figcaption{margin-top:8px;color:#647064;font-size:11px}"
+        "code{font-family:'JetBrains Mono',monospace;overflow-wrap:anywhere}"
+        "@media print{body{background:#fff}main{max-width:none;margin:0;padding:0;box-shadow:none}h2{break-after:avoid}figure{border-color:#bbb}}"
+        "</style></head><body><main>"
+        f"<header><h1>{html_lib.escape(title)}</h1>{metadata}"
+        f"<p class=meta>生成时间：{html_lib.escape(datetime.now(UTC).isoformat())} · "
+        f"图表数量：{len(charts)}</p></header>{''.join(section_html)}"
+        "</main></body></html>"
+    )
+
+
 def _write_report(
     artifact_root: Path,
     *,
@@ -675,7 +1189,9 @@ def _write_report(
     payload: ReportRequest,
     index: RunIndex,
     title: str,
-) -> str:
+    sections: list[ReportSection],
+    charts: list[ReportChart],
+) -> tuple[str, str, str]:
     root = artifact_root / "reports"
     root.mkdir(parents=True, exist_ok=True)
     path = root / f"{report_id}.md"
@@ -687,7 +1203,20 @@ def _write_report(
         "---\n\n"
     )
     path.write_text(header + rendered.text + "\n", encoding="utf-8")
-    return path.relative_to(artifact_root).as_posix()
+    html_document = _render_html_report(
+        title=title,
+        sections=sections,
+        charts=charts,
+        index=index,
+        payload=payload,
+    )
+    html_path = root / f"{report_id}.html"
+    html_path.write_text(html_document, encoding="utf-8")
+    return (
+        path.relative_to(artifact_root).as_posix(),
+        html_path.relative_to(artifact_root).as_posix(),
+        html_document,
+    )
 
 
 async def _persist(
@@ -732,6 +1261,266 @@ async def _persist(
     await session.commit()
 
 
+async def resolve_optimization_best_selection(
+    session: AsyncSession,
+    *,
+    dataset_id: UUID,
+    version_id: UUID,
+    study_id: UUID,
+    artifact_root: Path,
+) -> OptimizationBestSelection:
+    """Validate one Study and recover the exact persisted Best model training rows."""
+
+    study = await session.get(OptimizationStudy, study_id)
+    if study is None:
+        raise ReportDomainError(
+            "OPTIMIZATION_STUDY_NOT_FOUND", "寻优任务不存在。", status_code=404
+        )
+    if study.status != "succeeded" or study.finished_at is None:
+        raise ReportDomainError(
+            "OPTIMIZATION_STUDY_NOT_SUCCEEDED",
+            "寻优任务尚未成功完成。",
+            status_code=409,
+        )
+    if study.dataset_id != dataset_id:
+        raise ReportDomainError(
+            "OPTIMIZATION_STUDY_DATASET_MISMATCH",
+            "寻优任务不属于所选数据集。",
+            status_code=409,
+        )
+    if study.version_id != version_id:
+        raise ReportDomainError(
+            "OPTIMIZATION_STUDY_VERSION_MISMATCH",
+            "寻优任务不属于所选数据版本。",
+            status_code=409,
+        )
+    if (
+        study.best_trial_number is None
+        or study.best_value is None
+        or not np.isfinite(study.best_value)
+    ):
+        raise ReportDomainError(
+            "OPTIMIZATION_BEST_TRIAL_MISSING",
+            "成功的寻优任务缺少合法 Best Trial。",
+            status_code=409,
+        )
+    if study.optimized_model_id is None:
+        raise ReportDomainError(
+            "OPTIMIZATION_BEST_MODEL_MISSING",
+            "Best Trial 缺少关联优化模型。",
+            status_code=409,
+        )
+
+    best_trial = await session.scalar(
+        select(OptimizationTrialRecord).where(
+            OptimizationTrialRecord.study_id == study.id,
+            OptimizationTrialRecord.trial_number == study.best_trial_number,
+        )
+    )
+    if (
+        best_trial is None
+        or best_trial.state != "complete"
+        or best_trial.value is None
+        or not np.isfinite(best_trial.value)
+    ):
+        raise ReportDomainError(
+            "OPTIMIZATION_BEST_TRIAL_INVALID",
+            "Best Trial 记录不存在、未完成或缺少有效目标值。",
+            status_code=409,
+        )
+    if not np.isclose(best_trial.value, study.best_value, rtol=1e-12, atol=1e-12):
+        raise ReportDomainError(
+            "OPTIMIZATION_BEST_TRIAL_MISMATCH",
+            "Best Trial 的目标值与 Study 记录不一致。",
+            status_code=409,
+        )
+    if dict(best_trial.params or {}) != dict(study.best_params or {}):
+        raise ReportDomainError(
+            "OPTIMIZATION_BEST_TRIAL_MISMATCH",
+            "Best Trial 的参数与 Study 记录不一致。",
+            status_code=409,
+        )
+
+    try:
+        saved = load_saved_arx_model(
+            model_id=study.optimized_model_id,
+            artifact_root=artifact_root,
+        )
+    except ModelingDomainError as error:
+        raise ReportDomainError(
+            "OPTIMIZATION_BEST_MODEL_ARTIFACT_INVALID",
+            "Best Trial 的模型 artifact 不存在或不可验证。",
+            status_code=409,
+            details=error.details,
+        ) from error
+    if saved.dataset_id != dataset_id or saved.source_version_id != version_id:
+        raise ReportDomainError(
+            "OPTIMIZATION_BEST_MODEL_LINEAGE_MISMATCH",
+            "Best 模型 artifact 与所选数据集或版本不一致。",
+            status_code=409,
+        )
+
+    model_runs = list(
+        (
+            await session.scalars(
+                select(ProcessingRun)
+                .where(
+                    ProcessingRun.dataset_id == dataset_id,
+                    ProcessingRun.source_version_id == version_id,
+                    ProcessingRun.run_type == "modeling.arx",
+                    ProcessingRun.status == "succeeded",
+                )
+                .order_by(ProcessingRun.finished_at.desc(), ProcessingRun.created_at.desc())
+            )
+        ).all()
+    )
+    model_run = next(
+        (
+            run
+            for run in model_runs
+            if str((run.result or {}).get("model_id") or "")
+            == str(study.optimized_model_id)
+        ),
+        None,
+    )
+    if model_run is None:
+        raise ReportDomainError(
+            "OPTIMIZATION_BEST_MODEL_RUN_MISSING",
+            "Best 模型缺少成功的 ProcessingRun。",
+            status_code=409,
+        )
+
+    raw_indices = saved.payload.training_sample_indices
+    if not raw_indices or any(
+        not isinstance(value, int) or isinstance(value, bool) for value in raw_indices
+    ):
+        raise ReportDomainError(
+            "OPTIMIZATION_BEST_SELECTION_MISSING",
+            "Best 模型 artifact 未保存合法训练样本下标。",
+            status_code=409,
+        )
+    sample_indices = list(raw_indices)
+    if len(sample_indices) != len(set(sample_indices)):
+        raise ReportDomainError(
+            "OPTIMIZATION_BEST_SELECTION_INVALID",
+            "Best Trial 的训练样本下标包含重复值。",
+            status_code=409,
+        )
+    recorded_indices = (model_run.parameters or {}).get("training_sample_indices")
+    if not isinstance(recorded_indices, list) or recorded_indices != sample_indices:
+        raise ReportDomainError(
+            "OPTIMIZATION_BEST_MODEL_RUN_MISMATCH",
+            "Best 模型 ProcessingRun 与模型 artifact 的训练样本不一致。",
+            status_code=409,
+        )
+
+    try:
+        series = await load_version_series(
+            session,
+            version_id=version_id,
+            dataset_id=dataset_id,
+            artifact_root=artifact_root,
+        )
+        input_columns, output_column = series.resolve_columns(
+            input_columns=list(saved.payload.input_columns),
+            output_column=saved.payload.output_column,
+        )
+    except VersionDataError as error:
+        raise ReportDomainError(
+            error.code, error.message, status_code=error.status_code, details=error.details
+        ) from error
+    invalid = [index for index in sample_indices if index < 0 or index >= series.n_samples]
+    if invalid:
+        raise ReportDomainError(
+            "OPTIMIZATION_BEST_SELECTION_INVALID",
+            "Best Trial 的训练样本下标超出来源数据范围。",
+            status_code=409,
+            details={"invalid_indices": invalid[:20], "source_rows": series.n_samples},
+        )
+    train_end = int(series.n_samples * saved.payload.train_ratio)
+    leaked = [index for index in sample_indices if index >= train_end]
+    if leaked:
+        raise ReportDomainError(
+            "OPTIMIZATION_BEST_SELECTION_TEST_LEAKAGE",
+            "Best Trial 的导出选择包含 Validation/Test 样本。",
+            status_code=409,
+            details={"invalid_indices": leaked[:20], "train_end": train_end},
+        )
+    return OptimizationBestSelection(
+        sample_indices=sample_indices,
+        provenance=ExportSelectionProvenance(
+            study_id=study.id,
+            best_trial_number=study.best_trial_number,
+            best_trial_id=best_trial.id,
+            optimized_model_id=study.optimized_model_id,
+            model_processing_run_id=model_run.id,
+            study_finished_at=study.finished_at,
+        ),
+        input_columns=input_columns,
+        output_column=output_column,
+        best_trial=best_trial,
+        model_run=model_run,
+    )
+
+
+async def list_delivery_studies(
+    session: AsyncSession,
+    *,
+    dataset_id: UUID,
+    version_id: UUID,
+    artifact_root: Path,
+) -> DeliveryStudyListData:
+    """Return only completed Studies whose Best lineage passes strict delivery checks."""
+
+    candidates = list(
+        (
+            await session.scalars(
+                select(OptimizationStudy)
+                .where(
+                    OptimizationStudy.dataset_id == dataset_id,
+                    OptimizationStudy.version_id == version_id,
+                    OptimizationStudy.status == "succeeded",
+                )
+                .order_by(OptimizationStudy.finished_at.desc())
+            )
+        ).all()
+    )
+    items: list[DeliveryStudyOption] = []
+    for study in candidates:
+        try:
+            selection = await resolve_optimization_best_selection(
+                session,
+                dataset_id=dataset_id,
+                version_id=version_id,
+                study_id=study.id,
+                artifact_root=artifact_root,
+            )
+        except ReportDomainError:
+            continue
+        assert study.finished_at is not None
+        assert study.best_trial_number is not None
+        assert study.best_value is not None
+        assert study.optimized_model_id is not None
+        items.append(
+            DeliveryStudyOption(
+                study_id=study.id,
+                dataset_id=dataset_id,
+                version_id=version_id,
+                finished_at=study.finished_at,
+                best_trial_number=study.best_trial_number,
+                best_value=study.best_value,
+                optimized_model_id=study.optimized_model_id,
+                input_columns=selection.input_columns,
+                output_column=selection.output_column,
+            )
+        )
+    return DeliveryStudyListData(
+        dataset_id=dataset_id,
+        version_id=version_id,
+        items=items,
+    )
+
+
 async def export_optimised_dataset(
     session: AsyncSession,
     *,
@@ -741,6 +1530,32 @@ async def export_optimised_dataset(
 ) -> ExportDatasetData:
     """Write the selected rows to CSV alongside a manifest naming their provenance."""
 
+    strict_indices: list[int] | None = None
+    strict_input_columns: list[str] | None = None
+    strict_output_column: str | None = None
+    if payload.mode == "optimization_best":
+        if payload.dataset_id is None or payload.study_id is None:
+            raise ReportDomainError(
+                "OPTIMIZATION_BEST_SCOPE_REQUIRED",
+                "严格 Best 导出必须指定数据集、版本和 Study。",
+            )
+        if payload.sample_indices:
+            raise ReportDomainError(
+                "OPTIMIZATION_BEST_EXPLICIT_INDICES_FORBIDDEN",
+                "严格 Best 导出不接受客户端提供的样本下标。",
+            )
+        strict = await resolve_optimization_best_selection(
+            session,
+            dataset_id=payload.dataset_id,
+            version_id=payload.version_id,
+            study_id=payload.study_id,
+            artifact_root=artifact_root,
+        )
+        strict_indices = sorted(strict.sample_indices)
+        strict_input_columns = strict.input_columns
+        strict_output_column = strict.output_column
+        selection_provenance = strict.provenance
+
     try:
         series = await load_version_series(
             session,
@@ -749,15 +1564,19 @@ async def export_optimised_dataset(
             dataset_id=payload.dataset_id,
         )
         input_columns, output_column = series.resolve_columns(
-            input_columns=payload.input_columns or None,
-            output_column=payload.output_column,
+            input_columns=strict_input_columns or payload.input_columns or None,
+            output_column=strict_output_column or payload.output_column,
         )
     except VersionDataError as error:
         raise ReportDomainError(
             error.code, error.message, status_code=error.status_code, details=error.details
         ) from error
 
-    indices = sorted(set(payload.sample_indices)) if payload.sample_indices else None
+    indices = (
+        strict_indices
+        if strict_indices is not None
+        else sorted(set(payload.sample_indices)) if payload.sample_indices else None
+    )
     selection_metadata: dict[str, object] = (
         selection_provenance.model_dump(mode="json")
         if selection_provenance is not None
@@ -842,6 +1661,7 @@ async def export_optimised_dataset(
         "output_column": output_column,
         "exported_rows": len(indices),
         "selected_row_count": len(indices),
+        "selected_sample_indices": indices,
         "source_rows": n_samples,
         "coverage_ratio": len(indices) / n_samples if n_samples else 0.0,
         **selection_metadata,

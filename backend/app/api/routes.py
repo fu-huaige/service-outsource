@@ -56,9 +56,9 @@ from app.schemas.optimization import (
 )
 from app.schemas.preprocessing import (
     CleanData,
-    CleanRequest,
     CleaningVersionCompareChannelsData,
     CleaningVersionCompareData,
+    CleanRequest,
     CollinearityData,
     CollinearityRequest,
     DelayData,
@@ -70,6 +70,7 @@ from app.schemas.preprocessing import (
     VersionApplyData,
 )
 from app.schemas.reporting import (
+    DeliveryStudyListData,
     ExportDatasetData,
     ExportDatasetRequest,
     ReportData,
@@ -172,6 +173,7 @@ from app.services.report_service import (
     export_optimised_dataset,
     generate_report,
     get_export_artifact,
+    list_delivery_studies,
 )
 from app.services.segment_service import SegmentDomainError, select_dynamic_segments
 from app.services.simulation_service import generate_simulation as generate_simulation_service
@@ -1514,6 +1516,28 @@ async def generate_report_route(
             status_code=error.status_code,
             details=error.details,
         ) from error
+    return success(request, data)
+
+
+@router.get(
+    "/delivery/studies",
+    tags=["Delivery"],
+    summary="List successful Studies with a strictly verifiable Best result",
+    response_model=SuccessEnvelope[DeliveryStudyListData],
+    responses=ERROR_RESPONSES,
+)
+async def delivery_studies_route(
+    request: Request,
+    dataset_id: Annotated[UUID, Query()],
+    version_id: Annotated[UUID, Query()],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessEnvelope[DeliveryStudyListData]:
+    data = await list_delivery_studies(
+        session,
+        dataset_id=dataset_id,
+        version_id=version_id,
+        artifact_root=get_settings().artifact_root,
+    )
     return success(request, data)
 
 

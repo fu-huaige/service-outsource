@@ -178,6 +178,26 @@ export interface DatasetItem {
   output_column: string | null;
   columns?: DatasetColumnInfo[];
   preview?: DatasetPreview | null;
+  simulation?: SimulationDatasetMetadata | null;
+}
+
+export interface SimulationDatasetMetadata {
+  root_version_id: string;
+  original_row_count: number;
+  physical_columns: string[];
+  time_column: string | null;
+  scenario: string | null;
+  system_type: string | null;
+  true_na: number | null;
+  true_nb: number[] | null;
+  true_delays: number[] | null;
+  true_delays_by_input: Record<string, number> | null;
+  noise_level: number | null;
+  provenance: {
+    user_request?: Record<string, unknown>;
+    resolved_scenario_parameters?: Record<string, unknown>;
+    evidence_source?: string;
+  };
 }
 
 export type DatasetPreviewRow = Record<string, string | number | boolean | null>;
@@ -304,11 +324,14 @@ export interface DatasetVersionNode {
     resolved_scenario_parameters?: Record<string, unknown>;
     evidence_source?: string;
   };
+  time_column?: string | null;
+  input_columns?: string[];
+  output_column?: string | null;
 }
 
 export interface DatasetVersionsResponse {
   dataset_id: string;
-  active_version_id: string;
+  active_version_id: string | null;
   nodes: DatasetVersionNode[];
   edges?: Array<{ source: string; target: string }>;
 }
@@ -1299,11 +1322,14 @@ export interface ReportResponse {
   task: TaskResource;
   title: string;
   markdown: string;
+  html: string;
   sections: ReportSection[];
+  charts: ReportChart[];
   bindings: ReportBinding[];
   unresolved: string[];
   fully_resolved: boolean;
   artifact_uri: string | null;
+  html_artifact_uri: string | null;
   cited_runs: string[];
   /** "llm" means a model wrote the commentary and it passed the numeral check. */
   narration_source: string;
@@ -1314,12 +1340,41 @@ export interface ReportResponse {
   llm_rejected_attempts: number;
 }
 
+export interface ReportChart {
+  key: string;
+  title: string;
+  svg: string;
+  source_run_id: string;
+  source_path: string;
+  description: string;
+}
+
+export interface DeliveryStudyOption {
+  study_id: string;
+  dataset_id: string;
+  version_id: string;
+  finished_at: string;
+  best_trial_number: number;
+  best_value: number;
+  optimized_model_id: string;
+  input_columns: string[];
+  output_column: string;
+}
+
+export interface DeliveryStudyListResponse {
+  dataset_id: string;
+  version_id: string;
+  items: DeliveryStudyOption[];
+}
+
 export interface ExportDatasetRequest {
   version_id: string;
   dataset_id?: string | null;
   input_columns?: string[];
   output_column?: string | null;
   sample_indices?: number[];
+  mode?: "standard" | "optimization_best";
+  study_id?: string | null;
 }
 
 export interface ExportDatasetResponse {

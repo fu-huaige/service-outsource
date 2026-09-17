@@ -33,61 +33,125 @@
     </div>
 
     <!-- Datasets Table -->
-    <div class="industrial-card section-block">
+    <div class="industrial-card section-block dataset-table-card">
       <div class="industrial-card-header">
         <div class="industrial-card-title">
           <el-icon><List /></el-icon> 已登记数据集
         </div>
-        <el-button type="primary" size="small" icon="Refresh" @click="fetchDatasets">刷新列表</el-button>
+        <div class="dataset-table-toolbar">
+          <el-button size="small" @click="resetColumnWidths">恢复默认列宽</el-button>
+          <el-button type="primary" size="small" :icon="Refresh" @click="fetchDatasets">刷新列表</el-button>
+        </div>
       </div>
 
-      <el-table :data="datasetList" stripe style="width: 100%" v-loading="loading">
-        <template #empty>
-          <AppEmptyState
-            inline
-            icon="dataset"
-            title="暂无已登记数据集"
-            description="在上方区域上传工业 CSV 文件即可建立数据集与初始基线版本。"
+      <div class="dataset-table-wrap">
+        <el-table
+          ref="datasetTableRef"
+          :data="datasetList"
+          border
+          stripe
+          style="width: 100%"
+          v-loading="loading"
+          @header-dragend="handleColumnResize"
+        >
+          <template #empty>
+            <AppEmptyState
+              inline
+              icon="dataset"
+              title="暂无已登记数据集"
+              description="在上方区域上传工业 CSV 文件即可建立数据集与初始基线版本。"
+            />
+          </template>
+          <el-table-column
+            prop="name"
+            column-key="dataset_name"
+            label="数据集名称"
+            :width="columnWidths.dataset_name"
+            :min-width="COLUMN_WIDTHS.dataset_name.min"
+            resizable
+            show-overflow-tooltip
           />
-        </template>
-        <el-table-column prop="name" label="数据集名称" width="200" />
-        <el-table-column prop="version_id" label="当前版本" width="150">
-          <template #default="{ row }">
-            <el-tooltip :content="row.version_id || row.latest_version_id" placement="top">
-              <span class="version-summary">{{ shortIdentifier(row.version_id || row.latest_version_id) }}</span>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-        <el-table-column prop="row_count" label="样本行数" width="130" />
-        <el-table-column label="列规模" width="100">
-          <template #default="{ row }">
-            {{ row.col_count || row.column_count }} 列
-          </template>
-        </el-table-column>
-        <el-table-column prop="time_column" label="时间列" width="120">
-          <template #default="{ row }">
-            <el-tag v-if="row.time_column" size="small" effect="plain">{{ row.time_column }}</el-tag>
-            <el-tag v-else type="info" size="small" effect="plain">未指定</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="变量配置" min-width="220">
-          <template #default="{ row }">
-            <el-tag v-if="row.output_column" type="success" size="small" effect="plain" style="margin-right: 6px">
-              输出: {{ row.output_column }}
-            </el-tag>
-            <el-tag v-if="row.input_columns?.length" type="info" size="small" effect="plain">
-              输入: {{ row.input_columns.join(', ') }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
-          <template #default="{ row }">
-            <el-button type="primary" link size="small" @click="handleSelectDataset(row)">查看详情</el-button>
-            <el-button type="default" link size="small" @click="openConfigDialog(row)">列配置</el-button>
-            <el-button type="danger" link size="small" @click="handleDelete(row.id)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+          <el-table-column
+            prop="version_id"
+            column-key="active_version"
+            label="当前版本"
+            :width="columnWidths.active_version"
+            :min-width="COLUMN_WIDTHS.active_version.min"
+            resizable
+          >
+            <template #default="{ row }">
+              <el-tooltip :content="row.version_id || row.latest_version_id" placement="top">
+                <span class="version-summary">{{ shortIdentifier(row.version_id || row.latest_version_id) }}</span>
+              </el-tooltip>
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="row_count"
+            column-key="row_count"
+            label="样本行数"
+            :width="columnWidths.row_count"
+            :min-width="COLUMN_WIDTHS.row_count.min"
+            resizable
+          />
+          <el-table-column
+            column-key="column_count"
+            label="列规模"
+            :width="columnWidths.column_count"
+            :min-width="COLUMN_WIDTHS.column_count.min"
+            resizable
+          >
+            <template #default="{ row }">
+              {{ row.col_count || row.column_count }} 列
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="time_column"
+            column-key="time_column"
+            label="时间列"
+            :width="columnWidths.time_column"
+            :min-width="COLUMN_WIDTHS.time_column.min"
+            resizable
+          >
+            <template #default="{ row }">
+              <el-tag v-if="row.time_column" size="small" effect="plain">{{ row.time_column }}</el-tag>
+              <el-tag v-else type="info" size="small" effect="plain">未指定</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column
+            column-key="variable_config"
+            label="变量配置"
+            :width="columnWidths.variable_config"
+            :min-width="COLUMN_WIDTHS.variable_config.min"
+            resizable
+          >
+            <template #default="{ row }">
+              <div class="variable-config-cell">
+                <el-tag v-if="row.output_column" type="success" size="small" effect="plain">
+                  输出: {{ row.output_column }}
+                </el-tag>
+                <el-tag v-if="row.input_columns?.length" type="info" size="small" effect="plain">
+                  输入: {{ row.input_columns.join(', ') }}
+                </el-tag>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column
+            column-key="actions"
+            label="操作"
+            :width="250"
+            fixed="right"
+            :resizable="false"
+          >
+            <template #default="{ row }">
+              <div class="dataset-actions-cell">
+                <el-button type="primary" link size="small" @click="handleSelectDataset(row)">查看详情</el-button>
+                <el-button type="default" link size="small" @click="openConfigDialog(row)">列配置</el-button>
+                <el-button type="danger" link size="small" @click="handleDelete(row.id)">删除</el-button>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
     </div>
 
     <!-- Column Config Dialog -->
@@ -112,7 +176,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from "vue";
+import { nextTick, onMounted, reactive, ref } from "vue";
 import { Upload, List, UploadFilled, Refresh } from "@element-plus/icons-vue";
 import PageHeader from "../components/common/PageHeader.vue";
 import AppEmptyState from "../components/common/AppEmptyState.vue";
@@ -121,12 +185,67 @@ import { getDatasets, deleteDataset, uploadDataset, configureDataset } from "../
 import type { DatasetItem } from "../types/api";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
+import type { TableColumnCtx, TableInstance } from "element-plus";
+
+type DatasetColumnKey =
+  | "dataset_name"
+  | "active_version"
+  | "row_count"
+  | "column_count"
+  | "time_column"
+  | "variable_config";
+
+type DatasetColumnWidths = Record<DatasetColumnKey, number>;
+
+const COLUMN_WIDTH_STORAGE_KEY = "indusopt.dataset-table.column-widths.v1";
+const COLUMN_WIDTHS: Record<DatasetColumnKey, { default: number; min: number; max: number }> = {
+  dataset_name: { default: 250, min: 180, max: 520 },
+  active_version: { default: 150, min: 110, max: 260 },
+  row_count: { default: 120, min: 95, max: 220 },
+  column_count: { default: 105, min: 85, max: 180 },
+  time_column: { default: 140, min: 100, max: 280 },
+  variable_config: { default: 280, min: 180, max: 560 },
+};
+const DATASET_COLUMN_KEYS = Object.keys(COLUMN_WIDTHS) as DatasetColumnKey[];
+
+const defaultColumnWidths = (): DatasetColumnWidths =>
+  Object.fromEntries(
+    DATASET_COLUMN_KEYS.map((key) => [key, COLUMN_WIDTHS[key].default]),
+  ) as DatasetColumnWidths;
+
+const loadColumnWidths = (): DatasetColumnWidths => {
+  const widths = defaultColumnWidths();
+  if (typeof window === "undefined") return widths;
+  try {
+    const raw = window.localStorage.getItem(COLUMN_WIDTH_STORAGE_KEY);
+    if (!raw) return widths;
+    const stored = JSON.parse(raw);
+    if (!stored || typeof stored !== "object" || Array.isArray(stored)) return widths;
+    for (const key of DATASET_COLUMN_KEYS) {
+      const value = (stored as Record<string, unknown>)[key];
+      const limits = COLUMN_WIDTHS[key];
+      if (
+        typeof value === "number"
+        && Number.isFinite(value)
+        && value >= limits.min
+        && value <= limits.max
+      ) {
+        widths[key] = Math.round(value);
+      }
+    }
+  } catch {
+    return widths;
+  }
+  return widths;
+};
 
 const datasetStore = useDatasetStore();
 const router = useRouter();
 
 const loading = ref(false);
 const datasetList = ref<DatasetItem[]>([]);
+const datasetTableRef = ref<TableInstance>();
+const columnWidths = reactive<DatasetColumnWidths>(loadColumnWidths());
 
 const configDialogVisible = ref(false);
 const configLoading = ref(false);
@@ -138,6 +257,48 @@ const configForm = reactive({
 });
 
 const shortIdentifier = (value?: string) => value ? `${value.slice(0, 8)}…` : "尚未生成";
+
+const isDatasetColumnKey = (value: string | undefined): value is DatasetColumnKey =>
+  Boolean(value && Object.prototype.hasOwnProperty.call(COLUMN_WIDTHS, value));
+
+const persistColumnWidths = () => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      COLUMN_WIDTH_STORAGE_KEY,
+      JSON.stringify(Object.fromEntries(DATASET_COLUMN_KEYS.map((key) => [key, columnWidths[key]]))),
+    );
+  } catch {
+    // Column resizing remains usable when browser storage is unavailable.
+  }
+};
+
+const handleColumnResize = (
+  newWidth: number,
+  _oldWidth: number,
+  column: TableColumnCtx<Record<PropertyKey, unknown>>,
+) => {
+  if (!isDatasetColumnKey(column.columnKey)) return;
+  const limits = COLUMN_WIDTHS[column.columnKey];
+  const width = Math.min(limits.max, Math.max(limits.min, Math.round(newWidth)));
+  column.width = width;
+  column.realWidth = width;
+  columnWidths[column.columnKey] = width;
+  persistColumnWidths();
+  nextTick(() => datasetTableRef.value?.doLayout());
+};
+
+const resetColumnWidths = () => {
+  Object.assign(columnWidths, defaultColumnWidths());
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.removeItem(COLUMN_WIDTH_STORAGE_KEY);
+    } catch {
+      // The in-memory reset still succeeds when browser storage is unavailable.
+    }
+  }
+  nextTick(() => datasetTableRef.value?.doLayout());
+};
 
 const fetchDatasets = async () => {
   loading.value = true;
@@ -232,6 +393,32 @@ onMounted(() => {
 
 .upload-area {
   width: 100%;
+}
+
+.dataset-table-card,
+.dataset-table-wrap {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.dataset-table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.variable-config-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dataset-actions-cell {
+  white-space: nowrap;
 }
 
 .datasets-view .industrial-card-title {

@@ -6,9 +6,10 @@ import asyncio
 import csv
 import json
 from collections.abc import AsyncIterator, Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from algorithms.report.provenance import (
@@ -21,6 +22,7 @@ from app.core.db import get_session
 from app.main import create_app
 from app.models import Base
 from app.models.dataset import ProcessingRun
+from app.models.optimization import OptimizationStudy, OptimizationTrialRecord
 from app.services import report_service
 from app.services.report_service import (
     RunIndex,
@@ -32,6 +34,7 @@ from app.services.report_service import (
     build_execution_run_index,
 )
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 RUNS = {
@@ -391,6 +394,8 @@ class TestExecutionScopedReportComposition:
         )
         explicit_run = SimpleNamespace(
             id=explicit_run_id,
+            dataset_id=dataset_id,
+            source_version_id=version_id,
             run_type="preprocessing.clean",
             status="succeeded",
             parameters={},
@@ -443,8 +448,13 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
         async with session_factory() as session:
             yield session
 
+    async def dispose_test_engine() -> None:
+        return None
+
     monkeypatch.setattr("app.api.routes.get_settings", lambda: Settings(artifact_root=tmp_path))
+    monkeypatch.setattr("app.main.dispose_engine", dispose_test_engine)
     app = create_app()
+    app.state.report_test_session_factory = session_factory
     app.dependency_overrides[get_session] = session_override
     with TestClient(app) as client:
         yield client
@@ -531,11 +541,118 @@ class TestReportApi:
             "data"
         ]
         assert (tmp_path / data["artifact_uri"]).is_file()
+        html_path = tmp_path / data["html_artifact_uri"]
+        assert html_path.is_file()
+        assert html_path.read_text(encoding="utf-8") == data["html"]
+        assert "<svg" in data["html"]
+        assert {chart["key"] for chart in data["charts"]} == {"selection"}
+        selection_chart = data["charts"][0]
+        assert selection_chart["source_path"] == "selected_sample_indices"
+        assert selection_chart["source_run_id"]
+        assert "@page{size:A4" in data["html"]
+        assert "@media print" in data["html"]
+        assert '<script src="http' not in data["html"]
+        assert '<link href="http' not in data["html"]
+        assert '<img src="http' not in data["html"]
 
     def test_report_without_runs_is_refused(self, client: TestClient) -> None:
         response = client.post("/api/v1/reports/generate", json={"version_id": str(uuid4())})
         assert response.status_code == 404
         assert response.json()["error"]["code"] == "REPORT_NO_RUNS"
+
+    def test_failed_processing_run_is_not_report_evidence(self, client: TestClient) -> None:
+        generated = client.post(
+            "/api/v1/simulation/generate",
+            json={"scenario": "S1", "n_steps": 900, "seed": 17, "input_count": 1},
+        ).json()["data"]
+
+        async def seed_failed_run() -> None:
+            session_factory = client.app.state.report_test_session_factory
+            async with session_factory() as session:
+                now = datetime.now(UTC)
+                session.add(
+                    ProcessingRun(
+                        dataset_id=UUID(generated["dataset_id"]),
+                        source_version_id=UUID(generated["version_id"]),
+                        run_type="preprocessing.clean",
+                        status="failed",
+                        parameters={},
+                        result={"total_cleaned_points": 999},
+                        created_at=now,
+                        finished_at=now,
+                    )
+                )
+                await session.commit()
+
+        asyncio.run(seed_failed_run())
+        response = client.post(
+            "/api/v1/reports/generate",
+            json={
+                "dataset_id": generated["dataset_id"],
+                "version_id": generated["version_id"],
+            },
+        )
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "REPORT_NO_RUNS"
+
+    def test_report_rejects_study_from_another_dataset(self, client: TestClient) -> None:
+        first = client.post(
+            "/api/v1/simulation/generate",
+            json={"scenario": "S1", "n_steps": 900, "seed": 18, "input_count": 1},
+        ).json()["data"]
+        second = client.post(
+            "/api/v1/simulation/generate",
+            json={"scenario": "S1", "n_steps": 900, "seed": 19, "input_count": 1},
+        ).json()["data"]
+        segment = client.post(
+            "/api/v1/preprocessing/segment",
+            json={
+                "dataset_id": first["dataset_id"],
+                "version_id": first["version_id"],
+                "input_columns": ["u1"],
+                "output_column": "y",
+                "window_size": 60,
+                "max_segments": 2,
+            },
+        )
+        assert segment.status_code == 202, segment.text
+        study_id = uuid4()
+
+        async def seed_foreign_study() -> None:
+            session_factory = client.app.state.report_test_session_factory
+            async with session_factory() as session:
+                now = datetime.now(UTC)
+                session.add(
+                    OptimizationStudy(
+                        id=study_id,
+                        dataset_id=UUID(second["dataset_id"]),
+                        version_id=UUID(second["version_id"]),
+                        status="succeeded",
+                        objective="val_free_run_fit",
+                        parameters={},
+                        best_trial_number=0,
+                        best_value=1.0,
+                        best_params={},
+                        optimized_model_id=uuid4(),
+                        fingerprint={},
+                        statistics={},
+                        created_at=now,
+                        finished_at=now,
+                    )
+                )
+                await session.commit()
+
+        asyncio.run(seed_foreign_study())
+        response = client.post(
+            "/api/v1/reports/generate",
+            json={
+                "dataset_id": first["dataset_id"],
+                "version_id": first["version_id"],
+                "study_id": str(study_id),
+            },
+        )
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "OPTIMIZATION_STUDY_DATASET_MISMATCH"
 
     def test_report_accepts_a_cleaning_derived_version(self, client: TestClient) -> None:
         generated = client.post(
@@ -634,6 +751,304 @@ class TestExportApi:
         )
         assert response.status_code == 404
         assert response.json()["error"]["code"] == "EXPORT_NO_SELECTION"
+
+    def test_strict_best_export_uses_model_training_rows_not_ordinary_segment(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        generated_response = client.post(
+            "/api/v1/simulation/generate",
+            json={"scenario": "S2", "n_steps": 1200, "seed": 77, "input_count": 2},
+        )
+        assert generated_response.status_code == 201, generated_response.text
+        generated = generated_response.json()["data"]
+        dataset_id = generated["dataset_id"]
+        lagged_response = client.post(
+            "/api/v1/preprocessing/delay/apply",
+            json={
+                "dataset_id": dataset_id,
+                "version_id": generated["version_id"],
+                "lag_map": {"u1": 3, "u2": 8},
+                "user_confirmed": True,
+                "recommendation_source": "manual",
+            },
+        )
+        assert lagged_response.status_code == 201, lagged_response.text
+        version_id = lagged_response.json()["data"]["result_version_id"]
+
+        ordinary_response = client.post(
+            "/api/v1/preprocessing/segment",
+            json={
+                "dataset_id": dataset_id,
+                "version_id": version_id,
+                "input_columns": ["u1", "u2"],
+                "output_column": "y",
+                "window_size": 60,
+                "max_segments": 2,
+            },
+        )
+        assert ordinary_response.status_code == 202, ordinary_response.text
+        ordinary_indices = ordinary_response.json()["data"]["selected_indices"]
+        best_indices = list(range(80, 560, 2))
+        assert best_indices != ordinary_indices
+
+        fitted_response = client.post(
+            "/api/v1/modeling/arx/fit",
+            json={
+                "dataset_id": dataset_id,
+                "version_id": version_id,
+                "input_columns": ["u1", "u2"],
+                "output_column": "y",
+                "na": 2,
+                "nb": [2, 2],
+                "delays": [3, 8],
+                "training_sample_indices": best_indices,
+            },
+        )
+        assert fitted_response.status_code == 200, fitted_response.text
+        fitted_data = fitted_response.json()["data"]
+        model_id = fitted_data["model_id"]
+        model_run_id = UUID(fitted_data["processing_run_id"])
+        model_artifact = tmp_path / fitted_data["artifact_uri"]
+        study_id = uuid4()
+        older_study_id = uuid4()
+
+        async def seed_study() -> None:
+            session_factory = client.app.state.report_test_session_factory
+            async with session_factory() as session:
+                now = datetime.now(UTC)
+                study = OptimizationStudy(
+                    id=study_id,
+                    dataset_id=UUID(dataset_id),
+                    version_id=UUID(version_id),
+                    status="succeeded",
+                    objective="free_run_fit",
+                    parameters={},
+                    best_trial_number=4,
+                    best_value=88.5,
+                    best_params={"window_size": 60},
+                    optimized_model_id=UUID(model_id),
+                    fingerprint={},
+                    statistics={},
+                    created_at=now,
+                    finished_at=now,
+                )
+                session.add(study)
+                session.add(
+                    OptimizationStudy(
+                        id=older_study_id,
+                        dataset_id=UUID(dataset_id),
+                        version_id=UUID(version_id),
+                        status="succeeded",
+                        objective="free_run_fit",
+                        parameters={},
+                        best_trial_number=5,
+                        best_value=87.0,
+                        best_params={"window_size": 60},
+                        optimized_model_id=UUID(model_id),
+                        fingerprint={},
+                        statistics={},
+                        created_at=now - timedelta(hours=1),
+                        finished_at=now - timedelta(hours=1),
+                    )
+                )
+                session.add(
+                    OptimizationTrialRecord(
+                        study_id=study.id,
+                        trial_number=4,
+                        state="complete",
+                        value=88.5,
+                        params={"window_size": 60},
+                        metrics={"val_free_run_fit": 88.5},
+                        cache_hit=False,
+                        created_at=now,
+                        finished_at=now,
+                    )
+                )
+                session.add(
+                    OptimizationTrialRecord(
+                        study_id=older_study_id,
+                        trial_number=5,
+                        state="complete",
+                        value=87.0,
+                        params={"window_size": 60},
+                        metrics={"val_free_run_fit": 87.0},
+                        cache_hit=False,
+                        created_at=now - timedelta(hours=1),
+                        finished_at=now - timedelta(hours=1),
+                    )
+                )
+                await session.commit()
+
+        asyncio.run(seed_study())
+        listed = client.get(
+            "/api/v1/delivery/studies",
+            params={"dataset_id": dataset_id, "version_id": version_id},
+        )
+        assert listed.status_code == 200, listed.text
+        assert [item["study_id"] for item in listed.json()["data"]["items"]] == [
+            str(study_id),
+            str(older_study_id),
+        ]
+
+        response = client.post(
+            "/api/v1/delivery/export",
+            json={
+                "dataset_id": dataset_id,
+                "version_id": version_id,
+                "study_id": str(study_id),
+                "mode": "optimization_best",
+            },
+        )
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+        manifest = json.loads((tmp_path / data["manifest_uri"]).read_text(encoding="utf-8"))
+        assert manifest["selection_source"] == "optimization_best_trial"
+        assert manifest["study_id"] == str(study_id)
+        assert manifest["optimized_model_id"] == model_id
+        assert manifest["selected_sample_indices"] == best_indices
+        assert manifest["selected_sample_indices"] != ordinary_indices
+
+        lineage = client.get(f"/api/v1/datasets/{dataset_id}/versions").json()["data"]
+        source_node = next(node for node in lineage["nodes"] if node["id"] == version_id)
+        with (tmp_path / source_node["artifact_path"]).open(encoding="utf-8") as source_handle:
+            source_rows = list(csv.reader(source_handle))
+        with (tmp_path / data["csv_uri"]).open(encoding="utf-8") as export_handle:
+            exported_rows = list(csv.reader(export_handle))
+        assert exported_rows[0] == source_rows[0]
+        assert exported_rows[1:] == [source_rows[index + 1] for index in best_indices]
+
+        def strict_export(
+            *, requested_dataset_id: str = dataset_id, requested_version_id: str = version_id
+        ):
+            return client.post(
+                "/api/v1/delivery/export",
+                json={
+                    "dataset_id": requested_dataset_id,
+                    "version_id": requested_version_id,
+                    "study_id": str(study_id),
+                    "mode": "optimization_best",
+                },
+            )
+
+        async def mutate_lineage(
+            *,
+            study_status: str = "succeeded",
+            best_trial_number: int | None = 4,
+            remove_optimized_model: bool = False,
+            trial_state: str = "complete",
+            model_run_status: str = "succeeded",
+            run_indices: list[int] = best_indices,
+        ) -> None:
+            session_factory = client.app.state.report_test_session_factory
+            async with session_factory() as session:
+                study = await session.get(OptimizationStudy, study_id)
+                trial = await session.scalar(
+                    select(OptimizationTrialRecord).where(
+                        OptimizationTrialRecord.study_id == study_id,
+                        OptimizationTrialRecord.trial_number == 4,
+                    )
+                )
+                model_run = await session.get(ProcessingRun, model_run_id)
+                assert study is not None and trial is not None and model_run is not None
+                study.status = study_status
+                study.best_trial_number = best_trial_number
+                study.optimized_model_id = None if remove_optimized_model else UUID(model_id)
+                trial.state = trial_state
+                model_run.status = model_run_status
+                model_run.parameters = {
+                    **dict(model_run.parameters or {}),
+                    "training_sample_indices": run_indices,
+                }
+                await session.commit()
+
+        asyncio.run(mutate_lineage(study_status="failed"))
+        rejected = strict_export()
+        assert rejected.status_code == 409
+        assert rejected.json()["error"]["code"] == "OPTIMIZATION_STUDY_NOT_SUCCEEDED"
+        asyncio.run(mutate_lineage())
+
+        rejected = strict_export(requested_dataset_id=str(uuid4()))
+        assert rejected.status_code == 409
+        assert rejected.json()["error"]["code"] == "OPTIMIZATION_STUDY_DATASET_MISMATCH"
+        rejected = strict_export(requested_version_id=str(uuid4()))
+        assert rejected.status_code == 409
+        assert rejected.json()["error"]["code"] == "OPTIMIZATION_STUDY_VERSION_MISMATCH"
+
+        asyncio.run(mutate_lineage(best_trial_number=None))
+        rejected = strict_export()
+        assert rejected.status_code == 409
+        assert rejected.json()["error"]["code"] == "OPTIMIZATION_BEST_TRIAL_MISSING"
+        asyncio.run(mutate_lineage(trial_state="failed"))
+        rejected = strict_export()
+        assert rejected.status_code == 409
+        assert rejected.json()["error"]["code"] == "OPTIMIZATION_BEST_TRIAL_INVALID"
+        asyncio.run(mutate_lineage(remove_optimized_model=True))
+        rejected = strict_export()
+        assert rejected.status_code == 409
+        assert rejected.json()["error"]["code"] == "OPTIMIZATION_BEST_MODEL_MISSING"
+        asyncio.run(mutate_lineage())
+
+        missing_artifact = model_artifact.with_suffix(".missing")
+        model_artifact.rename(missing_artifact)
+        try:
+            rejected = strict_export()
+            assert rejected.status_code == 409
+            assert (
+                rejected.json()["error"]["code"]
+                == "OPTIMIZATION_BEST_MODEL_ARTIFACT_INVALID"
+            )
+        finally:
+            missing_artifact.rename(model_artifact)
+
+        asyncio.run(mutate_lineage(model_run_status="failed"))
+        rejected = strict_export()
+        assert rejected.status_code == 409
+        assert rejected.json()["error"]["code"] == "OPTIMIZATION_BEST_MODEL_RUN_MISSING"
+        asyncio.run(mutate_lineage())
+
+        original_artifact = json.loads(model_artifact.read_text(encoding="utf-8"))
+
+        def write_model_indices(indices: list[int]) -> None:
+            changed = {**original_artifact}
+            changed["configuration"] = {
+                **dict(original_artifact["configuration"]),
+                "training_sample_indices": indices,
+            }
+            model_artifact.write_text(json.dumps(changed), encoding="utf-8")
+
+        try:
+            for invalid_indices, expected_code in (
+                ([80, 80], "OPTIMIZATION_BEST_SELECTION_INVALID"),
+                ([99_999], "OPTIMIZATION_BEST_SELECTION_INVALID"),
+                ([1_000], "OPTIMIZATION_BEST_SELECTION_TEST_LEAKAGE"),
+            ):
+                write_model_indices(invalid_indices)
+                asyncio.run(mutate_lineage(run_indices=invalid_indices))
+                rejected = strict_export()
+                assert rejected.status_code == 409
+                assert rejected.json()["error"]["code"] == expected_code
+        finally:
+            model_artifact.write_text(
+                json.dumps(original_artifact),
+                encoding="utf-8",
+            )
+            asyncio.run(mutate_lineage())
+
+    def test_strict_best_export_refuses_missing_study(self, client: TestClient) -> None:
+        generated = client.post(
+            "/api/v1/simulation/generate",
+            json={"scenario": "S1", "n_steps": 900, "seed": 31, "input_count": 1},
+        ).json()["data"]
+        response = client.post(
+            "/api/v1/delivery/export",
+            json={
+                "dataset_id": generated["dataset_id"],
+                "version_id": generated["version_id"],
+                "mode": "optimization_best",
+            },
+        )
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "OPTIMIZATION_BEST_SCOPE_REQUIRED"
 
 
 def test_processing_run_scope_requires_dataset_and_version_when_both_are_requested() -> None:

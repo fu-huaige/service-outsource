@@ -65,8 +65,12 @@ def adapter_harness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator
         async with session_factory() as session:
             yield session
 
+    async def dispose_test_engine() -> None:
+        return None
+
     asyncio.run(prepare())
     monkeypatch.setattr("app.api.routes.get_settings", lambda: Settings(artifact_root=tmp_path))
+    monkeypatch.setattr("app.main.dispose_engine", dispose_test_engine)
     monkeypatch.setattr(agent_service, "_resolve_provider", lambda: NullProvider())
     app = create_app()
     app.dependency_overrides[get_session] = session_override
@@ -437,6 +441,7 @@ def test_report_adapter_binds_execution_context_and_persists_formal_result(
             task=completed_task(stage="generate_report", message="report generated"),
             title="IndusOpt 建模数据优选与辨识报告",
             markdown="# Report",
+            html="<!doctype html><title>Report</title>",
             sections=[],
             artifact_uri=artifact_uri,
             cited_runs=["r12345678"],

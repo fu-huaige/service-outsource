@@ -75,8 +75,8 @@ const profile = (segments: Array<{ column: string; start_index: number; end_inde
     },
   }) as unknown as DatasetProfile;
 
-async function mountView(currentProfile: DatasetProfile) {
-  mockedGetDatasetDetail.mockResolvedValue(detail as never);
+async function mountView(currentProfile: DatasetProfile, currentDetail = detail) {
+  mockedGetDatasetDetail.mockResolvedValue(currentDetail as never);
   mockedGetDatasetProfile.mockResolvedValue(currentProfile);
   mockedGetDatasetVersions.mockResolvedValue({ nodes: [], edges: [] } as never);
   const wrapper = mount(DatasetDetailView, { global: { plugins: [createPinia()], stubs } });
@@ -106,5 +106,42 @@ describe("DatasetDetailView candidate frozen segments", () => {
     const wrapper = await mountView(profile([]));
 
     expect(wrapper.text()).toContain("未检测到异常冻结段");
+  });
+
+  it("renders persisted simulation truth and preserves sigma zero", async () => {
+    const wrapper = await mountView(profile([]), {
+      ...detail,
+      simulation: {
+        root_version_id: "root-version",
+        original_row_count: 1200,
+        physical_columns: ["u1", "u2", "y"],
+        time_column: "timestamp",
+        scenario: "S4",
+        system_type: "MISO ARX",
+        true_na: 2,
+        true_nb: [2, 2],
+        true_delays: [3, 8],
+        true_delays_by_input: { u1: 3, u2: 8 },
+        noise_level: 0,
+        provenance: {},
+      },
+    });
+
+    expect(wrapper.text()).toContain("仿真真值概览");
+    expect(wrapper.text()).toContain("原始样本量1200");
+    expect(wrapper.text()).toContain("系统类型MISO ARX");
+    expect(wrapper.text()).toContain("噪声水平 σ0");
+  });
+
+  it("uses missing semantics and hides simulation truth for uploaded datasets", async () => {
+    const historical = await mountView(profile([]), { ...detail, simulation: null });
+    expect(historical.text()).toContain("历史真值未记录");
+
+    const uploaded = await mountView(profile([]), {
+      ...detail,
+      source: "upload",
+      simulation: null,
+    });
+    expect(uploaded.text()).not.toContain("仿真真值概览");
   });
 });

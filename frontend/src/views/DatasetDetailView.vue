@@ -23,6 +23,27 @@
       <!-- Tab 1: Overview & Time-Series Plot -->
       <el-tab-pane label="概览与多变量时序预览" name="overview" class="overview-tab-pane">
         <div class="preview-tab-content">
+        <div v-if="dataset?.source === 'simulation'" class="industrial-card simulation-overview-card">
+          <div class="industrial-card-header">
+            <div class="industrial-card-title">
+              <el-icon><DataLine /></el-icon> 仿真真值概览
+            </div>
+            <el-tag type="success" effect="plain">来自仿真根版本 V0</el-tag>
+          </div>
+          <dl class="simulation-overview-grid">
+            <div><dt>数据集名称</dt><dd>{{ dataset.name }}</dd></div>
+            <div><dt>原始样本量</dt><dd>{{ simulationValue(dataset.simulation?.original_row_count) }}</dd></div>
+            <div><dt>原始物理字段</dt><dd>{{ simulationList(dataset.simulation?.physical_columns) }}</dd></div>
+            <div><dt>系统类型</dt><dd>{{ simulationValue(dataset.simulation?.system_type) }}</dd></div>
+            <div><dt>真实阶数 na</dt><dd>{{ simulationValue(dataset.simulation?.true_na) }}</dd></div>
+            <div><dt>真实阶数 nb</dt><dd>{{ simulationList(dataset.simulation?.true_nb) }}</dd></div>
+            <div><dt>真实滞后 d_true</dt><dd>{{ simulationMap(dataset.simulation?.true_delays_by_input) }}</dd></div>
+            <div><dt>噪声水平 σ</dt><dd>{{ simulationValue(dataset.simulation?.noise_level) }}</dd></div>
+          </dl>
+          <p v-if="!dataset.simulation" class="simulation-missing-note">
+            该仿真数据集没有可验证的根版本元数据，历史真值未记录。
+          </p>
+        </div>
         <StateView
           class="preview-state"
           v-if="detailLoading"
@@ -362,6 +383,20 @@
                             </dl>
                           </section>
 
+                          <section class="audit-subsection" data-audit-section="truth">
+                            <h6>真实系统与参数</h6>
+                            <dl class="audit-list audit-basic-grid audit-truth-grid">
+                              <div><dt>系统类型</dt><dd>{{ resolvedScalar(node, 'system_type') }}</dd></div>
+                              <div><dt>真实阶数 na</dt><dd>{{ resolvedScalar(node, 'true_na') }}</dd></div>
+                              <div><dt>真实阶数 nb</dt><dd>{{ resolvedList(node, 'true_nb') }}</dd></div>
+                              <div class="audit-truth-field--wide"><dt>真实滞后数组</dt><dd>{{ resolvedList(node, 'true_delays') }}</dd></div>
+                              <div class="audit-truth-field--wide"><dt>各输入真实滞后</dt><dd>{{ resolvedMap(node, 'true_delays_by_input') }}</dd></div>
+                              <div class="audit-truth-field--wide"><dt>AR 系数</dt><dd>{{ resolvedList(node, 'ar_coefficients') }}</dd></div>
+                              <div class="audit-truth-field--wide"><dt>输入系数</dt><dd>{{ resolvedMap(node, 'input_coefficients') }}</dd></div>
+                              <div class="audit-truth-field--wide"><dt>真实参数表</dt><dd>{{ resolvedMap(node, 'true_parameters') }}</dd></div>
+                            </dl>
+                          </section>
+
                           <section class="audit-subsection" data-audit-section="anomaly">
                             <h6>异常值注入</h6>
                             <div v-if="injectionData(node, 'anomaly_count_by_column', 'anomaly_rate_by_column').state === 'missing'" class="audit-empty">未记录</div>
@@ -666,6 +701,15 @@ const candidateFreezeSummary = computed(() => {
 
 const formatPreviewValue = (value: unknown) => value === null || value === undefined ? "缺失" : String(value);
 const shortIdentifier = (value?: string) => value ? `${value.slice(0, 8)}…` : "尚未生成";
+const simulationValue = (value: unknown) =>
+  value === null || value === undefined || value === "" ? "未记录" : String(value);
+const simulationList = (value: unknown) =>
+  Array.isArray(value) && value.length ? value.map(simulationValue).join(", ") : "未记录";
+const simulationMap = (value: unknown) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "未记录";
+  const entries = Object.entries(value as Record<string, unknown>);
+  return entries.length ? entries.map(([key, item]) => `${key}: ${simulationValue(item)}`).join("；") : "未记录";
+};
 
 const isAuditEvidenceExpanded = (panelId: string) => expandedAuditEvidence.value.includes(panelId);
 
@@ -839,6 +883,12 @@ const resolvedScalar = (node: DatasetVersionNode, key: string) => {
   return hasOwn(resolved, key) ? formatScalar(resolved[key]) : "未记录";
 };
 
+const resolvedList = (node: DatasetVersionNode, key: string) =>
+  simulationList(resolvedRecord(node)[key]);
+
+const resolvedMap = (node: DatasetVersionNode, key: string) =>
+  simulationMap(resolvedRecord(node)[key]);
+
 const resolvedCount = (node: DatasetVersionNode, key: string, suffix: string) => {
   const resolved = resolvedRecord(node);
   const value = resolved[key];
@@ -953,6 +1003,40 @@ onMounted(() => {
 .preview-card {
   min-width: 0;
   margin-bottom: 0;
+}
+
+.simulation-overview-card {
+  margin-bottom: 16px;
+}
+
+.simulation-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px 18px;
+  margin: 0;
+}
+
+.simulation-overview-grid > div {
+  min-width: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.simulation-overview-grid dt {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.simulation-overview-grid dd {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.simulation-missing-note {
+  margin: 12px 0 0;
+  color: var(--text-secondary);
 }
 
 .preview-card .industrial-card-header {
@@ -1283,6 +1367,7 @@ onMounted(() => {
 }
 
 .resolved-parameters-view [data-audit-section='basic'],
+.resolved-parameters-view [data-audit-section='truth'],
 .resolved-parameters-view [data-audit-section='timestamps'] {
   grid-column: 1 / -1;
 }
@@ -1299,6 +1384,22 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0 12px;
+}
+
+.audit-truth-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.audit-list > .audit-truth-field--wide {
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+}
+
+.audit-truth-field--wide dd {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .audit-table-wrap {
@@ -1344,15 +1445,24 @@ onMounted(() => {
   }
 
   .resolved-parameters-view [data-audit-section='basic'],
+  .resolved-parameters-view [data-audit-section='truth'],
   .resolved-parameters-view [data-audit-section='timestamps'] {
     grid-column: auto;
   }
 }
 @media (max-width: 720px) {
+  .audit-truth-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .version-basics > div,
   .audit-list > div {
     grid-template-columns: 1fr;
     gap: 2px;
+  }
+
+  .audit-list > .audit-truth-field--wide {
+    grid-template-columns: 1fr;
   }
 
   .audit-evidence-card__trigger {

@@ -74,6 +74,7 @@ class DatasetDetail(DatasetSummary):
     time_range_start: datetime | None = None
     time_range_end: datetime | None = None
     preview: DatasetPreview | None = None
+    simulation: dict[str, Any] | None = None
 
 
 class DatasetListData(Schema):
@@ -169,6 +170,9 @@ class VersionNode(Schema):
     processing_run_id: UUID | None = None
     audit_summary: dict[str, Any] = Field(default_factory=dict)
     provenance: dict[str, Any] = Field(default_factory=dict)
+    time_column: str | None = None
+    input_columns: list[str] = Field(default_factory=list)
+    output_column: str | None = None
 
 
 class VersionEdge(Schema):

@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
@@ -9,6 +10,7 @@ from app.core.db import get_session
 from app.main import create_app
 from app.models import Base
 from app.models.optimization import OptimizationStudy, OptimizationTrialRecord
+from app.services.dataset_service import _version_provenance
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -28,6 +30,9 @@ def lifecycle_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterato
         async with session_factory() as session:
             yield session
 
+    async def dispose_test_engine() -> None:
+        return None
+
     monkeypatch.setattr(
         "app.api.routes.get_settings",
         lambda: Settings(
@@ -35,6 +40,7 @@ def lifecycle_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterato
             database_url=f"sqlite+aiosqlite:///{tmp_path / 'lifecycle.db'}",
         ),
     )
+    monkeypatch.setattr("app.main.dispose_engine", dispose_test_engine)
     app = create_app()
     app.state.session_factory = session_factory
     app.dependency_overrides[get_session] = session_override
@@ -50,6 +56,29 @@ def _generate(client: TestClient) -> dict[str, object]:
     )
     assert response.status_code == 201, response.text
     return response.json()["data"]
+
+
+def test_historical_simulation_provenance_does_not_invent_missing_truth(
+    tmp_path: Path,
+) -> None:
+    version = SimpleNamespace(
+        operation_name="simulation_generate",
+        row_count=200,
+        parameters={
+            "scenario": "S1",
+            "simulation_request": {"noise_level": 0},
+            "ground_truth_path": "simulation/missing.json",
+            "resolved_scenario_parameters": {"noise_level": 0},
+        },
+    )
+
+    provenance = _version_provenance(version, artifact_root=tmp_path)
+
+    assert provenance["evidence_source"] == "stored_resolved_scenario_parameters"
+    assert provenance["resolved_scenario_parameters"]["noise_level"] == 0
+    assert "true_na" not in provenance["resolved_scenario_parameters"]
+    assert "true_nb" not in provenance["resolved_scenario_parameters"]
+    assert "freeze_segments" not in provenance["resolved_scenario_parameters"]
 
 
 def test_simulation_is_registered_as_dataset_version_profile_and_download(
@@ -114,7 +143,39 @@ def test_s4_lineage_separates_user_request_from_ground_truth_resolved_parameters
     assert resolved["irregular_timestamp_count"] == 19
     assert resolved["duplicate_timestamp_count"] == 12
     assert node["provenance"]["user_request"]["anomaly_rate"] == 0
-    assert node["provenance"]["resolved_scenario_parameters"] == resolved
+    provenance = node["provenance"]["resolved_scenario_parameters"]
+    assert provenance["noise_level"] == 0
+    assert provenance["true_na"] == 2
+    assert provenance["true_nb"] == [2, 2]
+    assert provenance["true_delays_by_input"] == {"u1": 3, "u2": 8}
+    assert provenance["ar_coefficients"] == [-1.4, 0.48]
+
+    detail = lifecycle_client.get(f"/api/v1/datasets/{dataset_id}")
+    assert detail.status_code == 200, detail.text
+    simulation = detail.json()["data"]["simulation"]
+    assert simulation["root_version_id"] == node["id"]
+    assert simulation["original_row_count"] == 1200
+    assert simulation["physical_columns"] == ["u1", "u2", "y"]
+    assert simulation["system_type"] == "MISO ARX"
+    assert simulation["true_na"] == 2
+    assert simulation["true_nb"] == [2, 2]
+    assert simulation["true_delays_by_input"] == {"u1": 3, "u2": 8}
+    assert simulation["noise_level"] == 0
+
+    advanced = lifecycle_client.post(
+        "/api/v1/preprocessing/delay/apply",
+        json={
+            "dataset_id": dataset_id,
+            "version_id": node["id"],
+            "lag_map": {"u1": 3, "u2": 8},
+            "user_confirmed": True,
+            "recommendation_source": "manual",
+        },
+    )
+    assert advanced.status_code == 201, advanced.text
+    after = lifecycle_client.get(f"/api/v1/datasets/{dataset_id}").json()["data"]
+    assert after["version_id"] == advanced.json()["data"]["result_version_id"]
+    assert after["simulation"] == simulation
 
 
 def test_simulation_report_and_empty_dashboard_use_real_asset_lifecycle(
@@ -122,7 +183,18 @@ def test_simulation_report_and_empty_dashboard_use_real_asset_lifecycle(
 ) -> None:
     assert lifecycle_client.get("/api/v1/dashboard/leaderboard").json()["data"]["items"] == []
     generated = _generate(lifecycle_client)
-    version_id = str(generated["version_id"])
+    lagged = lifecycle_client.post(
+        "/api/v1/preprocessing/delay/apply",
+        json={
+            "dataset_id": str(generated["dataset_id"]),
+            "version_id": str(generated["version_id"]),
+            "lag_map": {"u1": 3, "u2": 8},
+            "user_confirmed": True,
+            "recommendation_source": "manual",
+        },
+    )
+    assert lagged.status_code == 201, lagged.text
+    version_id = str(lagged.json()["data"]["result_version_id"])
 
     segment = lifecycle_client.post(
         "/api/v1/preprocessing/segment",

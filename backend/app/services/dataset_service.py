@@ -275,6 +275,7 @@ async def register_simulation_dataset(
             "csv_encoding": "utf-8",
             "csv_delimiter": ",",
             "scenario": generated.scenario,
+            "system_type": "MISO ARX",
             "simulation_request": request.model_dump(mode="json"),
             "ground_truth_path": generated.ground_truth_path,
             "manifest_path": generated.manifest_path,
@@ -369,6 +370,11 @@ async def get_dataset_detail(
     profile = await _profile_or_error(session, dataset.id, version.id)
     parsed = _load_version_csv(dataset, version, artifact_root)
     missing_counts = cast(dict[str, int], profile.profile.get("column_missing_counts", {}))
+    simulation = (
+        await _simulation_dataset_detail(session, dataset=dataset, artifact_root=artifact_root)
+        if dataset.source == "simulation"
+        else None
+    )
     return DatasetDetail(
         **(await _dataset_summary(session, dataset, columns=columns)).model_dump(),
         columns=[
@@ -391,6 +397,7 @@ async def get_dataset_detail(
             "truncated": len(parsed.rows) > len(parsed.preview_rows),
             "recommended_downsample_factor": max(1, int((len(parsed.rows) + 9_999) / 10_000)),
         },
+        simulation=simulation,
     )
 
 
@@ -515,6 +522,7 @@ async def get_dataset_versions(
     )
     nodes: list[VersionNode] = []
     for version in versions:
+        columns = await _version_columns(session, version.id)
         nodes.append(VersionNode(
             id=version.id,
             name=version.name,
@@ -533,6 +541,13 @@ async def get_dataset_versions(
                 artifact_root=artifact_root,
             ),
             provenance=_version_provenance(version, artifact_root=artifact_root),
+            time_column=next(
+                (column.name for column in columns if column.role == "timestamp"), None
+            ),
+            input_columns=[column.name for column in columns if column.role == "input"],
+            output_column=next(
+                (column.name for column in columns if column.role == "output"), None
+            ),
         ))
     edges = [
         VersionEdge(
@@ -655,22 +670,73 @@ def _version_provenance(
     if version.operation_name != "simulation_generate":
         return {}
     user_request = parameters.get("simulation_request")
-    resolved = parameters.get("resolved_scenario_parameters")
-    evidence_source = "stored_resolved_scenario_parameters"
-    if not isinstance(resolved, dict):
-        ground_truth = _read_json_artifact(
-            artifact_root, parameters.get("ground_truth_path")
+    stored = parameters.get("resolved_scenario_parameters")
+    ground_truth = _read_json_artifact(artifact_root, parameters.get("ground_truth_path"))
+    resolved = dict(stored) if isinstance(stored, dict) else {}
+    if isinstance(ground_truth, dict):
+        artifact_values = _resolved_scenario_parameters(ground_truth, version.row_count)
+        resolved = {**artifact_values, **resolved}
+        evidence_source = (
+            "ground_truth_and_stored_parameters"
+            if isinstance(stored, dict)
+            else "ground_truth"
         )
-        if isinstance(ground_truth, dict):
-            resolved = _resolved_scenario_parameters(ground_truth, version.row_count)
-            evidence_source = "ground_truth"
-        else:
-            resolved = {}
-            evidence_source = "not_recorded"
+    elif isinstance(stored, dict):
+        evidence_source = "stored_resolved_scenario_parameters"
+    else:
+        evidence_source = "not_recorded"
+    if "system_type" in parameters:
+        resolved.setdefault("system_type", parameters["system_type"])
+    if "scenario" in parameters:
+        resolved.setdefault("scenario", parameters["scenario"])
     return {
         "user_request": user_request if isinstance(user_request, dict) else {},
         "resolved_scenario_parameters": resolved,
         "evidence_source": evidence_source,
+    }
+
+
+async def _simulation_dataset_detail(
+    session: AsyncSession,
+    *,
+    dataset: DatasetModel,
+    artifact_root: Path,
+) -> dict[str, Any] | None:
+    """Project the immutable simulation root without guessing from a later version."""
+
+    root = await session.scalar(
+        select(DatasetVersionModel)
+        .where(
+            DatasetVersionModel.dataset_id == dataset.id,
+            DatasetVersionModel.parent_version_id.is_(None),
+            DatasetVersionModel.operation_name == "simulation_generate",
+        )
+        .order_by(DatasetVersionModel.created_at)
+        .limit(1)
+    )
+    if root is None:
+        return None
+    columns = await _version_columns(session, root.id)
+    provenance = _version_provenance(root, artifact_root=artifact_root)
+    resolved = provenance.get("resolved_scenario_parameters")
+    resolved_record = resolved if isinstance(resolved, dict) else {}
+    return {
+        "root_version_id": str(root.id),
+        "original_row_count": root.row_count,
+        "physical_columns": [
+            column.name for column in columns if column.role != "timestamp"
+        ],
+        "time_column": next(
+            (column.name for column in columns if column.role == "timestamp"), None
+        ),
+        "scenario": resolved_record.get("scenario"),
+        "system_type": resolved_record.get("system_type"),
+        "true_na": resolved_record.get("true_na"),
+        "true_nb": resolved_record.get("true_nb"),
+        "true_delays": resolved_record.get("true_delays"),
+        "true_delays_by_input": resolved_record.get("true_delays_by_input"),
+        "noise_level": resolved_record.get("noise_level"),
+        "provenance": provenance,
     }
 
 
@@ -695,26 +761,44 @@ def _read_json_artifact(artifact_root: Path | None, relative_path: object) -> di
 def _resolved_scenario_parameters(
     ground_truth: Mapping[str, Any], row_count: int
 ) -> dict[str, Any]:
-    anomaly_indices = ground_truth.get("anomaly_indices")
-    missing_indices = ground_truth.get("missing_indices")
-    anomaly_counts = _index_counts(anomaly_indices)
-    missing_counts = _index_counts(missing_indices)
-    return {
-        "noise_level": ground_truth.get("noise_level"),
-        "anomaly_count_by_column": anomaly_counts,
-        "anomaly_rate_by_column": _rates(anomaly_counts, row_count),
-        "missing_count_by_column": missing_counts,
-        "missing_rate_by_column": _rates(missing_counts, row_count),
-        "freeze_segments": ground_truth.get("freeze_segments", []),
-        "drift_segments": ground_truth.get("drift_segments", []),
-        "irregular_timestamp_count": _sequence_length(
-            ground_truth.get("irregular_timestamp_indices")
-        ),
-        "duplicate_timestamp_count": _sequence_length(
-            ground_truth.get("duplicate_timestamp_indices")
-        ),
-        "seed": ground_truth.get("seed"),
-    }
+    resolved: dict[str, Any] = {}
+    direct_keys = (
+        "system_type",
+        "true_na",
+        "true_nb",
+        "true_delays",
+        "true_delays_by_input",
+        "true_parameters",
+        "ar_coefficients",
+        "input_coefficients",
+        "dynamic_segments",
+        "freeze_segments",
+        "drift_segments",
+        "redundant_variables",
+        "variable_dependencies",
+        "noise_level",
+        "seed",
+    )
+    for key in direct_keys:
+        if key in ground_truth:
+            resolved[key] = ground_truth[key]
+    if "anomaly_indices" in ground_truth:
+        anomaly_counts = _index_counts(ground_truth["anomaly_indices"])
+        resolved["anomaly_count_by_column"] = anomaly_counts
+        resolved["anomaly_rate_by_column"] = _rates(anomaly_counts, row_count)
+    if "missing_indices" in ground_truth:
+        missing_counts = _index_counts(ground_truth["missing_indices"])
+        resolved["missing_count_by_column"] = missing_counts
+        resolved["missing_rate_by_column"] = _rates(missing_counts, row_count)
+    if "irregular_timestamp_indices" in ground_truth:
+        resolved["irregular_timestamp_count"] = _sequence_length(
+            ground_truth["irregular_timestamp_indices"]
+        )
+    if "duplicate_timestamp_indices" in ground_truth:
+        resolved["duplicate_timestamp_count"] = _sequence_length(
+            ground_truth["duplicate_timestamp_indices"]
+        )
+    return resolved
 
 
 def _index_counts(value: object) -> dict[str, int]:
