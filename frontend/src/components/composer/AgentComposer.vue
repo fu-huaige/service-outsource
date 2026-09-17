@@ -10,18 +10,41 @@
             <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>
           </svg>
           <span class="attachment-name">{{ attachedDataset.name }}</span>
-          <span class="attachment-version font-mono" v-if="attachedDataset.version_id">
-            ({{ shortIdentifier(attachedDataset.version_id) }})
+          <span class="attachment-version" v-if="selectedVersion" :title="selectedVersion.id">
+            {{ versionDisplayName(selectedVersion) }} ({{ shortIdentifier(selectedVersion.id) }})
           </span>
           <button
             type="button"
             class="attachment-remove"
             title="移除附件"
             aria-label="移除数据附件"
+            :disabled="isSubmitting"
             @click="detachDataset"
           >
             ✕
           </button>
+        </div>
+      </div>
+
+      <div v-if="attachedDataset" class="composer-version-selector">
+        <VersionLineagePicker
+          :key="attachedDataset.id"
+          :dataset-name="attachedDataset.name"
+          :versions="versions"
+          :selected-version-id="selectedVersionId"
+          :loading="versionsLoading"
+          context-label="选择本次 Agent 任务的起始版本"
+          eligible-label="可选为任务起点"
+          selected-badge-label="本次任务起点"
+          :is-eligible="isVersionSelectable"
+          :disabled-reason="versionDisabledReason"
+          empty-state-text="暂无可选择的版本"
+          placeholder="请选择任务起始版本"
+          @select="selectVersion"
+        />
+        <div v-if="versionsError" class="composer-version-error" role="alert">
+          {{ versionsError }}
+          <button type="button" :disabled="isSubmitting || versionsLoading" @click="loadVersions()">重新加载</button>
         </div>
       </div>
 
@@ -113,6 +136,7 @@
           :key="ds.id"
           type="button"
           class="dataset-picker__item"
+          :disabled="isSubmitting"
           @click="attachDataset(ds)"
         >
           <span class="dataset-picker__name">{{ ds.name }}</span>
@@ -132,8 +156,10 @@
 import { ref, computed, nextTick, onBeforeUnmount, watch, type CSSProperties } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useDatasetStore } from '../../stores/datasetStore';
-import { listDatasets } from '../../api/datasets';
-import type { DatasetItem } from '../../types/api';
+import { getDatasetVersions, listDatasets } from '../../api/datasets';
+import type { DatasetItem, DatasetVersionNode } from '../../types/api';
+import VersionLineagePicker from '../versioning/VersionLineagePicker.vue';
+import { versionDisplayName } from '../../utils/versionOperation';
 
 const props = withDefaults(defineProps<{
   placeholder?: string;
@@ -166,6 +192,14 @@ const pickerPositioned = ref(false);
 const pickerStyle = ref<CSSProperties>({});
 const datasets = ref<DatasetItem[]>([]);
 const attachedDataset = ref<DatasetItem | null>(datasetStore.activeDataset ?? null);
+const versions = ref<DatasetVersionNode[]>([]);
+const selectedVersionId = ref<string | null>(null);
+const versionsLoading = ref(false);
+const versionsError = ref('');
+let versionsRequest = 0;
+const selectedVersion = computed(() =>
+  versions.value.find(version => version.id === selectedVersionId.value) ?? null
+);
 
 const PICKER_VIEWPORT_MARGIN = 12;
 const PICKER_GAP = 8;
@@ -174,7 +208,48 @@ let observedVisualViewport: VisualViewport | null = null;
 let pickerPositionListenersActive = false;
 
 const isSubmitting = computed(() => props.submitting || localSubmitting.value);
-const canSubmit = computed(() => message.value.trim().length > 0 && !isSubmitting.value);
+const canSubmit = computed(() =>
+  message.value.trim().length > 0 && !isSubmitting.value && !versionsLoading.value
+  && (!attachedDataset.value || !!selectedVersion.value)
+);
+
+function isVersionSelectable(version: DatasetVersionNode) {
+  return !isSubmitting.value && !!version.artifact_path;
+}
+
+function versionDisabledReason(version: DatasetVersionNode) {
+  return !version.artifact_path ? '该版本缺少数据文件记录' : '正在提交任务';
+}
+
+function selectVersion(versionId: string) {
+  const version = versions.value.find(item => item.id === versionId);
+  if (version && isVersionSelectable(version)) selectedVersionId.value = versionId;
+}
+
+async function loadVersions() {
+  const request = ++versionsRequest;
+  const datasetId = attachedDataset.value?.id;
+  versions.value = [];
+  selectedVersionId.value = null;
+  versionsError.value = '';
+  versionsLoading.value = !!datasetId;
+  if (!datasetId) return;
+  try {
+    const response = await getDatasetVersions(datasetId);
+    if (request !== versionsRequest) return;
+    if (response.dataset_id !== datasetId) throw new Error('Dataset version scope mismatch');
+    versions.value = response.nodes;
+    const active = response.nodes.find(version => version.id === response.active_version_id);
+    if (active?.artifact_path) selectedVersionId.value = active.id;
+  } catch {
+    if (request !== versionsRequest) return;
+    versionsError.value = '版本血缘加载失败，请重新加载后选择。';
+  } finally {
+    if (request === versionsRequest) versionsLoading.value = false;
+  }
+}
+
+watch(attachedDataset, () => { void loadVersions(); }, { immediate: true, flush: 'sync' });
 
 const filteredDatasets = computed(() => {
   const q = datasetSearch.value.toLowerCase();
@@ -204,7 +279,7 @@ async function handleSubmit() {
     emit('submit', {
       message: message.value.trim(),
       datasetId: attachedDataset.value?.id ?? null,
-      versionId: attachedDataset.value?.version_id ?? attachedDataset.value?.latest_version_id ?? null,
+      versionId: selectedVersion.value!.id,
     });
     message.value = '';
     await nextTick();
@@ -215,13 +290,15 @@ async function handleSubmit() {
 }
 
 function attachDataset(ds: DatasetItem) {
-  attachedDataset.value = ds;
+  if (isSubmitting.value) return;
+  attachedDataset.value = { ...ds };
   datasetStore.setActiveDataset(ds);
   showDatasetPicker.value = false;
   datasetSearch.value = '';
 }
 
 function detachDataset() {
+  if (isSubmitting.value) return;
   attachedDataset.value = null;
 }
 
@@ -310,6 +387,7 @@ watch(showDatasetPicker, async (v) => {
 });
 
 onBeforeUnmount(() => {
+  ++versionsRequest;
   unbindDatasetPickerPositionListeners();
 });
 
@@ -328,6 +406,21 @@ const vClickOutside = {
 </script>
 
 <style scoped>
+.composer-version-selector {
+  margin: 0 0 10px;
+}
+
+.composer-version-error {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.composer-version-error button {
+  margin-left: 8px;
+  cursor: pointer;
+}
+
 .agent-composer {
   position: relative;
   width: 100%;

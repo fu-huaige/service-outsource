@@ -55,7 +55,8 @@ PLANNER_SYSTEM_PROMPT = f"""你是流程工业建模数据预处理系统的调�
 5. 不得引用测试集，不得让任何拟合型变换使用训练集以外的数据。
 6. 若工作流包含 fit_arx（ARX 辨识），必须在其前面安排 estimate_delays（估计时滞）与 apply_lag_compensation（时滞补偿），因为工业时序 ARX 建模必须基于已完成时滞补偿对齐的数据版本。
 7. “报告交付”、report delivery 只表示 generate_report；只有用户明确要求导出/下载数据集或 CSV（包括优选、最优、最优建模数据集）时才允许添加 export_dataset。
-8. 若建模寻优任务明确要求导出数据集，顺序必须是 optimize_pipeline、evaluate_model、export_dataset。"""
+8. 若建模寻优任务明确要求导出数据集，顺序必须是 optimize_pipeline、evaluate_model、export_dataset。
+9. optimize_pipeline 的试验次数使用 max_trials（1 到 10000 的整数），不要使用 n_trials。该工具仅接受 max_trials、timeout_seconds、random_seed、search_space 参数。"""
 
 NARRATOR_SYSTEM_PROMPT = """你是工业过程辨识专家，负责撰写建模数据优选与辨识报告的结论段落。
 
@@ -293,13 +294,29 @@ def _coerce_steps(payload: Any) -> list[PlannedStep]:
         parameters = item.get("parameters") or {}
         if not isinstance(parameters, dict):
             raise TypeError("parameters 必须是对象")
+        parameters = {str(key): value for key, value in parameters.items()}
+        if tool == "optimize_pipeline":
+            allowed = {"max_trials", "n_trials", "timeout_seconds", "random_seed", "search_space"}
+            unexpected = sorted(set(parameters) - allowed)
+            if unexpected:
+                raise ValueError(f"optimize_pipeline 收到未映射的计划参数：{', '.join(unexpected)}")
+            for key in ("max_trials", "n_trials"):
+                if key in parameters:
+                    value = parameters[key]
+                    if type(value) is not int or not 1 <= value <= 10000:
+                        raise ValueError(f"optimize_pipeline 的 {key} 必须是 1 到 10000 的整数")
+            if "n_trials" in parameters:
+                trials = parameters.pop("n_trials")
+                if "max_trials" in parameters and parameters["max_trials"] != trials:
+                    raise ValueError("optimize_pipeline 的 n_trials 与 max_trials 冲突")
+                parameters["max_trials"] = trials
 
         steps.append(
             PlannedStep(
                 step_id=step_id,
                 tool=tool,
                 depends_on=tuple(str(value) for value in depends),
-                parameters={str(key): value for key, value in parameters.items()},
+                parameters=parameters,
                 # The flag is set from the whitelist, not from the model: a model that
                 # forgot it must not thereby unlock an unconfirmed export.
                 requires_confirmation=tool in CONFIRMATION_REQUIRED,

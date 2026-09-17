@@ -6,11 +6,37 @@ import { useDatasetStore } from "../../src/stores/datasetStore";
 import type { DatasetItem } from "../../src/types/api";
 
 const listDatasetsApi = vi.hoisted(() => vi.fn());
+const getDatasetVersionsApi = vi.hoisted(() => vi.fn());
 const messageApi = vi.hoisted(() => ({ warning: vi.fn(), error: vi.fn() }));
 
 vi.mock("../../src/api/datasets", () => ({
   listDatasets: listDatasetsApi,
+  getDatasetVersions: getDatasetVersionsApi,
 }));
+
+vi.mock("../../src/components/versioning/VersionLineagePicker.vue", () => ({
+  default: {
+    name: "VersionLineagePicker",
+    props: ["selectedVersionId", "versions", "loading"],
+    emits: ["select"],
+    template: '<div class="lineage-stub" />',
+  },
+}));
+
+const versionResponse = (datasetId: string) => ({
+  dataset_id: datasetId,
+  active_version_id: `${datasetId}-v0`,
+  nodes: [0, 1].map(index => ({
+    id: `${datasetId}-v${index}`,
+    name: `V${index}`,
+    tool: index ? "cleaning" : "simulation_generate",
+    parent_version_id: index ? `${datasetId}-v0` : null,
+    created_at: "2026-09-01T00:00:00Z",
+    row_count: 1000,
+    column_count: 4,
+    artifact_path: `data/${datasetId}-v${index}.csv`,
+  })),
+});
 
 vi.mock("element-plus", () => ({
   ElMessage: messageApi,
@@ -46,6 +72,8 @@ const rect = (values: Partial<DOMRect>): DOMRect =>
 describe("AgentComposer dataset picker viewport positioning", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getDatasetVersionsApi.mockReset();
+    getDatasetVersionsApi.mockImplementation(async id => versionResponse(id));
     setActivePinia(createPinia());
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 800 });
     Object.defineProperty(window, "innerHeight", { configurable: true, value: 600 });
@@ -73,6 +101,74 @@ describe("AgentComposer dataset picker viewport positioning", () => {
 
     expect(wrapper.find(".composer-attachments").exists()).toBe(false);
     expect(listDatasetsApi).not.toHaveBeenCalled();
+  });
+
+  it("defaults to the formal active version and submits an explicitly selected historical version", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useDatasetStore().setActiveDataset(makeDataset(7));
+    const wrapper = mount(AgentComposer, { global: { plugins: [pinia] } });
+    await flushPromises();
+    const picker = wrapper.getComponent({ name: "VersionLineagePicker" });
+    expect(picker.props("selectedVersionId")).toBe("dataset-7-v0");
+    picker.vm.$emit("select", "foreign-version");
+    await wrapper.vm.$nextTick();
+    expect(picker.props("selectedVersionId")).toBe("dataset-7-v0");
+    picker.vm.$emit("select", "dataset-7-v1");
+    await wrapper.get(".composer-textarea").setValue("分析数据");
+    expect(wrapper.get(".attachment-version").text()).toContain("V1");
+    await wrapper.get(".composer-submit").trigger("click");
+    expect(wrapper.emitted("submit")?.[0]).toEqual([{
+      message: "分析数据", datasetId: "dataset-7", versionId: "dataset-7-v1",
+    }]);
+    expect(useDatasetStore().activeDataset?.version_id).toBe("version-7");
+    wrapper.unmount();
+  });
+
+  it("discards a previous dataset response and blocks submission while versions load", async () => {
+    let resolveOld!: (value: ReturnType<typeof versionResponse>) => void;
+    getDatasetVersionsApi.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }));
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useDatasetStore().setActiveDataset(makeDataset(7));
+    const wrapper = mount(AgentComposer, { global: { plugins: [pinia] } });
+    await wrapper.get(".composer-textarea").setValue("分析数据");
+    expect(wrapper.get(".composer-submit").attributes("disabled")).toBeDefined();
+    await wrapper.get(".composer-btn--dataset").trigger("click");
+    await flushPromises();
+    await wrapper.get(".dataset-picker__item").trigger("click");
+    await flushPromises();
+    resolveOld(versionResponse("dataset-7"));
+    await flushPromises();
+    expect(wrapper.getComponent({ name: "VersionLineagePicker" }).props("selectedVersionId"))
+      .toBe("dataset-1-v0");
+    await wrapper.get(".composer-submit").trigger("click");
+    expect(wrapper.emitted("submit")?.[0]).toEqual([{
+      message: "分析数据", datasetId: "dataset-1", versionId: "dataset-1-v0",
+    }]);
+    wrapper.unmount();
+  });
+
+  it("blocks missing active versions and lets a failed load be retried", async () => {
+    getDatasetVersionsApi.mockRejectedValueOnce(new Error("unavailable"));
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useDatasetStore().setActiveDataset(makeDataset(7));
+    const wrapper = mount(AgentComposer, { global: { plugins: [pinia] } });
+    await flushPromises();
+    await wrapper.get(".composer-textarea").setValue("分析数据");
+    expect(wrapper.get(".composer-submit").attributes("disabled")).toBeDefined();
+    getDatasetVersionsApi.mockResolvedValueOnce({ ...versionResponse("dataset-7"), active_version_id: null });
+    await wrapper.get(".composer-version-error button").trigger("click");
+    await flushPromises();
+    expect(wrapper.get(".composer-submit").attributes("disabled")).toBeDefined();
+    const picker = wrapper.getComponent({ name: "VersionLineagePicker" });
+    picker.vm.$emit("select", "dataset-7-v0");
+    await wrapper.vm.$nextTick();
+    expect(wrapper.get(".composer-submit").attributes("disabled")).toBeUndefined();
+    await wrapper.get(".attachment-remove").trigger("click");
+    expect(wrapper.find(".lineage-stub").exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it("loads datasets only after the picker is opened and allows an explicit choice", async () => {
