@@ -199,15 +199,35 @@
             { label: '裁剪边界行数', value: String(activeArtifact.payload.summary?.removed_boundary_rows ?? '—') },
           ]" />
           <div class="aw-section">
-            <div class="aw-section__label">已应用的时滞补偿</div>
-            <div class="aw-kv-list">
-              <div v-for="(val, key) in activeArtifact.payload.summary?.lag_map" :key="key" class="aw-kv">
-                <span>{{ key }}</span><span>{{ val }} 采样点</span>
+            <div class="aw-section__label">各输入已应用补偿量</div>
+            <p class="aw-lag-note">单位：采样点。展示本次实际应用的时间平移量，0 表示未平移。</p>
+            <ChartContainer
+              v-if="lagEntries.length"
+              data-test="lag-compensation-chart"
+              :options="lagChartOptions"
+              :height="`${Math.max(180, lagEntries.length * 42 + 64)}px`"
+            />
+            <p v-else class="aw-lag-note" data-test="lag-chart-empty">该记录未保存有效的补偿量，暂无法展示图表。</p>
+            <details v-if="lagEntries.length" class="aw-lag-details">
+              <summary>查看补偿数值明细</summary>
+              <div class="aw-kv-list">
+                <div v-for="[key, val] in lagEntries" :key="key" class="aw-kv">
+                  <span>{{ key }}</span><span>{{ val }} 采样点{{ val === 0 ? ' · 未平移' : '' }}</span>
+                </div>
               </div>
-            </div>
-            <div>已生成补偿后数据版本</div>
-            <code data-test="lag-result-version">{{ activeArtifact.payload.result_version_id }}</code>
-            <a :href="`${apiBase}/datasets/${encodeURIComponent(execution.dataset_id)}/download?version_id=${encodeURIComponent(activeArtifact.payload.result_version_id)}`">下载补偿后 CSV</a>
+            </details>
+          </div>
+          <div class="aw-lag-delivery">
+            <div class="aw-section__label">补偿结果数据</div>
+            <template v-if="lagDownloadUrl">
+              <p class="aw-lag-note">已生成补偿后数据版本</p>
+              <code data-test="lag-result-version">{{ activeArtifact.payload.result_version_id }}</code>
+              <ElButton tag="a" type="primary" class="aw-lag-download" :href="lagDownloadUrl" data-test="download-lag-csv" aria-label="下载补偿后 CSV">
+                <Download aria-hidden="true" />
+                <span>下载补偿后 CSV</span>
+              </ElButton>
+            </template>
+            <p v-else class="aw-lag-note">该记录缺少结果版本信息，暂无法下载补偿后 CSV。</p>
           </div>
         </template>
       </template>
@@ -262,7 +282,9 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElButton, ElMessage } from 'element-plus';
+import { Download } from '@element-plus/icons-vue';
+import ChartContainer, { type ChartOption } from '../ChartContainer.vue';
 import MetricStrip from './MetricStrip.vue';
 import AnomalyArtifactRenderer from './AnomalyArtifactRenderer.vue';
 import ArxModelArtifactRenderer from './ArxModelArtifactRenderer.vue';
@@ -380,6 +402,40 @@ const availableArtifacts = computed<ArtifactDef[]>(() => {
 const activeArtifact = computed(() =>
   availableArtifacts.value.find(a => a.stepId === activeTab.value) ?? null
 );
+
+const lagEntries = computed<[string, number][]>(() => {
+  if (activeArtifact.value?.type !== 'lag') return [];
+  const map: unknown = activeArtifact.value.payload.summary?.lag_map;
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return [];
+  return Object.entries(map).filter((entry): entry is [string, number] =>
+    typeof entry[1] === 'number' && Number.isSafeInteger(entry[1]) && entry[1] >= 0
+  );
+});
+
+const lagChartOptions = computed<ChartOption>(() => ({
+  tooltip: { trigger: 'axis', renderMode: 'richText', axisPointer: { type: 'shadow' } },
+  grid: { left: 12, right: 90, top: 12, bottom: 32, containLabel: true },
+  xAxis: { type: 'value', min: 0, minInterval: 1, name: '采样点', nameLocation: 'middle', nameGap: 24 },
+  yAxis: { type: 'category', inverse: true, data: lagEntries.value.map(([name]) => name), axisLabel: { width: 96, overflow: 'truncate' } },
+  series: [{
+    name: '已应用补偿量（采样点）',
+    type: 'bar',
+    data: lagEntries.value.map(([, value]) => value),
+    barMaxWidth: 20,
+    itemStyle: { color: '#52735A', borderRadius: [0, 4, 4, 0] },
+    emphasis: { itemStyle: { color: '#426340' } },
+    label: { show: true, position: 'right', formatter: params => params.value === 0 ? '0 · 未平移' : String(params.value) },
+  }],
+}));
+
+const lagDownloadUrl = computed(() => {
+  const artifact = activeArtifact.value;
+  const datasetId = props.execution.dataset_id;
+  const versionId = artifact?.payload.result_version_id;
+  if (artifact?.type !== 'lag' || artifact.payload.disposition === 'CONFIRMED_NO_OP'
+    || !datasetId || typeof versionId !== 'string' || !versionId.trim()) return null;
+  return `${apiBase}/datasets/${encodeURIComponent(datasetId)}/download?version_id=${encodeURIComponent(versionId)}`;
+});
 
 watch(availableArtifacts, (arts, previous = []) => {
   if (!arts.some(a => a.stepId === activeTab.value) || (!isPinned.value && arts.length > previous.length)) {
@@ -579,6 +635,17 @@ function optimizationParameterGroups(art: ArtifactDef): OptimizationParameterGro
 </script>
 
 <style scoped>
+.aw-lag-note { margin: 0 0 10px; color: var(--text-muted); font-size: 12px; line-height: 1.6; }
+.aw-lag-details summary { margin: 8px 0; color: var(--accent-dark); font-size: 12px; cursor: pointer; }
+.aw-lag-delivery { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--surface-1); }
+.aw-lag-delivery .aw-lag-note { margin: 0; }
+.aw-lag-delivery code { max-width: 100%; overflow-wrap: anywhere; font-size: 12px; color: var(--text-muted); }
+.aw-lag-download { min-height: 38px; max-width: 100%; padding: 9px 16px; gap: 8px; border-radius: var(--radius-sm); background: var(--accent); border-color: var(--accent); color: #fff; font-family: var(--font-sans); font-weight: 600; text-decoration: none; transition: background-color 160ms, border-color 160ms, box-shadow 160ms, transform 160ms; }
+.aw-lag-download :deep(svg) { width: 16px; height: 16px; margin-right: 6px; flex-shrink: 0; }
+.aw-lag-download:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; box-shadow: 0 3px 8px rgba(66, 99, 64, 0.18); }
+.aw-lag-download:active { transform: translateY(1px); }
+.aw-lag-download:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 3px; }
+
 .artifact-workbench {
   display: flex;
   flex-direction: column;

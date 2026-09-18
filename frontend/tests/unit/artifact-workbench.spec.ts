@@ -1027,6 +1027,32 @@ describe("ArtifactWorkbench cleaning rendering", () => {
 });
 
 describe("ArtifactWorkbench lag compensation rendering", () => {
+  it("plots applied lags including zero and downloads the step result rather than the final version", async () => {
+    const execution = executionWith("apply_lag_compensation", {
+      summary: { lag_map: { u1: 4, u2: 8, u3: 7, u4: 0 } },
+      result_version_id: "lag-version",
+    });
+    execution.current_version_id = "later-feature-version";
+    const wrapper = await mountWorkbench(execution);
+    const chart = wrapper.getComponent(ChartContainerStub).props("options") as any;
+    expect(chart.yAxis.data).toEqual(["u1", "u2", "u3", "u4"]);
+    expect(chart.series[0].data).toEqual([4, 8, 7, 0]);
+    expect(chart.series[0].label.formatter({ value: 0 })).toBe("0 · 未平移");
+    expect(wrapper.get('[data-test="download-lag-csv"]').attributes("href"))
+      .toBe("/api/v1/datasets/dataset-1/download?version_id=lag-version");
+    expect(wrapper.get('[data-test="download-lag-csv"]').classes()).toContain("el-button--primary");
+  });
+
+  it("does not invent zero lags or a download for incomplete historical records", async () => {
+    const wrapper = await mountWorkbench(executionWith("apply_lag_compensation", {
+      summary: { lag_map: { u1: null, u2: "8", u3: -1, u4: 1.5 } },
+    }));
+    expect(wrapper.find('[data-test="lag-compensation-chart"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="lag-chart-empty"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="download-lag-csv"]').exists()).toBe(false);
+    expect(wrapper.html()).not.toContain("version_id=undefined");
+  });
+
   it("renders confirmed zero-lag no-op semantics without inventing a version or download", async () => {
     const wrapper = await mountWorkbench(executionWith("apply_lag_compensation", {
       disposition: "CONFIRMED_NO_OP",
