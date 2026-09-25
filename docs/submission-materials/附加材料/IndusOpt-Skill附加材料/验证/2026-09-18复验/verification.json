@@ -1,0 +1,10 @@
+{
+  "python": "3.13.9",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "backend_mode": "isolated SQLite, create_all; no migrations",
+  "mock_backend": false,
+  "cases": {},
+  "status": "failed",
+  "skill_script_sha256": "b40bcb6462ec376ff05435d3ff28f5cf9dff9e03bccf96f84c19947317ce8dfc",
+  "error": "Backend exited; see backend.log"
+}

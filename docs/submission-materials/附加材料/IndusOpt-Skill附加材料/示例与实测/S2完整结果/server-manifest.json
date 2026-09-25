@@ -1,0 +1,16 @@
+{
+  "coverage_ratio": 0.18009004502251125,
+  "dataset_id": "67b775f3-b7ac-4b83-adee-d288b3fc9a86",
+  "export_id": "4e2b9795-ac44-4013-98d7-566ba5316ed5",
+  "exported_rows": 360,
+  "generated_at": "2026-09-13T12:01:03.672276+00:00",
+  "input_columns": [
+    "u1",
+    "u2",
+    "u3"
+  ],
+  "origin": "dataset",
+  "output_column": "y",
+  "source_rows": 1999,
+  "version_id": "f5d607bd-9022-4d54-951c-1cd503cf2088"
+}

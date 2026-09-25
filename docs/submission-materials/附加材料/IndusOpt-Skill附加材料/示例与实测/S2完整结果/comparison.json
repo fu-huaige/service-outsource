@@ -1,0 +1,20 @@
+[
+  {
+    "strategy": "全量训练",
+    "training_rows": 1195,
+    "validation_free_run_fit": 71.39984717418095,
+    "validation_one_step_fit": 96.94473394550243,
+    "stable": true,
+    "model_id": "cd860073-8b7a-4928-bf4f-147b47a72cd2",
+    "processing_run_id": "d577e513-6b6d-45b9-a83f-e5103b9dad70"
+  },
+  {
+    "strategy": "D-最优选段训练",
+    "training_rows": 360,
+    "validation_free_run_fit": 73.65906608090887,
+    "validation_one_step_fit": 96.94756937716066,
+    "stable": true,
+    "model_id": "7a09a724-8f24-438b-9e42-7d48a2c6ae41",
+    "processing_run_id": "f0d2b3e6-f4c1-4091-a4f6-fa219032ac6e"
+  }
+]

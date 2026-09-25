@@ -1,0 +1,44 @@
+{
+  "success": true,
+  "data": {
+    "source_version_id": "cd95c530-8501-4ee7-a2d6-4dd454b86668",
+    "result_version_id": "645ff1e1-5dea-4741-94e8-5e6225ec4919",
+    "dataset_id": "12a54c14-fa6e-404b-891d-c2c39bc4239b",
+    "processing_run_id": "a6ffb021-5e46-4f0c-bf87-eca83bf636f5",
+    "operation": "preprocessing.lag_compensation",
+    "summary": {
+      "lag_map": {
+        "u1": 1,
+        "u2": 1,
+        "u3": 1
+      },
+      "alignment": "u_aligned(t)=u_source(t-nk); y(t) and timestamps remain on the output time axis",
+      "rows_before": 2000,
+      "rows_after": 1999,
+      "removed_boundary_rows": 1,
+      "effective_time_range": {
+        "start": "2026-01-01T00:00:01+00:00",
+        "end": "2026-01-01T00:33:19+00:00"
+      },
+      "recommendation_source": "manual",
+      "evidence_summary": {}
+    },
+    "task": {
+      "id": "8f47c0bd-fff9-4c49-b1a1-8079f0aafa21",
+      "status": "succeeded",
+      "progress": {
+        "current": 1,
+        "total": 1,
+        "percent": 100.0,
+        "stage": "preprocessing.lag_compensation",
+        "message": "时滞补偿已创建不可变数据版本。"
+      },
+      "created_at": "2026-09-18T10:31:12.160784Z",
+      "started_at": "2026-09-18T10:31:12.160784Z",
+      "finished_at": "2026-09-18T10:31:12.160784Z",
+      "error": null
+    }
+  },
+  "error": null,
+  "request_id": "a90ec0c4-b99a-424a-9fe6-804de5d6165a"
+}

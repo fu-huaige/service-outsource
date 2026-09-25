@@ -1,0 +1,3 @@
+# Preserve exact file bytes in Git (including CRLF in hashed evidence).
+# All release files are verified by SHA256SUMS.txt; do not normalize EOLs.
+* -text

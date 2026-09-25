@@ -1,0 +1,41 @@
+{
+  "verified_at_utc": "2026-09-13T12:10:32.135124+00:00",
+  "backend_commit": "5bcc51c1469e6451d4a1980c71d37663498ce172",
+  "backend_code_modified_by_this_task": false,
+  "backend_runtime": "Python 3.11.15",
+  "client_runtime": "3.9.6",
+  "platform": "Darwin arm64",
+  "database": "isolated SQLite via existing serve_e2e.py; create_all, no Alembic migration",
+  "backend_llm_provider": "none",
+  "external_llm_calls": false,
+  "mock_backend": false,
+  "skill_script_sha256": "8fdc1f65a84dcd4f9a8c5032526f0754eaaa45b5d2724065cc728a5b3a057017",
+  "seed": 20260913,
+  "samples": 2000,
+  "fixed_demo_lag_map": {
+    "u1": 1,
+    "u2": 1,
+    "u3": 1
+  },
+  "demo_lags_source": "fixed illustrative parameters; ground_truth is not used by analyze",
+  "unit_and_evidence_tests": {
+    "passed": 10,
+    "failed": 0
+  },
+  "ruff": "passed",
+  "skill_validation": "passed",
+  "live_cases": {
+    "S2_analyze": "succeeded; export timestamps and values verified row by row",
+    "S6_analyze": "expected stop at rank-deficient selected-model OLS",
+    "without_confirmation": "waiting_confirmation; no apply or modeling request",
+    "benchmark": "succeeded; S3/S6, selection/metric/delay experiments"
+  },
+  "not_validated": [
+    "independent natural-language agent invocation accuracy",
+    "PostgreSQL migration",
+    "Docker deployment",
+    "production industrial data",
+    "remote service"
+  ],
+  "known_backend_limit": "All-zero lag apply is refused while public ARX requires lag provenance."
+}

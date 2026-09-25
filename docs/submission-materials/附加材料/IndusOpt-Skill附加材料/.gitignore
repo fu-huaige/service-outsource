@@ -1,0 +1,25 @@
+# Local/editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+~$*
+.~*
+*.swp
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+.venv-win/
+.env
+.env.*
+!.env.example
+# Ad-hoc runs may contain private input data. Curated examples remain tracked.
+/runs/
+/result/
+/diagnosis/
+/example/
+/benchmark/
+*.db
+*.db-shm
+*.db-wal

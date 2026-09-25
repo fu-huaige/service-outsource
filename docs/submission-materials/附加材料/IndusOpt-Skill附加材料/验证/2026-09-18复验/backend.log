@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "E:\服外\A14\backend\scripts\serve_e2e.py", line 79, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "E:\服外\A14\backend\scripts\serve_e2e.py", line 69, in main
+    prepare(arguments.state_dir, reset=not arguments.keep)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\服外\A14\backend\scripts\serve_e2e.py", line 41, in prepare
+    from app.core.db import get_engine
+  File "E:\服外\A14\backend\app\core\db.py", line 5, in <module>
+    from redis.asyncio import Redis
+ModuleNotFoundError: No module named 'redis'

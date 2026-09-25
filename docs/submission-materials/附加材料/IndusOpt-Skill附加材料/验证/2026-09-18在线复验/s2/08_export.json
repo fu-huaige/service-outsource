@@ -1,0 +1,37 @@
+{
+  "success": true,
+  "data": {
+    "export_id": "3fe74e7d-1d76-4097-967e-4f503cc0713c",
+    "dataset_id": "dae02ab8-c06f-4c0d-9fc3-86446c6b4f89",
+    "version_id": "5eb06366-cdf0-412f-a62f-452eb8578979",
+    "task": {
+      "id": "a31814fc-f774-4521-ad83-55bc92f4e3e3",
+      "status": "succeeded",
+      "progress": {
+        "current": 1,
+        "total": 1,
+        "percent": 100.0,
+        "stage": "export_dataset",
+        "message": "优选数据集已导出。"
+      },
+      "created_at": "2026-09-18T10:31:11.424772Z",
+      "started_at": "2026-09-18T10:31:11.424772Z",
+      "finished_at": "2026-09-18T10:31:11.424772Z",
+      "error": null
+    },
+    "csv_uri": "exports/3fe74e7d-1d76-4097-967e-4f503cc0713c.csv",
+    "manifest_uri": "exports/3fe74e7d-1d76-4097-967e-4f503cc0713c.manifest.json",
+    "exported_rows": 360,
+    "source_rows": 1999,
+    "coverage_ratio": 0.18009004502251125,
+    "columns": [
+      "timestamp",
+      "u1",
+      "u2",
+      "u3",
+      "y"
+    ]
+  },
+  "error": null,
+  "request_id": "88174ead-21c8-463b-8d41-96a89dc99c82"
+}

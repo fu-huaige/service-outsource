@@ -1,0 +1,1 @@
+{"success":false,"data":null,"error":{"code":"DESIGN_MATRIX_RANK_DEFICIENT","message":"ARX 设计矩阵秩不足，请减少共线变量或改用 Ridge。","details":{"rank":6,"features":8}},"request_id":"bd86f32c-557f-45e4-87cf-9c9bb651ed11"}

@@ -1,0 +1,44 @@
+{
+  "success": true,
+  "data": {
+    "dataset_id": "dae02ab8-c06f-4c0d-9fc3-86446c6b4f89",
+    "active_version_id": "ce767398-66d4-4dfe-89fc-1d2ef98c7c93",
+    "nodes": [
+      {
+        "id": "ce767398-66d4-4dfe-89fc-1d2ef98c7c93",
+        "name": "V0 · 原始上传",
+        "tool": "raw_upload",
+        "created_at": "2026-09-18T10:31:09.970167",
+        "parent_version_id": null,
+        "parameters": {
+          "encoding": "utf-8",
+          "delimiter": "comma",
+          "original_filename": "skill-input.csv"
+        },
+        "row_count": 2000,
+        "column_count": 5,
+        "artifact_path": "uploads/dae02ab8-c06f-4c0d-9fc3-86446c6b4f89_raw.csv",
+        "processing_run_id": null,
+        "audit_summary": {
+          "freeze": {
+            "candidate_frozen_segment_count": 0,
+            "candidate_frozen_segments": []
+          },
+          "processing": {},
+          "warnings": []
+        },
+        "provenance": {},
+        "time_column": "timestamp",
+        "input_columns": [
+          "u1",
+          "u2",
+          "u3"
+        ],
+        "output_column": "y"
+      }
+    ],
+    "edges": []
+  },
+  "error": null,
+  "request_id": "58e08c9f-0805-4465-82e8-5784375d0d02"
+}

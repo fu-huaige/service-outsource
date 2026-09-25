@@ -1,0 +1,91 @@
+{
+  "success": true,
+  "data": {
+    "dataset_id": "67b775f3-b7ac-4b83-adee-d288b3fc9a86",
+    "dataset_name": "Skill synthetic example",
+    "version_id": "8a24f370-e340-4c3c-883a-4a14817b2273",
+    "scenario": "S2",
+    "file_path": "simulation/67b775f3-b7ac-4b83-adee-d288b3fc9a86.csv",
+    "ground_truth_path": "simulation/67b775f3-b7ac-4b83-adee-d288b3fc9a86_ground_truth.json",
+    "manifest_path": "simulation/67b775f3-b7ac-4b83-adee-d288b3fc9a86.manifest.json",
+    "download_url": "/api/v1/datasets/67b775f3-b7ac-4b83-adee-d288b3fc9a86/download",
+    "num_rows": 2000,
+    "num_cols": 5,
+    "columns": [
+      "timestamp",
+      "u1",
+      "u2",
+      "u3",
+      "y"
+    ],
+    "ground_truth": {
+      "system_type": "MISO_ARX",
+      "true_na": 2,
+      "true_nb": [
+        2,
+        2,
+        2
+      ],
+      "true_delays": [
+        3,
+        8,
+        5
+      ],
+      "true_delays_by_input": {
+        "u1": 3,
+        "u2": 8,
+        "u3": 5
+      },
+      "true_parameters": {
+        "a1": -1.4,
+        "a2": 0.48,
+        "b_u1_0": 0.36,
+        "b_u1_1": 0.12,
+        "b_u2_0": 0.18,
+        "b_u2_1": 0.06,
+        "b_u3_0": 0.12,
+        "b_u3_1": 0.04
+      },
+      "ar_coefficients": [
+        -1.4,
+        0.48
+      ],
+      "input_coefficients": {
+        "u1": [
+          0.36,
+          0.12
+        ],
+        "u2": [
+          0.18,
+          0.06
+        ],
+        "u3": [
+          0.12,
+          0.04
+        ]
+      },
+      "dynamic_segments": [
+        {
+          "start_index": 0,
+          "end_index": 1999,
+          "start_idx": 0,
+          "end_idx": 1999,
+          "segment_type": "persistent_excitation",
+          "snr_db": 44.351
+        }
+      ],
+      "anomaly_indices": {},
+      "missing_indices": {},
+      "freeze_segments": [],
+      "drift_segments": [],
+      "irregular_timestamp_indices": [],
+      "duplicate_timestamp_indices": [],
+      "redundant_variables": [],
+      "variable_dependencies": {},
+      "noise_level": 0.03,
+      "seed": 20260913
+    }
+  },
+  "error": null,
+  "request_id": "7f78311a-bbfa-47b0-9e04-91450257c0a3"
+}

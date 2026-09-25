@@ -1,0 +1,37 @@
+[
+  {
+    "step": "00_health",
+    "method": "GET",
+    "path": "/health/live",
+    "parameters": null,
+    "at_utc": "2026-09-13T12:01:26.597833+00:00"
+  },
+  {
+    "step": "01_upload",
+    "method": "POST",
+    "path": "/datasets/upload",
+    "parameters": null,
+    "at_utc": "2026-09-13T12:01:26.600661+00:00"
+  },
+  {
+    "step": "02_existing",
+    "method": "GET",
+    "path": "/datasets/67b775f3-b7ac-4b83-adee-d288b3fc9a86",
+    "parameters": null,
+    "at_utc": "2026-09-13T12:01:26.629549+00:00"
+  },
+  {
+    "step": "02_versions",
+    "method": "GET",
+    "path": "/datasets/67b775f3-b7ac-4b83-adee-d288b3fc9a86/versions",
+    "parameters": null,
+    "at_utc": "2026-09-13T12:01:26.640417+00:00"
+  },
+  {
+    "step": "03_profile",
+    "method": "GET",
+    "path": "/datasets/67b775f3-b7ac-4b83-adee-d288b3fc9a86/profile?version_id=8a24f370-e340-4c3c-883a-4a14817b2273",
+    "parameters": null,
+    "at_utc": "2026-09-13T12:01:26.649951+00:00"
+  }
+]

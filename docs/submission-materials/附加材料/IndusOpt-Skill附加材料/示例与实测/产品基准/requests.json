@@ -1,0 +1,16 @@
+[
+  {
+    "step": "benchmark",
+    "method": "POST",
+    "path": "/benchmark/run",
+    "parameters": {
+      "scenarios": [
+        "S3",
+        "S6"
+      ],
+      "n_samples": 2000,
+      "seed": 20260913
+    },
+    "at_utc": "2026-09-13T12:01:03.719794+00:00"
+  }
+]

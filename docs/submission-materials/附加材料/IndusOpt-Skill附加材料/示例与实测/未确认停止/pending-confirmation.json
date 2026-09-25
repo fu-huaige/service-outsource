@@ -1,0 +1,11 @@
+{
+  "status": "waiting_confirmation",
+  "source_version_id": "8a24f370-e340-4c3c-883a-4a14817b2273",
+  "lag_map": {
+    "u1": 1,
+    "u2": 1,
+    "u3": 1
+  },
+  "effect": "创建时滞补偿派生版本并删除无法对齐的前端边界行；不覆盖源文件。",
+  "next": "用户认可具体 lag_map 后，以新 out 目录和 --confirm-lags 再运行。"
+}

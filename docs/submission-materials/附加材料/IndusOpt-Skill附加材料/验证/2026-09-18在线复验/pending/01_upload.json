@@ -1,0 +1,40 @@
+{
+  "success": true,
+  "data": {
+    "dataset": {
+      "id": "dae02ab8-c06f-4c0d-9fc3-86446c6b4f89",
+      "name": "skill-input.csv",
+      "source": "upload",
+      "status": "ready",
+      "row_count": 2000,
+      "column_count": 5,
+      "latest_version_id": "ce767398-66d4-4dfe-89fc-1d2ef98c7c93",
+      "created_at": "2026-09-18T10:31:09.970167",
+      "updated_at": "2026-09-18T10:31:09.970167",
+      "version_id": "ce767398-66d4-4dfe-89fc-1d2ef98c7c93",
+      "file_size_bytes": 173283,
+      "col_count": 5,
+      "time_column": "timestamp",
+      "input_columns": [],
+      "output_column": null
+    },
+    "parse_task": {
+      "id": "21a88db7-b45d-42b8-928d-930ef6a273bf",
+      "status": "succeeded",
+      "progress": {
+        "current": 1,
+        "total": 1,
+        "percent": 100.0,
+        "stage": "parse_upload",
+        "message": "CSV 已完成校验、持久化和质量画像计算。"
+      },
+      "created_at": "2026-09-18T10:31:10.083469Z",
+      "started_at": "2026-09-18T10:31:10.083469Z",
+      "finished_at": "2026-09-18T10:31:10.083469Z",
+      "error": null
+    },
+    "deduplicated": false
+  },
+  "error": null,
+  "request_id": "daa84c07-5a7b-4319-85e4-c195ae079ae2"
+}

@@ -1,0 +1,7 @@
+{
+  "data_kind": "synthetic",
+  "seed": 20260913,
+  "scenario": "S6",
+  "sha256": "5eb3f0ef0db91a51a67a6f48bb95a28b0b45d7b0bb10176b4d46d919687abf9f",
+  "note": "真值仅用于事后审计，不作为 analyze 输入。"
+}

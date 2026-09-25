@@ -1,0 +1,15 @@
+[
+  {
+    "step": "simulation",
+    "method": "POST",
+    "path": "/simulation/generate",
+    "parameters": {
+      "scenario": "S6",
+      "n_steps": 2000,
+      "input_count": 3,
+      "seed": 20260913,
+      "name": "Skill synthetic example"
+    },
+    "at_utc": "2026-09-13T11:54:37.595474+00:00"
+  }
+]

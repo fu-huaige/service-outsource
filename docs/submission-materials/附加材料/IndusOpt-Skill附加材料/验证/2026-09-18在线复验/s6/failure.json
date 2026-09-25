@@ -1,0 +1,5 @@
+{
+  "status": "failed",
+  "reason": "07_selected_model: HTTP 400；服务端错误已保存。不自动重试写请求。",
+  "note": "可能已有服务端记录；未回滚或自动重试。"
+}

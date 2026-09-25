@@ -1,0 +1,4 @@
+interface:
+  display_name: "IndusOpt 工业建模数据优选"
+  short_description: "调用本机工业算法，完成数据诊断、确认后补偿、优选建模与可溯源交付"
+  default_prompt: "使用 $indusopt-data-selection 分析我提供的工业 CSV，核对变量与时滞参数，输出数据优选依据、模型对照和可复核的交付文件。"

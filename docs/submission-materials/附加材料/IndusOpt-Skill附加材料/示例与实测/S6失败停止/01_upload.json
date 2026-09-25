@@ -1,0 +1,44 @@
+{
+  "success": true,
+  "data": {
+    "dataset": {
+      "id": "ff01aa48-6cb6-4580-be87-516ba6876b34",
+      "name": "Skill synthetic example",
+      "source": "simulation",
+      "status": "ready",
+      "row_count": 1999,
+      "column_count": 5,
+      "latest_version_id": "bb7c859b-7bc6-46ba-a35d-db2b8c632a3e",
+      "created_at": "2026-09-13T11:54:37.726998",
+      "updated_at": "2026-09-13T11:56:52.222349",
+      "version_id": "bb7c859b-7bc6-46ba-a35d-db2b8c632a3e",
+      "file_size_bytes": 100662,
+      "col_count": 5,
+      "time_column": "timestamp",
+      "input_columns": [
+        "u1",
+        "u2",
+        "u3"
+      ],
+      "output_column": "y"
+    },
+    "parse_task": {
+      "id": "2abb64bc-0612-4cc8-b9b5-31293dac6f84",
+      "status": "succeeded",
+      "progress": {
+        "current": 1,
+        "total": 1,
+        "percent": 100.0,
+        "stage": "parse_upload",
+        "message": "CSV 已完成校验、持久化和质量画像计算。"
+      },
+      "created_at": "2026-09-13T12:01:26.422350Z",
+      "started_at": "2026-09-13T12:01:26.422350Z",
+      "finished_at": "2026-09-13T12:01:26.422350Z",
+      "error": null
+    },
+    "deduplicated": true
+  },
+  "error": null,
+  "request_id": "151b5ed9-0e48-415b-b069-6d90aecaf73c"
+}

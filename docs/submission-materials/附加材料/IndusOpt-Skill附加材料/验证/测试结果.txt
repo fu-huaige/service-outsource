@@ -1,0 +1,15 @@
+test_artifact_path_cannot_escape_root (__main__.AdapterContracts) ... ok
+test_client_rejects_remote_host (__main__.AdapterContracts) ... ok
+test_complete_selection (__main__.AdapterContracts) ... ok
+test_duplicate_time_stops_before_upload (__main__.AdapterContracts) ... ok
+test_duplicates_and_negative_indices_stop (__main__.AdapterContracts) ... ok
+test_empty_does_not_fall_back_to_all_training_rows (__main__.AdapterContracts) ... ok
+test_truncated_selection_stops (__main__.AdapterContracts) ... ok
+test_pending_confirmation_has_no_apply_or_model_request (__main__.RealExecutionEvidence) ... ok
+test_rank_deficient_run_not_presented_as_success (__main__.RealExecutionEvidence) ... ok
+test_real_export_and_metric_sources (__main__.RealExecutionEvidence) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.009s
+
+OK

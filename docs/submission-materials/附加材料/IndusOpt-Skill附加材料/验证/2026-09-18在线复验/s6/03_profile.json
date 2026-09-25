@@ -1,0 +1,255 @@
+{
+  "success": true,
+  "data": {
+    "dataset_id": "12a54c14-fa6e-404b-891d-c2c39bc4239b",
+    "version_id": "cd95c530-8501-4ee7-a2d6-4dd454b86668",
+    "row_count": 2000,
+    "column_count": 5,
+    "missing_rates": {
+      "timestamp": 0.0,
+      "u1": 0.0,
+      "u2": 0.0,
+      "u3": 0.0,
+      "y": 0.0
+    },
+    "anomaly_counts": {
+      "u1": 0,
+      "u2": 0,
+      "u3": 0,
+      "y": 325
+    },
+    "interval_histogram": [
+      {
+        "bin": 1.0,
+        "count": 1999
+      }
+    ],
+    "duplicate_timestamp_count": 0,
+    "irregular_sampling_rate": 0.0,
+    "constant_columns": [],
+    "frozen_segments": [
+      {
+        "column": "u1",
+        "start_index": 0,
+        "end_index": 119,
+        "length": 120
+      },
+      {
+        "column": "u1",
+        "start_index": 120,
+        "end_index": 143,
+        "length": 24
+      },
+      {
+        "column": "u1",
+        "start_index": 144,
+        "end_index": 279,
+        "length": 136
+      },
+      {
+        "column": "u1",
+        "start_index": 280,
+        "end_index": 303,
+        "length": 24
+      },
+      {
+        "column": "u1",
+        "start_index": 304,
+        "end_index": 599,
+        "length": 296
+      },
+      {
+        "column": "u1",
+        "start_index": 600,
+        "end_index": 623,
+        "length": 24
+      },
+      {
+        "column": "u1",
+        "start_index": 624,
+        "end_index": 759,
+        "length": 136
+      },
+      {
+        "column": "u1",
+        "start_index": 760,
+        "end_index": 771,
+        "length": 12
+      },
+      {
+        "column": "u1",
+        "start_index": 772,
+        "end_index": 783,
+        "length": 12
+      },
+      {
+        "column": "u1",
+        "start_index": 784,
+        "end_index": 1079,
+        "length": 296
+      },
+      {
+        "column": "u1",
+        "start_index": 1080,
+        "end_index": 1103,
+        "length": 24
+      },
+      {
+        "column": "u1",
+        "start_index": 1104,
+        "end_index": 1400,
+        "length": 297
+      },
+      {
+        "column": "u1",
+        "start_index": 1424,
+        "end_index": 1999,
+        "length": 576
+      },
+      {
+        "column": "u2",
+        "start_index": 0,
+        "end_index": 440,
+        "length": 441
+      },
+      {
+        "column": "u2",
+        "start_index": 464,
+        "end_index": 1239,
+        "length": 776
+      },
+      {
+        "column": "u2",
+        "start_index": 1240,
+        "end_index": 1251,
+        "length": 12
+      },
+      {
+        "column": "u2",
+        "start_index": 1252,
+        "end_index": 1263,
+        "length": 12
+      },
+      {
+        "column": "u2",
+        "start_index": 1264,
+        "end_index": 1999,
+        "length": 736
+      },
+      {
+        "column": "u3",
+        "start_index": 0,
+        "end_index": 919,
+        "length": 920
+      },
+      {
+        "column": "u3",
+        "start_index": 920,
+        "end_index": 943,
+        "length": 24
+      },
+      {
+        "column": "u3",
+        "start_index": 944,
+        "end_index": 1559,
+        "length": 616
+      },
+      {
+        "column": "u3",
+        "start_index": 1560,
+        "end_index": 1583,
+        "length": 24
+      },
+      {
+        "column": "u3",
+        "start_index": 1584,
+        "end_index": 1999,
+        "length": 416
+      },
+      {
+        "column": "y",
+        "start_index": 0,
+        "end_index": 8,
+        "length": 9
+      }
+    ],
+    "candidate_frozen_segments": [],
+    "freeze_detection_summary": {
+      "candidate_count": 0,
+      "affected_column_count": 0,
+      "longest_segment": null
+    },
+    "recommended_downsample_factor": 1,
+    "quality_issues": [
+      {
+        "code": "IQR_ANOMALIES",
+        "severity": "info",
+        "message": "IQR 规则检测到候选异常点。",
+        "affected_columns": [
+          "y"
+        ]
+      }
+    ],
+    "total_rows": 2000,
+    "total_cols": 5,
+    "missing_rate": 0.0,
+    "time_range_start": "2026-01-01T00:00:00Z",
+    "time_range_end": "2026-01-01T00:33:19Z",
+    "sample_period_seconds": 1.0,
+    "max_consecutive_missing": {
+      "timestamp": 0,
+      "u1": 0,
+      "u2": 0,
+      "u3": 0,
+      "y": 0
+    },
+    "column_statistics": {
+      "u1": {
+        "count": 2000,
+        "mean": -0.02036345,
+        "std": 0.36949482,
+        "min": -1.5424249,
+        "max": 1.78397104,
+        "q25": 0.0,
+        "q50": 0.0,
+        "q75": 0.0
+      },
+      "u2": {
+        "count": 2000,
+        "mean": 0.00588144,
+        "std": 0.06113795,
+        "min": -0.21421428,
+        "max": 0.65891941,
+        "q25": 0.0,
+        "q50": 0.0,
+        "q75": 0.0
+      },
+      "u3": {
+        "count": 2000,
+        "mean": -0.00010008,
+        "std": 0.09334879,
+        "min": -0.60656895,
+        "max": 0.59822921,
+        "q25": 0.0,
+        "q50": 0.0,
+        "q75": 0.0
+      },
+      "y": {
+        "count": 2000,
+        "mean": -0.09460555,
+        "std": 1.90486063,
+        "min": -9.21619485,
+        "max": 9.37283598,
+        "q25": -0.08274693,
+        "q50": 0.00530694,
+        "q75": 0.10695662
+      }
+    },
+    "quality_score": 95.9375,
+    "recommendations": [
+      "候选异常点可在清洗阶段使用 Hampel 或 IQR 方法复核。"
+    ]
+  },
+  "error": null,
+  "request_id": "e0ff09ef-e9bf-416a-bc6b-6f3a191a0623"
+}

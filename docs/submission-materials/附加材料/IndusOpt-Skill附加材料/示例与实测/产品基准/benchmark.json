@@ -1,0 +1,274 @@
+{
+  "success": true,
+  "data": {
+    "benchmark_id": "a2906acb-c2c4-47ad-bbac-efea91551a34",
+    "task": {
+      "id": "6424d5b3-6e4c-4905-b818-ebc64b2d2e6e",
+      "status": "succeeded",
+      "progress": {
+        "current": 1,
+        "total": 1,
+        "percent": 100.0,
+        "stage": "run_benchmark",
+        "message": "自评测基准已完成，全部数值由本次运行实时计算。"
+      },
+      "created_at": "2026-09-13T12:01:03.787699Z",
+      "started_at": "2026-09-13T12:01:03.787699Z",
+      "finished_at": "2026-09-13T12:01:03.787699Z",
+      "error": null
+    },
+    "scenarios": [
+      "S3",
+      "S6"
+    ],
+    "n_samples": 2000,
+    "seed": 20260913,
+    "experiments": [
+      {
+        "key": "selection",
+        "title": "数据优选消融：全量 vs 能量启发式 vs 完整加权质量分 vs 质量约束 D-最优",
+        "question": "等预算下，质量约束 D-最优优选能否达到全量数据的辨识精度，且不像逐窗口打分那样失效？",
+        "rows": [
+          {
+            "scenario": "S3",
+            "strategy": "full",
+            "metrics": {
+              "train_rows": 1393.0,
+              "coverage_ratio": 0.6996484178804621,
+              "parameter_error": 0.04998184833087264,
+              "free_run_fit": 94.93998033000473,
+              "condition_number": 137.05751618137253,
+              "rank_deficient": 0.0
+            }
+          },
+          {
+            "scenario": "S3",
+            "strategy": "energy",
+            "metrics": {
+              "train_rows": 480.0,
+              "coverage_ratio": 0.24108488196885988,
+              "parameter_error": 0.051656423624225706,
+              "free_run_fit": 95.25967227497351,
+              "condition_number": 131.00658546337857,
+              "rank_deficient": 0.0
+            }
+          },
+          {
+            "scenario": "S3",
+            "strategy": "weighted",
+            "metrics": {
+              "train_rows": 510.0,
+              "coverage_ratio": 0.25615268709191363,
+              "parameter_error": 0.04683124802901902,
+              "free_run_fit": 93.45804169891048,
+              "condition_number": 130.7516157362084,
+              "rank_deficient": 0.0
+            }
+          },
+          {
+            "scenario": "S3",
+            "strategy": "ids",
+            "metrics": {
+              "train_rows": 450.0,
+              "coverage_ratio": 0.22601707684580613,
+              "parameter_error": 0.05234273559347305,
+              "free_run_fit": 94.91168069596299,
+              "condition_number": 140.46882067699943,
+              "rank_deficient": 0.0
+            }
+          },
+          {
+            "scenario": "S6",
+            "strategy": "full",
+            "metrics": {
+              "train_rows": 1393.0,
+              "coverage_ratio": 0.6996484178804621,
+              "parameter_error": 0.03811338285495207,
+              "free_run_fit": 88.09825709840126,
+              "condition_number": 193.12284273636834,
+              "rank_deficient": 0.0
+            }
+          },
+          {
+            "scenario": "S6",
+            "strategy": "energy",
+            "metrics": {
+              "train_rows": 510.0,
+              "coverage_ratio": 0.25615268709191363,
+              "parameter_error": 0.14765768399939075,
+              "free_run_fit": 75.32098301551218,
+              "condition_number": 1000000000000.0,
+              "rank_deficient": 1.0
+            }
+          },
+          {
+            "scenario": "S6",
+            "strategy": "weighted",
+            "metrics": {
+              "train_rows": 510.0,
+              "coverage_ratio": 0.25615268709191363,
+              "parameter_error": 0.14765768399939075,
+              "free_run_fit": 75.32098301551218,
+              "condition_number": 1000000000000.0,
+              "rank_deficient": 1.0
+            }
+          },
+          {
+            "scenario": "S6",
+            "strategy": "ids",
+            "metrics": {
+              "train_rows": 600.0,
+              "coverage_ratio": 0.30135610246107486,
+              "parameter_error": 0.03843924740283648,
+              "free_run_fit": 88.07427470817146,
+              "condition_number": 192.83212380198717,
+              "rank_deficient": 0.0
+            }
+          }
+        ],
+        "notes": [
+          "参数误差以仿真真值为基准，与拟合优度无关。",
+          "自由仿真 FIT 在未参与优选的验证区间上计算。",
+          "weighted 为 ALG-0.1 §6.2 加权质量分的完整实现（输入能量、输出能量、信噪比、响应关联、时长，减去异常率、缺失率、稳态与短段惩罚），按原始权重执行，以免与 D-最优对照时树立稻草人。",
+          "energy 与 weighted 的共同结构性缺陷是逐窗口独立打分，无法表达「这个窗口与已选窗口信息重复」；D-最优的增量 log det 天然表达这一点。",
+          "rank_deficient = 1 表示该子集无法辨识全部参数；condition_number 上限为 1e+12（超出该值在双精度下已属奇异，具体数值无意义）。",
+          "同构激励场景下各策略差异很小；差距出现在异构激励（S6）。"
+        ]
+      },
+      {
+        "key": "metric",
+        "title": "指标区分度：一步预测 FIT vs 自由仿真 FIT",
+        "question": "一步预测 FIT 能否区分良好模型与欠拟合模型？若不能，它就不适合作为闭环目标函数。",
+        "rows": [
+          {
+            "scenario": "S3",
+            "strategy": "well_fitted",
+            "metrics": {
+              "one_step_fit": 98.7296441331265,
+              "free_run_fit": 94.93998033000473,
+              "fit_gap": 3.789663803121769
+            }
+          },
+          {
+            "scenario": "S3",
+            "strategy": "starved",
+            "metrics": {
+              "one_step_fit": 92.64609962805565,
+              "free_run_fit": -6.373884584895739,
+              "fit_gap": 99.01998421295139
+            }
+          },
+          {
+            "scenario": "S6",
+            "strategy": "well_fitted",
+            "metrics": {
+              "one_step_fit": 96.86588492882203,
+              "free_run_fit": 88.09825709840126,
+              "fit_gap": 8.767627830420764
+            }
+          },
+          {
+            "scenario": "S6",
+            "strategy": "starved",
+            "metrics": {
+              "one_step_fit": 96.32655345765264,
+              "free_run_fit": 75.40365854146384,
+              "fit_gap": 20.922894916188795
+            }
+          }
+        ],
+        "notes": [
+          "同一组模型下，两个指标的跨度之比即为区分度之比。",
+          "S3：一步预测跨度 6.08 个点，自由仿真跨度 101.31 个点，区分度之比 16.7×",
+          "S6：一步预测跨度 0.54 个点，自由仿真跨度 12.69 个点，区分度之比 23.5×"
+        ]
+      },
+      {
+        "key": "delay",
+        "title": "时滞估计：朴素互相关 vs 预白化互相关",
+        "question": "预白化能否消除输入自相关造成的峰值偏移？",
+        "rows": [
+          {
+            "scenario": "S3",
+            "strategy": "u1",
+            "metrics": {
+              "true_delay": 3.0,
+              "raw_peak": 6.0,
+              "prewhitened_peak": 5.0,
+              "raw_error": 3.0,
+              "prewhitened_error": 2.0,
+              "ar_order": 1.0
+            }
+          },
+          {
+            "scenario": "S3",
+            "strategy": "u2",
+            "metrics": {
+              "true_delay": 8.0,
+              "raw_peak": 6.0,
+              "prewhitened_peak": 5.0,
+              "raw_error": 2.0,
+              "prewhitened_error": 3.0,
+              "ar_order": 1.0
+            }
+          },
+          {
+            "scenario": "S3",
+            "strategy": "u3",
+            "metrics": {
+              "true_delay": 5.0,
+              "raw_peak": 5.0,
+              "prewhitened_peak": 4.0,
+              "raw_error": 0.0,
+              "prewhitened_error": 1.0,
+              "ar_order": 1.0
+            }
+          },
+          {
+            "scenario": "S6",
+            "strategy": "u1",
+            "metrics": {
+              "true_delay": 3.0,
+              "raw_peak": 7.0,
+              "prewhitened_peak": 5.0,
+              "raw_error": 4.0,
+              "prewhitened_error": 2.0,
+              "ar_order": 1.0
+            }
+          },
+          {
+            "scenario": "S6",
+            "strategy": "u2",
+            "metrics": {
+              "true_delay": 8.0,
+              "raw_peak": 12.0,
+              "prewhitened_peak": 9.0,
+              "raw_error": 4.0,
+              "prewhitened_error": 1.0,
+              "ar_order": 13.0
+            }
+          },
+          {
+            "scenario": "S6",
+            "strategy": "u3",
+            "metrics": {
+              "true_delay": 5.0,
+              "raw_peak": 10.0,
+              "prewhitened_peak": 7.0,
+              "raw_error": 5.0,
+              "prewhitened_error": 2.0,
+              "ar_order": 1.0
+            }
+          }
+        ],
+        "notes": [
+          "预白化更接近真值的通道数：4；更差的通道数：2；其余持平，共 6 个通道。",
+          "朴素互相关的偏差方向是系统性的，因为它等于真实脉冲响应与输入自协方差的卷积。"
+        ]
+      }
+    ],
+    "duration_ms": 63.00550000742078
+  },
+  "error": null,
+  "request_id": "6286acbf-450b-437f-ae34-e7fdf74a7e23"
+}

@@ -1,0 +1,163 @@
+{
+  "success": true,
+  "data": {
+    "dataset_id": "ff01aa48-6cb6-4580-be87-516ba6876b34",
+    "dataset_name": "Skill synthetic example",
+    "version_id": "6f56f8eb-7746-452a-99ae-88b5a00a701a",
+    "scenario": "S6",
+    "file_path": "simulation/ff01aa48-6cb6-4580-be87-516ba6876b34.csv",
+    "ground_truth_path": "simulation/ff01aa48-6cb6-4580-be87-516ba6876b34_ground_truth.json",
+    "manifest_path": "simulation/ff01aa48-6cb6-4580-be87-516ba6876b34.manifest.json",
+    "download_url": "/api/v1/datasets/ff01aa48-6cb6-4580-be87-516ba6876b34/download",
+    "num_rows": 2000,
+    "num_cols": 5,
+    "columns": [
+      "timestamp",
+      "u1",
+      "u2",
+      "u3",
+      "y"
+    ],
+    "ground_truth": {
+      "system_type": "MISO_ARX",
+      "true_na": 2,
+      "true_nb": [
+        2,
+        2,
+        2
+      ],
+      "true_delays": [
+        3,
+        8,
+        5
+      ],
+      "true_delays_by_input": {
+        "u1": 3,
+        "u2": 8,
+        "u3": 5
+      },
+      "true_parameters": {
+        "a1": -1.4,
+        "a2": 0.48,
+        "b_u1_0": 0.36,
+        "b_u1_1": 0.12,
+        "b_u2_0": 0.18,
+        "b_u2_1": 0.06,
+        "b_u3_0": 0.12,
+        "b_u3_1": 0.04
+      },
+      "ar_coefficients": [
+        -1.4,
+        0.48
+      ],
+      "input_coefficients": {
+        "u1": [
+          0.36,
+          0.12
+        ],
+        "u2": [
+          0.18,
+          0.06
+        ],
+        "u3": [
+          0.12,
+          0.04
+        ]
+      },
+      "dynamic_segments": [
+        {
+          "start_index": 120,
+          "end_index": 143,
+          "start_idx": 120,
+          "end_idx": 143,
+          "segment_type": "step_u1",
+          "snr_db": 36.053
+        },
+        {
+          "start_index": 280,
+          "end_index": 303,
+          "start_idx": 280,
+          "end_idx": 303,
+          "segment_type": "step_u1",
+          "snr_db": 36.053
+        },
+        {
+          "start_index": 440,
+          "end_index": 463,
+          "start_idx": 440,
+          "end_idx": 463,
+          "segment_type": "ramp_u2",
+          "snr_db": 36.053
+        },
+        {
+          "start_index": 600,
+          "end_index": 623,
+          "start_idx": 600,
+          "end_idx": 623,
+          "segment_type": "step_u1",
+          "snr_db": 36.053
+        },
+        {
+          "start_index": 760,
+          "end_index": 783,
+          "start_idx": 760,
+          "end_idx": 783,
+          "segment_type": "pulse_u1",
+          "snr_db": 36.053
+        },
+        {
+          "start_index": 920,
+          "end_index": 943,
+          "start_idx": 920,
+          "end_idx": 943,
+          "segment_type": "step_u3",
+          "snr_db": 36.053
+        },
+        {
+          "start_index": 1080,
+          "end_index": 1103,
+          "start_idx": 1080,
+          "end_idx": 1103,
+          "segment_type": "step_u1",
+          "snr_db": 36.053
+        },
+        {
+          "start_index": 1240,
+          "end_index": 1263,
+          "start_idx": 1240,
+          "end_idx": 1263,
+          "segment_type": "pulse_u2",
+          "snr_db": 36.053
+        },
+        {
+          "start_index": 1400,
+          "end_index": 1423,
+          "start_idx": 1400,
+          "end_idx": 1423,
+          "segment_type": "ramp_u1",
+          "snr_db": 36.053
+        },
+        {
+          "start_index": 1560,
+          "end_index": 1583,
+          "start_idx": 1560,
+          "end_idx": 1583,
+          "segment_type": "step_u3",
+          "snr_db": 36.053
+        }
+      ],
+      "anomaly_indices": {},
+      "missing_indices": {},
+      "freeze_segments": [],
+      "drift_segments": [],
+      "irregular_timestamp_indices": [],
+      "duplicate_timestamp_indices": [],
+      "redundant_variables": [],
+      "variable_dependencies": {},
+      "noise_level": 0.03,
+      "seed": 20260913
+    }
+  },
+  "error": null,
+  "request_id": "3c278e92-7949-4c20-b7c3-b75659b26f6f"
+}
