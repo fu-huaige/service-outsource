@@ -45,6 +45,15 @@ frontend/pnpm-debug.log*
 # Additional local database artifacts
 *.sqlite
 *.sqlite3
+backend/indusopt.db
+
+# Local packaging, presentation QA, and application materials
+backend.zip
+frontend.zip
+/.lark-slides/
+/软著申请材料/
+/docs/5.28服务外包答辩ppt.pptx
+/数智农业-挑战杯.pptx
 
 # Windows and editor files
 Thumbs.db
