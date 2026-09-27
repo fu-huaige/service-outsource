@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -67,10 +68,23 @@ def _correlated_csv() -> bytes:
     return ("\n".join(rows) + "\n").encode("utf-8")
 
 
-def _upload(feature_harness: FeatureHarness) -> tuple[UUID, UUID]:
+def _independent_csv() -> bytes:
+    start = datetime(2026, 2, 1, tzinfo=UTC)
+    rows = ["timestamp,u1,u2,u3,y"]
+    for index in range(600):
+        timestamp = (start + timedelta(seconds=index)).isoformat()
+        u1 = math.sin(2 * math.pi * index / 50)
+        u2 = math.cos(2 * math.pi * index / 60)
+        u3 = math.sin(2 * math.pi * index / 75)
+        y = 0.7 * u1 - 0.2 * u2 + 0.3 * u3
+        rows.append(f"{timestamp},{u1:.8f},{u2:.8f},{u3:.8f},{y:.8f}")
+    return ("\n".join(rows) + "\n").encode("utf-8")
+
+
+def _upload(feature_harness: FeatureHarness, csv: bytes | None = None) -> tuple[UUID, UUID]:
     response = feature_harness.client.post(
         "/api/v1/datasets/upload",
-        files={"file": ("feature-selection.csv", _correlated_csv(), "text/csv")},
+        files={"file": ("feature-selection.csv", csv if csv is not None else _correlated_csv(), "text/csv")},
         data={"name": "Agent Feature Selection"},
     )
     assert response.status_code == 202, response.text
@@ -95,7 +109,7 @@ def _upload(feature_harness: FeatureHarness) -> tuple[UUID, UUID]:
         json={
             "dataset_id": str(dataset_id),
             "version_id": str(version_id),
-            "lag_map": {"u1": 0, "u2": 0, "u3": 0},
+            "lag_map": {"u1": 0, "u2": 0, "u3": 1},
             "user_confirmed": True,
             "recommendation_source": "manual",
             "evidence_summary": {"fixture": "already_time_aligned"},
@@ -149,8 +163,10 @@ async def _counts(harness: FeatureHarness, dataset_id: UUID) -> tuple[int, int]:
 
 def _chat_to_feature_confirmation(
     harness: FeatureHarness,
+    *,
+    csv: bytes | None = None,
 ) -> tuple[AgentExecutionSession, dict[str, str]]:
-    dataset_id, source_version_id = _upload(harness)
+    dataset_id, source_version_id = _upload(harness, csv)
     response = harness.client.post(
         "/api/v1/copilot/chat",
         json={
@@ -172,7 +188,6 @@ def _chat_to_feature_confirmation(
     recommended = {
         item["variable"]: item["action"] for item in analyze.result_payload["recommendations"]
     }
-    assert "drop" in recommended.values()
     assert apply.input_payload["recommended_selection"] == recommended
     return execution, recommended
 
@@ -225,6 +240,7 @@ def test_feature_recommendation_is_formal_and_validation_is_authoritative(
     feature_harness: FeatureHarness,
 ) -> None:
     execution, recommended = _chat_to_feature_confirmation(feature_harness)
+    assert "drop" in recommended.values()
     apply = next(step for step in execution.step_runs if step.tool_name == "select_variables")
     accepted = _validate(
         feature_harness, execution_id=execution.id, step_id=apply.step_id
@@ -236,7 +252,7 @@ def test_feature_recommendation_is_formal_and_validation_is_authoritative(
         variable for variable, action in recommended.items() if action == "drop"
     )
 
-    for invalid_columns in (["missing"], ["u1", "u1"], ["timestamp"], ["y"]):
+    for invalid_columns in ([], ["missing"], ["u1", "u1"], ["timestamp"], ["y"]):
         invalid = _validate(
             feature_harness,
             execution_id=execution.id,
@@ -285,6 +301,65 @@ def test_recommendation_approve_creates_v3_once_and_resumes_to_arx_confirmation(
     assert replay.status_code == 200, replay.text
     assert replay.json()["data"]["result_version_id"] == str(result)
     assert asyncio.run(_counts(feature_harness, execution.dataset_id)) == after_first
+
+
+def test_no_drop_recommendation_keeps_version_and_resumes_to_arx_confirmation(
+    feature_harness: FeatureHarness,
+) -> None:
+    execution, recommended = _chat_to_feature_confirmation(
+        feature_harness, csv=_independent_csv()
+    )
+    assert set(recommended.values()) == {"keep"}
+    apply = next(step for step in execution.step_runs if step.tool_name == "select_variables")
+    source = execution.current_version_id
+    before = asyncio.run(_counts(feature_harness, execution.dataset_id))
+    assert apply.input_payload["recommended_drop_columns"] == []
+
+    validation = _validate(
+        feature_harness, execution_id=execution.id, step_id=apply.step_id, drop_columns=[]
+    )
+    assert validation.status_code == 200, validation.text
+    assert validation.json()["data"]["overall_status"] == "VALID"
+
+    response = _confirm(
+        feature_harness, execution_id=execution.id, step_id=apply.step_id, drop_columns=[]
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["step_status"] == "SUCCEEDED"
+    assert data["confirmation_status"] == "APPROVED"
+    assert data["result_version_id"] is None
+    assert UUID(data["current_version_id"]) == source
+
+    persisted = asyncio.run(_load_execution(feature_harness, execution.id))
+    applied = next(step for step in persisted.step_runs if step.tool_name == "select_variables")
+    downstream = next(step for step in persisted.step_runs if step.tool_name == "fit_arx")
+    assert applied.source_version_id == source
+    assert applied.result_version_id is None
+    assert applied.processing_run_ids == []
+    assert applied.input_payload["final_drop_columns"] == []
+    assert applied.result_payload["data_changed"] is False
+    assert applied.result_payload["summary"]["dropped_columns"] == []
+    assert applied.result_payload["summary"]["kept_input_columns"] == ["u1", "u2", "u3"]
+    assert "未创建新数据版本" in applied.result_payload["summary"]["reason"]
+    assert downstream.status == "WAITING_CONFIRMATION"
+    assert downstream.input_payload["arx_structure_recommendation"]["source_version_id"] == str(source)
+    assert asyncio.run(_counts(feature_harness, execution.dataset_id)) == before
+
+    replay = _confirm(
+        feature_harness, execution_id=execution.id, step_id=apply.step_id, drop_columns=[]
+    )
+    assert replay.status_code == 200, replay.text
+    assert asyncio.run(_counts(feature_harness, execution.dataset_id)) == before
+
+    confirmed_fit = _confirm(
+        feature_harness, execution_id=execution.id, step_id=downstream.step_id
+    )
+    assert confirmed_fit.status_code == 200, confirmed_fit.text
+    completed = asyncio.run(_load_execution(feature_harness, execution.id))
+    fitted = next(step for step in completed.step_runs if step.tool_name == "fit_arx")
+    assert fitted.status == "SUCCEEDED"
+    assert fitted.source_version_id == source
 
 
 def test_manual_feature_adjustment_persists_final_selection_and_provenance(

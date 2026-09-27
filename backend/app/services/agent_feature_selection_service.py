@@ -146,6 +146,26 @@ async def approve_and_execute_feature_step(
         step_id=step.step_id,
     )
     approved_step = _step(execution, step.step_id)
+    if not validation.final_drop_columns:
+        execution = await mark_step_succeeded(
+            session,
+            execution_id=execution.id,
+            step_id=approved_step.step_id,
+            input_payload=input_payload,
+            result_payload={
+                "data_changed": False,
+                "summary": {
+                    "dropped_columns": [],
+                    "kept_input_columns": list(validation.kept_input_columns),
+                    "reason": "正式共线性分析未建议剔除输入变量，保留全部输入且未创建新数据版本。",
+                    "user_confirmed": True,
+                },
+            },
+            source_version_id=execution.current_version_id,
+            processing_run_ids=[],
+        )
+        return FeatureSelectionOutcome(execution=execution, validation=validation)
+
     evidence = {
         variable: {
             "recommended_action": validation.recommended_selection[variable],
@@ -249,7 +269,7 @@ async def _validate(
 
     final_drop = sorted(set(requested) & input_set)
     kept = [name for name in input_columns if name not in final_drop]
-    if not requested:
+    if not requested and recommended_drop:
         issues.append("正式 Feature Apply 至少需要确认删除一个冗余输入变量。")
     if not kept:
         issues.append("变量筛选后至少必须保留一个输入变量。")
