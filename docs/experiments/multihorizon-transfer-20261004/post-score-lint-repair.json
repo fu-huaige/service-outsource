@@ -1,0 +1,9 @@
+{
+  "phase": "after all source and target scores; no numerical results changed",
+  "change": "Bind immediately used loop-local fit closure arguments for Ruff B023; no fitting, grid, weights, selection or simulator change",
+  "file": "backend/scripts/benchmark_multihorizon_transfer.py",
+  "before_sha256": "a7b2dba17f8b93b631791aa2080ffb895ace87e8dc0f006e2ce89fdde74166ce",
+  "after_sha256": "7ddcfb330a6f26e1f515d2d96cc0157e663514e7a4c4fd19f308629961e5e510",
+  "original_sources": "frozen-source preserves all 12 protocol-hashed files; replay original protocol in matching checkout",
+  "protocol_unchanged": true
+}

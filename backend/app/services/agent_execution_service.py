@@ -364,11 +364,14 @@ async def approve_step(
 def _is_approved_step_replay(
     execution: AgentExecutionSession, step: AgentStepRun
 ) -> bool:
+    if step.confirmation_status != "APPROVED":
+        return False
+    if step.status in {"SUCCEEDED", "FAILED"}:
+        return True
     return (
         execution.workflow_status == "RUNNING"
         and execution.current_step_id == step.step_id
         and step.status == "RUNNING"
-        and step.confirmation_status == "APPROVED"
     )
 
 

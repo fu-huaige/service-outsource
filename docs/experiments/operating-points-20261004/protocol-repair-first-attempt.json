@@ -1,0 +1,11 @@
+{
+  "recorded_at": "2026-10-04T08:55:13.783206+00:00",
+  "reason": "Development completed numerically but legacy pooled input_support contained numpy.bool_ and JSON serialization failed. Normalize numpy scalar serialization; no numerical estimator, grid, dataset or selection changes. Target scores remain unread.",
+  "target_scored": false,
+  "changes": {
+    "backend/scripts/benchmark_operating_points.py": {
+      "before_sha256": "749512dc604a54853c1e78471623419b6227351a61e0fb47cdefb3a9b835aea8",
+      "after_sha256": "07f6db3ba17d2962c422886533093aeeb4f16253cd342545a9a0446a32b7c0c5"
+    }
+  }
+}

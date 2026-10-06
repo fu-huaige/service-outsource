@@ -1,0 +1,11 @@
+{
+  "recorded_at": "2026-10-04T08:58:05.706396+00:00",
+  "reason": "The legacy clean helper did not handle numpy.bool_; normalize all numpy scalars explicitly and verify serialization in a regression test. Numerical estimator/grid/selection unchanged. Add pre-target comparison to a previously frozen temporal-only pooled baseline, and block both estimators during target replay.",
+  "target_scored": false,
+  "changes": {
+    "backend/scripts/benchmark_operating_points.py": {
+      "before_sha256": "749512dc604a54853c1e78471623419b6227351a61e0fb47cdefb3a9b835aea8",
+      "after_sha256": "3e1c7aa98bd85e6b433ad554bfa47ec674c5e70301c452e8a7660ad91ae1bc75"
+    }
+  }
+}

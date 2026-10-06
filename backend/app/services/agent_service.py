@@ -232,6 +232,8 @@ async def execute_pending_evaluation_step(
         )
 
     evaluation = evaluation_steps[0]
+    if evaluation.status in {"SUCCEEDED", "FAILED"}:
+        return execution
     execution = await start_step(session, execution_id=execution.id, step_id=evaluation.step_id)
     evaluation = next(step for step in execution.step_runs if step.step_id == evaluation.step_id)
     if evaluation.status != "RUNNING":

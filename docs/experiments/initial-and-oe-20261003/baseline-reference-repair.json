@@ -1,0 +1,8 @@
+{
+  "before_script_sha256": "33fb654a08adb7e68c54b30aa958d1332b4ac39d62d7cfb430caa32a126f2c1e",
+  "pinned_initial_commit": "f83223763a09130f9b63717b52152b2f0b0b48a5",
+  "reason": "Pin the same original snapshot to f832237 so future repository commits cannot change the baseline. Existing fits, winners and scores unchanged.",
+  "after_script_sha256": "3a667b2329dccca8e2289456e067d5328e21257c4c0ebc35031699bce16139c7",
+  "numerical_models_changed": false,
+  "existing_scores_changed": false
+}

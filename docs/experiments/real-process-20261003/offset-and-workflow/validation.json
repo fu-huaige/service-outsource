@@ -1,0 +1,52 @@
+{
+  "date": "2026-10-03",
+  "backend_full_suite": {
+    "passed": 604,
+    "skipped": 3,
+    "failed": 0,
+    "log": "/tmp/indusopt-next-fulltests.log"
+  },
+  "real_rq_followup": {
+    "passed": 3,
+    "skipped": 0,
+    "failed": 0,
+    "isolated_redis": true,
+    "redis_stopped_after_test": true,
+    "log": "/tmp/indusopt-next-worker-tests.log"
+  },
+  "backend_unique_tests_passed": 607,
+  "post_suite_replay_and_keep_all_checks": {
+    "passed": 19,
+    "log": "/tmp/indusopt-next-replay-tests.log"
+  },
+  "frontend": {
+    "passed": 273,
+    "failed": 0,
+    "vue_tsc": "passed",
+    "build": "passed",
+    "log": "/tmp/indusopt-next-frontend-tests-final.log"
+  },
+  "ruff_changed_scope": "passed",
+  "git_diff_check": "passed",
+  "mypy": {
+    "status": "historical_errors_remain",
+    "errors": 22,
+    "same_as_baseline": true,
+    "new_errors": []
+  },
+  "model_comparison_vs_previous_90_grid": {
+    "improved": 3,
+    "ties": 9,
+    "median_test_rmse_ratio": 1.0
+  },
+  "model_comparison_vs_original_60_grid": {
+    "comparisons": 12,
+    "improved": 11,
+    "ties": 1,
+    "median_rmse_ratio": 0.8044258033988685,
+    "worst_rmse_ratio": 1.0
+  },
+  "actual_optimizer_trials": 30,
+  "api_integration_cases": 3,
+  "independent_test_confirmation": false
+}

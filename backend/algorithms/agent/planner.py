@@ -154,6 +154,9 @@ def parse_intent(message: str) -> ParsedIntent:
     }
 
     parameters: dict[str, Any] = {}
+    if any(phrase in lowered for phrase in ("全折验收", "全折验证", "严格验证")):
+        goals.update({"model", "optimize"})
+        parameters["optimization_policy"] = "validation_guarded"
     trials = re.search(r"(\d+)\s*(?:次|轮)?\s*(?:trial|试验|迭代)", lowered)
     if trials:
         parameters["max_trials"] = max(1, min(int(trials.group(1)), 500))
@@ -239,7 +242,7 @@ class RuleBasedPlanner:
                 assumptions.append("建模前默认执行质量门控与 D-最优区间优选。")
             emit("fit_arx")
             if intent.wants("optimize"):
-                emit("optimize_pipeline", _subset(intent.parameters, ("max_trials",)))
+                emit("optimize_pipeline", _subset(intent.parameters, ("max_trials", "optimization_policy")))
             emit("evaluate_model")
         if intent.wants("report"):
             emit("generate_report")

@@ -156,7 +156,7 @@ def test_s4_lineage_separates_user_request_from_ground_truth_resolved_parameters
     assert simulation["root_version_id"] == node["id"]
     assert simulation["original_row_count"] == 1200
     assert simulation["physical_columns"] == ["u1", "u2", "y"]
-    assert simulation["system_type"] == "MISO ARX"
+    assert simulation["system_type"] == "MISO_ARX"
     assert simulation["true_na"] == 2
     assert simulation["true_nb"] == [2, 2]
     assert simulation["true_delays_by_input"] == {"u1": 3, "u2": 8}

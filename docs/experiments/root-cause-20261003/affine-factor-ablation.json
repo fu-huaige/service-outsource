@@ -1,0 +1,240 @@
+{
+  "scope": "Posthoc diagnosis on previously inspected Test; fixed original winner structure; ridge priors differ with feature scaling; no promotion or fresh confirmation",
+  "results": [
+    {
+      "dataset": "boiler",
+      "fixed_structure": {
+        "na": 1,
+        "nb": 1,
+        "estimator": "ridge",
+        "ridge_alpha": 0.1
+      },
+      "cases": [
+        {
+          "fit_intercept": false,
+          "standardize": false,
+          "max_pole": 0.9911376526001056,
+          "stable": true,
+          "A1": 0.008862347399894444,
+          "rmse": 21.646892960112062,
+          "prediction_mean": 553.4384832272148
+        },
+        {
+          "fit_intercept": false,
+          "standardize": true,
+          "max_pole": 0.9455385252521394,
+          "stable": true,
+          "A1": 0.05446147474786056,
+          "rmse": 13.687360438434698,
+          "prediction_mean": 548.0326072039543
+        },
+        {
+          "fit_intercept": true,
+          "standardize": false,
+          "max_pole": 0.9360138408446862,
+          "stable": true,
+          "A1": 0.0639861591553138,
+          "rmse": 3.068253641322132,
+          "prediction_mean": 540.3005041214305
+        },
+        {
+          "fit_intercept": true,
+          "standardize": true,
+          "max_pole": 0.9359865937934954,
+          "stable": true,
+          "A1": 0.06401340620650464,
+          "rmse": 3.067083680381305,
+          "prediction_mean": 540.2997249765945
+        }
+      ]
+    },
+    {
+      "dataset": "exchanger",
+      "fixed_structure": {
+        "na": 1,
+        "nb": 1,
+        "estimator": "ridge",
+        "ridge_alpha": 0.1
+      },
+      "cases": [
+        {
+          "fit_intercept": false,
+          "standardize": false,
+          "max_pole": 1.000010302989645,
+          "stable": false,
+          "A1": -1.0302989644994653e-05,
+          "rmse": 1.0393456751957548,
+          "prediction_mean": 96.22377806939461
+        },
+        {
+          "fit_intercept": false,
+          "standardize": true,
+          "max_pole": 0.9997469763090537,
+          "stable": true,
+          "A1": 0.00025302369094626354,
+          "rmse": 1.020779360565782,
+          "prediction_mean": 96.02653751499378
+        },
+        {
+          "fit_intercept": true,
+          "standardize": false,
+          "max_pole": 0.9689810487165552,
+          "stable": true,
+          "A1": 0.031018951283444784,
+          "rmse": 1.4189891159527537,
+          "prediction_mean": 97.12088316518097
+        },
+        {
+          "fit_intercept": true,
+          "standardize": true,
+          "max_pole": 0.9689257612194379,
+          "stable": true,
+          "A1": 0.031074238780562147,
+          "rmse": 1.4186076001204648,
+          "prediction_mean": 97.12033993289543
+        }
+      ]
+    },
+    {
+      "dataset": "distillation_a",
+      "fixed_structure": {
+        "na": 3,
+        "nb": 3,
+        "estimator": "ridge",
+        "ridge_alpha": 0.1
+      },
+      "cases": [
+        {
+          "fit_intercept": false,
+          "standardize": false,
+          "max_pole": 0.32165640941959517,
+          "stable": true,
+          "A1": 0.9420318172385265,
+          "rmse": 1.835832073567208,
+          "prediction_mean": 103.47362142637891
+        },
+        {
+          "fit_intercept": false,
+          "standardize": true,
+          "max_pole": 0.35320246218057266,
+          "stable": true,
+          "A1": 0.8968707889792643,
+          "rmse": 1.8163970071025721,
+          "prediction_mean": 103.46627749668255
+        },
+        {
+          "fit_intercept": true,
+          "standardize": false,
+          "max_pole": 0.2867374948731417,
+          "stable": true,
+          "A1": 1.0390090393094709,
+          "rmse": 1.9156428982516267,
+          "prediction_mean": 103.6592798855445
+        },
+        {
+          "fit_intercept": true,
+          "standardize": true,
+          "max_pole": 0.2867084716397791,
+          "stable": true,
+          "A1": 1.0389925345236672,
+          "rmse": 1.915658373285098,
+          "prediction_mean": 103.65927830654907
+        }
+      ]
+    },
+    {
+      "dataset": "distillation_b",
+      "fixed_structure": {
+        "na": 4,
+        "nb": 1,
+        "estimator": "ridge",
+        "ridge_alpha": 0.1
+      },
+      "cases": [
+        {
+          "fit_intercept": false,
+          "standardize": false,
+          "max_pole": 0.9999843306730295,
+          "stable": true,
+          "A1": 3.731105811488611e-05,
+          "rmse": 2.507945896656939,
+          "prediction_mean": 95.15010594765288
+        },
+        {
+          "fit_intercept": false,
+          "standardize": true,
+          "max_pole": 0.988668594391242,
+          "stable": true,
+          "A1": 0.028166503217536665,
+          "rmse": 3.058136398757237,
+          "prediction_mean": 95.67178340183177
+        },
+        {
+          "fit_intercept": true,
+          "standardize": false,
+          "max_pole": 0.951554660945229,
+          "stable": true,
+          "A1": 0.1118791545812543,
+          "rmse": 6.13387975415531,
+          "prediction_mean": 98.70121389983741
+        },
+        {
+          "fit_intercept": true,
+          "standardize": true,
+          "max_pole": 0.9633372828677107,
+          "stable": true,
+          "A1": 0.08372390684341202,
+          "rmse": 5.990451875344128,
+          "prediction_mean": 98.52049646854634
+        }
+      ]
+    },
+    {
+      "dataset": "distillation_c",
+      "fixed_structure": {
+        "na": 1,
+        "nb": 1,
+        "estimator": "ridge",
+        "ridge_alpha": 0.1
+      },
+      "cases": [
+        {
+          "fit_intercept": false,
+          "standardize": false,
+          "max_pole": 0.9265985843418086,
+          "stable": true,
+          "A1": 0.07340141565819136,
+          "rmse": 1.5344292006808276,
+          "prediction_mean": 93.40062489652468
+        },
+        {
+          "fit_intercept": false,
+          "standardize": true,
+          "max_pole": 0.5861440809190601,
+          "stable": true,
+          "A1": 0.4138559190809399,
+          "rmse": 1.5711214653488719,
+          "prediction_mean": 93.41785703269716
+        },
+        {
+          "fit_intercept": true,
+          "standardize": false,
+          "max_pole": 0.9031578069979735,
+          "stable": true,
+          "A1": 0.09684219300202646,
+          "rmse": 1.125791392598001,
+          "prediction_mean": 93.14328418640568
+        },
+        {
+          "fit_intercept": true,
+          "standardize": true,
+          "max_pole": 0.9032800780137134,
+          "stable": true,
+          "A1": 0.09671992198628665,
+          "rmse": 1.1258494388349014,
+          "prediction_mean": 93.14344616035304
+        }
+      ]
+    }
+  ]
+}

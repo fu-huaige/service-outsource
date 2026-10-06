@@ -1,0 +1,55 @@
+{
+  "created_at": "2026-10-03T16:34:58.701167+00:00",
+  "evidence_role": "development regression plus prospective frozen-model transfer on newly scored runs",
+  "comparisons": [
+    {
+      "dataset": "boiler",
+      "affine24_rmse_reduction_percent": 87.8809879479131,
+      "current102_rmse_reduction_percent": 91.31151478747783,
+      "oe_vs_current102_rmse_reduction_percent": -0.1582067629507078,
+      "validation_chosen_family": "oe24",
+      "chosen_vs_current102_rmse_reduction_percent": -0.1582067629507078
+    },
+    {
+      "dataset": "exchanger",
+      "affine24_rmse_reduction_percent": -18.28171682674473,
+      "current102_rmse_reduction_percent": -11.970586609558076,
+      "oe_vs_current102_rmse_reduction_percent": 3.6327771862720293,
+      "validation_chosen_family": "oe24",
+      "chosen_vs_current102_rmse_reduction_percent": 3.6327771862720293
+    },
+    {
+      "dataset": "distillation_a",
+      "affine24_rmse_reduction_percent": -4.295482960264585,
+      "current102_rmse_reduction_percent": 1.9436600342004784,
+      "oe_vs_current102_rmse_reduction_percent": -1.373763824466101,
+      "validation_chosen_family": "current102",
+      "chosen_vs_current102_rmse_reduction_percent": 0.0
+    },
+    {
+      "dataset": "distillation_b",
+      "affine24_rmse_reduction_percent": -138.84159245704467,
+      "current102_rmse_reduction_percent": -29.77640606106835,
+      "oe_vs_current102_rmse_reduction_percent": 21.665716025391735,
+      "validation_chosen_family": "current102",
+      "chosen_vs_current102_rmse_reduction_percent": 0.0
+    },
+    {
+      "dataset": "distillation_c",
+      "affine24_rmse_reduction_percent": 45.091348957671116,
+      "current102_rmse_reduction_percent": 47.548917909739295,
+      "oe_vs_current102_rmse_reduction_percent": -6.570147388557035,
+      "validation_chosen_family": "oe24",
+      "chosen_vs_current102_rmse_reduction_percent": -6.570147388557035
+    }
+  ],
+  "equal_24_candidate_improved": 2,
+  "equal_24_candidate_regressed": 3,
+  "oe_24_candidates": 120,
+  "total_candidate_fits": 870,
+  "transfer_records_retained": 5,
+  "transfer_scored": 4,
+  "transfer_rejected_duplicate_time": 1,
+  "numerical_default_changed": false,
+  "oe_release_status": "experimental_offline_only"
+}

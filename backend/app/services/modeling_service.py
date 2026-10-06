@@ -19,16 +19,23 @@ Two things differ from a textbook least-squares fit:
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import numpy as np
+from algorithms.identifiability.estimation import (
+    Estimator,
+    estimate_parameters,
+    tc_prior_covariance,
+)
 from algorithms.identifiability.excitation import (
     profile_excitation,
 )
+from algorithms.identifiability.experiments import TrainingExperiment
+from algorithms.identifiability.multihorizon import fit_multihorizon
 from algorithms.identifiability.regressor import (
     ArxStructure,
     FloatArray,
@@ -36,11 +43,13 @@ from algorithms.identifiability.regressor import (
     RegressorMatrix,
     build_regressor,
 )
+from algorithms.identifiability.support import assess_input_support, training_input_support
 from algorithms.identifiability.validation import (
     ModelValidation,
     fit_percentage,
     free_run_simulate,
     is_stable,
+    one_step_predict,
     residual_whiteness_ratio,
     steady_state_gains,
     validate_model,
@@ -68,7 +77,13 @@ from app.schemas.modeling import (
     SplitIndices,
 )
 from app.services.contract_stubs import completed_task
-from app.services.version_data import VersionDataError, VersionSeries, load_version_series
+from app.services.version_data import (
+    VersionDataError,
+    VersionSeries,
+    attach_model_input_context,
+    load_version_series,
+    model_input_arrays,
+)
 from app.services.version_provenance_service import (
     VersionProvenanceError,
     resolve_arx_lag_provenance,
@@ -113,10 +128,13 @@ class ArxCoreResult:
     free_run_series: list[float]
     input_columns: list[str]
     output_column: str
-    estimator: Literal["ols", "ridge"]
+    estimator: Estimator
     # Channels whose persistent-excitation order falls short of na+nb. Reported, never
     # enforced — see the comment at the check itself for the measurement behind that.
     excitation_shortfall: dict[str, dict[str, int]] = field(default_factory=dict)
+    intercept: float = 0.0
+    training_output_scale: float = 1.0
+    preprocessing: dict[str, object] = field(default_factory=dict)
 
     @property
     def objective_fit(self) -> float:
@@ -133,7 +151,19 @@ def fit_arx_core(
     payload: ArxFitRequest,
     input_columns: list[str],
 ) -> ArxCoreResult:
-    """Fit ARX on train data and evaluate validation, optionally held-out test data."""
+    """Fit an affine ARX/FIR model and translate numerical failures to domain errors."""
+    try:
+        return _fit_arx_core(inputs=inputs, output=output, payload=payload, input_columns=input_columns)
+    except IdentifiabilityError as error:
+        raise ModelingDomainError(error.code, error.message, details=error.details) from error
+
+
+def _fit_arx_core(
+    *, inputs: dict[str, FloatArray], output: FloatArray,
+    payload: ArxFitRequest, input_columns: list[str],
+    fixed_parameters: tuple[FloatArray, float, dict[str, object]] | None = None,
+) -> ArxCoreResult:
+    """Fit on Train only; Test is opened only by explicit evaluation."""
 
     structure = _structure(payload, input_columns)
     n_samples = int(np.asarray(output, dtype=float).shape[0])
@@ -146,18 +176,20 @@ def fit_arx_core(
     except IdentifiabilityError as error:
         raise ModelingDomainError(error.code, error.message, details=error.details) from error
 
-    guard = structure.max_history
+    guard = max(structure.max_history, payload.history_guard or 0)
     train_rows = _partition_rows(full, 0, train_end - guard)
     if payload.training_sample_indices:
         allowed = set(int(value) for value in payload.training_sample_indices)
         train_rows = np.asarray(
             [row for row in train_rows if int(full.time_indices[row]) in allowed], dtype=int
         )
-    if train_rows.size <= full.n_parameters * 2:
+    regularized = payload.resolved_estimator() != "ols" and (payload.ridge_alpha or 0) > 0
+    minimum_rows = 8 if regularized else full.n_parameters * 2 + 1
+    if train_rows.size < minimum_rows:
         raise ModelingDomainError(
             "INSUFFICIENT_ROWS",
             "训练样本不足以稳定估计 ARX 参数。",
-            details={"required": full.n_parameters * 2 + 1, "actual": int(train_rows.size)},
+            details={"required": minimum_rows, "actual": int(train_rows.size)},
         )
 
     train_features = full.features[train_rows]
@@ -178,7 +210,7 @@ def fit_arx_core(
     # actually measured in EXP-1.1 and EXP-3.0.
     excitation = profile_excitation(
         full.take(train_rows),
-        inputs={column: values[full.time_indices[train_rows]] for column, values in inputs.items()},
+        inputs={column: inputs[column][full.time_indices[train_rows]] for column in structure.input_columns},
     )
     excitation_shortfall = {
         column: {
@@ -190,16 +222,64 @@ def fit_arx_core(
         < excitation.required_excitation_order[column]
     }
 
-    rank = int(np.linalg.matrix_rank(train_features))
-    if estimator == "ols" and rank < train_features.shape[1]:
+    reliability = np.asarray([
+        min(payload.sample_weights.get(int(t - lag), 1.0) for lag in range(structure.max_history + 1))
+        for t in full.time_indices[train_rows]
+    ], dtype=float)
+    if fixed_parameters is None and payload.model_type == "OE":
+        times = full.time_indices[train_rows][reliability > 0]
+        if times.size == 0:
+            raise ModelingDomainError("INSUFFICIENT_ROWS", "OE 缺少正权重连续训练区间")
+        intervals = np.split(times, np.flatnonzero(np.diff(times) != 1)+1)
+        experiments = [TrainingExperiment(f"selected_interval_{i}", inputs, output,
+            int(interval[0]), int(interval[-1])+1) for i, interval in enumerate(intervals)]
+        simulated = fit_multihorizon(experiments, structure=structure,
+            horizons=tuple(payload.simulation_horizons), ridge_alpha=payload.ridge_alpha or 0.,
+            max_nfev=payload.simulation_max_nfev)
+        theta, intercept = simulated.theta, simulated.intercept
+        preprocessing = {**simulated.diagnostics, "policy_version": "stable_multihorizon_v1",
+            "regularization_kernel": "identity", "solver": "bounded_nonlinear_least_squares",
+            "estimator_role": "ridge_initialization_then_simulation_loss",
+            "interval_weighting": "equal_total_weight_per_selected_contiguous_interval"}
+    elif fixed_parameters is None:
+        try:
+            estimate = estimate_parameters(
+                train_features, train_targets, estimator=estimator,
+                ridge_alpha=payload.ridge_alpha or 0.0,
+                fit_intercept=payload.fit_intercept, standardize=payload.standardize,
+                sample_weights=reliability, huber_delta=payload.huber_delta,
+                prior_covariance=tc_prior_covariance(structure, payload.kernel_decay) if payload.regularization_kernel == "tc" else None,
+            )
+        except IdentifiabilityError as error:
+            raise ModelingDomainError(error.code, error.message, details=error.details) from error
+        theta, intercept = estimate.theta, estimate.intercept
+        preprocessing = {**estimate.preprocessing(), "regularization_kernel": payload.regularization_kernel, "kernel_decay": payload.kernel_decay}
+    else:
+        theta, intercept, preprocessing = fixed_parameters
+    if fixed_parameters is None:
+        preprocessing = {**preprocessing, "training_input_support": training_input_support(
+            inputs, full.time_indices[train_rows][reliability > 0],
+            input_lags={c: (structure.nk[c], structure.nk[c]+structure.nb[c]-1)
+                        for c in structure.input_columns}),
+            "input_support_provenance": "positive_weight_train_regressor_inputs"}
+    # Rank is assessed in normalized coordinates, including the fitted intercept.
+    # Physical units and zero-reliability rows must not alter identifiability.
+    active = reliability > 0
+    rank_features = train_features[active]
+    center = np.mean(rank_features, axis=0) if payload.fit_intercept else np.zeros(full.n_parameters)
+    scale = np.std(rank_features, axis=0)
+    rank_design = (rank_features - center) / np.where(scale > 0, scale, 1.0)
+    if payload.fit_intercept:
+        rank_design = np.column_stack((rank_design, np.ones(rank_design.shape[0])))
+    rank = int(np.linalg.matrix_rank(rank_design))
+    if estimator == "ols" and rank < rank_design.shape[1]:
         raise ModelingDomainError(
-            "DESIGN_MATRIX_RANK_DEFICIENT",
-            "ARX 设计矩阵秩不足，请减少共线变量或改用 Ridge。",
-            details={"rank": rank, "features": int(train_features.shape[1])},
+            "DESIGN_MATRIX_RANK_DEFICIENT", "ARX 设计矩阵秩不足，请减少共线变量或改用 Ridge。",
+            details={"rank": rank, "features": int(rank_design.shape[1])},
         )
-    theta = _estimate(train_features, train_targets, estimator, payload.ridge_alpha)
 
-    predicted = full.features @ theta
+    predicted = one_step_predict(full, theta, intercept=intercept, output=output,
+        initialization_policy=payload.initialization_policy, initialization_window=payload.initialization_window)
     residuals = full.targets - predicted
     metrics = _metrics(
         full,
@@ -212,20 +292,39 @@ def fit_arx_core(
         n_samples=n_samples,
         train_rows=train_rows,
         evaluate_test=payload.evaluate_test,
+        intercept=intercept,
+        history_guard=guard,
+        fit_intercept=payload.fit_intercept,
+        initialization_policy=payload.initialization_policy, initialization_window=payload.initialization_window,
     )
     validation = validate_model(
         theta,
         structure,
         inputs=inputs,
         output=output,
-        start=train_end,
-        stop=val_end,
+        start=train_end + guard,
+        stop=val_end - guard,
+        intercept=intercept,
+        initialization_policy=payload.initialization_policy, initialization_window=payload.initialization_window,
     )
+    if val_end-guard > train_end+guard:
+        validation = replace(validation, input_support=assess_input_support(
+            preprocessing.get("training_input_support", {}), inputs,
+            start=train_end+guard, stop=val_end-guard))
     violations = _check_priors(theta, structure, payload, validation)
     evaluation_end = n_samples if payload.evaluate_test else val_end
-    _, free_run = free_run_simulate(
-        theta, structure, inputs=inputs, output=output, start=0, stop=evaluation_end
-    )
+    try:
+        _, free_run = free_run_simulate(
+            theta, structure, inputs=inputs, output=output, start=0, stop=evaluation_end,
+            intercept=intercept,
+            initialization_policy=payload.initialization_policy, initialization_window=payload.initialization_window,
+        )
+        preprocessing = {**preprocessing, "free_run_series_status": "succeeded"}
+    except IdentifiabilityError as error:
+        if error.code != "SIMULATION_DIVERGED":
+            raise
+        free_run = np.empty(0)
+        preprocessing = {**preprocessing, "free_run_series_status": "diverged", "free_run_series_error_code": error.code}
 
     names = structure.feature_names()
     coefficients = {name: float(value) for name, value in zip(names, theta, strict=True)}
@@ -259,6 +358,11 @@ def fit_arx_core(
         output_column=payload.output_column,
         estimator=estimator,
         excitation_shortfall=excitation_shortfall,
+        intercept=intercept,
+        training_output_scale=float(np.std(np.asarray(output)[:train_end - guard][np.isfinite(np.asarray(output)[:train_end - guard])])),
+        preprocessing={**preprocessing, "initialization_policy": payload.initialization_policy,
+            "initialization_window": payload.initialization_window,
+            "initialization_parameters": int(payload.model_type == "ARX" and payload.initialization_policy == "past_residual")},
     )
 
 
@@ -282,6 +386,7 @@ async def fit_arx_on_version(
             input_columns=payload.input_columns or None,
             output_column=payload.output_column,
         )
+        series = await attach_model_input_context(session, series, artifact_root=artifact_root)
     except VersionDataError as error:
         raise ModelingDomainError(
             error.code, error.message, status_code=error.status_code, details=error.details
@@ -304,11 +409,14 @@ async def fit_arx_on_version(
 
     resolved = payload.model_copy(update={"input_columns": input_columns, "output_column": output_column})
     result = fit_arx_core(
-        inputs={column: series.values[column] for column in input_columns},
+        inputs=model_input_arrays(series, input_columns),
         output=series.values[output_column],
         payload=resolved,
         input_columns=input_columns,
     )
+    result.preprocessing["input_support_sources"] = {
+        c: series.input_context_versions.get(c, str(series.version_id))
+        for c in cast(dict[str, object], result.preprocessing["training_input_support"])}
     if result.prior_violations:
         raise ModelingDomainError(
             "PRIOR_CONSTRAINT_VIOLATED",
@@ -342,6 +450,8 @@ async def fit_arx_on_version(
             message="ARX 辨识、自由仿真评价与先验校验已完成。",
         ),
         estimator=result.estimator,
+        intercept=result.intercept,
+        preprocessing=result.preprocessing,
         model_structure=to_model_structure_data(resolved, result.structure),
         dataset_id=series.dataset_id,
         version_id=series.version_id,
@@ -370,6 +480,21 @@ class SavedArxModel:
     structure: ArxStructure
     theta: FloatArray
     artifact_uri: str
+    intercept: float = 0.0
+    preprocessing: dict[str, object] = field(default_factory=dict)
+
+
+def replay_saved_arx_core(
+    *, saved: SavedArxModel, inputs: dict[str, FloatArray], output: FloatArray,
+) -> ArxCoreResult:
+    """Compute full partition diagnostics with immutable saved parameters, without fitting."""
+    try:
+        return _fit_arx_core(inputs=inputs, output=output,
+            payload=saved.payload.model_copy(update={"evaluate_test": True}),
+            input_columns=list(saved.structure.input_columns),
+            fixed_parameters=(saved.theta, saved.intercept, saved.preprocessing))
+    except IdentifiabilityError as error:
+        raise ModelingDomainError(error.code, error.message, details=error.details) from error
 
 
 def load_saved_arx_model(*, model_id: UUID, artifact_root: Path) -> SavedArxModel:
@@ -391,7 +516,13 @@ def load_saved_arx_model(*, model_id: UUID, artifact_root: Path) -> SavedArxMode
         stored_model_id = UUID(str(document["model_id"]))
         source_version_id = UUID(str(document["version_id"]))
         dataset_id = UUID(str(document["dataset_id"]))
-        payload = ArxFitRequest.model_validate(document["configuration"])
+        configuration = dict(document["configuration"])
+        configuration.setdefault("fit_intercept", False)
+        configuration.setdefault("standardize", False)
+        payload = ArxFitRequest.model_validate(configuration)
+        preprocessing = document.get("preprocessing", {})
+        if not isinstance(preprocessing, dict):
+            raise TypeError("preprocessing must be an object")
         coefficients = document["coefficients"]
         if not isinstance(coefficients, dict):
             raise TypeError("coefficients must be an object")
@@ -419,6 +550,12 @@ def load_saved_arx_model(*, model_id: UUID, artifact_root: Path) -> SavedArxMode
         )
     structure = _structure(payload, input_columns)
     theta = _theta_from_coefficients(structure, coefficients)
+    try:
+        intercept = float(document.get("intercept", 0.0))
+        if not np.isfinite(intercept):
+            raise ValueError("nonfinite intercept")
+    except (TypeError, ValueError) as error:
+        raise ModelingDomainError("MODEL_ARTIFACT_INVALID", "模型偏置无效", status_code=422) from error
     return SavedArxModel(
         model_id=model_id,
         dataset_id=dataset_id,
@@ -427,6 +564,8 @@ def load_saved_arx_model(*, model_id: UUID, artifact_root: Path) -> SavedArxMode
         structure=structure,
         theta=theta,
         artifact_uri=artifact_uri,
+        intercept=intercept,
+        preprocessing=dict(preprocessing),
     )
 
 
@@ -465,6 +604,7 @@ async def evaluate_saved_arx_model(
             input_columns=list(saved.payload.input_columns),
             output_column=saved.payload.output_column,
         )
+        series = await attach_model_input_context(session, series, artifact_root=artifact_root)
     except VersionDataError as error:
         raise ModelingDomainError(
             error.code, error.message, status_code=error.status_code, details=error.details
@@ -489,13 +629,14 @@ async def evaluate_saved_arx_model(
     )
     session.add(run)
     try:
-        inputs = {column: series.values[column] for column in input_columns}
+        inputs = model_input_arrays(series, input_columns)
         output = series.values[output_column]
         splits = _split_indices(int(np.asarray(output, dtype=float).shape[0]), saved.payload)
         regressor = build_regressor(inputs=inputs, output=output, structure=saved.structure)
+        guard = max(saved.structure.max_history, saved.payload.history_guard or 0)
         test_rows = _partition_rows(
             regressor,
-            splits.val_end + saved.structure.max_history,
+            splits.val_end + guard,
             splits.test_end,
         )
         if test_rows.size == 0:
@@ -504,10 +645,11 @@ async def evaluate_saved_arx_model(
                 "Test 分区没有可评价的 ARX 样本。",
                 details={"model_id": str(model_id)},
             )
-        test_start = splits.val_end + saved.structure.max_history
+        test_start = splits.val_end + guard
         sample_indices_array = regressor.time_indices[test_rows]
         y_true_array = regressor.targets[test_rows]
-        one_step_prediction_array = (regressor.features @ saved.theta)[test_rows]
+        one_step_prediction_array = one_step_predict(regressor, saved.theta, intercept=saved.intercept, output=output,
+            initialization_policy=saved.payload.initialization_policy, initialization_window=saved.payload.initialization_window)[test_rows]
         _, full_free_run_prediction = free_run_simulate(
             saved.theta,
             saved.structure,
@@ -515,6 +657,8 @@ async def evaluate_saved_arx_model(
             output=output,
             start=test_start,
             stop=splits.test_end,
+            intercept=saved.intercept,
+            initialization_policy=saved.payload.initialization_policy, initialization_window=saved.payload.initialization_window,
         )
         free_run_offsets = sample_indices_array - test_start
         if (
@@ -532,7 +676,6 @@ async def evaluate_saved_arx_model(
 
         one_step = _to_prediction_metrics(_scores(y_true_array, one_step_prediction_array))
         free_run_scores = _scores(y_true_array, free_run_prediction_array)
-        free_run_scores["fit"] = fit_percentage(y_true_array, free_run_prediction_array)
         free_run = _to_prediction_metrics(free_run_scores)
         sample_indices = [int(value) for value in sample_indices_array]
         timestamps = (
@@ -556,6 +699,8 @@ async def evaluate_saved_arx_model(
             model_health=ArxModelHealth(
                 stable=stable,
                 max_pole_modulus=_finite(max_pole_modulus),
+                input_support=assess_input_support(cast(dict[str, dict[str, Any]], saved.preprocessing.get("training_input_support", {})),
+                    inputs, start=test_start, stop=splits.test_end),
             ),
             test=test,
             series=ArxEvaluationSeries(
@@ -601,7 +746,13 @@ def to_model_structure_data(
     """Expose the persisted configuration without leaking internal request details."""
 
     return ArxModelStructureData(
-        model_type="ARX",
+        model_type=payload.model_type,
+        simulation_horizons=payload.simulation_horizons,
+        simulation_max_nfev=payload.simulation_max_nfev,
+        regularization_kernel=payload.regularization_kernel,
+        kernel_decay=payload.kernel_decay,
+        initialization_policy=payload.initialization_policy,
+        initialization_window=payload.initialization_window,
         input_columns=list(payload.input_columns),
         output_column=payload.output_column,
         na=payload.na,
@@ -610,6 +761,9 @@ def to_model_structure_data(
         estimator=payload.resolved_estimator(),
         ridge_alpha=payload.ridge_alpha,
         parameter_count=structure.parameter_count,
+        fit_intercept=payload.fit_intercept,
+        standardize=payload.standardize,
+        history_guard=payload.history_guard,
     )
 
 
@@ -631,6 +785,13 @@ def to_validation_data(
         },
         residual_whiteness_ratio=_finite(validation.residual_whiteness_ratio),
         n_samples=validation.n_samples,
+        input_residual_correlations=validation.input_residual_correlations,
+        input_residual_test=validation.input_residual_test,
+        simulation_status=validation.simulation_status,
+        simulation_error_code=validation.simulation_error_code,
+        initialization=validation.initialization,
+        reference_baselines=validation.reference_baselines,
+        input_support=validation.input_support,
         excitation_shortfall=dict(excitation_shortfall or {}),
     )
 
@@ -680,7 +841,7 @@ def _theta_from_coefficients(
             details={"missing": missing, "unexpected": unexpected},
         )
     try:
-        theta = np.asarray([float(coefficients[name]) for name in names], dtype=float)
+        theta: FloatArray = np.asarray([float(cast(Any, coefficients[name])) for name in names], dtype=np.float64)
     except (TypeError, ValueError) as error:
         raise ModelingDomainError(
             "MODEL_ARTIFACT_INVALID",
@@ -724,28 +885,6 @@ def _partition_rows(regressor: RegressorMatrix, start: int, stop: int) -> np.nda
     return np.nonzero((times >= start) & (times < stop))[0]
 
 
-def _estimate(
-    features: FloatArray,
-    targets: FloatArray,
-    estimator: Literal["ols", "ridge"],
-    ridge_alpha: float | None,
-) -> FloatArray:
-    try:
-        if estimator == "ols":
-            solution, _, _, _ = np.linalg.lstsq(features, targets, rcond=None)
-            return np.asarray(solution, dtype=float)
-        alpha = 1.0 if ridge_alpha is None else ridge_alpha
-        regulariser = alpha * np.eye(features.shape[1], dtype=float)
-        return np.asarray(
-            np.linalg.solve(features.T @ features + regulariser, features.T @ targets),
-            dtype=float,
-        )
-    except np.linalg.LinAlgError as error:
-        raise ModelingDomainError(
-            "NUMERICAL_INSTABILITY", "ARX 数值求解失败。", details={"estimator": estimator}
-        ) from error
-
-
 def _metrics(
     regressor: RegressorMatrix,
     *,
@@ -758,9 +897,15 @@ def _metrics(
     n_samples: int,
     train_rows: np.ndarray,
     evaluate_test: bool,
+    intercept: float = 0.0,
+    history_guard: int | None = None,
+    fit_intercept: bool = False,
+    initialization_policy: str = "fixed",
+    initialization_window: int = 32,
 ) -> ArxMetrics:
-    predicted = regressor.features @ theta
-    guard = structure.max_history
+    predicted = one_step_predict(regressor, theta, intercept=intercept, output=output,
+        initialization_policy=initialization_policy, initialization_window=initialization_window)
+    guard = max(structure.max_history, history_guard or 0)
     windows = {
         "train": (0, max(train_end - guard, 0)),
         "validation": (train_end + guard, max(val_end - guard, train_end + guard)),
@@ -773,13 +918,15 @@ def _metrics(
         rows = _partition_rows(regressor, start, stop)
         one_step[label] = _scores(regressor.targets[rows], predicted[rows])
         free_run[label] = _free_run_scores(
-            theta, structure, inputs=inputs, output=output, start=start, stop=stop
+            theta, structure, inputs=inputs, output=output, start=start, stop=stop,
+            intercept=intercept,
+            initialization_policy=initialization_policy, initialization_window=initialization_window,
         )
 
     residual = regressor.targets[train_rows] - predicted[train_rows]
     rss = float(np.dot(residual, residual))
     n_train = int(train_rows.size)
-    parameters = int(regressor.n_parameters)
+    parameters = int(regressor.n_parameters) + int(fit_intercept)
     aic: float | None = None
     bic: float | None = None
     if rss > 0 and n_train > 0:
@@ -818,34 +965,44 @@ def _free_run_scores(
     output: FloatArray,
     start: int,
     stop: int,
+    intercept: float = 0.0,
+    initialization_policy: str = "fixed",
+    initialization_window: int = 32,
 ) -> dict[str, float | None]:
     try:
         measured, simulated = free_run_simulate(
-            theta, structure, inputs=inputs, output=output, start=start, stop=stop
+            theta, structure, inputs=inputs, output=output, start=start, stop=stop,
+            intercept=intercept,
+            initialization_policy=initialization_policy, initialization_window=initialization_window,
         )
-        scores = _scores(measured, simulated)
-        # Keep the established public free-run FIT definition, including its -100% floor.
-        scores["fit"] = fit_percentage(measured, simulated)
-        return scores
+        return _scores(measured, simulated)
     except IdentifiabilityError:
         return _empty_scores()
 
 
 def _scores(actual: FloatArray, predicted: FloatArray) -> dict[str, float | None]:
+    finite = np.isfinite(actual) & np.isfinite(predicted)
+    actual, predicted = actual[finite], predicted[finite]
     if actual.size == 0:
         return {"rmse": None, "mae": None, "r2": None, "fit": None, "nrmse": None}
     residual = actual - predicted
     rmse = float(np.sqrt(np.mean(np.square(residual))))
-    centered = actual - float(np.mean(actual))
+    offset = actual - actual[0]
+    centered = offset - float(np.mean(offset))
     denominator = float(np.dot(centered, centered))
-    norm = float(np.linalg.norm(centered))
     spread = float(np.percentile(actual, 95) - np.percentile(actual, 5))
+    try:
+        fit = fit_percentage(actual, predicted)
+    except IdentifiabilityError as error:
+        if error.code != "FIT_UNDEFINED":
+            raise
+        fit = None
     return {
         "rmse": rmse,
         "mae": float(np.mean(np.abs(residual))),
-        "r2": None if denominator == 0 else float(1 - np.dot(residual, residual) / denominator),
-        "fit": None if norm == 0 else float(100 * (1 - np.linalg.norm(residual) / norm)),
-        "nrmse": None if spread == 0 else float(rmse / spread),
+        "r2": None if fit is None else float(1 - np.dot(residual, residual) / denominator),
+        "fit": fit,
+        "nrmse": None if spread == 0 or fit is None else float(rmse / spread),
     }
 
 
@@ -936,6 +1093,8 @@ def _persist_artifact(
         "estimator": result.estimator,
         "configuration": payload.model_dump(mode="json"),
         "coefficients": result.coefficients,
+        "intercept": result.intercept,
+        "preprocessing": result.preprocessing,
         "metrics": result.metrics.model_dump(mode="json"),
         "validation": to_validation_data(result.validation).model_dump(mode="json"),
         "training_rows": result.training_rows,
@@ -973,6 +1132,8 @@ async def _persist_run(
                 "metrics": result.metrics.model_dump(mode="json"),
                 "validation": to_validation_data(result.validation).model_dump(mode="json"),
                 "coefficients": result.coefficients,
+                "intercept": result.intercept,
+                "preprocessing": result.preprocessing,
                 "training_rows": result.training_rows,
             },
             created_at=now,

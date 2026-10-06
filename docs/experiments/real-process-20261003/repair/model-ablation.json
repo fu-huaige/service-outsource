@@ -1,0 +1,1515 @@
+{
+  "mode": "model_grid_and_rolling_ablation",
+  "train_ratio": 0.6,
+  "validation_ratio": 0.2,
+  "history_guard": 43,
+  "selected_rows": "full_train",
+  "previously_inspected_test": true,
+  "noise_calibration": [
+    {
+      "independent_channels": true,
+      "ar_coefficient": 0.0,
+      "seed": 20261003,
+      "repetitions": 500,
+      "old_false_triggers": 477,
+      "new_false_triggers": 6,
+      "old_fraction": 0.954,
+      "new_fraction": 0.012
+    },
+    {
+      "independent_channels": true,
+      "ar_coefficient": 0.8,
+      "seed": 20261003,
+      "repetitions": 500,
+      "old_false_triggers": 500,
+      "new_false_triggers": 2,
+      "old_fraction": 1.0,
+      "new_fraction": 0.004
+    }
+  ],
+  "results": [
+    {
+      "dataset": "dryer2",
+      "output": "dry_bulb_temperature",
+      "delays": {
+        "fuel_flow": 6,
+        "exhaust_fan_speed": 15,
+        "raw_material_flow": 13
+      },
+      "source_sha256": "c665e6ee5f98634f87cc6fd9e11e64fe05766ed9332c5d9a452d7e76a0af72b8",
+      "successful_candidates": 90,
+      "failures": {},
+      "rolling_folds": [
+        {
+          "train_end": 520,
+          "validation_end": 693,
+          "rmse": 2.0215695050565854,
+          "score": -0.28632955488899825
+        },
+        {
+          "train_end": 348,
+          "validation_end": 521,
+          "rmse": 1.2849162845473021,
+          "score": -0.33381593984876806
+        },
+        {
+          "train_end": 434,
+          "validation_end": 607,
+          "rmse": 1.098567641269414,
+          "score": -0.2957108494183045
+        }
+      ],
+      "old_grid_latest_validation": {
+        "configuration": {
+          "version_id": "6dc15fdc-8a56-57a4-b77f-fb32a4c80f79",
+          "dataset_id": null,
+          "input_columns": [
+            "fuel_flow",
+            "exhaust_fan_speed",
+            "raw_material_flow"
+          ],
+          "output_column": "dry_bulb_temperature",
+          "model_type": "ARX",
+          "na": 1,
+          "regularization_kernel": "identity",
+          "kernel_decay": 0.9,
+          "nb": {
+            "fuel_flow": 3,
+            "exhaust_fan_speed": 3,
+            "raw_material_flow": 3
+          },
+          "delays": {
+            "fuel_flow": 6,
+            "exhaust_fan_speed": 15,
+            "raw_material_flow": 13
+          },
+          "estimator": "ols",
+          "estimation_method": null,
+          "ridge_alpha": null,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 2.0215695050565854,
+        "test_rmse": 2.70553530570756,
+        "test_fit": -72.7080701902113,
+        "test_samples": 131
+      },
+      "new_grid_rolling_validation": {
+        "configuration": {
+          "version_id": "6dc15fdc-8a56-57a4-b77f-fb32a4c80f79",
+          "dataset_id": null,
+          "input_columns": [
+            "fuel_flow",
+            "exhaust_fan_speed",
+            "raw_material_flow"
+          ],
+          "output_column": "dry_bulb_temperature",
+          "model_type": "ARX",
+          "na": 1,
+          "regularization_kernel": "identity",
+          "kernel_decay": 0.9,
+          "nb": {
+            "fuel_flow": 3,
+            "exhaust_fan_speed": 3,
+            "raw_material_flow": 3
+          },
+          "delays": {
+            "fuel_flow": 6,
+            "exhaust_fan_speed": 15,
+            "raw_material_flow": 13
+          },
+          "estimator": "ols",
+          "estimation_method": null,
+          "ridge_alpha": null,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 2.0215695050565854,
+        "test_rmse": 2.70553530570756,
+        "test_fit": -72.7080701902113,
+        "test_samples": 131
+      },
+      "test_rmse_ratio": 1.0
+    },
+    {
+      "dataset": "dryer2",
+      "output": "wet_bulb_temperature",
+      "delays": {
+        "fuel_flow": 8,
+        "exhaust_fan_speed": 14,
+        "raw_material_flow": 4
+      },
+      "source_sha256": "c665e6ee5f98634f87cc6fd9e11e64fe05766ed9332c5d9a452d7e76a0af72b8",
+      "successful_candidates": 71,
+      "failures": {},
+      "rolling_folds": [
+        {
+          "train_end": 520,
+          "validation_end": 693,
+          "rmse": 0.323423675867779,
+          "score": -0.1085901839842413
+        },
+        {
+          "train_end": 348,
+          "validation_end": 521,
+          "rmse": 0.620340856229195,
+          "score": -0.7052225747869493
+        },
+        {
+          "train_end": 434,
+          "validation_end": 607,
+          "rmse": 0.2597162886755525,
+          "score": -0.018022809657166777
+        }
+      ],
+      "old_grid_latest_validation": {
+        "configuration": {
+          "version_id": "6dc15fdc-8a56-57a4-b77f-fb32a4c80f79",
+          "dataset_id": null,
+          "input_columns": [
+            "fuel_flow",
+            "exhaust_fan_speed",
+            "raw_material_flow"
+          ],
+          "output_column": "wet_bulb_temperature",
+          "model_type": "ARX",
+          "na": 4,
+          "regularization_kernel": "identity",
+          "kernel_decay": 0.9,
+          "nb": {
+            "fuel_flow": 2,
+            "exhaust_fan_speed": 2,
+            "raw_material_flow": 2
+          },
+          "delays": {
+            "fuel_flow": 8,
+            "exhaust_fan_speed": 14,
+            "raw_material_flow": 4
+          },
+          "estimator": "ols",
+          "estimation_method": null,
+          "ridge_alpha": null,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 0.35222411412261606,
+        "test_rmse": 0.9053309596382939,
+        "test_fit": -70.44535796893372,
+        "test_samples": 131
+      },
+      "new_grid_rolling_validation": {
+        "configuration": {
+          "version_id": "6dc15fdc-8a56-57a4-b77f-fb32a4c80f79",
+          "dataset_id": null,
+          "input_columns": [
+            "fuel_flow",
+            "exhaust_fan_speed",
+            "raw_material_flow"
+          ],
+          "output_column": "wet_bulb_temperature",
+          "model_type": "ARX",
+          "na": 12,
+          "regularization_kernel": "identity",
+          "kernel_decay": 0.9,
+          "nb": {
+            "fuel_flow": 4,
+            "exhaust_fan_speed": 4,
+            "raw_material_flow": 4
+          },
+          "delays": {
+            "fuel_flow": 8,
+            "exhaust_fan_speed": 14,
+            "raw_material_flow": 4
+          },
+          "estimator": "ridge",
+          "estimation_method": null,
+          "ridge_alpha": 0.1,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 0.323423675867779,
+        "test_rmse": 0.604382113466165,
+        "test_fit": -13.786151443355443,
+        "test_samples": 131
+      },
+      "test_rmse_ratio": 0.6675814043823634
+    },
+    {
+      "dataset": "dryer2",
+      "output": "raw_material_moisture",
+      "delays": {
+        "fuel_flow": 13,
+        "exhaust_fan_speed": 9,
+        "raw_material_flow": 13
+      },
+      "source_sha256": "c665e6ee5f98634f87cc6fd9e11e64fe05766ed9332c5d9a452d7e76a0af72b8",
+      "successful_candidates": 90,
+      "failures": {},
+      "rolling_folds": [
+        {
+          "train_end": 520,
+          "validation_end": 693,
+          "rmse": 1.0852967925497938,
+          "score": -0.7232221312448319
+        },
+        {
+          "train_end": 348,
+          "validation_end": 521,
+          "rmse": 0.9712703319305201,
+          "score": -0.48562257199743264
+        },
+        {
+          "train_end": 434,
+          "validation_end": 607,
+          "rmse": 1.5760555081349754,
+          "score": -0.8331760978526142
+        }
+      ],
+      "old_grid_latest_validation": {
+        "configuration": {
+          "version_id": "6dc15fdc-8a56-57a4-b77f-fb32a4c80f79",
+          "dataset_id": null,
+          "input_columns": [
+            "fuel_flow",
+            "exhaust_fan_speed",
+            "raw_material_flow"
+          ],
+          "output_column": "raw_material_moisture",
+          "model_type": "ARX",
+          "na": 4,
+          "regularization_kernel": "identity",
+          "kernel_decay": 0.9,
+          "nb": {
+            "fuel_flow": 1,
+            "exhaust_fan_speed": 1,
+            "raw_material_flow": 1
+          },
+          "delays": {
+            "fuel_flow": 13,
+            "exhaust_fan_speed": 9,
+            "raw_material_flow": 13
+          },
+          "estimator": "huber",
+          "estimation_method": null,
+          "ridge_alpha": 0.1,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 1.0910894672157492,
+        "test_rmse": 1.5135085384830693,
+        "test_fit": -138.18752840862754,
+        "test_samples": 131
+      },
+      "new_grid_rolling_validation": {
+        "configuration": {
+          "version_id": "6dc15fdc-8a56-57a4-b77f-fb32a4c80f79",
+          "dataset_id": null,
+          "input_columns": [
+            "fuel_flow",
+            "exhaust_fan_speed",
+            "raw_material_flow"
+          ],
+          "output_column": "raw_material_moisture",
+          "model_type": "ARX",
+          "na": 4,
+          "regularization_kernel": "identity",
+          "kernel_decay": 0.9,
+          "nb": {
+            "fuel_flow": 2,
+            "exhaust_fan_speed": 2,
+            "raw_material_flow": 2
+          },
+          "delays": {
+            "fuel_flow": 13,
+            "exhaust_fan_speed": 9,
+            "raw_material_flow": 13
+          },
+          "estimator": "huber",
+          "estimation_method": null,
+          "ridge_alpha": 0.1,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 1.0852967925497938,
+        "test_rmse": 1.521303756990361,
+        "test_fit": -139.41429639998483,
+        "test_samples": 131
+      },
+      "test_rmse_ratio": 1.0051504291578721
+    },
+    {
+      "dataset": "evaporator",
+      "output": "product_dry_matter",
+      "delays": {
+        "feed_flow": 9,
+        "vapor_flow": 8,
+        "cooling_water_flow": 5
+      },
+      "source_sha256": "2c743bd96fafab927cd938a482524f06b0f7b3596ef5f10a9d370c7bf74bca22",
+      "successful_candidates": 90,
+      "failures": {},
+      "rolling_folds": [
+        {
+          "train_end": 3783,
+          "validation_end": 5044,
+          "rmse": 0.620147797111505,
+          "score": -0.047177102345686145
+        },
+        {
+          "train_end": 2523,
+          "validation_end": 3784,
+          "rmse": 0.6375430586621583,
+          "score": -0.08117499496278821
+        },
+        {
+          "train_end": 3153,
+          "validation_end": 4414,
+          "rmse": 0.6614285171186737,
+          "score": -0.062063769430600185
+        }
+      ],
+      "old_grid_latest_validation": {
+        "configuration": {
+          "version_id": "7c23a52f-776a-5eaa-8a3b-f289cd87ae53",
+          "dataset_id": null,
+          "input_columns": [
+            "feed_flow",
+            "vapor_flow",
+            "cooling_water_flow"
+          ],
+          "output_column": "product_dry_matter",
+          "model_type": "ARX",
+          "na": 3,
+          "regularization_kernel": "identity",
+          "kernel_decay": 0.9,
+          "nb": {
+            "feed_flow": 3,
+            "vapor_flow": 3,
+            "cooling_water_flow": 3
+          },
+          "delays": {
+            "feed_flow": 9,
+            "vapor_flow": 8,
+            "cooling_water_flow": 5
+          },
+          "estimator": "ols",
+          "estimation_method": null,
+          "ridge_alpha": null,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 0.9177485800460021,
+        "test_rmse": 0.8664961310690773,
+        "test_fit": 0.849984932221326,
+        "test_samples": 1218
+      },
+      "new_grid_rolling_validation": {
+        "configuration": {
+          "version_id": "7c23a52f-776a-5eaa-8a3b-f289cd87ae53",
+          "dataset_id": null,
+          "input_columns": [
+            "feed_flow",
+            "vapor_flow",
+            "cooling_water_flow"
+          ],
+          "output_column": "product_dry_matter",
+          "model_type": "FIR",
+          "na": 0,
+          "regularization_kernel": "tc",
+          "kernel_decay": 0.95,
+          "nb": {
+            "feed_flow": 24,
+            "vapor_flow": 24,
+            "cooling_water_flow": 24
+          },
+          "delays": {
+            "feed_flow": 9,
+            "vapor_flow": 8,
+            "cooling_water_flow": 5
+          },
+          "estimator": "ridge",
+          "estimation_method": null,
+          "ridge_alpha": 10.0,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 0.620147797111505,
+        "test_rmse": 0.5707945287425051,
+        "test_fit": 34.68604867791002,
+        "test_samples": 1218
+      },
+      "test_rmse_ratio": 0.6587386928528608
+    },
+    {
+      "dataset": "evaporator",
+      "output": "product_flow",
+      "delays": {
+        "feed_flow": 6,
+        "vapor_flow": 6,
+        "cooling_water_flow": 9
+      },
+      "source_sha256": "2c743bd96fafab927cd938a482524f06b0f7b3596ef5f10a9d370c7bf74bca22",
+      "successful_candidates": 90,
+      "failures": {},
+      "rolling_folds": [
+        {
+          "train_end": 3783,
+          "validation_end": 5044,
+          "rmse": 0.774671135008168,
+          "score": -0.13798911808310244
+        },
+        {
+          "train_end": 2523,
+          "validation_end": 3784,
+          "rmse": 0.8105970273987427,
+          "score": -0.14276517731745553
+        },
+        {
+          "train_end": 3153,
+          "validation_end": 4414,
+          "rmse": 0.8081678292051131,
+          "score": -0.1429330195874854
+        }
+      ],
+      "old_grid_latest_validation": {
+        "configuration": {
+          "version_id": "7c23a52f-776a-5eaa-8a3b-f289cd87ae53",
+          "dataset_id": null,
+          "input_columns": [
+            "feed_flow",
+            "vapor_flow",
+            "cooling_water_flow"
+          ],
+          "output_column": "product_flow",
+          "model_type": "ARX",
+          "na": 1,
+          "regularization_kernel": "identity",
+          "kernel_decay": 0.9,
+          "nb": {
+            "feed_flow": 1,
+            "vapor_flow": 1,
+            "cooling_water_flow": 1
+          },
+          "delays": {
+            "feed_flow": 6,
+            "vapor_flow": 6,
+            "cooling_water_flow": 9
+          },
+          "estimator": "huber",
+          "estimation_method": null,
+          "ridge_alpha": 0.1,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 0.9007348223449435,
+        "test_rmse": 0.9955959537549371,
+        "test_fit": 0.6738064498647112,
+        "test_samples": 1218
+      },
+      "new_grid_rolling_validation": {
+        "configuration": {
+          "version_id": "7c23a52f-776a-5eaa-8a3b-f289cd87ae53",
+          "dataset_id": null,
+          "input_columns": [
+            "feed_flow",
+            "vapor_flow",
+            "cooling_water_flow"
+          ],
+          "output_column": "product_flow",
+          "model_type": "FIR",
+          "na": 0,
+          "regularization_kernel": "tc",
+          "kernel_decay": 0.95,
+          "nb": {
+            "feed_flow": 8,
+            "vapor_flow": 8,
+            "cooling_water_flow": 8
+          },
+          "delays": {
+            "feed_flow": 6,
+            "vapor_flow": 6,
+            "cooling_water_flow": 9
+          },
+          "estimator": "ridge",
+          "estimation_method": null,
+          "ridge_alpha": 10.0,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 0.774671135008168,
+        "test_rmse": 0.8167069782200402,
+        "test_fit": 18.520766294318037,
+        "test_samples": 1218
+      },
+      "test_rmse_ratio": 0.8203197041327772
+    },
+    {
+      "dataset": "evaporator",
+      "output": "product_temperature",
+      "delays": {
+        "feed_flow": 7,
+        "vapor_flow": 17,
+        "cooling_water_flow": 4
+      },
+      "source_sha256": "2c743bd96fafab927cd938a482524f06b0f7b3596ef5f10a9d370c7bf74bca22",
+      "successful_candidates": 90,
+      "failures": {},
+      "rolling_folds": [
+        {
+          "train_end": 3783,
+          "validation_end": 5044,
+          "rmse": 0.5332130211210118,
+          "score": -0.0429335803760507
+        },
+        {
+          "train_end": 2523,
+          "validation_end": 3784,
+          "rmse": 1.0842034923092734,
+          "score": -0.36625460138789623
+        },
+        {
+          "train_end": 3153,
+          "validation_end": 4414,
+          "rmse": 0.8256004220287761,
+          "score": -0.25422138095845637
+        }
+      ],
+      "old_grid_latest_validation": {
+        "configuration": {
+          "version_id": "7c23a52f-776a-5eaa-8a3b-f289cd87ae53",
+          "dataset_id": null,
+          "input_columns": [
+            "feed_flow",
+            "vapor_flow",
+            "cooling_water_flow"
+          ],
+          "output_column": "product_temperature",
+          "model_type": "ARX",
+          "na": 2,
+          "regularization_kernel": "identity",
+          "kernel_decay": 0.9,
+          "nb": {
+            "feed_flow": 2,
+            "vapor_flow": 2,
+            "cooling_water_flow": 2
+          },
+          "delays": {
+            "feed_flow": 7,
+            "vapor_flow": 17,
+            "cooling_water_flow": 4
+          },
+          "estimator": "huber",
+          "estimation_method": null,
+          "ridge_alpha": 0.1,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 0.784806619512084,
+        "test_rmse": 0.9721623346190768,
+        "test_fit": -12.455179442995433,
+        "test_samples": 1218
+      },
+      "new_grid_rolling_validation": {
+        "configuration": {
+          "version_id": "7c23a52f-776a-5eaa-8a3b-f289cd87ae53",
+          "dataset_id": null,
+          "input_columns": [
+            "feed_flow",
+            "vapor_flow",
+            "cooling_water_flow"
+          ],
+          "output_column": "product_temperature",
+          "model_type": "FIR",
+          "na": 0,
+          "regularization_kernel": "tc",
+          "kernel_decay": 0.8,
+          "nb": {
+            "feed_flow": 24,
+            "vapor_flow": 24,
+            "cooling_water_flow": 24
+          },
+          "delays": {
+            "feed_flow": 7,
+            "vapor_flow": 17,
+            "cooling_water_flow": 4
+          },
+          "estimator": "ridge",
+          "estimation_method": null,
+          "ridge_alpha": 10.0,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 0.5332130211210118,
+        "test_rmse": 0.7223982977876628,
+        "test_fit": 16.43635294834024,
+        "test_samples": 1218
+      },
+      "test_rmse_ratio": 0.7430840221460758
+    },
+    {
+      "dataset": "glassfurnace",
+      "output": "temperature_sensor_1",
+      "delays": {
+        "heating_input_1": 5,
+        "cooling_input": 3,
+        "heating_input_2": 5
+      },
+      "source_sha256": "dc8af4bd4dd2107b5326e761f04287ee928333962658532d3b226f5c5231a8ad",
+      "successful_candidates": 90,
+      "failures": {},
+      "rolling_folds": [
+        {
+          "train_end": 748,
+          "validation_end": 997,
+          "rmse": 1.0369128012343711,
+          "score": -0.19252464470914726
+        },
+        {
+          "train_end": 500,
+          "validation_end": 749,
+          "rmse": 1.010708365062624,
+          "score": -0.32258761385950196
+        },
+        {
+          "train_end": 624,
+          "validation_end": 873,
+          "rmse": 1.0233138422576433,
+          "score": -0.2193913443173014
+        }
+      ],
+      "old_grid_latest_validation": {
+        "configuration": {
+          "version_id": "fabb3201-f5d7-5427-82ea-26743e2a0bbd",
+          "dataset_id": null,
+          "input_columns": [
+            "heating_input_1",
+            "cooling_input",
+            "heating_input_2"
+          ],
+          "output_column": "temperature_sensor_1",
+          "model_type": "ARX",
+          "na": 3,
+          "regularization_kernel": "identity",
+          "kernel_decay": 0.9,
+          "nb": {
+            "heating_input_1": 2,
+            "cooling_input": 2,
+            "heating_input_2": 2
+          },
+          "delays": {
+            "heating_input_1": 5,
+            "cooling_input": 3,
+            "heating_input_2": 5
+          },
+          "estimator": "huber",
+          "estimation_method": null,
+          "ridge_alpha": 0.1,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 1.0624375774385655,
+        "test_rmse": 0.7915013887597985,
+        "test_fit": 6.908168108080115,
+        "test_samples": 207
+      },
+      "new_grid_rolling_validation": {
+        "configuration": {
+          "version_id": "fabb3201-f5d7-5427-82ea-26743e2a0bbd",
+          "dataset_id": null,
+          "input_columns": [
+            "heating_input_1",
+            "cooling_input",
+            "heating_input_2"
+          ],
+          "output_column": "temperature_sensor_1",
+          "model_type": "ARX",
+          "na": 4,
+          "regularization_kernel": "identity",
+          "kernel_decay": 0.9,
+          "nb": {
+            "heating_input_1": 3,
+            "cooling_input": 3,
+            "heating_input_2": 3
+          },
+          "delays": {
+            "heating_input_1": 5,
+            "cooling_input": 3,
+            "heating_input_2": 5
+          },
+          "estimator": "huber",
+          "estimation_method": null,
+          "ridge_alpha": 0.1,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 1.0369128012343711,
+        "test_rmse": 0.7689038340841381,
+        "test_fit": 9.565962258424243,
+        "test_samples": 207
+      },
+      "test_rmse_ratio": 0.9714497599163174
+    },
+    {
+      "dataset": "glassfurnace",
+      "output": "temperature_sensor_2",
+      "delays": {
+        "heating_input_1": 6,
+        "cooling_input": 7,
+        "heating_input_2": 4
+      },
+      "source_sha256": "dc8af4bd4dd2107b5326e761f04287ee928333962658532d3b226f5c5231a8ad",
+      "successful_candidates": 90,
+      "failures": {},
+      "rolling_folds": [
+        {
+          "train_end": 748,
+          "validation_end": 997,
+          "rmse": 1.1283597450833232,
+          "score": -0.26619585850579086
+        },
+        {
+          "train_end": 500,
+          "validation_end": 749,
+          "rmse": 1.045152867427562,
+          "score": -0.27190655748372367
+        },
+        {
+          "train_end": 624,
+          "validation_end": 873,
+          "rmse": 1.119723849269119,
+          "score": -0.26316477271881683
+        }
+      ],
+      "old_grid_latest_validation": {
+        "configuration": {
+          "version_id": "fabb3201-f5d7-5427-82ea-26743e2a0bbd",
+          "dataset_id": null,
+          "input_columns": [
+            "heating_input_1",
+            "cooling_input",
+            "heating_input_2"
+          ],
+          "output_column": "temperature_sensor_2",
+          "model_type": "ARX",
+          "na": 1,
+          "regularization_kernel": "identity",
+          "kernel_decay": 0.9,
+          "nb": {
+            "heating_input_1": 1,
+            "cooling_input": 1,
+            "heating_input_2": 1
+          },
+          "delays": {
+            "heating_input_1": 6,
+            "cooling_input": 7,
+            "heating_input_2": 4
+          },
+          "estimator": "huber",
+          "estimation_method": null,
+          "ridge_alpha": 0.1,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 1.238565464929533,
+        "test_rmse": 0.8755544065095137,
+        "test_fit": -0.9898050819659998,
+        "test_samples": 207
+      },
+      "new_grid_rolling_validation": {
+        "configuration": {
+          "version_id": "fabb3201-f5d7-5427-82ea-26743e2a0bbd",
+          "dataset_id": null,
+          "input_columns": [
+            "heating_input_1",
+            "cooling_input",
+            "heating_input_2"
+          ],
+          "output_column": "temperature_sensor_2",
+          "model_type": "FIR",
+          "na": 0,
+          "regularization_kernel": "tc",
+          "kernel_decay": 0.95,
+          "nb": {
+            "heating_input_1": 8,
+            "cooling_input": 8,
+            "heating_input_2": 8
+          },
+          "delays": {
+            "heating_input_1": 6,
+            "cooling_input": 7,
+            "heating_input_2": 4
+          },
+          "estimator": "ridge",
+          "estimation_method": null,
+          "ridge_alpha": 10.0,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 1.1283597450833232,
+        "test_rmse": 0.8153144273933555,
+        "test_fit": 5.958505272995829,
+        "test_samples": 207
+      },
+      "test_rmse_ratio": 0.9311979031019775
+    },
+    {
+      "dataset": "glassfurnace",
+      "output": "temperature_sensor_3",
+      "delays": {
+        "heating_input_1": 6,
+        "cooling_input": 7,
+        "heating_input_2": 4
+      },
+      "source_sha256": "dc8af4bd4dd2107b5326e761f04287ee928333962658532d3b226f5c5231a8ad",
+      "successful_candidates": 90,
+      "failures": {},
+      "rolling_folds": [
+        {
+          "train_end": 748,
+          "validation_end": 997,
+          "rmse": 1.1301916744977734,
+          "score": -0.2662077900575787
+        },
+        {
+          "train_end": 500,
+          "validation_end": 749,
+          "rmse": 1.051180741238948,
+          "score": -0.27266149550034635
+        },
+        {
+          "train_end": 624,
+          "validation_end": 873,
+          "rmse": 1.1207855600049679,
+          "score": -0.26217520476578265
+        }
+      ],
+      "old_grid_latest_validation": {
+        "configuration": {
+          "version_id": "fabb3201-f5d7-5427-82ea-26743e2a0bbd",
+          "dataset_id": null,
+          "input_columns": [
+            "heating_input_1",
+            "cooling_input",
+            "heating_input_2"
+          ],
+          "output_column": "temperature_sensor_3",
+          "model_type": "ARX",
+          "na": 1,
+          "regularization_kernel": "identity",
+          "kernel_decay": 0.9,
+          "nb": {
+            "heating_input_1": 1,
+            "cooling_input": 1,
+            "heating_input_2": 1
+          },
+          "delays": {
+            "heating_input_1": 6,
+            "cooling_input": 7,
+            "heating_input_2": 4
+          },
+          "estimator": "huber",
+          "estimation_method": null,
+          "ridge_alpha": 0.1,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 1.2413322933967157,
+        "test_rmse": 0.8856929884182263,
+        "test_fit": -1.4934777119602893,
+        "test_samples": 207
+      },
+      "new_grid_rolling_validation": {
+        "configuration": {
+          "version_id": "fabb3201-f5d7-5427-82ea-26743e2a0bbd",
+          "dataset_id": null,
+          "input_columns": [
+            "heating_input_1",
+            "cooling_input",
+            "heating_input_2"
+          ],
+          "output_column": "temperature_sensor_3",
+          "model_type": "FIR",
+          "na": 0,
+          "regularization_kernel": "tc",
+          "kernel_decay": 0.95,
+          "nb": {
+            "heating_input_1": 8,
+            "cooling_input": 8,
+            "heating_input_2": 8
+          },
+          "delays": {
+            "heating_input_1": 6,
+            "cooling_input": 7,
+            "heating_input_2": 4
+          },
+          "estimator": "ridge",
+          "estimation_method": null,
+          "ridge_alpha": 10.0,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 1.1301916744977734,
+        "test_rmse": 0.8207729823847525,
+        "test_fit": 5.94584637841783,
+        "test_samples": 207
+      },
+      "test_rmse_ratio": 0.9267014565064859
+    },
+    {
+      "dataset": "glassfurnace",
+      "output": "temperature_sensor_4",
+      "delays": {
+        "heating_input_1": 17,
+        "cooling_input": 3,
+        "heating_input_2": 7
+      },
+      "source_sha256": "dc8af4bd4dd2107b5326e761f04287ee928333962658532d3b226f5c5231a8ad",
+      "successful_candidates": 88,
+      "failures": {},
+      "rolling_folds": [
+        {
+          "train_end": 748,
+          "validation_end": 997,
+          "rmse": 0.877350455350843,
+          "score": -0.15968712993699127
+        },
+        {
+          "train_end": 500,
+          "validation_end": 749,
+          "rmse": 0.9985693778520885,
+          "score": -0.20579397269599917
+        },
+        {
+          "train_end": 624,
+          "validation_end": 873,
+          "rmse": 0.9204276745318967,
+          "score": -0.1554766922739165
+        }
+      ],
+      "old_grid_latest_validation": {
+        "configuration": {
+          "version_id": "fabb3201-f5d7-5427-82ea-26743e2a0bbd",
+          "dataset_id": null,
+          "input_columns": [
+            "heating_input_1",
+            "cooling_input",
+            "heating_input_2"
+          ],
+          "output_column": "temperature_sensor_4",
+          "model_type": "ARX",
+          "na": 2,
+          "regularization_kernel": "identity",
+          "kernel_decay": 0.9,
+          "nb": {
+            "heating_input_1": 2,
+            "cooling_input": 2,
+            "heating_input_2": 2
+          },
+          "delays": {
+            "heating_input_1": 17,
+            "cooling_input": 3,
+            "heating_input_2": 7
+          },
+          "estimator": "huber",
+          "estimation_method": null,
+          "ridge_alpha": 0.1,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 0.877350455350843,
+        "test_rmse": 0.9824598409790025,
+        "test_fit": 4.287612543280983,
+        "test_samples": 207
+      },
+      "new_grid_rolling_validation": {
+        "configuration": {
+          "version_id": "fabb3201-f5d7-5427-82ea-26743e2a0bbd",
+          "dataset_id": null,
+          "input_columns": [
+            "heating_input_1",
+            "cooling_input",
+            "heating_input_2"
+          ],
+          "output_column": "temperature_sensor_4",
+          "model_type": "ARX",
+          "na": 2,
+          "regularization_kernel": "identity",
+          "kernel_decay": 0.9,
+          "nb": {
+            "heating_input_1": 2,
+            "cooling_input": 2,
+            "heating_input_2": 2
+          },
+          "delays": {
+            "heating_input_1": 17,
+            "cooling_input": 3,
+            "heating_input_2": 7
+          },
+          "estimator": "huber",
+          "estimation_method": null,
+          "ridge_alpha": 0.1,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 0.877350455350843,
+        "test_rmse": 0.9824598409790025,
+        "test_fit": 4.287612543280983,
+        "test_samples": 207
+      },
+      "test_rmse_ratio": 1.0
+    },
+    {
+      "dataset": "glassfurnace",
+      "output": "temperature_sensor_5",
+      "delays": {
+        "heating_input_1": 6,
+        "cooling_input": 7,
+        "heating_input_2": 4
+      },
+      "source_sha256": "dc8af4bd4dd2107b5326e761f04287ee928333962658532d3b226f5c5231a8ad",
+      "successful_candidates": 90,
+      "failures": {},
+      "rolling_folds": [
+        {
+          "train_end": 748,
+          "validation_end": 997,
+          "rmse": 0.9384634977720571,
+          "score": -0.21843481028112222
+        },
+        {
+          "train_end": 500,
+          "validation_end": 749,
+          "rmse": 0.9410408143051778,
+          "score": -0.22501473018482054
+        },
+        {
+          "train_end": 624,
+          "validation_end": 873,
+          "rmse": 0.904066768444855,
+          "score": -0.16463264341404138
+        }
+      ],
+      "old_grid_latest_validation": {
+        "configuration": {
+          "version_id": "fabb3201-f5d7-5427-82ea-26743e2a0bbd",
+          "dataset_id": null,
+          "input_columns": [
+            "heating_input_1",
+            "cooling_input",
+            "heating_input_2"
+          ],
+          "output_column": "temperature_sensor_5",
+          "model_type": "ARX",
+          "na": 3,
+          "regularization_kernel": "identity",
+          "kernel_decay": 0.9,
+          "nb": {
+            "heating_input_1": 2,
+            "cooling_input": 2,
+            "heating_input_2": 2
+          },
+          "delays": {
+            "heating_input_1": 6,
+            "cooling_input": 7,
+            "heating_input_2": 4
+          },
+          "estimator": "ols",
+          "estimation_method": null,
+          "ridge_alpha": null,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 1.0979887141633131,
+        "test_rmse": 0.8174639578774381,
+        "test_fit": 0.02399605349204803,
+        "test_samples": 207
+      },
+      "new_grid_rolling_validation": {
+        "configuration": {
+          "version_id": "fabb3201-f5d7-5427-82ea-26743e2a0bbd",
+          "dataset_id": null,
+          "input_columns": [
+            "heating_input_1",
+            "cooling_input",
+            "heating_input_2"
+          ],
+          "output_column": "temperature_sensor_5",
+          "model_type": "FIR",
+          "na": 0,
+          "regularization_kernel": "tc",
+          "kernel_decay": 0.95,
+          "nb": {
+            "heating_input_1": 16,
+            "cooling_input": 16,
+            "heating_input_2": 16
+          },
+          "delays": {
+            "heating_input_1": 6,
+            "cooling_input": 7,
+            "heating_input_2": 4
+          },
+          "estimator": "ridge",
+          "estimation_method": null,
+          "ridge_alpha": 10.0,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 0.9384634977720571,
+        "test_rmse": 0.7366370637801867,
+        "test_fit": 9.909141209289029,
+        "test_samples": 207
+      },
+      "test_rmse_ratio": 0.9011248223014993
+    },
+    {
+      "dataset": "glassfurnace",
+      "output": "temperature_sensor_6",
+      "delays": {
+        "heating_input_1": 6,
+        "cooling_input": 4,
+        "heating_input_2": 6
+      },
+      "source_sha256": "dc8af4bd4dd2107b5326e761f04287ee928333962658532d3b226f5c5231a8ad",
+      "successful_candidates": 90,
+      "failures": {},
+      "rolling_folds": [
+        {
+          "train_end": 748,
+          "validation_end": 997,
+          "rmse": 0.676536844109962,
+          "score": -0.10529074275110684
+        },
+        {
+          "train_end": 500,
+          "validation_end": 749,
+          "rmse": 0.7756390987326031,
+          "score": -0.15645278006917707
+        },
+        {
+          "train_end": 624,
+          "validation_end": 873,
+          "rmse": 0.79575899488167,
+          "score": -0.13857199706276996
+        }
+      ],
+      "old_grid_latest_validation": {
+        "configuration": {
+          "version_id": "fabb3201-f5d7-5427-82ea-26743e2a0bbd",
+          "dataset_id": null,
+          "input_columns": [
+            "heating_input_1",
+            "cooling_input",
+            "heating_input_2"
+          ],
+          "output_column": "temperature_sensor_6",
+          "model_type": "ARX",
+          "na": 1,
+          "regularization_kernel": "identity",
+          "kernel_decay": 0.9,
+          "nb": {
+            "heating_input_1": 2,
+            "cooling_input": 2,
+            "heating_input_2": 2
+          },
+          "delays": {
+            "heating_input_1": 6,
+            "cooling_input": 4,
+            "heating_input_2": 6
+          },
+          "estimator": "huber",
+          "estimation_method": null,
+          "ridge_alpha": 0.1,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 0.7758913899185707,
+        "test_rmse": 0.9631408727598375,
+        "test_fit": 4.130060522481427,
+        "test_samples": 207
+      },
+      "new_grid_rolling_validation": {
+        "configuration": {
+          "version_id": "fabb3201-f5d7-5427-82ea-26743e2a0bbd",
+          "dataset_id": null,
+          "input_columns": [
+            "heating_input_1",
+            "cooling_input",
+            "heating_input_2"
+          ],
+          "output_column": "temperature_sensor_6",
+          "model_type": "FIR",
+          "na": 0,
+          "regularization_kernel": "tc",
+          "kernel_decay": 0.95,
+          "nb": {
+            "heating_input_1": 16,
+            "cooling_input": 16,
+            "heating_input_2": 16
+          },
+          "delays": {
+            "heating_input_1": 6,
+            "cooling_input": 4,
+            "heating_input_2": 6
+          },
+          "estimator": "ridge",
+          "estimation_method": null,
+          "ridge_alpha": 10.0,
+          "train_ratio": 0.6,
+          "validation_ratio": 0.2,
+          "evaluate_test": false,
+          "training_sample_indices": [],
+          "fit_intercept": true,
+          "standardize": true,
+          "huber_delta": 1.345,
+          "history_guard": 43,
+          "sample_weights": {},
+          "gain_sign": {},
+          "gain_bounds": {},
+          "require_stable": false
+        },
+        "validation_rmse": 0.676536844109962,
+        "test_rmse": 0.7594673049317046,
+        "test_fit": 24.403494215417744,
+        "test_samples": 207
+      },
+      "test_rmse_ratio": 0.7885319026649598
+    }
+  ],
+  "summary": {
+    "comparisons": 12,
+    "improved": 9,
+    "ties": 2,
+    "median_rmse_ratio": 0.9139131394039925,
+    "worst_rmse_ratio": 1.0051504291578721
+  }
+}

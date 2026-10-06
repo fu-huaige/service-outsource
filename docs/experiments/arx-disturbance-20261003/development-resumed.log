@@ -1,0 +1,33 @@
+distillation_a established 42 -0.29079291524140055
+distillation_a established 20261003 -0.2473569994335874
+distillation_a established 7 -0.25135692568786583
+distillation_a established 19 -0.2742960777076503
+distillation_a established 31 -0.312481072769437
+distillation_a disturbance_aware 42 -0.29079291524140055
+distillation_a disturbance_aware 20261003 -0.2473569994335874
+distillation_a disturbance_aware 7 -0.25135692568786583
+distillation_a disturbance_aware 19 -0.2742960777076503
+distillation_a disturbance_aware 31 -0.312481072769437
+distillation_a source ARX pair frozen
+distillation_b established 42 -5.662620500475268
+distillation_b established 20261003 -6.625050432852232
+distillation_b established 7 -8.310361574720812
+distillation_b established 19 -6.831358882546372
+distillation_b established 31 -8.414955744533108
+distillation_b disturbance_aware 42 -5.225028568758998
+distillation_b disturbance_aware 20261003 -6.33327978633966
+distillation_b disturbance_aware 7 -2.4736398276496283
+distillation_b disturbance_aware 19 -6.556665605651874
+distillation_b disturbance_aware 31 -2.4942974299542584
+distillation_b source ARX pair frozen
+distillation_c established 42 -0.3194204037632686
+distillation_c established 20261003 -0.37728883338505437
+distillation_c established 7 -0.4401278503828954
+distillation_c established 19 -0.3342444528210939
+distillation_c established 31 -0.29303672462525776
+distillation_c disturbance_aware 42 -0.3194204037632686
+distillation_c disturbance_aware 20261003 -0.37728883338505437
+distillation_c disturbance_aware 7 -0.4401278503828954
+distillation_c disturbance_aware 19 -0.3342444528210939
+distillation_c disturbance_aware 31 -0.29303672462525776
+distillation_c source ARX pair frozen

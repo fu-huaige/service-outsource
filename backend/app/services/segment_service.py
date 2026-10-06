@@ -25,7 +25,13 @@ from typing import Any
 from uuid import uuid4
 
 import numpy as np
-from algorithms.identifiability.gating import GatingReport, GatingThresholds, gate_windows
+from algorithms.identifiability.gating import (
+    GatingReport,
+    GatingThresholds,
+    gate_windows,
+    hampel_anomaly_mask,
+    input_anomaly_mask,
+)
 from algorithms.identifiability.regressor import (
     ArxStructure,
     IdentifiabilityError,
@@ -34,6 +40,7 @@ from algorithms.identifiability.regressor import (
 )
 from algorithms.identifiability.selection import (
     SelectionResult,
+    build_multiscale_window_grid,
     build_window_grid,
     select_informative_windows,
 )
@@ -85,6 +92,8 @@ class SegmentSelectionOutcome:
     output_column: str
     train_rows: int
     selected_sample_indices: list[int]
+    sample_weights: dict[int, float]
+    temporal_coverage_bins: int = 0
 
 
 def run_segment_selection(
@@ -103,15 +112,31 @@ def run_segment_selection(
         nk=payload.nk,
         input_columns=input_columns,
     )
-    inputs = {column: series.values[column] for column in input_columns}
-    output = series.values[output_column]
+    structures = [structure]
+    if payload.selection_mode == "ensemble":
+        for na, nb in ((1, 1), (4, 3)):
+            candidate = ArxStructure.create(na=na, nb=nb, nk=payload.nk, input_columns=input_columns)
+            if candidate != structure:
+                structures.append(candidate)
+    history = max(item.max_history for item in structures)
+    guard = max(history, payload.history_guard or 0)
+    train_stop = int(series.n_samples * payload.train_ratio) - guard
+    if train_stop <= history + payload.window_size:
+        raise SegmentDomainError("INSUFFICIENT_ROWS", "训练区间无法容纳模型历史和选段窗口")
+    inputs = {column: series.values[column][:train_stop] for column in input_columns}
+    output = series.values[output_column][:train_stop]
 
     try:
-        regressor = build_regressor(inputs=inputs, output=output, structure=structure)
+        regressors = [build_regressor(inputs=inputs, output=output, structure=item, start=history) for item in structures]
+        common = regressors[0].time_indices
+        for item in regressors[1:]:
+            common = np.intersect1d(common, item.time_indices)
+        regressors = [item.take(np.searchsorted(item.time_indices, common)) for item in regressors]
+        regressor = regressors[0]
     except IdentifiabilityError as error:
         raise SegmentDomainError(error.code, error.message, details=error.details) from error
 
-    train_rows = int(regressor.n_rows * payload.train_ratio)
+    train_rows = regressor.n_rows
     if train_rows < payload.window_size:
         raise SegmentDomainError(
             "INSUFFICIENT_ROWS",
@@ -121,12 +146,10 @@ def run_segment_selection(
 
     stride = payload.stride or max(1, payload.window_size // 2)
     try:
-        grid = build_window_grid(
-            regressor,
-            window_size=payload.window_size,
-            stride=stride,
-            row_range=(0, train_rows),
-        )
+        if payload.adaptive_windows:
+            grid = build_multiscale_window_grid(regressor, inputs=inputs, window_size=payload.window_size, stride=stride)
+        else:
+            grid = build_window_grid(regressor, window_size=payload.window_size, stride=stride, row_range=(0, train_rows))
     except IdentifiabilityError as error:
         raise SegmentDomainError(error.code, error.message, details=error.details) from error
 
@@ -153,14 +176,40 @@ def run_segment_selection(
         )
 
     gated_grid = grid.subset(list(gating.accepted_indices))
+    reliability = np.ones(max(train_stop, 0), dtype=float)
+    for index, weight in payload.sample_weights.items():
+        if 0 <= index < reliability.size:
+            reliability[index] = weight
+    if payload.quality_weighting:
+        masks = [input_anomaly_mask(signal) for signal in inputs.values()]
+        masks.append(hampel_anomaly_mask(output))
+        for mask in masks:
+            reliability[mask] = np.minimum(reliability[mask], 0.25)
+    weights = np.asarray([
+        float(np.min(reliability[int(t) - history:int(t) + 1]))
+        for t in common
+    ])
+    feature_bank = []
+    for item in regressors:
+        features = item.features.copy()
+        if payload.standardize:
+            center = np.mean(features, axis=0)
+            scale = np.std(features, axis=0)
+            scale = np.where(scale > np.finfo(float).eps * np.maximum(1, np.abs(center)), scale, 1.0)
+            features = (features - center) / scale
+        feature_bank.append(features)
     try:
         selection = select_informative_windows(
             regressor,
             gated_grid,
-            budget_windows=payload.max_segments,
+            budget_windows=None if payload.max_rows is not None else payload.max_segments,
+            budget_rows=payload.max_rows,
             ridge=payload.ridge,
             min_information_gain_bits=payload.min_information_gain_bits,
             inputs=inputs,
+            feature_bank=tuple(feature_bank),
+            sample_weights=weights,
+            temporal_coverage_bins=payload.temporal_coverage_bins,
         )
     except IdentifiabilityError as error:
         raise SegmentDomainError(error.code, error.message, details=error.details) from error
@@ -178,6 +227,8 @@ def run_segment_selection(
         output_column=output_column,
         train_rows=train_rows,
         selected_sample_indices=selected_samples,
+        sample_weights={int(i): float(w) for i, w in enumerate(reliability) if w < 1.0},
+        temporal_coverage_bins=payload.temporal_coverage_bins,
     )
 
 
@@ -215,7 +266,8 @@ async def select_dynamic_segments(
             parameters=payload.model_dump(mode="json"),
             result={
                 "selection": summary.model_dump(mode="json"),
-                "selected_sample_indices": outcome.selected_sample_indices[:MAX_RESPONSE_POINTS],
+                "selected_sample_indices": outcome.selected_sample_indices,
+                "sample_weights": outcome.sample_weights,
                 "origin": series.origin,
             },
             created_at=now,
@@ -258,7 +310,8 @@ async def select_dynamic_segments(
         segments=_segments(outcome),
         selection=summary,
         gated_windows=[GatedWindow(**window.to_payload()) for window in outcome.gating.windows],
-        selected_indices=outcome.selected_sample_indices[:MAX_RESPONSE_POINTS],
+        selected_indices=outcome.selected_sample_indices,
+        sample_weights=outcome.sample_weights,
     )
 
 
@@ -268,6 +321,8 @@ def _selection_summary(outcome: SegmentSelectionOutcome) -> SelectionSummary:
     retention = selection.information_retention
     return SelectionSummary(
         candidate_count=len(outcome.gating.windows),
+        model_count=selection.model_count,
+        criterion=selection.criterion,
         gated_count=outcome.gating.accepted_count,
         selected_count=len(selection.selected),
         selected_rows=int(selection.row_positions.size),

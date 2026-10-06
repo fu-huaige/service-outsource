@@ -121,10 +121,12 @@ def test_waiting_confirmation_is_not_persisted_as_a_succeeded_run() -> None:
 
     proof = verify_plan(
         [
+            {"step_id": "profile", "tool": "profile_dataset", "depends_on": [],
+             "parameters": {}, "requires_confirmation": False},
             {
                 "step_id": "s1",
                 "tool": "export_dataset",
-                "depends_on": [],
+                "depends_on": ["profile"],
                 "parameters": {},
                 "requires_confirmation": True,
             }

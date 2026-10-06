@@ -154,6 +154,14 @@ def test_persistent_state_sync_never_dispatches_a_tool_twice(
         dispatch_count += 1
         return original_dispatch(*args, **kwargs)  # type: ignore[arg-type]
 
+    formal_dispatch = agent_service.execute_agent_tool
+
+    async def counted_formal_dispatch(*args: object, **kwargs: object):
+        nonlocal dispatch_count
+        dispatch_count += 1
+        return await formal_dispatch(*args, **kwargs)
+
+    monkeypatch.setattr(agent_service, "execute_agent_tool", counted_formal_dispatch)
     monkeypatch.setattr(agent_service, "_dispatch", counted_dispatch)
     response = chat_harness.client.post(
         "/api/v1/copilot/chat",
@@ -202,20 +210,10 @@ def test_failed_step_marks_persistent_execution_failed(
 ) -> None:
     version_id = _benchmark_version(chat_harness.client)
 
-    def fail_first_step(series: object, steps: list[object], hints: dict[str, object]):
-        first = steps[0]
-        return [
-            agent_service.StepExecution(
-                step_id=first.step_id,
-                tool=first.tool,
-                status="failed",
-                parameters=dict(first.parameters),
-                summary="deterministic state-sync failure",
-                error_code="SYNC_TEST_FAILURE",
-            )
-        ]
+    def fail_first_step(*args: object, **kwargs: object):
+        raise agent_service.AgentDomainError("SYNC_TEST_FAILURE", "deterministic state-sync failure")
 
-    monkeypatch.setattr(agent_service, "_execute", fail_first_step)
+    monkeypatch.setattr(agent_service, "_dispatch", fail_first_step)
     response = chat_harness.client.post(
         "/api/v1/copilot/chat",
         json={"message": "做动态区间优选", "active_version_id": version_id},
@@ -348,7 +346,7 @@ def test_capability_registry_owns_report_and_export_without_deferred_steps() -> 
     assert agent_service._TOOL_CAPABILITIES["export_dataset"].mode == "WAITING_CONFIRMATION"
     assert "generate_report" in agent_service._FORMAL_ADAPTER_TOOLS
     assert "export_dataset" in agent_service._FORMAL_ADAPTER_TOOLS
-    assert agent_service._DEFERRED_TOOLS == frozenset()
+    assert not agent_service._DEFERRED_TOOLS
 
 
 def _confirm(chat_harness: ChatHarness, data: dict[str, object]) -> object:
@@ -394,6 +392,13 @@ def test_explicit_export_with_formal_selection_confirms_exports_and_closes(
     assert export.result_payload["exported_rows"] < export.result_payload["source_rows"]
     assert export.result_payload["csv_uri"]
     assert export.result_payload["manifest_uri"]
+    replay = _confirm(chat_harness, data)
+    assert replay == confirmed
+    replayed = asyncio.run(_load_execution(chat_harness.session_factory, execution.id))
+    replay_export = next(step for step in replayed.step_runs if step.tool_name == "export_dataset")
+    assert replay_export.finished_at == export.finished_at
+    assert replay_export.processing_run_ids == export.processing_run_ids
+    assert replay_export.attempt_count == export.attempt_count
 
 
 def test_explicit_export_without_selection_fails_terminally(

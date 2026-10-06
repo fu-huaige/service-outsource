@@ -1,0 +1,26 @@
+{
+  "role": "previously_seen_real_boiler_integration_regression",
+  "database": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261004/agent-api/integration-219be2f6-6e90-4790-85d8-144d79bc766e.db",
+  "artifact_root": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261004/agent-api",
+  "confirmation_authorization": "user requested implementation and real-data testing; isolated reproducibility run",
+  "events": [],
+  "error": {
+    "route": "/datasets/upload",
+    "status": 400,
+    "response": {
+      "success": false,
+      "data": null,
+      "error": {
+        "code": "INVALID_DATASET_SCHEMA",
+        "message": "检测到多个候选时间戳列，请仅保留一个时间列。",
+        "details": {
+          "candidates": [
+            "timestamp",
+            "source_time"
+          ]
+        }
+      },
+      "request_id": "c3e3f9fc-f91f-4b6a-84cd-675fafebbf70"
+    }
+  }
+}

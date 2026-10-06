@@ -1,0 +1,26 @@
+{
+  "data_dir": "/Users/maguayuhui/Documents/\u7ade\u8d5b/\u670d\u5916 9.22/\u516c\u5f00\u5de5\u4e1a\u6570\u636e\u96c6/\u6cdb\u5316\u9a8c\u8bc1-20261004/winding-api-regression",
+  "datasets": [
+    {
+      "dataset": "winding_tension_1",
+      "path": "/Users/maguayuhui/Documents/\u7ade\u8d5b/\u670d\u5916 9.22/\u516c\u5f00\u5de5\u4e1a\u6570\u636e\u96c6/\u6cdb\u5316\u9a8c\u8bc1-20261004/winding.csv",
+      "sha256": "3a849867c05495a9299aa23d8e1096e2bd62d7c3c2d1e73664ed49b8e6d96e26",
+      "inputs": [
+        "speed_reel_1",
+        "speed_reel_2",
+        "speed_reel_3",
+        "current_motor_1",
+        "current_motor_3"
+      ],
+      "output": "tension_1",
+      "period_seconds": 0.1,
+      "source_metadata": "https://ftp.esat.kuleuven.be/pub/SISTA/data/process_industry/winding.txt",
+      "source_data": "https://ftp.esat.kuleuven.be/pub/SISTA/data/process_industry/winding.dat.gz",
+      "raw_sha256": "5bad7f2362a846a01ef1e43b2235e6f2585100f08649479110fb1e2d4cc52981",
+      "rows": 2500,
+      "license": "not stated by source",
+      "role": "previously_unscored_real_industrial_test_setup",
+      "time_provenance": "nominal relative sampling 0.1 s, synthetic epoch, actual measurement date unknown"
+    }
+  ]
+}

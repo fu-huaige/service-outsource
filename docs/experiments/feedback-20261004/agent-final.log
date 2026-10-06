@@ -1,0 +1,35 @@
+/Users/maguayuhui/Documents/竞赛/服外 9.22/service-outsource/backend/.venv/lib/python3.11/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient as TestClient  # noqa
+{"timestamp": "2026-10-04T05:26:51.786639+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "dc0465e9-e83e-4fa8-9bf3-c36b9e10c5a8", "duration_ms": 110.17, "status_code": 202}
+{"timestamp": "2026-10-04T05:26:51.787083+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: POST http://testserver/api/v1/datasets/upload \"HTTP/1.1 202 Accepted\"", "request_id": null}
+{"timestamp": "2026-10-04T05:26:51.889978+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "c6e3346a-8081-432e-bcd4-dd6046574cc0", "duration_ms": 102.56, "status_code": 200}
+{"timestamp": "2026-10-04T05:26:51.890381+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: POST http://testserver/api/v1/datasets/448ebab1-d9c2-4f93-a93f-11d8433c6d92/config \"HTTP/1.1 200 OK\"", "request_id": null}
+{"timestamp": "2026-10-04T05:26:57.591531+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "393f1054-dc73-4d98-bf8f-5447d36d38c1", "duration_ms": 5700.66, "status_code": 200}
+{"timestamp": "2026-10-04T05:26:57.591969+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: POST http://testserver/api/v1/copilot/chat \"HTTP/1.1 200 OK\"", "request_id": null}
+{"timestamp": "2026-10-04T05:26:57.627995+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "41abccc4-cabd-4211-9dea-9743af20307d", "duration_ms": 19.15, "status_code": 200}
+{"timestamp": "2026-10-04T05:26:57.628504+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: GET http://testserver/api/v1/copilot/executions/a1e45164-1d13-4dac-85ef-fb2d751cc81b \"HTTP/1.1 200 OK\"", "request_id": null}
+{"timestamp": "2026-10-04T05:26:58.092423+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "48514f0d-72a8-437f-8365-c8038571ec05", "duration_ms": 377.8, "status_code": 200}
+{"timestamp": "2026-10-04T05:26:58.092701+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: POST http://testserver/api/v1/copilot/confirm \"HTTP/1.1 200 OK\"", "request_id": null}
+confirmed apply_lag_compensation SUCCEEDED
+{"timestamp": "2026-10-04T05:26:58.182850+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "b291cd2c-bda8-45b5-88c4-ae3c0d7d396f", "duration_ms": 19.35, "status_code": 200}
+{"timestamp": "2026-10-04T05:26:58.183398+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: GET http://testserver/api/v1/copilot/executions/a1e45164-1d13-4dac-85ef-fb2d751cc81b \"HTTP/1.1 200 OK\"", "request_id": null}
+{"timestamp": "2026-10-04T05:27:00.544980+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "bfa313a4-2bbe-4440-9a2b-80c39d1fc627", "duration_ms": 2273.69, "status_code": 200}
+{"timestamp": "2026-10-04T05:27:00.545279+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: POST http://testserver/api/v1/copilot/confirm \"HTTP/1.1 200 OK\"", "request_id": null}
+confirmed select_variables SUCCEEDED
+{"timestamp": "2026-10-04T05:27:00.637451+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "b4b075dd-9f06-4d7f-a915-510c39b460ec", "duration_ms": 20.24, "status_code": 200}
+{"timestamp": "2026-10-04T05:27:00.637995+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: GET http://testserver/api/v1/copilot/executions/a1e45164-1d13-4dac-85ef-fb2d751cc81b \"HTTP/1.1 200 OK\"", "request_id": null}
+{"timestamp": "2026-10-04T05:27:01.080793+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "1174b548-119c-4b16-845b-dde166684d51", "duration_ms": 335.45, "status_code": 200}
+{"timestamp": "2026-10-04T05:27:01.081091+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: POST http://testserver/api/v1/copilot/confirm \"HTTP/1.1 200 OK\"", "request_id": null}
+confirmed fit_arx SUCCEEDED
+{"timestamp": "2026-10-04T05:27:01.211166+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "74288b09-ad3b-4fd4-8d69-bdbba63d13ed", "duration_ms": 40.52, "status_code": 200}
+{"timestamp": "2026-10-04T05:27:01.211734+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: GET http://testserver/api/v1/copilot/executions/a1e45164-1d13-4dac-85ef-fb2d751cc81b \"HTTP/1.1 200 OK\"", "request_id": null}
+{"timestamp": "2026-10-04T06:37:19.422481+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "e8dfd42c-ded5-4fb6-9ee2-eaabc2e63908", "duration_ms": 140552.07, "status_code": 200}
+{"timestamp": "2026-10-04T06:37:19.424727+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: POST http://testserver/api/v1/copilot/confirm \"HTTP/1.1 200 OK\"", "request_id": null}
+confirmed optimize_pipeline SUCCEEDED
+{"timestamp": "2026-10-04T06:37:19.547144+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "2ed6b2fe-2284-4b00-b904-eea54b3f3bb5", "duration_ms": 23.88, "status_code": 200}
+{"timestamp": "2026-10-04T06:37:19.547944+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: GET http://testserver/api/v1/copilot/executions/a1e45164-1d13-4dac-85ef-fb2d751cc81b \"HTTP/1.1 200 OK\"", "request_id": null}
+{"timestamp": "2026-10-04T06:37:19.884734+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "89e4ad26-7d8c-4df5-bf80-ae95b97019d1", "duration_ms": 211.89, "status_code": 200}
+{"timestamp": "2026-10-04T06:37:19.885118+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: POST http://testserver/api/v1/copilot/confirm \"HTTP/1.1 200 OK\"", "request_id": null}
+confirmed export_dataset SUCCEEDED
+{"timestamp": "2026-10-04T06:37:20.016470+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "3b01231e-7ffa-4ffe-8caf-077d5bab9d3d", "duration_ms": 25.06, "status_code": 200}
+{"timestamp": "2026-10-04T06:37:20.016994+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: GET http://testserver/api/v1/copilot/executions/a1e45164-1d13-4dac-85ef-fb2d751cc81b \"HTTP/1.1 200 OK\"", "request_id": null}

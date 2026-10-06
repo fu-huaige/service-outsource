@@ -1,0 +1,108 @@
+{
+  "backend_collected": 598,
+  "backend_passed": 572,
+  "backend_failed": 23,
+  "backend_skipped": 3,
+  "focused_backend_passed": 200,
+  "original_failures": [
+    "tests/test_agent_arx_modeling.py::test_agent_evaluation_fails_on_saved_model_source_version_mismatch",
+    "tests/test_agent_arx_modeling.py::test_agent_evaluation_fails_when_fit_model_id_is_missing",
+    "tests/test_agent_arx_modeling.py::test_explicit_evaluation_trigger_returns_failed_snapshot_for_business_error",
+    "tests/test_agent_arx_modeling.py::test_explicit_optimization_trigger_persists_business_failure_without_replay",
+    "tests/test_agent_arx_modeling.py::test_explicit_optimization_trigger_requires_confirmation_and_persists_real_result",
+    "tests/test_agent_arx_modeling.py::test_manual_override_runs_formal_arx_once_and_keeps_v3_immutable",
+    "tests/test_agent_arx_modeling.py::test_optimization_adapter_rejects_missing_declared_fit_predecessor",
+    "tests/test_agent_arx_modeling.py::test_optimized_artifact_source_mismatch_fails_evaluation_without_refit",
+    "tests/test_agent_chat_execution.py::test_failed_step_marks_persistent_execution_failed",
+    "tests/test_agent_chat_execution.py::test_persistent_state_sync_never_dispatches_a_tool_twice",
+    "tests/test_agent_execution_api.py::test_confirm_api_approve_does_not_complete_step",
+    "tests/test_agent_execution_api.py::test_confirm_api_approves_waiting_execution",
+    "tests/test_agent_execution_api.py::test_confirm_api_duplicate_approve_is_idempotent",
+    "tests/test_agent_execution_workflow.py::test_waiting_confirmation_is_not_persisted_as_a_succeeded_run",
+    "tests/test_agent_feature_apply.py::test_completed_feature_apply_rejects_a_different_selection_replay",
+    "tests/test_agent_feature_apply.py::test_feature_recommendation_is_formal_and_validation_is_authoritative",
+    "tests/test_agent_feature_apply.py::test_manual_feature_adjustment_persists_final_selection_and_provenance",
+    "tests/test_agent_feature_apply.py::test_recommendation_approve_creates_v3_once_and_resumes_to_arx_confirmation",
+    "tests/test_agent_feature_apply.py::test_reject_does_not_apply_features_or_create_v3",
+    "tests/test_delay_collinearity.py::TestCollinearity::test_qualification_rejects_missing_and_true_non_numeric_inputs",
+    "tests/test_end_to_end.py::TestFullClosedLoop::test_industrial_csv_through_the_entire_pipeline",
+    "tests/test_end_to_end.py::TestFullClosedLoop::test_one_sentence_drives_the_same_pipeline",
+    "tests/test_simulation_dataset_lifecycle.py::test_s4_lineage_separates_user_request_from_ground_truth_resolved_parameters"
+  ],
+  "current_failures": [
+    "tests/test_agent_arx_modeling.py::test_agent_evaluation_fails_on_saved_model_source_version_mismatch",
+    "tests/test_agent_arx_modeling.py::test_agent_evaluation_fails_when_fit_model_id_is_missing",
+    "tests/test_agent_arx_modeling.py::test_explicit_evaluation_trigger_returns_failed_snapshot_for_business_error",
+    "tests/test_agent_arx_modeling.py::test_explicit_optimization_trigger_persists_business_failure_without_replay",
+    "tests/test_agent_arx_modeling.py::test_explicit_optimization_trigger_requires_confirmation_and_persists_real_result",
+    "tests/test_agent_arx_modeling.py::test_manual_override_runs_formal_arx_once_and_keeps_v3_immutable",
+    "tests/test_agent_arx_modeling.py::test_optimization_adapter_rejects_missing_declared_fit_predecessor",
+    "tests/test_agent_arx_modeling.py::test_optimized_artifact_source_mismatch_fails_evaluation_without_refit",
+    "tests/test_agent_chat_execution.py::test_failed_step_marks_persistent_execution_failed",
+    "tests/test_agent_chat_execution.py::test_persistent_state_sync_never_dispatches_a_tool_twice",
+    "tests/test_agent_execution_api.py::test_confirm_api_approve_does_not_complete_step",
+    "tests/test_agent_execution_api.py::test_confirm_api_approves_waiting_execution",
+    "tests/test_agent_execution_api.py::test_confirm_api_duplicate_approve_is_idempotent",
+    "tests/test_agent_execution_workflow.py::test_waiting_confirmation_is_not_persisted_as_a_succeeded_run",
+    "tests/test_agent_feature_apply.py::test_completed_feature_apply_rejects_a_different_selection_replay",
+    "tests/test_agent_feature_apply.py::test_feature_recommendation_is_formal_and_validation_is_authoritative",
+    "tests/test_agent_feature_apply.py::test_manual_feature_adjustment_persists_final_selection_and_provenance",
+    "tests/test_agent_feature_apply.py::test_recommendation_approve_creates_v3_once_and_resumes_to_arx_confirmation",
+    "tests/test_agent_feature_apply.py::test_reject_does_not_apply_features_or_create_v3",
+    "tests/test_delay_collinearity.py::TestCollinearity::test_qualification_rejects_missing_and_true_non_numeric_inputs",
+    "tests/test_end_to_end.py::TestFullClosedLoop::test_industrial_csv_through_the_entire_pipeline",
+    "tests/test_end_to_end.py::TestFullClosedLoop::test_one_sentence_drives_the_same_pipeline",
+    "tests/test_simulation_dataset_lifecycle.py::test_s4_lineage_separates_user_request_from_ground_truth_resolved_parameters"
+  ],
+  "new_failures": [],
+  "type_errors_original": 22,
+  "type_errors_current": 22,
+  "type_errors_unchanged": true,
+  "frontend_artifact_tests_passed": 40,
+  "frontend_typecheck": "passed",
+  "frontend_build": "passed",
+  "changed_files_ruff": "passed",
+  "git_diff_check": "passed",
+  "real_process_status": {
+    "succeeded": 144
+  },
+  "algorithm_code_sha256": "36789519095fd006d7946b9c8eca26686389e35ad65157535e693c4b36800a00",
+  "benchmark_script_sha256": "630cd7060be8082fda2ca6ea7e6f795f2cde6852a5f434f85202b5fb6dab949b",
+  "comparison_summary": [
+    {
+      "strategy": "random_contiguous",
+      "test_rmse_wins_vs_full": 9,
+      "comparisons": 24,
+      "median_test_rmse_ratio_to_full": 1.0274243327272425,
+      "median_training_rows_ratio_to_full": 0.21942593171811467
+    },
+    {
+      "strategy": "energy",
+      "test_rmse_wins_vs_full": 13,
+      "comparisons": 24,
+      "median_test_rmse_ratio_to_full": 0.9905327460112203,
+      "median_training_rows_ratio_to_full": 0.21942593171811467
+    },
+    {
+      "strategy": "single_dopt",
+      "test_rmse_wins_vs_full": 11,
+      "comparisons": 24,
+      "median_test_rmse_ratio_to_full": 1.0479275714420093,
+      "median_training_rows_ratio_to_full": 0.23749225869238255
+    },
+    {
+      "strategy": "ensemble_dopt",
+      "test_rmse_wins_vs_full": 10,
+      "comparisons": 24,
+      "median_test_rmse_ratio_to_full": 1.1094237948319496,
+      "median_training_rows_ratio_to_full": 0.23749225869238255
+    },
+    {
+      "strategy": "adaptive_ensemble",
+      "test_rmse_wins_vs_full": 10,
+      "comparisons": 24,
+      "median_test_rmse_ratio_to_full": 1.0408122640588817,
+      "median_training_rows_ratio_to_full": 0.24050632911392406
+    }
+  ]
+}

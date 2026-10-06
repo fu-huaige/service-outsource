@@ -1,0 +1,25 @@
+algorithms/identifiability/support.py:55: error: Need type annotation for "unsupported" (hint: "unsupported: list[<type>] = ...")  [var-annotated]
+algorithms/identifiability/support.py:55: error: Need type annotation for "extrapolated" (hint: "extrapolated: list[<type>] = ...")  [var-annotated]
+algorithms/identifiability/output_error.py:14: error: Library stubs not installed for "scipy.optimize"  [import-untyped]
+algorithms/identifiability/output_error.py:15: error: Library stubs not installed for "scipy.signal"  [import-untyped]
+algorithms/identifiability/output_error.py:99: error: Returning Any from function declared to return "ndarray[tuple[Any, ...], dtype[float64]]"  [no-any-return]
+algorithms/identifiability/output_error.py:106: error: Returning Any from function declared to return "ndarray[tuple[Any, ...], dtype[float64]]"  [no-any-return]
+algorithms/identifiability/output_error.py:114: error: Returning Any from function declared to return "ndarray[tuple[Any, ...], dtype[float64]]"  [no-any-return]
+algorithms/identifiability/multihorizon.py:13: error: Library stubs not installed for "scipy.optimize"  [import-untyped]
+algorithms/identifiability/multihorizon.py:13: note: Hint: "python3 -m pip install scipy-stubs"
+algorithms/identifiability/multihorizon.py:13: note: (or run "mypy --install-types" to install all missing stub packages)
+algorithms/identifiability/multihorizon.py:13: note: See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports
+algorithms/identifiability/multihorizon.py:14: error: Library stubs not installed for "scipy.signal"  [import-untyped]
+algorithms/identifiability/multihorizon.py:62: error: Function is missing a type annotation  [no-untyped-def]
+algorithms/identifiability/multihorizon.py:67: error: Call to untyped function "moments" in typed context  [no-untyped-call]
+algorithms/identifiability/multihorizon.py:74: error: Call to untyped function "moments" in typed context  [no-untyped-call]
+algorithms/identifiability/multihorizon.py:92: error: Function is missing a type annotation  [no-untyped-def]
+algorithms/identifiability/multihorizon.py:95: error: Function is missing a type annotation  [no-untyped-def]
+algorithms/identifiability/multihorizon.py:98: error: Call to untyped function "decode" in typed context  [no-untyped-call]
+algorithms/identifiability/multihorizon.py:131: error: Call to untyped function "decode" in typed context  [no-untyped-call]
+app/services/modeling_service.py:418: error: "object" has no attribute "__iter__"; maybe "__dir__" or "__str__"? (not iterable)  [attr-defined]
+app/services/modeling_service.py:701: error: Argument 1 to "assess_input_support" has incompatible type "object"; expected "Mapping[str, Mapping[str, Any]]"  [arg-type]
+app/services/modeling_service.py:843: error: Value of type variable "_ScalarT" of "asarray" cannot be "float"  [type-var]
+app/services/modeling_service.py:843: error: Argument 1 to "float" has incompatible type "object"; expected "str | Buffer | SupportsFloat | SupportsIndex"  [arg-type]
+app/services/modeling_service.py:856: error: Incompatible return value type (got "ndarray[tuple[Any, ...], dtype[float]]", expected "ndarray[tuple[Any, ...], dtype[float64]]")  [return-value]
+Found 21 errors in 4 files (checked 2 source files)

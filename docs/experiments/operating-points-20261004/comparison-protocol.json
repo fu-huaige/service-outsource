@@ -1,0 +1,8 @@
+{
+  "registered_at": "2026-10-04T08:58:05.706760+00:00",
+  "development_path": "/Users/maguayuhui/Documents/\u7ade\u8d5b/\u670d\u5916 9.22/service-outsource/docs/experiments/root-cause-20261003/coverage-development.json",
+  "development_sha256": "2be5c01a3b58c99f317f739d7e77935ad163e58765b04209664ed4537f8395ba",
+  "role": "previously frozen multiple_full_controls model, selected by temporal-only Validation; supplementary comparison registered after new source Validation analysis, before target scoring",
+  "target_scores_seen": false,
+  "numerical_reselection": false
+}

@@ -1,0 +1,44 @@
+distillation_b pooled risk 1.0481658213206402
+distillation_b within_run risk 1.0481658524936261
+distillation_b pooled_pressure risk 1.0350360325837182
+distillation_b within_run_pressure risk 1.0344892545521065
+distillation_c pooled risk 0.9713334645219386
+distillation_c within_run risk 1.262267885811182
+distillation_c pooled_pressure risk 1.2118940582232922
+distillation_c within_run_pressure risk 1.260174049498418
+Traceback (most recent call last):
+  File "/Users/maguayuhui/Documents/竞赛/服外 9.22/service-outsource/backend/scripts/benchmark_operating_points.py", line 225, in <module>
+    {"prepare": lambda: prepare(args.archive, args.out), "develop": lambda: develop(args.out),
+  File "/Users/maguayuhui/Documents/竞赛/服外 9.22/service-outsource/backend/scripts/benchmark_operating_points.py", line 225, in <lambda>
+    {"prepare": lambda: prepare(args.archive, args.out), "develop": lambda: develop(args.out),
+                                                                            ^^^^^^^^^^^^^^^^^
+  File "/Users/maguayuhui/Documents/竞赛/服外 9.22/service-outsource/backend/scripts/benchmark_operating_points.py", line 164, in develop
+    write(out / "development.json", result)
+  File "/Users/maguayuhui/Documents/竞赛/服外 9.22/service-outsource/backend/scripts/benchmark_initial_and_oe.py", line 50, in write
+    Path(path).write_text(json.dumps(document, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.11/3.11.15_4/Frameworks/Python.framework/Versions/3.11/lib/python3.11/json/__init__.py", line 238, in dumps
+    **kw).encode(obj)
+          ^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.11/3.11.15_4/Frameworks/Python.framework/Versions/3.11/lib/python3.11/json/encoder.py", line 202, in encode
+    chunks = list(chunks)
+             ^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.11/3.11.15_4/Frameworks/Python.framework/Versions/3.11/lib/python3.11/json/encoder.py", line 432, in _iterencode
+    yield from _iterencode_dict(o, _current_indent_level)
+  File "/opt/homebrew/Cellar/python@3.11/3.11.15_4/Frameworks/Python.framework/Versions/3.11/lib/python3.11/json/encoder.py", line 406, in _iterencode_dict
+    yield from chunks
+  File "/opt/homebrew/Cellar/python@3.11/3.11.15_4/Frameworks/Python.framework/Versions/3.11/lib/python3.11/json/encoder.py", line 326, in _iterencode_list
+    yield from chunks
+  File "/opt/homebrew/Cellar/python@3.11/3.11.15_4/Frameworks/Python.framework/Versions/3.11/lib/python3.11/json/encoder.py", line 406, in _iterencode_dict
+    yield from chunks
+  File "/opt/homebrew/Cellar/python@3.11/3.11.15_4/Frameworks/Python.framework/Versions/3.11/lib/python3.11/json/encoder.py", line 406, in _iterencode_dict
+    yield from chunks
+  File "/opt/homebrew/Cellar/python@3.11/3.11.15_4/Frameworks/Python.framework/Versions/3.11/lib/python3.11/json/encoder.py", line 406, in _iterencode_dict
+    yield from chunks
+  [Previous line repeated 3 more times]
+  File "/opt/homebrew/Cellar/python@3.11/3.11.15_4/Frameworks/Python.framework/Versions/3.11/lib/python3.11/json/encoder.py", line 439, in _iterencode
+    o = _default(o)
+        ^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.11/3.11.15_4/Frameworks/Python.framework/Versions/3.11/lib/python3.11/json/encoder.py", line 180, in default
+    raise TypeError(f'Object of type {o.__class__.__name__} '
+TypeError: Object of type bool is not JSON serializable

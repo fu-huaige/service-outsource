@@ -224,8 +224,7 @@ class TestQualityConstrainedSelection:
         inputs, output, _ = long_steady_scenario()
         series = make_series(inputs, output)
         outcome = run_segment_selection(series, make_request(train_ratio=0.5))
-        limit = int(outcome.regressor.n_rows * 0.5)
-        boundary_sample = int(outcome.regressor.time_indices[limit - 1])
+        boundary_sample = int(series.n_samples * 0.5) - max(outcome.structure.max_history, 4) - 1
         for window in outcome.selection.selected:
             assert window.end_index <= boundary_sample
 

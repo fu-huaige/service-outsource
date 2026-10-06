@@ -141,6 +141,9 @@ class SelectionResult:
     naive_candidate_evaluations: int
     coverage_ratio: float
     stopped_reason: str
+    model_count: int = 1
+    criterion: str = "regularized_logdet"
+    prior_log_det: float = 0.0
 
     @property
     def lazy_speedup(self) -> float:
@@ -176,16 +179,15 @@ class SelectionResult:
 
     @property
     def information_retention(self) -> float:
-        """Fraction of the full-data ``log det`` retained by the selected subset.
+        """Regularised log-det gain ratio relative to the same empty-set prior.
 
-        Reported as a ratio of information volumes; values above 1 mean the subset is
-        better conditioned than the full record, which happens when steady-state samples
-        add rows without adding rank.
+        This surrogate is not a physical information fraction or a volume ratio.
         """
 
-        if not np.isfinite(self.baseline_log_det) or self.baseline_log_det == 0:
+        denominator = self.baseline_log_det - self.prior_log_det
+        if not np.isfinite(denominator) or denominator <= 0:
             return float("nan")
-        return self.selected_log_det / self.baseline_log_det
+        return (self.selected_log_det - self.prior_log_det) / denominator
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -200,6 +202,8 @@ class SelectionResult:
             "selected_log_det": self.selected_log_det,
             "information_retention": self.information_retention,
             "stopped_reason": self.stopped_reason,
+            "model_count": self.model_count,
+            "criterion": self.criterion,
             "budget_advisory": self.budget_advisory,
             "excitation": self.excitation.to_payload(),
         }
@@ -241,8 +245,53 @@ def build_window_grid(
             {"available_rows": last - first, "window_size": window_size},
         )
     starts = range(first, last - window_size + 1, step)
-    positions = tuple(np.arange(start, start + window_size, dtype=int) for start in starts)
-    return WindowGrid(positions=positions, window_size=window_size, stride=step)
+    candidates = [np.arange(start, start + window_size, dtype=int) for start in starts]
+    valid = [i for i, p in enumerate(candidates) if np.all(np.diff(regressor.time_indices[p]) == 1)]
+    return WindowGrid(
+        positions=tuple(candidates[i] for i in valid), window_size=window_size,
+        stride=step,
+    )
+
+
+def build_multiscale_window_grid(
+    regressor: RegressorMatrix,
+    *,
+    inputs: dict[str, FloatArray],
+    window_size: int,
+    stride: int | None = None,
+) -> WindowGrid:
+    """Offer short/long contiguous windows and input-event-centred candidates.
+
+    All scales use original sample indices. No segment is concatenated with another,
+    and input events do not imply a change in the process's underlying dynamics.
+    """
+    lengths = sorted({max(5, window_size // 2), window_size, window_size * 2})
+    candidates: dict[tuple[int, int], IntArray] = {}
+    for length in lengths:
+        if length > regressor.n_rows:
+            continue
+        grid = build_window_grid(regressor, window_size=length, stride=stride or max(1, length // 2))
+        for positions in grid.positions:
+            candidates[(int(positions[0]), int(positions[-1]))] = positions
+    events: set[int] = set()
+    for signal in inputs.values():
+        difference = np.abs(np.diff(np.asarray(signal, dtype=float)))
+        finite = difference[np.isfinite(difference)]
+        if not finite.size:
+            continue
+        threshold = max(float(np.percentile(finite, 95)), 1e-12)
+        events.update(int(i + 1) for i in np.flatnonzero(difference > threshold))
+    for sample in sorted(events):
+        position = int(np.searchsorted(regressor.time_indices, sample))
+        for length in lengths:
+            first = max(0, position - length // 4)
+            last = first + length
+            if last > regressor.n_rows:
+                continue
+            positions = np.arange(first, last, dtype=int)
+            if np.all(np.diff(regressor.time_indices[positions]) == 1):
+                candidates[(first, last - 1)] = positions
+    return WindowGrid(positions=tuple(candidates[key] for key in sorted(candidates)), window_size=window_size, stride=stride or max(1, window_size // 2))
 
 
 def select_informative_windows(
@@ -254,6 +303,9 @@ def select_informative_windows(
     ridge: float = 1e-6,
     min_information_gain_bits: float = 0.0,
     inputs: dict[str, FloatArray] | None = None,
+    feature_bank: tuple[FloatArray, ...] | None = None,
+    sample_weights: FloatArray | None = None,
+    temporal_coverage_bins: int = 0,
 ) -> SelectionResult:
     """Greedily select the windows that maximise ``log det`` of the Fisher information.
 
@@ -280,67 +332,112 @@ def select_informative_windows(
         budget_windows=budget_windows,
     )
 
-    features = regressor.features
-    parameter_count = regressor.n_parameters
-    grams = [features[position].T @ features[position] for position in grid.positions]
-
-    information = ridge * np.eye(parameter_count, dtype=float)
-    factor = np.linalg.cholesky(information)
-    current_log_det = log_det_information(information)
+    weights = np.ones(regressor.n_rows) if sample_weights is None else np.asarray(sample_weights, dtype=float)
+    bank = feature_bank or (regressor.features,)
+    if weights.shape != (regressor.n_rows,) or np.any(~np.isfinite(weights)) or np.any(weights < 0):
+        raise IdentifiabilityError("PARAMETER_OUT_OF_RANGE", "选段权重无效")
+    if any(block.shape[0] != regressor.n_rows for block in bank):
+        raise IdentifiabilityError("PARAMETER_OUT_OF_RANGE", "候选模型的时间索引不一致")
+    bank = tuple(np.asarray(block, dtype=float) * np.sqrt(weights)[:, None] for block in bank)
+    features = bank[0]
+    parameter_count = features.shape[1]
+    information_bank = [ridge * np.eye(block.shape[1]) for block in bank]
+    factors = [np.linalg.cholesky(matrix) for matrix in information_bank]
+    # Dimension normalisation avoids favouring a candidate solely for having more parameters.
+    coefficients = [1.0 / (len(bank) * block.shape[1]) for block in bank] if feature_bank else [1.0]
+    prior_log_det = log_det_information(information_bank[0])
+    current_log_det = prior_log_det
     baseline_log_det = log_det_information(
         features.T @ features + ridge * np.eye(parameter_count, dtype=float)
     )
+
+    covered = np.zeros(regressor.n_rows, dtype=bool)
+
+    def gains(index: int) -> tuple[float, list[FloatArray]]:
+        positions = grid.positions[index]
+        new_rows = positions[~covered[positions]]
+        grams = [block[new_rows].T @ block[new_rows] for block in bank]
+        gain = sum(c * marginal_log_det_gain(factor, gram) for c, factor, gram in zip(coefficients, factors, grams, strict=True))
+        return gain, grams
 
     # Lazy greedy: submodularity means a stale gain is an upper bound, so a candidate whose
     # stale gain already loses to a freshly evaluated one can never win this round.
     heap: list[tuple[float, int, int]] = []
     evaluated = 0
-    for index, gram in enumerate(grams):
-        gain = marginal_log_det_gain(factor, gram)
+    for index in range(grid.count):
+        gain, _ = gains(index)
         evaluated += 1
         heapq.heappush(heap, (-gain, index, 0))
 
     selected: list[SelectedWindow] = []
     chosen_rows: list[IntArray] = []
-    covered = np.zeros(regressor.n_rows, dtype=bool)
     taken: set[int] = set()
     naive_evaluations = 0
     stopped_reason = "budget_reached"
     minimum_gain_nats = min_information_gain_bits * NATS_PER_BIT
+    # Reserve the first choices for distinct parts of Train. Only gated candidates
+    # enter this grid; a missing bin never causes a rejected window to be reinstated.
+    # The remaining budget uses the usual lazy greedy criterion. This constrained
+    # variant does not inherit the unconstrained cardinality approximation guarantee.
+    if temporal_coverage_bins < 0:
+        raise IdentifiabilityError("PARAMETER_OUT_OF_RANGE", "时间覆盖分箱数必须非负")
+    sample_axis = regressor.time_indices
+    span = max(1, int(sample_axis[-1] - sample_axis[0] + 1))
+    window_bins = [min(temporal_coverage_bins - 1,
+        int((sample_axis[p[len(p) // 2]] - sample_axis[0]) * temporal_coverage_bins / span))
+        for p in grid.positions] if temporal_coverage_bins else []
+    covered_bins: set[int] = set()
 
     while len(selected) < max_windows:
         naive_evaluations += grid.count - len(taken)
         best_index = -1
         best_gain = float("-inf")
-        while heap:
+        deferred: list[tuple[float, int, int]] = []
+        # Recompute actual marginal gains while covering previously unrepresented
+        # bins. Budget and minimum-gain rules apply to these anchors as well.
+        if len(covered_bins) < min(temporal_coverage_bins, max_windows):
+            for index in range(grid.count):
+                if index in taken or window_bins[index] in covered_bins:
+                    continue
+                new_count = int(np.count_nonzero(~covered[grid.positions[index]]))
+                if max_rows is not None and int(np.count_nonzero(covered)) + new_count > max_rows:
+                    continue
+                gain, _ = gains(index)
+                evaluated += 1
+                if gain > max(best_gain, minimum_gain_nats):
+                    best_index, best_gain = index, gain
+        while best_index < 0 and heap:
             negative_gain, index, stamp = heapq.heappop(heap)
             if index in taken:
+                continue
+            new_count = int(np.count_nonzero(~covered[grid.positions[index]]))
+            if max_rows is not None and int(np.count_nonzero(covered)) + new_count > max_rows:
+                deferred.append((negative_gain, index, stamp))
                 continue
             if stamp == len(selected):
                 best_index = index
                 best_gain = -negative_gain
                 break
-            gain = marginal_log_det_gain(factor, grams[index])
+            gain, _ = gains(index)
             evaluated += 1
             heapq.heappush(heap, (-gain, index, len(selected)))
+        for item in deferred:
+            heapq.heappush(heap, item)
         if best_index < 0:
-            stopped_reason = "candidates_exhausted"
+            stopped_reason = "row_budget_reached" if deferred else "candidates_exhausted"
             break
         if best_gain <= minimum_gain_nats:
             stopped_reason = "information_gain_below_threshold"
             break
 
         positions = grid.positions[best_index]
-        # Windows may overlap when stride < window_size, so the budget counts unique rows.
-        projected_rows = int(np.count_nonzero(covered)) + int(np.count_nonzero(~covered[positions]))
-        if max_rows is not None and projected_rows > max_rows and selected:
-            stopped_reason = "row_budget_reached"
-            break
-
-        information = information + grams[best_index]
-        factor = np.linalg.cholesky(information)
-        current_log_det += best_gain
+        _, increments = gains(best_index)
+        information_bank = [matrix + gram for matrix, gram in zip(information_bank, increments, strict=True)]
+        factors = [np.linalg.cholesky(matrix) for matrix in information_bank]
+        current_log_det = log_det_information(information_bank[0])
         taken.add(best_index)
+        if temporal_coverage_bins:
+            covered_bins.add(window_bins[best_index])
         chosen_rows.append(positions)
         covered[positions] = True
         selected.append(
@@ -382,14 +479,15 @@ def select_informative_windows(
         regressor=subset,
         excitation=excitation,
         baseline_log_det=baseline_log_det,
-        selected_log_det=log_det_information(
-            subset.features.T @ subset.features + ridge * np.eye(parameter_count, dtype=float)
-        ),
+        selected_log_det=current_log_det,
         candidate_count=grid.count,
         evaluated_candidates=evaluated,
         naive_candidate_evaluations=naive_evaluations,
         coverage_ratio=float(row_positions.size) / float(regressor.n_rows),
         stopped_reason=stopped_reason,
+        model_count=len(bank),
+        criterion="mean_dimension_normalized_logdet" if feature_bank else "regularized_logdet",
+        prior_log_det=prior_log_det,
     )
 
 

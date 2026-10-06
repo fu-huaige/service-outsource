@@ -1,0 +1,833 @@
+
+> frontend@0.0.0 test
+> vitest run --reporter=dot
+
+
+ RUN  v4.1.10 /Users/maguayuhui/Documents/竞赛/服外 9.22/service-outsource/frontend
+
+(node:51453) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51457) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51451) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51452) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51454) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51458) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51455) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51459) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51456) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+·········································x·xx·xx·x·········stderr | tests/unit/artifact-workbench.spec.ts > ArtifactWorkbench profile_dataset rendering > routes ARX artifacts to the dedicated business renderer
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <InputSupportWarning support=undefined > 
+  at <ArxModelArtifactRenderer key=4 payload= {
+  model_id: '11111111-1111-1111-1111-111111111111',
+  processing_run_id: '22222222-2222-2222-2222-222222222222',
+  version_id: '33333333-3333-3333-3333-333333333333',
+  estimator: 'ols',
+  model_structure: {
+    model_type: 'ARX',
+    input_columns: [ 'u1', 'u2', 'u3' ],
+    output_column: 'y',
+    na: 2,
+    nb: { u1: 2, u2: 3, u3: 1 },
+    delays: { u1: 0, u2: 4, u3: 1 },
+    estimator: 'ols',
+    ridge_alpha: null,
+    parameter_count: 8
+  },
+  validation: {
+    free_run_fit: 84.237,
+    free_run_rmse: 0.30000000000004,
+    one_step_fit: 92.415,
+    fit_gap: 8.178,
+    residual_whiteness_ratio: 0.81234,
+    stable: true,
+    steady_state_gains: { u1: 1.24, u2: -0.42 }
+  },
+  metrics: { aic: -126.789, bic: -112.456 },
+  coefficients: { a1: -1.2, a2: 0.35, b_u1_0: 0.42 },
+  prior_violations: []
+} > 
+  at <ArtifactWorkbench execution= {
+  execution_id: 'execution-1',
+  copilot_run_id: null,
+  dataset_id: 'dataset-1',
+  initial_version_id: 'version-0',
+  current_version_id: 'version-0',
+  planner_source: 'deterministic',
+  workflow_status: 'SUCCEEDED',
+  current_step_id: null,
+  pending_confirmation_step_id: null,
+  plan: {
+    goal: 'test artifact rendering',
+    dataset_id: 'dataset-1',
+    steps: [ [Object] ],
+    stop_conditions: [],
+    assumptions: []
+  },
+  artifacts: {},
+  error_code: null,
+  error_message: null,
+  created_at: '2026-09-09T00:00:00Z',
+  updated_at: '2026-09-09T00:00:01Z',
+  finished_at: '2026-09-09T00:00:01Z',
+  step_runs: [
+    {
+      step_id: 'step-1',
+      sequence: 1,
+      tool: 'arx_fit',
+      status: 'completed',
+      requires_confirmation: false,
+      confirmation_status: 'NOT_REQUIRED',
+      attempt_count: 1,
+      source_version_id: 'version-0',
+      result_version_id: null,
+      input_payload: {},
+      result_payload: [Object],
+      processing_run_ids: [],
+      error_code: null,
+      error_message: null,
+      started_at: '2026-09-09T00:00:00Z',
+      finished_at: '2026-09-09T00:00:01Z'
+    }
+  ]
+} ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+···stderr | tests/unit/artifact-workbench.spec.ts > ArtifactWorkbench model evaluation rendering > defaults to Free-run and switches both metrics and prediction series
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <InputSupportWarning support=undefined > 
+  at <ModelEvaluationArtifactRenderer key=5 payload= {
+  model_id: '44444444-4444-4444-4444-444444444444',
+  source_version_id: '55555555-5555-5555-5555-555555555555',
+  processing_run_id: '66666666-6666-6666-6666-666666666666',
+  evaluation_scope: 'test',
+  model_structure: {
+    model_type: 'ARX',
+    input_columns: [ 'u1', 'u2' ],
+    output_column: 'y',
+    na: 2,
+    nb: { u1: 2, u2: 2 },
+    delays: { u1: 0, u2: 0 },
+    estimator: 'ols',
+    ridge_alpha: null,
+    parameter_count: 6
+  },
+  model_health: { stable: true, max_pole_modulus: 0.743210000000004 },
+  test: {
+    free_run: {
+      fit: 84.567,
+      r2: 0.81234,
+      rmse: 0.30000000000004,
+      mae: 0.24567,
+      nrmse: 0.12345
+    },
+    one_step: {
+      fit: 92.345,
+      r2: 0.92345,
+      rmse: 0.18000000000003,
+      mae: 0.14567,
+      nrmse: 0.07345
+    },
+    n_samples: 4
+  },
+  series: {
+    sample_indices: [ 960, 961, 962, 963 ],
+    timestamps: [],
+    y_true: [ 1, 2, 1.5, 2.2 ],
+    free_run_prediction: [ 0.8, 1.7, 1.3, 2 ],
+    one_step_prediction: [ 0.95, 2.05, 1.48, 2.18 ],
+    one_step_residual: [ 0.05, -0.05, 0.02, 0.02 ],
+    free_run_residual: [ 0.2, 0.3, 0.2, 0.2 ]
+  },
+  residual_diagnostics: {
+    partition: 'test',
+    residual_type: 'one_step',
+    residual_whiteness_ratio: 0.81234,
+    acf_values: [ 1, 0.24, -0.11 ],
+    confidence_interval: 0.12
+  },
+  validation: { residual_whiteness_ratio: 0.11111 }
+} > 
+  at <ArtifactWorkbench execution= {
+  execution_id: 'execution-1',
+  copilot_run_id: null,
+  dataset_id: 'dataset-1',
+  initial_version_id: 'version-0',
+  current_version_id: 'version-0',
+  planner_source: 'deterministic',
+  workflow_status: 'SUCCEEDED',
+  current_step_id: null,
+  pending_confirmation_step_id: null,
+  plan: {
+    goal: 'test artifact rendering',
+    dataset_id: 'dataset-1',
+    steps: [ [Object] ],
+    stop_conditions: [],
+    assumptions: []
+  },
+  artifacts: {},
+  error_code: null,
+  error_message: null,
+  created_at: '2026-09-09T00:00:00Z',
+  updated_at: '2026-09-09T00:00:01Z',
+  finished_at: '2026-09-09T00:00:01Z',
+  step_runs: [
+    {
+      step_id: 'step-1',
+      sequence: 1,
+      tool: 'evaluate_model',
+      status: 'completed',
+      requires_confirmation: false,
+      confirmation_status: 'NOT_REQUIRED',
+      attempt_count: 1,
+      source_version_id: 'version-0',
+      result_version_id: null,
+      input_payload: {},
+      result_payload: [Object],
+      processing_run_ids: [],
+      error_code: null,
+      error_message: null,
+      started_at: '2026-09-09T00:00:00Z',
+      finished_at: '2026-09-09T00:00:01Z'
+    }
+  ]
+} ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+············stderr | tests/unit/artifact-workbench.spec.ts > ArtifactWorkbench model evaluation rendering > keeps residuals fixed to Test one-step data and reads Test diagnostics
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <InputSupportWarning support=undefined > 
+  at <ModelEvaluationArtifactRenderer key=5 payload= {
+  model_id: '44444444-4444-4444-4444-444444444444',
+  source_version_id: '55555555-5555-5555-5555-555555555555',
+  processing_run_id: '66666666-6666-6666-6666-666666666666',
+  evaluation_scope: 'test',
+  model_structure: {
+    model_type: 'ARX',
+    input_columns: [ 'u1', 'u2' ],
+    output_column: 'y',
+    na: 2,
+    nb: { u1: 2, u2: 2 },
+    delays: { u1: 0, u2: 0 },
+    estimator: 'ols',
+    ridge_alpha: null,
+    parameter_count: 6
+  },
+  model_health: { stable: true, max_pole_modulus: 0.743210000000004 },
+  test: {
+    free_run: {
+      fit: 84.567,
+      r2: 0.81234,
+      rmse: 0.30000000000004,
+      mae: 0.24567,
+      nrmse: 0.12345
+    },
+    one_step: {
+      fit: 92.345,
+      r2: 0.92345,
+      rmse: 0.18000000000003,
+      mae: 0.14567,
+      nrmse: 0.07345
+    },
+    n_samples: 4
+  },
+  series: {
+    sample_indices: [ 960, 961, 962, 963 ],
+    timestamps: [],
+    y_true: [ 1, 2, 1.5, 2.2 ],
+    free_run_prediction: [ 0.8, 1.7, 1.3, 2 ],
+    one_step_prediction: [ 0.95, 2.05, 1.48, 2.18 ],
+    one_step_residual: [ 0.05, -0.05, 0.02, 0.02 ],
+    free_run_residual: [ 0.2, 0.3, 0.2, 0.2 ]
+  },
+  residual_diagnostics: {
+    partition: 'test',
+    residual_type: 'one_step',
+    residual_whiteness_ratio: 0.81234,
+    acf_values: [ 1, 0.24, -0.11 ],
+    confidence_interval: 0.12
+  },
+  validation: { residual_whiteness_ratio: 0.11111 }
+} > 
+  at <ArtifactWorkbench execution= {
+  execution_id: 'execution-1',
+  copilot_run_id: null,
+  dataset_id: 'dataset-1',
+  initial_version_id: 'version-0',
+  current_version_id: 'version-0',
+  planner_source: 'deterministic',
+  workflow_status: 'SUCCEEDED',
+  current_step_id: null,
+  pending_confirmation_step_id: null,
+  plan: {
+    goal: 'test artifact rendering',
+    dataset_id: 'dataset-1',
+    steps: [ [Object] ],
+    stop_conditions: [],
+    assumptions: []
+  },
+  artifacts: {},
+  error_code: null,
+  error_message: null,
+  created_at: '2026-09-09T00:00:00Z',
+  updated_at: '2026-09-09T00:00:01Z',
+  finished_at: '2026-09-09T00:00:01Z',
+  step_runs: [
+    {
+      step_id: 'step-1',
+      sequence: 1,
+      tool: 'evaluate_model',
+      status: 'completed',
+      requires_confirmation: false,
+      confirmation_status: 'NOT_REQUIRED',
+      attempt_count: 1,
+      source_version_id: 'version-0',
+      result_version_id: null,
+      input_payload: {},
+      result_payload: [Object],
+      processing_run_ids: [],
+      error_code: null,
+      error_message: null,
+      started_at: '2026-09-09T00:00:00Z',
+      finished_at: '2026-09-09T00:00:01Z'
+    }
+  ]
+} ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+·····stderr | tests/unit/artifact-workbench.spec.ts > ArtifactWorkbench model evaluation rendering > renders Test one-step ACF and keeps complete UUIDs in closed technical details
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <InputSupportWarning support=undefined > 
+  at <ModelEvaluationArtifactRenderer key=5 payload= {
+  model_id: '44444444-4444-4444-4444-444444444444',
+  source_version_id: '55555555-5555-5555-5555-555555555555',
+  processing_run_id: '66666666-6666-6666-6666-666666666666',
+  evaluation_scope: 'test',
+  model_structure: {
+    model_type: 'ARX',
+    input_columns: [ 'u1', 'u2' ],
+    output_column: 'y',
+    na: 2,
+    nb: { u1: 2, u2: 2 },
+    delays: { u1: 0, u2: 0 },
+    estimator: 'ols',
+    ridge_alpha: null,
+    parameter_count: 6
+  },
+  model_health: { stable: true, max_pole_modulus: 0.743210000000004 },
+  test: {
+    free_run: {
+      fit: 84.567,
+      r2: 0.81234,
+      rmse: 0.30000000000004,
+      mae: 0.24567,
+      nrmse: 0.12345
+    },
+    one_step: {
+      fit: 92.345,
+      r2: 0.92345,
+      rmse: 0.18000000000003,
+      mae: 0.14567,
+      nrmse: 0.07345
+    },
+    n_samples: 4
+  },
+  series: {
+    sample_indices: [ 960, 961, 962, 963 ],
+    timestamps: [],
+    y_true: [ 1, 2, 1.5, 2.2 ],
+    free_run_prediction: [ 0.8, 1.7, 1.3, 2 ],
+    one_step_prediction: [ 0.95, 2.05, 1.48, 2.18 ],
+    one_step_residual: [ 0.05, -0.05, 0.02, 0.02 ],
+    free_run_residual: [ 0.2, 0.3, 0.2, 0.2 ]
+  },
+  residual_diagnostics: {
+    partition: 'test',
+    residual_type: 'one_step',
+    residual_whiteness_ratio: 0.81234,
+    acf_values: [ 1, 0.24, -0.11 ],
+    confidence_interval: 0.12
+  },
+  validation: { residual_whiteness_ratio: 0.11111 }
+} > 
+  at <ArtifactWorkbench execution= {
+  execution_id: 'execution-1',
+  copilot_run_id: null,
+  dataset_id: 'dataset-1',
+  initial_version_id: 'version-0',
+  current_version_id: 'version-0',
+  planner_source: 'deterministic',
+  workflow_status: 'SUCCEEDED',
+  current_step_id: null,
+  pending_confirmation_step_id: null,
+  plan: {
+    goal: 'test artifact rendering',
+    dataset_id: 'dataset-1',
+    steps: [ [Object] ],
+    stop_conditions: [],
+    assumptions: []
+  },
+  artifacts: {},
+  error_code: null,
+  error_message: null,
+  created_at: '2026-09-09T00:00:00Z',
+  updated_at: '2026-09-09T00:00:01Z',
+  finished_at: '2026-09-09T00:00:01Z',
+  step_runs: [
+    {
+      step_id: 'step-1',
+      sequence: 1,
+      tool: 'evaluate_model',
+      status: 'completed',
+      requires_confirmation: false,
+      confirmation_status: 'NOT_REQUIRED',
+      attempt_count: 1,
+      source_version_id: 'version-0',
+      result_version_id: null,
+      input_payload: {},
+      result_payload: [Object],
+      processing_run_ids: [],
+      error_code: null,
+      error_message: null,
+      started_at: '2026-09-09T00:00:00Z',
+      finished_at: '2026-09-09T00:00:01Z'
+    }
+  ]
+} ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+··stderr | tests/unit/artifact-workbench.spec.ts > ArtifactWorkbench model evaluation rendering > keeps historical metric-only evaluations usable without fake charts
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <InputSupportWarning support=undefined > 
+  at <ModelEvaluationArtifactRenderer key=5 payload= {
+  model_id: '44444444-4444-4444-4444-444444444444',
+  test: {
+    free_run: { fit: 70.5, r2: 0.61, rmse: 0.8, mae: 0.6, nrmse: 0.4 },
+    one_step: { fit: 81.2, r2: 0.77, rmse: 0.5, mae: 0.4, nrmse: 0.25 }
+  }
+} > 
+  at <ArtifactWorkbench execution= {
+  execution_id: 'execution-1',
+  copilot_run_id: null,
+  dataset_id: 'dataset-1',
+  initial_version_id: 'version-0',
+  current_version_id: 'version-0',
+  planner_source: 'deterministic',
+  workflow_status: 'SUCCEEDED',
+  current_step_id: null,
+  pending_confirmation_step_id: null,
+  plan: {
+    goal: 'test artifact rendering',
+    dataset_id: 'dataset-1',
+    steps: [ [Object] ],
+    stop_conditions: [],
+    assumptions: []
+  },
+  artifacts: {},
+  error_code: null,
+  error_message: null,
+  created_at: '2026-09-09T00:00:00Z',
+  updated_at: '2026-09-09T00:00:01Z',
+  finished_at: '2026-09-09T00:00:01Z',
+  step_runs: [
+    {
+      step_id: 'step-1',
+      sequence: 1,
+      tool: 'evaluate_model',
+      status: 'completed',
+      requires_confirmation: false,
+      confirmation_status: 'NOT_REQUIRED',
+      attempt_count: 1,
+      source_version_id: 'version-0',
+      result_version_id: null,
+      input_payload: {},
+      result_payload: [Object],
+      processing_run_ids: [],
+      error_code: null,
+      error_message: null,
+      started_at: '2026-09-09T00:00:00Z',
+      finished_at: '2026-09-09T00:00:01Z'
+    }
+  ]
+} ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+··········································································(node:51471) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51472) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51470) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51475) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51473) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51474) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+···(node:51478) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51480) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+······stderr | tests/unit/system-status-components.spec.ts > system status components > renders connecting as 正在检测 in the header
+[Vue warn]: Failed to resolve component: router-link
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/system-status-components.spec.ts > system status components > renders ready as 系统就绪 in the header
+[Vue warn]: Failed to resolve component: router-link
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/system-status-components.spec.ts > system status components > renders offline as 服务离线 in the header
+[Vue warn]: Failed to resolve component: router-link
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+············································(node:51484) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+stderr | tests/unit/workspace-dataset-guard.spec.ts > WorkspaceView dataset context guard > clears the thinking state and restores retry UI when submission fails
+Failed to start task Error: Planner unavailable
+    at /Users/maguayuhui/Documents/竞赛/服外 9.22/service-outsource/frontend/tests/unit/workspace-dataset-guard.spec.ts:193:16
+    at file:///Users/maguayuhui/Documents/%E7%AB%9E%E8%B5%9B/%E6%9C%8D%E5%A4%96%209.22/service-outsource/frontend/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20
+
+···(node:51485) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+···········(node:51486) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51487) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51488) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+·stderr | tests/unit/dataset-detail-freeze-segments.spec.ts > DatasetDetailView candidate frozen segments > renders a Chinese summary and bounded structured details instead of raw JSON
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve directive: loading 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+···stderr | tests/unit/dataset-detail-freeze-segments.spec.ts > DatasetDetailView candidate frozen segments > renders a Chinese summary and bounded structured details instead of raw JSON
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve directive: loading 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+·stderr | tests/unit/dataset-detail-freeze-segments.spec.ts > DatasetDetailView candidate frozen segments > renders the no-candidate empty state
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve directive: loading 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/dataset-detail-freeze-segments.spec.ts > DatasetDetailView candidate frozen segments > renders the no-candidate empty state
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve directive: loading 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+(node:51489) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+stderr | tests/unit/dataset-detail-freeze-segments.spec.ts > DatasetDetailView candidate frozen segments > renders persisted simulation truth and preserves sigma zero
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve directive: loading 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/dataset-detail-freeze-segments.spec.ts > DatasetDetailView candidate frozen segments > renders persisted simulation truth and preserves sigma zero
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve directive: loading 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/dataset-detail-freeze-segments.spec.ts > DatasetDetailView candidate frozen segments > uses missing semantics and hides simulation truth for uploaded datasets
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve directive: loading 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/dataset-detail-freeze-segments.spec.ts > DatasetDetailView candidate frozen segments > uses missing semantics and hides simulation truth for uploaded datasets
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve directive: loading 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+··stderr | tests/unit/dataset-detail-freeze-segments.spec.ts > DatasetDetailView candidate frozen segments > uses missing semantics and hides simulation truth for uploaded datasets
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve directive: loading 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+stderr | tests/unit/dataset-detail-freeze-segments.spec.ts > DatasetDetailView candidate frozen segments > uses missing semantics and hides simulation truth for uploaded datasets
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+[Vue warn]: Failed to resolve directive: loading 
+  at <DatasetDetailView ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+····(node:51490) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+·(node:51491) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+···(node:51497) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+··(node:51493) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+··(node:51499) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51502) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+········(node:51501) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51503) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+·····stderr | tests/unit/agent-entry-removal.spec.ts > single Agent entry > does not render the global Open Agent action
+[Vue warn]: Failed to resolve component: router-link
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <AppHeader ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+····(node:51504) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+········
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/unit/arx-version-lineage-picker.spec.ts > ARXModelingView VersionLineagePicker source contract > fits with the selected UUID and clears the old model when the source changes
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/unit/arx-version-lineage-picker.spec.ts:241:3
+    239|   });
+    240|
+    241|   it("fits with the selected UUID and clears the old model when the so…
+       |   ^
+    242|     const wrapper = await mountView();
+    243|     await wrapper.get("[data-test='arx-fit-button']").trigger("click");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  tests/unit/cleaning-version-compare-workbench.spec.ts > CleaningVersionCompareWorkbench > loads channels for pair changes, ignores stale metadata, and handles empty/warning states
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/unit/cleaning-version-compare-workbench.spec.ts:340:3
+    338|   });
+    339|
+    340|   it("loads channels for pair changes, ignores stale metadata, and han…
+       |   ^
+    341|     const first = deferred<CleaningVersionCompareChannelsData>();
+    342|     const second = deferred<CleaningVersionCompareChannelsData>();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  tests/unit/cleaning-view-contract.spec.ts > CleaningView request contract > uses the backend primary series, real timestamps, and classified repair evidence
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/unit/cleaning-view-contract.spec.ts:291:3
+    289|   });
+    290|
+    291|   it("uses the backend primary series, real timestamps, and classified…
+       |   ^
+    292|     const timestamps = [
+    293|       "2026-01-01T00:09:18Z",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  tests/unit/cleaning-view-contract.spec.ts > CleaningView request contract > resets the shared x-axis zoom without requesting another clean
+AssertionError: expected "vi.fn()" to be called 1 times, but got 2 times
+ ❯ tests/unit/cleaning-view-contract.spec.ts:509:32
+    507|       end: 100,
+    508|     });
+    509|     expect(mockedCleanDataset).toHaveBeenCalledTimes(1);
+       |                                ^
+    510|   });
+    511|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  tests/unit/collinearity-source-selector.spec.ts > CollinearityView dataset and Lag Compensation source context > shows an explicit unavailable state when a historical result has no Spearman matrix
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/unit/collinearity-source-selector.spec.ts:498:3
+    496|   });
+    497|
+    498|   it("shows an explicit unavailable state when a historical result has…
+       |   ^
+    499|     const active = dataset("dataset-a");
+    500|     const legacyResult = {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  tests/unit/delay-hitl-apply.spec.ts > DelayView UNCERTAIN HITL review and formal Apply > keeps parameters on the left and groups Spectrum with result cards in the right analysis column
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/unit/delay-hitl-apply.spec.ts:286:3
+    284|   });
+    285|
+    286|   it("keeps parameters on the left and groups Spectrum with result car…
+       |   ^
+    287|     const wrapper = await mountView();
+    288|     const primaryWorkspace = wrapper.get("[data-test='delay-primary-wo…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯
+
+Vitest caught 2 unhandled errors during the test run.
+This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.
+
+⎯⎯⎯⎯⎯⎯ Unhandled Error ⎯⎯⎯⎯⎯⎯⎯
+Error: [vitest-pool]: Failed to start forks worker for test files /Users/maguayuhui/Documents/竞赛/服外 9.22/service-outsource/frontend/tests/unit/optuna-quality-warning.spec.ts.
+ ❯ ../../../../%E7%AB%9E%E8%B5%9B/%E6%9C%8D%E5%A4%96%209.22/service-outsource/frontend/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:3465:94
+ ❯ runNextTicks node:internal/process/task_queues:65:5
+ ❯ listOnTimeout node:internal/timers:567:9
+ ❯ processTimers node:internal/timers:541:7
+ ❯ Pool.schedule ../../../../%E7%AB%9E%E8%B5%9B/%E6%9C%8D%E5%A4%96%209.22/service-outsource/frontend/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:3465:5
+
+Caused by: Error: [vitest-pool-runner]: Timeout waiting for worker to respond
+ ❯ Timeout.<anonymous> ../../../../%E7%AB%9E%E8%B5%9B/%E6%9C%8D%E5%A4%96%209.22/service-outsource/frontend/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:3041:58
+ ❯ listOnTimeout node:internal/timers:605:17
+ ❯ processTimers node:internal/timers:541:7
+
+
+⎯⎯⎯⎯⎯⎯ Unhandled Error ⎯⎯⎯⎯⎯⎯⎯
+Error: [vitest-pool]: Failed to start forks worker for test files /Users/maguayuhui/Documents/竞赛/服外 9.22/service-outsource/frontend/tests/unit/agent-composer-dataset-picker.spec.ts.
+ ❯ ../../../../%E7%AB%9E%E8%B5%9B/%E6%9C%8D%E5%A4%96%209.22/service-outsource/frontend/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:3465:94
+ ❯ runNextTicks node:internal/process/task_queues:65:5
+ ❯ processTimers node:internal/timers:538:9
+ ❯ Pool.schedule ../../../../%E7%AB%9E%E8%B5%9B/%E6%9C%8D%E5%A4%96%209.22/service-outsource/frontend/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:3465:5
+
+Caused by: Error: [vitest-pool-runner]: Timeout waiting for worker to respond
+ ❯ Timeout.<anonymous> ../../../../%E7%AB%9E%E8%B5%9B/%E6%9C%8D%E5%A4%96%209.22/service-outsource/frontend/node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:3041:58
+ ❯ listOnTimeout node:internal/timers:605:17
+ ❯ processTimers node:internal/timers:541:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+
+ Test Files  5 failed | 27 passed (32)
+      Tests  6 failed | 260 passed (266)
+     Errors  2 errors
+   Start at  16:45:00
+   Duration  1029.13s (transform 10.02s, setup 847ms, import 2073.68s, tests 5094.47s, environment 42.05s)
+

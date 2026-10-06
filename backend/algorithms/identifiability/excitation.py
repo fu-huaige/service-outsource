@@ -105,8 +105,9 @@ def fisher_information(features: FloatArray, *, ridge: float = 0.0) -> FloatArra
 def log_det_information(information: FloatArray) -> float:
     """Return ``log det`` of a PSD matrix, or ``-inf`` when it is singular."""
 
-    sign, value = np.linalg.slogdet(np.asarray(information, dtype=float))
-    if sign <= 0:
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        sign, value = np.linalg.slogdet(np.asarray(information, dtype=float))
+    if sign <= 0 or not np.isfinite(value):
         return float("-inf")
     return float(value)
 

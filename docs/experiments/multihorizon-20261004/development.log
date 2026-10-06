@@ -1,0 +1,96 @@
+initial24 {'na': 1, 'nb': 1, 'estimator': 'ols'} succeeded 0.633250336430665
+initial24 {'na': 1, 'nb': 1, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.6332141470963335
+initial24 {'na': 1, 'nb': 2, 'estimator': 'ols'} succeeded 0.5341077383450606
+initial24 {'na': 1, 'nb': 2, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.5390514082443391
+initial24 {'na': 1, 'nb': 3, 'estimator': 'ols'} succeeded 0.5438218819520158
+initial24 {'na': 1, 'nb': 3, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.5350838095509043
+initial24 {'na': 2, 'nb': 1, 'estimator': 'ols'} succeeded 0.5273982153919206
+initial24 {'na': 2, 'nb': 1, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.5515779368533317
+initial24 {'na': 2, 'nb': 2, 'estimator': 'ols'} succeeded 0.48809845416795117
+initial24 {'na': 2, 'nb': 2, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.5013856102007411
+initial24 {'na': 2, 'nb': 3, 'estimator': 'ols'} succeeded 0.4886677271378891
+initial24 {'na': 2, 'nb': 3, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.4989150467705028
+initial24 {'na': 3, 'nb': 1, 'estimator': 'ols'} succeeded 0.4748164698434141
+initial24 {'na': 3, 'nb': 1, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.48350914743838047
+initial24 {'na': 3, 'nb': 2, 'estimator': 'ols'} succeeded 0.46688781100036425
+initial24 {'na': 3, 'nb': 2, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.4706085808890196
+initial24 {'na': 3, 'nb': 3, 'estimator': 'ols'} succeeded 0.4670715929433327
+initial24 {'na': 3, 'nb': 3, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.4698774984153884
+initial24 {'na': 4, 'nb': 1, 'estimator': 'ols'} succeeded 0.4801404493015407
+initial24 {'na': 4, 'nb': 1, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.4787592025258649
+initial24 {'na': 4, 'nb': 2, 'estimator': 'ols'} succeeded 0.4690346780877274
+initial24 {'na': 4, 'nb': 2, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.46885073426263535
+initial24 {'na': 4, 'nb': 3, 'estimator': 'ols'} succeeded 0.468945357332336
+initial24 {'na': 4, 'nb': 3, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.46826044623786994
+affine24 {'na': 1, 'nb': 1, 'estimator': 'ols'} succeeded 0.49101065097199137
+affine24 {'na': 1, 'nb': 1, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.48931745311659713
+affine24 {'na': 1, 'nb': 2, 'estimator': 'ols'} succeeded 0.39913331172581
+affine24 {'na': 1, 'nb': 2, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.40286411229744623
+affine24 {'na': 1, 'nb': 3, 'estimator': 'ols'} succeeded 0.3829465056368419
+affine24 {'na': 1, 'nb': 3, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.3930181757686028
+affine24 {'na': 2, 'nb': 1, 'estimator': 'ols'} succeeded 0.372493607008031
+affine24 {'na': 2, 'nb': 1, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.44374132495622737
+affine24 {'na': 2, 'nb': 2, 'estimator': 'ols'} succeeded 0.34393095241341565
+affine24 {'na': 2, 'nb': 2, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.38234697212859037
+affine24 {'na': 2, 'nb': 3, 'estimator': 'ols'} succeeded 0.32616591333387135
+affine24 {'na': 2, 'nb': 3, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.3741382064094865
+affine24 {'na': 3, 'nb': 1, 'estimator': 'ols'} succeeded 0.32558026537150964
+affine24 {'na': 3, 'nb': 1, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.3650980495958868
+affine24 {'na': 3, 'nb': 2, 'estimator': 'ols'} succeeded 0.320644923776916
+affine24 {'na': 3, 'nb': 2, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.34209118807287764
+affine24 {'na': 3, 'nb': 3, 'estimator': 'ols'} succeeded 0.3086647648715327
+affine24 {'na': 3, 'nb': 3, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.33747712250559336
+affine24 {'na': 4, 'nb': 1, 'estimator': 'ols'} succeeded 0.3326901052482446
+affine24 {'na': 4, 'nb': 1, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.3375121771768621
+affine24 {'na': 4, 'nb': 2, 'estimator': 'ols'} succeeded 0.3245318225085973
+affine24 {'na': 4, 'nb': 2, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.3273525733904685
+affine24 {'na': 4, 'nb': 3, 'estimator': 'ols'} succeeded 0.3105411054406607
+affine24 {'na': 4, 'nb': 3, 'estimator': 'ridge', 'ridge_alpha': 0.1} succeeded 0.32445377827673716
+single_horizon24 {'na': 1, 'nb': 1, 'ridge_alpha': 0.0} succeeded 0.49718846448919274
+single_horizon24 {'na': 1, 'nb': 1, 'ridge_alpha': 0.001} succeeded 0.49718318024018376
+single_horizon24 {'na': 1, 'nb': 2, 'ridge_alpha': 0.0} succeeded 0.3606395401069926
+single_horizon24 {'na': 1, 'nb': 2, 'ridge_alpha': 0.001} succeeded 0.3609143779352114
+single_horizon24 {'na': 1, 'nb': 3, 'ridge_alpha': 0.0} succeeded 0.3361999496691258
+single_horizon24 {'na': 1, 'nb': 3, 'ridge_alpha': 0.001} succeeded 0.34826199009465675
+single_horizon24 {'na': 2, 'nb': 1, 'ridge_alpha': 0.0} succeeded 0.4579831810711701
+single_horizon24 {'na': 2, 'nb': 1, 'ridge_alpha': 0.001} succeeded 0.4584567625878155
+single_horizon24 {'na': 2, 'nb': 2, 'ridge_alpha': 0.0} succeeded 0.335865979939055
+single_horizon24 {'na': 2, 'nb': 2, 'ridge_alpha': 0.001} succeeded 0.3669532210847623
+single_horizon24 {'na': 2, 'nb': 3, 'ridge_alpha': 0.0} succeeded 0.3160111969625752
+single_horizon24 {'na': 2, 'nb': 3, 'ridge_alpha': 0.001} succeeded 0.3562284735840086
+single_horizon24 {'na': 3, 'nb': 1, 'ridge_alpha': 0.0} failed None
+single_horizon24 {'na': 3, 'nb': 1, 'ridge_alpha': 0.001} succeeded 0.2678347047917406
+single_horizon24 {'na': 3, 'nb': 2, 'ridge_alpha': 0.0} failed None
+single_horizon24 {'na': 3, 'nb': 2, 'ridge_alpha': 0.001} succeeded 0.2904252649817856
+single_horizon24 {'na': 3, 'nb': 3, 'ridge_alpha': 0.0} failed None
+single_horizon24 {'na': 3, 'nb': 3, 'ridge_alpha': 0.001} succeeded 0.2997697576691617
+single_horizon24 {'na': 4, 'nb': 1, 'ridge_alpha': 0.0} failed None
+single_horizon24 {'na': 4, 'nb': 1, 'ridge_alpha': 0.001} succeeded 0.2686953230278549
+single_horizon24 {'na': 4, 'nb': 2, 'ridge_alpha': 0.0} succeeded 0.2781062942109759
+single_horizon24 {'na': 4, 'nb': 2, 'ridge_alpha': 0.001} succeeded 0.28203441208631636
+single_horizon24 {'na': 4, 'nb': 3, 'ridge_alpha': 0.0} failed None
+single_horizon24 {'na': 4, 'nb': 3, 'ridge_alpha': 0.001} succeeded 0.28245317832263805
+multihorizon24 {'na': 1, 'nb': 1, 'ridge_alpha': 0.0} succeeded 0.5064850640065824
+multihorizon24 {'na': 1, 'nb': 1, 'ridge_alpha': 0.001} succeeded 0.5064797379229514
+multihorizon24 {'na': 1, 'nb': 2, 'ridge_alpha': 0.0} succeeded 0.36376721973327775
+multihorizon24 {'na': 1, 'nb': 2, 'ridge_alpha': 0.001} succeeded 0.3642015934332512
+multihorizon24 {'na': 1, 'nb': 3, 'ridge_alpha': 0.0} succeeded 0.3280908755931945
+multihorizon24 {'na': 1, 'nb': 3, 'ridge_alpha': 0.001} succeeded 0.34851890804221614
+multihorizon24 {'na': 2, 'nb': 1, 'ridge_alpha': 0.0} succeeded 0.46676137166331777
+multihorizon24 {'na': 2, 'nb': 1, 'ridge_alpha': 0.001} succeeded 0.4674411625885557
+multihorizon24 {'na': 2, 'nb': 2, 'ridge_alpha': 0.0} succeeded 0.33696370168268586
+multihorizon24 {'na': 2, 'nb': 2, 'ridge_alpha': 0.001} succeeded 0.3381288942671449
+multihorizon24 {'na': 2, 'nb': 3, 'ridge_alpha': 0.0} succeeded 0.30272054362877077
+multihorizon24 {'na': 2, 'nb': 3, 'ridge_alpha': 0.001} succeeded 0.31423242508053245
+multihorizon24 {'na': 3, 'nb': 1, 'ridge_alpha': 0.0} succeeded 0.2664400624612444
+multihorizon24 {'na': 3, 'nb': 1, 'ridge_alpha': 0.001} succeeded 0.2687109117996503
+multihorizon24 {'na': 3, 'nb': 2, 'ridge_alpha': 0.0} succeeded 0.280127210083287
+multihorizon24 {'na': 3, 'nb': 2, 'ridge_alpha': 0.001} succeeded 0.2973208055013632
+multihorizon24 {'na': 3, 'nb': 3, 'ridge_alpha': 0.0} succeeded 0.2690488468019444
+multihorizon24 {'na': 3, 'nb': 3, 'ridge_alpha': 0.001} succeeded 0.2857173288561766
+multihorizon24 {'na': 4, 'nb': 1, 'ridge_alpha': 0.0} succeeded 0.27094418991894753
+multihorizon24 {'na': 4, 'nb': 1, 'ridge_alpha': 0.001} succeeded 0.2747992538834887
+multihorizon24 {'na': 4, 'nb': 2, 'ridge_alpha': 0.0} succeeded 0.28363922301673644
+multihorizon24 {'na': 4, 'nb': 2, 'ridge_alpha': 0.001} succeeded 0.289852142581993
+multihorizon24 {'na': 4, 'nb': 3, 'ridge_alpha': 0.0} succeeded 0.27162182347210573
+multihorizon24 {'na': 4, 'nb': 3, 'ridge_alpha': 0.001} succeeded 0.27832579306134164

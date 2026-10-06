@@ -69,6 +69,7 @@
     </p>
 
     <section v-if="validationMetrics.length" class="arx-section" data-test="arx-validation">
+      <InputSupportWarning :support="validation.input_support" />
       <div class="arx-section__heading">
         <div>
           <h4>验证集 · 模型选择依据</h4>
@@ -121,9 +122,12 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import ChartContainer, { type ChartOption } from "../ChartContainer.vue";
+import InputSupportWarning from "../InputSupportWarning.vue";
 
 type ModelStructureView = {
   modelType: string | null;
+  initializationPolicy: string | null;
+  initializationWindow: number | null;
   inputColumns: string[];
   outputColumn: string | null;
   na: number | null;
@@ -178,6 +182,8 @@ const modelStructure = computed<ModelStructureView | null>(() => {
     : [];
   return {
     modelType: nonEmptyString(raw.model_type),
+    initializationPolicy: nonEmptyString(raw.initialization_policy),
+    initializationWindow: integer(raw.initialization_window),
     inputColumns,
     outputColumn: nonEmptyString(raw.output_column),
     na: integer(raw.na),
@@ -212,6 +218,7 @@ const estimatorLabel = (value: string | null): string | null => {
   if (!value) return null;
   if (value.toLowerCase() === "ols") return "OLS";
   if (value.toLowerCase() === "ridge") return "Ridge";
+  if (value.toLowerCase() === "huber") return "Huber";
   return value;
 };
 
@@ -219,7 +226,11 @@ const summaryCards = computed(() => {
   const structure = modelStructure.value;
   const cards: Array<{ label: string; value: string; note?: string }> = [];
   if (structure?.modelType) cards.push({ label: "模型类型", value: structure.modelType });
-  const estimator = estimatorLabel(structure?.estimator ?? nonEmptyString(artifact.value.estimator));
+  if (structure?.initializationPolicy === "past_residual") {
+    cards.push({ label: "持续扰动补偿", value: "预测前历史残差估计", note: `使用预测前 ${structure.initializationWindow ?? 32} 个样本；自由仿真时冻结，假设扰动持续` });
+  }
+  const estimator = structure?.modelType === "OE" ? "稳定多步模拟优化"
+    : estimatorLabel(structure?.estimator ?? nonEmptyString(artifact.value.estimator));
   if (estimator) {
     cards.push({
       label: "估计方法",
@@ -319,9 +330,12 @@ const validationMetrics = computed(() => {
   );
 });
 
-const coefficientEntries = computed(() =>
-  Object.entries(numericRecord(artifact.value.coefficients)).map(([name, value]) => ({ name, value }))
-);
+const coefficientEntries = computed(() => {
+  const entries = Object.entries(numericRecord(artifact.value.coefficients)).map(([name, value]) => ({ name, value }));
+  const intercept = finiteNumber(artifact.value.intercept);
+  if (intercept !== null) entries.push({ name: "偏置", value: intercept });
+  return entries;
+});
 
 const chartFontFamily = "IndusOpt Sans, system-ui, sans-serif";
 

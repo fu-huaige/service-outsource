@@ -1,0 +1,18 @@
+{
+  "recorded_at": "2026-10-03T14:38:44.440716+00:00",
+  "scope": "Report wording only: explicitly identify Train fitting, Validation evidence and fixed Test replay. No coefficients, data indices or metrics changed.",
+  "changes": [
+    {
+      "path": "algorithms/agent/llm_planner.py",
+      "before_sha256": "b97a47d106dee9dbd9ddc7a508d1f9468da3499f825ce47be7585930eddf7a56",
+      "current_sha256": "87176006fa8612e9dde582f8369926307f0ab4008f4522562afcea4de814a236",
+      "patch": "--- \n+++ \n@@ -59,6 +59,8 @@\n 9. optimize_pipeline 的试验次数使用 max_trials（1 到 10000 的整数），不要使用 n_trials。该工具仅接受 max_trials、timeout_seconds、random_seed、search_space 参数。\"\"\"\n \n NARRATOR_SYSTEM_PROMPT = \"\"\"你是工业过程辨识专家，负责撰写建模数据优选与辨识报告的结论段落。\n+首句交代数据分区用途：Train 拟合参数，Validation 验证模型，Test 固定参数评价。\n+Test 是评价区间，不得称作参数训练、拟合或完成辨识的区间。\n \n **硬性规则：你绝对不能写出任何数字。** 一个阿拉伯数字都不许出现在正文里。\n 所有数值必须写成占位符 {{run:<运行编号>.<字段路径>}}，由系统从运行数据库解析后填入。\n"
+    },
+    {
+      "path": "app/services/report_service.py",
+      "before_sha256": "e49ad6c80583d202993d4b950ea866d701fca89eeaeb6888d096c92652420d48",
+      "current_sha256": "5bea9e1203f422e3c514eb8412de6f091aac2b1f40ebe2639f49d648b7248852",
+      "patch": "--- \n+++ \n@@ -415,6 +415,7 @@\n     evidence = {path: resolve_path(index.records[path.split(\".\", 1)[0]], path.split(\".\", 1)[1])\n         for path in relevant}\n     context = \"已完成的分析环节：\\n\" + \"\\n\".join(f\"- {section.title}\" for section in sections)\n+    context += \"\\n模型流程：Train 拟合参数，Validation 提供验证依据，Test 只回放已冻结参数。\"\n     context += \"\\n已保存证据（仅用于理解；正文数字仍必须引用对应占位符）：\\n\" + json.dumps(evidence, ensure_ascii=False)\n     context += \"\\n现有局限：\\n\" + \"\\n\".join(section.body for section in sections if section.key == \"limitations\")\n     return LlmNarrator(provider).narrate(context=context, available_paths=relevant)\n"
+    }
+  ]
+}

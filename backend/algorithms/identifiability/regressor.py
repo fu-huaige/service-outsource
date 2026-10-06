@@ -69,10 +69,10 @@ class ArxStructure:
                 "ARX 输入变量存在重复列名",
                 {"input_columns": list(columns)},
             )
-        if na < 1:
+        if na < 0:
             raise IdentifiabilityError(
                 "PARAMETER_OUT_OF_RANGE",
-                "na 必须大于等于 1",
+                "na 必须大于等于 0",
                 {"na": na},
             )
         nb_map = _expand_orders(nb, columns, name="nb", minimum=1)

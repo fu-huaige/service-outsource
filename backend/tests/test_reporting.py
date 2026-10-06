@@ -47,6 +47,163 @@ RUNS = {
 }
 
 
+def test_execution_report_binds_final_test_metrics_and_warns_on_failure():
+    index = RunIndex(records={
+        "step11": {"test": {"free_run": {"fit": -12, "rmse": 8}, "n_samples": 100}},
+        "evaluation": {"test": {"free_run": {"fit": -12}},
+            "model_health": {"input_support": {"status": "unsupported"}}},
+    }, by_type={"modeling.arx_evaluation": "evaluation"},
+        step_by_tool={"evaluate_model": "step11"}, execution_id=uuid4())
+    sections = {s.key: s.body for s in _compose(index, report_service.ReportRequest())}
+    assert "冻结最终模型 Test" in sections["evaluation"]
+    assert "{{step:step11.test.free_run.rmse}}" in sections["evaluation"]
+    assert "FIT 非正" in sections["limitations"]
+    assert "真实运行数据" in sections["limitations"]
+
+
+def test_trial_curve_ignores_failed_and_nonfinite_scores():
+    trials = [SimpleNamespace(trial_number=i, state=state, value=value)
+        for i, (state, value) in enumerate([
+            ("failed", 999), ("complete", 0.1), ("failed", 999),
+            ("complete", float("nan")), ("complete", 0.05), ("complete", 0.3)])]
+
+    class Session:
+        async def scalars(self, statement):
+            return SimpleNamespace(all=lambda: trials)
+
+    curve = asyncio.run(report_service._study_trial_curve(Session(), uuid4()))
+    assert [p["trial_number"] for p in curve] == [1, 2, 3, 4, 5]
+    assert [p["best_value"] for p in curve] == [0.1, 0.1, 0.1, 0.1, 0.3]
+
+
+def test_cleaning_chart_aligns_unique_timestamps_and_excludes_duplicates(monkeypatch, tmp_path):
+    import numpy as np
+
+    dataset_id, before_id, after_id = uuid4(), uuid4(), uuid4()
+    stamps = [datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=i) for i in range(4)]
+    before = SimpleNamespace(declared_output="y", timestamps=[stamps[0], stamps[1], stamps[1], stamps[2], stamps[3]],
+        values={"y": np.array([1., 9., 99., 3., float("nan")])})
+    after = SimpleNamespace(timestamps=[stamps[2], stamps[0], stamps[1], stamps[3]],
+        values={"y": np.array([30., 10., 90., 40.])})
+
+    async def load(session, *, version_id, dataset_id, artifact_root):
+        return before if version_id == before_id else after
+
+    monkeypatch.setattr(report_service, "load_version_series", load)
+    index = RunIndex(records={"step3": {"source_version_id": str(before_id),
+        "effective_version_id": str(after_id)}}, by_type={},
+        step_by_tool={"clean_data": "step3"}, execution_id=uuid4())
+    asyncio.run(report_service._add_cleaning_preview(None, index=index,
+        payload=report_service.ReportRequest(dataset_id=dataset_id), artifact_root=tmp_path))
+    preview = index.records["step3"]["cleaning_preview"]
+    assert preview["before"] == [1., 3.]
+    assert preview["after"] == [10., 30.]
+    assert preview["relative_milliseconds"] == [0, 2000]
+    assert preview["before_version_id"] == str(before_id)
+
+
+def test_report_explains_unexcited_and_extrapolated_inputs():
+    index = RunIndex(records={"model": {"validation": {"input_support": {"status": "unsupported"}}},
+        "evaluation": {"model_health": {"input_support": {"status": "extrapolation"}}}},
+        by_type={"modeling.arx": "model", "modeling.arx_evaluation": "evaluation"},
+        step_by_tool={}, execution_id=None)
+    body = report_service._standalone_limitations(index)
+    assert "未激励" in body and "真实运行数据" in body and "外推" in body
+
+
+def test_report_explains_full_training_policy_and_insufficient_validation():
+    index = RunIndex(records={"study": {"best_params": {"training_policy": "full_train"},
+        "best_trial_metrics": {"validation_acceptance": {"status": "insufficient"}}}},
+        by_type={}, step_by_tool={}, execution_id=None)
+    body = report_service._standalone_limitations(index)
+    assert "全量有效训练行" in body
+    assert "寻优完成不代表模型效果达标" in body
+
+
+def test_full_train_narration_excludes_inactive_selection_parameters():
+    from algorithms.agent.llm import LlmResult
+
+    class Provider:
+        name = "test"
+        model = "test"
+
+        def complete(self, messages, *, temperature=0.0):
+            assert "study.best_params.training_policy" in messages[-1].content
+            for key in ("window_size", "max_segments", "temporal_coverage_bins"):
+                assert f"study.best_params.{key}" not in messages[-1].content
+            return LlmResult(text="采用全量训练策略。", provider=self.name, model=self.model)
+
+    index = RunIndex(records={"study": {"best_params": {"training_policy": "full_train",
+        "window_size": 100, "max_segments": 10, "temporal_coverage_bins": 3}}},
+        by_type={}, step_by_tool={}, execution_id=None)
+    result = report_service._narrate(Provider(), index=index,
+        sections=_compose(index, report_service.ReportRequest()))
+    assert result.source == "llm"
+
+
+@pytest.mark.parametrize("test_fit, warns", [(-14.75, True), (0.0, True), (20.0, False)])
+def test_stable_fir_report_still_warns_when_test_fit_is_nonpositive(test_fit, warns):
+    index = RunIndex(records={
+        "model": {"run_type": "modeling.arx", "model_type": "FIR", "validation": {"stable": True}},
+        "evaluation": {"run_type": "modeling.arx_evaluation", "test": {"free_run": {"fit": test_fit}}},
+    }, by_type={"modeling.arx": "model", "modeling.arx_evaluation": "evaluation"},
+        step_by_tool={}, execution_id=None)
+    sections = _compose(index, report_service.ReportRequest())
+    model_section = next(s for s in sections if s.key == "model")
+    assert "ARX" not in model_section.title
+    limitations = next(s for s in sections if s.key == "limitations")
+    assert ("Test 自由仿真 FIT 非正" in limitations.body) == warns
+
+
+def test_narrator_receives_actual_metrics_and_input_names_not_just_paths():
+    from algorithms.agent.llm import LlmResult
+
+    class RecordingProvider:
+        name = "test"
+        model = "test"
+
+        def complete(self, messages, *, temperature=0.0):
+            prompt = messages[-1].content
+            assert "Train 拟合参数" in messages[0].content
+            assert "Test 固定参数评价" in messages[0].content
+            assert '"evaluation.test.free_run.fit": -14.75' in prompt
+            assert '"model.input_columns": ["M101", "TV101"]' in prompt
+            assert "结构稳定性不能替代预测能力验证" in prompt
+            assert "initialization_window" not in prompt
+            assert "kernel_decay" not in prompt
+            return LlmResult(text="FIT 为 {{run:evaluation.test.free_run.fit}}，预测效果不足。",
+                provider=self.name, model=self.model)
+
+    index = RunIndex(records={
+        "model": {"run_type": "modeling.arx", "input_columns": ["M101", "TV101"],
+            "model_type": "FIR", "validation": {"stable": True},
+            "initialization_policy": "fixed", "initialization_window": 32,
+            "regularization_kernel": "identity", "kernel_decay": .9},
+        "evaluation": {"run_type": "modeling.arx_evaluation", "test": {"free_run": {"fit": -14.75}}},
+    }, by_type={"modeling.arx": "model", "modeling.arx_evaluation": "evaluation"},
+        step_by_tool={}, execution_id=None)
+    result = report_service._narrate(RecordingProvider(), index=index,
+        sections=_compose(index, report_service.ReportRequest()))
+    assert result.source == "llm"
+    assert render_template(result.text, runs=index.records).fully_resolved
+
+
+@pytest.mark.parametrize("modern", [True, False])
+def test_report_uses_recorded_composite_objective_with_legacy_fallback(modern):
+    study = {"objective": "val_free_run_fit", "best_value": .1, "best_trial_number": 2}
+    if modern:
+        study["best_trial_metrics"] = {"objective_semantics": {
+            "name": "composite_identification_score", "version": "v4"}}
+    index = RunIndex(records={"r1": RUNS["r1"], "study": study},
+        by_type={"modeling.arx": "r1"}, step_by_tool={}, execution_id=None)
+    sections = _compose(index, report_service.ReportRequest())
+    body = next(s.body for s in sections if s.key == "optimization")
+    rendered = render_template(body, runs=index.records)
+    assert rendered.fully_resolved
+    assert ("composite_identification_score" in rendered.text) == modern
+    assert ("val_free_run_fit" in rendered.text) != modern
+
+
 class TestNumeralValidation:
     def test_a_bare_number_is_rejected(self) -> None:
         violations = validate_draft("验证集自由仿真 FIT 达到 97.86%。")
@@ -395,7 +552,7 @@ class TestExecutionScopedReportComposition:
         explicit_run = SimpleNamespace(
             id=explicit_run_id,
             dataset_id=dataset_id,
-            source_version_id=version_id,
+            source_version_id=uuid4(),  # Explicitly linked intermediate version.
             run_type="preprocessing.clean",
             status="succeeded",
             parameters={},

@@ -1,0 +1,5421 @@
+{
+  "sample_period": 4.0,
+  "train_start": 50,
+  "train_stop": 614,
+  "validation_intervals": [
+    [
+      665,
+      1024
+    ],
+    [
+      839,
+      1024
+    ]
+  ],
+  "arms": {
+    "initial24": {
+      "winner": {
+        "configuration": {
+          "na": 3,
+          "nb": 2,
+          "estimator": "ols"
+        },
+        "status": "succeeded",
+        "theta": [
+          -1.5384792779929015,
+          0.26485218219947404,
+          0.27894380308945044,
+          7.189430191398722e-05,
+          0.010898682125161898
+        ],
+        "intercept": 0.0,
+        "diagnostics": {
+          "estimation": "original_git_raw"
+        },
+        "validation": [
+          {
+            "rmse": 1.2319568662180083,
+            "fit": 46.378869406053944,
+            "n_samples": 359
+          },
+          {
+            "rmse": 1.2196650280488266,
+            "fit": 46.6087881515593,
+            "n_samples": 185
+          }
+        ],
+        "validation_risk": 0.46688781100036425,
+        "elapsed_seconds": 0.0005224170163273811
+      },
+      "candidates": [
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 1,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.981437094942515,
+            0.040067297234006045
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.479864532770326,
+              "fit": 35.58864636500642,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.8158706159565872,
+              "fit": 20.50970511059418,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.633250336430665,
+          "elapsed_seconds": 0.0022270409972406924
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 1,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9814123309792294,
+            0.04011208757788093
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.4796125548198287,
+              "fit": 35.599613747843364,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.815908440602415,
+              "fit": 20.508049325085832,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.6332141470963335,
+          "elapsed_seconds": 0.0011062080156989396
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 2,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.97750642224793,
+            -0.32830918877271364,
+            0.37557498627264285
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.2878304707888475,
+              "fit": 43.9469613339435,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.4980327830403206,
+              "fit": 34.4231540333933,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.5341077383450606,
+          "elapsed_seconds": 0.000710166001226753
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 2,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9777018555807377,
+            -0.30596893990130564,
+            0.35288341004056184
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.297153690708901,
+              "fit": 43.54116661287995,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.514095024428229,
+              "fit": 33.720024474882834,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.5390514082443391,
+          "elapsed_seconds": 0.00040845799958333373
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 3,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9786832675538032,
+            -0.8747838274896137,
+            1.4842039687537647,
+            -0.5646727802510938
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.3068241905621243,
+              "fit": 43.12025647409374,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.5290245213963556,
+              "fit": 33.066481151851704,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.5438218819520158,
+          "elapsed_seconds": 0.00039004202699288726
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 3,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9773770872757382,
+            -0.2128662071761536,
+            0.15383902509786804,
+            0.10660306751079439
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.2895256766068823,
+              "fit": 43.873177214511195,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.5013272080982463,
+              "fit": 34.27893956291042,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.5350838095509043,
+          "elapsed_seconds": 0.0003552910056896508
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 1,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.772891778514441,
+            0.7783820515929765,
+            0.011501095734403026
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.3389183373431797,
+              "fit": 41.72335331697972,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.4223180895487828,
+              "fit": 37.73758803558279,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.5273982153919206,
+          "elapsed_seconds": 0.0013980839867144823
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 1,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.7136299966316786,
+            0.720144418233515,
+            0.013722937811924855
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.3720707454976622,
+              "fit": 40.28038915492055,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.511408228941941,
+              "fit": 33.83763977392221,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.5515779368533317,
+          "elapsed_seconds": 0.0004242499708198011
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 2,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.757829238669116,
+            0.7640839432602616,
+            -0.03711076408660707,
+            0.050096778226639
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.2476082622498892,
+              "fit": 45.69763975133441,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.3091754051938709,
+              "fit": 42.69044385301838,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.48809845416795117,
+          "elapsed_seconds": 0.00040499999886378646
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 2,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.6924974005312226,
+            0.7001191895392636,
+            -0.05751549940466665,
+            0.07338689441315512
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.2611488810254727,
+              "fit": 45.10828203305864,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.3620880627735203,
+              "fit": 40.37417598821085,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.5013856102007411,
+          "elapsed_seconds": 0.0003887079656124115
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 3,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.757650902395062,
+            0.7638719465529861,
+            -0.05491412479362304,
+            0.08614072117527158,
+            -0.018312745956745636
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.2488666208523238,
+              "fit": 45.64286948071422,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.310868714614684,
+              "fit": 42.6163187121539,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.4886677271378891,
+          "elapsed_seconds": 0.0004290409851819277
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 3,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.6919292478819645,
+            0.6996433478831748,
+            -0.034080720304434486,
+            0.023114615856965937,
+            0.027026281826140176
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.2558109910685509,
+              "fit": 45.34061459463194,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.3546351280640399,
+              "fit": 40.7004304981094,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.4989150467705028,
+          "elapsed_seconds": 0.00046983303036540747
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 1,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.5396764255279594,
+            0.26337004533780883,
+            0.28145372532572543,
+            0.010639848279614377
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.2540282659328044,
+              "fit": 45.418208007143534,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.239404254656391,
+              "fit": 45.7446974337867,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.4748164698434141,
+          "elapsed_seconds": 0.000596166995819658
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 1,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.4454218001438044,
+            0.10158765308064305,
+            0.34956139164898775,
+            0.0118663687189537
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.2697731856048842,
+              "fit": 44.73290772019472,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.2681957618923378,
+              "fit": 44.48434034645631,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.48350914743838047,
+          "elapsed_seconds": 0.0004728750209324062
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 2,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.5384792779929015,
+            0.26485218219947404,
+            0.27894380308945044,
+            7.189430191398722e-05,
+            0.010898682125161898
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.2319568662180083,
+              "fit": 46.378869406053944,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.2196650280488266,
+              "fit": 46.6087881515593,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.46688781100036425,
+          "elapsed_seconds": 0.0005224170163273811
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 2,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.4430131591946198,
+            0.10352024475830392,
+            0.34551804475831865,
+            -0.00668979685699573,
+            0.019137917454178113
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.2351054651601403,
+              "fit": 46.241826105518335,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.2350260320530142,
+              "fit": 45.93635547526591,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.4706085808890196,
+          "elapsed_seconds": 0.0004613329656422138
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 3,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.5386046630561352,
+            0.26473332878118855,
+            0.27925716379081045,
+            0.03723047008691017,
+            -0.0642904914623984,
+            0.03817878206282546
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.2311859705562052,
+              "fit": 46.41242276988458,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.2212073644154426,
+              "fit": 46.5412719025911,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.4670715929433327,
+          "elapsed_seconds": 0.00047850003466010094
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 3,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.4429183364533815,
+            0.10361326422504769,
+            0.3453643501547495,
+            0.0017762634579107602,
+            0.0009521598607967061,
+            0.009789601773723136
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.2329686605731438,
+              "fit": 46.334830885925,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.23329190908094,
+              "fit": 46.01226724189365,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.4698774984153884,
+          "elapsed_seconds": 0.0004796659923158586
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 1,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.549807007029173,
+            0.25349727856509807,
+            0.3349345964927514,
+            -0.03349876732673874,
+            0.010612601409747863
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.2641623195497587,
+              "fit": 44.97712161252898,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.2566229610178572,
+              "fit": 44.990943265257464,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.4801404493015407,
+          "elapsed_seconds": 0.0005399580113589764
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 1,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.4347249477539674,
+            0.10526354384868118,
+            0.30661934745632635,
+            0.02858099913527836,
+            0.011874602151883079
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.26108413014092,
+              "fit": 45.11110032624073,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.2525355633733881,
+              "fit": 45.16987035468445,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.4787592025258649,
+          "elapsed_seconds": 0.0005098329856991768
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 2,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.5491591923909602,
+            0.2545851296548433,
+            0.3370284607897982,
+            -0.037085473609771664,
+            -0.004684100449344275,
+            0.015772409358332514
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.233504986682388,
+              "fit": 46.31148720147197,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.228755455542185,
+              "fit": 46.21085189125084,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.4690346780877274,
+          "elapsed_seconds": 0.0005315830348990858
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 2,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.4339512751352648,
+            0.10643390727730127,
+            0.30811915679116086,
+            0.02537970389283269,
+            -0.0033170920591699665,
+            0.015667015874251122
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.2335436554156842,
+              "fit": 46.30980413832678,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.22783168375052,
+              "fit": 46.2512902856412,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.46885073426263535,
+          "elapsed_seconds": 0.0005022499826736748
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 3,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.5492211344872373,
+            0.2545270794771156,
+            0.33703772550195316,
+            -0.036913545785918545,
+            0.02836799066398541,
+            -0.05108540524934477,
+            0.03393689781695254
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.2324820002719012,
+              "fit": 46.356012857699646,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.229188051802357,
+              "fit": 46.19191485686799,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.468945357332336,
+          "elapsed_seconds": 0.0005387080018408597
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 3,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.4339256190556748,
+            0.10649631769471792,
+            0.3082191076115673,
+            0.02522153540324511,
+            0.003994749156374083,
+            -6.290857110079712e-05,
+            0.008479242831015428
+          ],
+          "intercept": 0.0,
+          "diagnostics": {
+            "estimation": "original_git_raw"
+          },
+          "validation": [
+            {
+              "rmse": 1.2317190719262812,
+              "fit": 46.389219442748285,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.226515509967185,
+              "fit": 46.30890619794448,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.46826044623786994,
+          "elapsed_seconds": 0.0005163329769857228
+        }
+      ]
+    },
+    "affine24": {
+      "winner": {
+        "configuration": {
+          "na": 3,
+          "nb": 3,
+          "estimator": "ols"
+        },
+        "status": "succeeded",
+        "theta": [
+          -1.5189816784732895,
+          0.26535426312577537,
+          0.25809529784122115,
+          0.20250707033923174,
+          -0.38669778633249835,
+          0.20188980935163808
+        ],
+        "intercept": -0.025090987325887323,
+        "diagnostics": {
+          "policy_version": "train_affine_v1",
+          "feature_center": [
+            -5.618419479169547,
+            -5.622643847394635,
+            -5.626896352823222,
+            2.782038154834373,
+            2.783546853596118,
+            2.7851283272742253
+          ],
+          "feature_scale": [
+            2.184326427081148,
+            2.182772416239378,
+            2.181228422116442,
+            1.0302522827963458,
+            1.0298500772259176,
+            1.0293957570608465
+          ],
+          "output_center": 5.614197275344722,
+          "output_scale": 2.18584031626993,
+          "iterations": 1,
+          "effective_parameters": 7.0,
+          "downweighted_rows": 0
+        },
+        "validation": [
+          {
+            "rmse": 0.8154205276510201,
+            "fit": 64.50868386619118,
+            "n_samples": 359
+          },
+          {
+            "rmse": 0.8055221816531463,
+            "fit": 64.73801866889346,
+            "n_samples": 185
+          }
+        ],
+        "validation_risk": 0.3086647648715327,
+        "elapsed_seconds": 0.0005917089874856174
+      },
+      "candidates": [
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 1,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9919429193130522,
+            0.06424651234526071
+          ],
+          "intercept": -0.13769039340758515,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              2.782038154834373
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              1.0302522827963458
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 3.0,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 1.2977441524888316,
+              "fit": 43.51546666422054,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.2808756491954085,
+              "fit": 43.92927437863429,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.49101065097199137,
+          "elapsed_seconds": 0.002524374984204769
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 1,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9917562605305703,
+            0.06433624164195614
+          ],
+          "intercept": -0.13689129639514383,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              2.782038154834373
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              1.0302522827963458
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 2.9996206894698854,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 1.2854263223199958,
+              "fit": 44.05160230194368,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.2830923745270366,
+              "fit": 43.83223654523826,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.48931745311659713,
+          "elapsed_seconds": 0.0005511249764822423
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 2,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9880267167626285,
+            -0.21002020675242153,
+            0.27724541566375
+          ],
+          "intercept": -0.12439265202769725,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              2.782038154834373,
+              2.783546853596118
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              1.0302522827963458,
+              1.0298500772259176
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 4.0,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 1.0312336191502798,
+              "fit": 55.1153826228689,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.0612276954973032,
+              "fit": 53.54443112928154,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.39913331172581,
+          "elapsed_seconds": 0.0006827920442447066
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 2,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9880503581980168,
+            -0.19478786960780187,
+            0.26198765325492285
+          ],
+          "intercept": -0.12443172610642285,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              2.782038154834373,
+              2.783546853596118
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              1.0302522827963458,
+              1.0298500772259176
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 3.9280787487677626,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 1.0355696131470147,
+              "fit": 54.92665775211329,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.0756329409416931,
+              "fit": 52.913837077994685,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.40286411229744623,
+          "elapsed_seconds": 0.00043995800660923123
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 3,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9875018266035676,
+            0.21537587281520978,
+            -0.580609786797565,
+            0.4351244423263687
+          ],
+          "intercept": -0.12890898376803328,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              2.782038154834373,
+              2.783546853596118,
+              2.7851283272742253
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              1.0302522827963458,
+              1.0298500772259176,
+              1.0293957570608465
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 5.0,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 0.9875887145996145,
+              "fit": 57.0150344620246,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.0197319876558053,
+              "fit": 55.36091850673033,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.3829465056368419,
+          "elapsed_seconds": 0.0004698749980889261
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 3,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9876334760825091,
+            -0.059383855377405204,
+            -0.02752022500010095,
+            0.15520593151461468
+          ],
+          "intercept": -0.1251983342291133,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              2.782038154834373,
+              2.783546853596118,
+              2.7851283272742253
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              1.0302522827963458,
+              1.0298500772259176,
+              1.0293957570608465
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 4.062108121891539,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 1.008908665067118,
+              "fit": 56.087080018470125,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.050488037568886,
+              "fit": 54.01456295929164,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.3930181757686028,
+          "elapsed_seconds": 0.00043645896948873997
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 1,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.7222735265541806,
+            0.7261440225063197,
+            0.01916528183716219
+          ],
+          "intercept": -0.03272717955690035,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              -5.622643847394635,
+              2.782038154834373
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              2.182772416239378,
+              1.0302522827963458
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 4.0,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 0.9769709343133313,
+              "fit": 57.4771751415895,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.9780768314940733,
+              "fit": 57.184385783453685,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.372493607008031,
+          "elapsed_seconds": 0.0004987500142306089
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 1,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.4420766378938916,
+            0.4478245017515002,
+            0.03658548229864238
+          ],
+          "intercept": -0.07181872563584357,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              -5.622643847394635,
+              2.782038154834373
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              2.182772416239378,
+              1.0302522827963458
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 3.7718405348177964,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 1.1452361943113516,
+              "fit": 50.15340129187948,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.1808904293412061,
+              "fit": 48.30615813948845,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.44374132495622737,
+          "elapsed_seconds": 0.0004854999715462327
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 2,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.7090550243453024,
+            0.7136477367067583,
+            -0.02559274863149793,
+            0.04602836195862913
+          ],
+          "intercept": -0.03232580733435591,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              -5.622643847394635,
+              2.782038154834373,
+              2.783546853596118
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              2.182772416239378,
+              1.0302522827963458,
+              1.0298500772259176
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 5.0,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 0.9033707862092495,
+              "fit": 60.68063401376429,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.9019672288495384,
+              "fit": 60.516107055314514,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.34393095241341565,
+          "elapsed_seconds": 0.0005158749991096556
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 2,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.4115176271491647,
+            0.419346303962401,
+            -0.09604647450780082,
+            0.1358818897474444
+          ],
+          "intercept": -0.06949459026860813,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              -5.622643847394635,
+              2.782038154834373,
+              2.783546853596118
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              2.182772416239378,
+              1.0302522827963458,
+              1.0298500772259176
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 4.680122018512608,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 0.978540703802642,
+              "fit": 57.40885065954239,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.0244809096412404,
+              "fit": 55.153032985751096,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.38234697212859037,
+          "elapsed_seconds": 0.0004912500153295696
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 3,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.707546339233216,
+            0.7124100761373551,
+            0.18336497479079927,
+            -0.3756005167007254,
+            0.21406352997422154
+          ],
+          "intercept": -0.03470732799656689,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              -5.622643847394635,
+              2.782038154834373,
+              2.783546853596118,
+              2.7851283272742253
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              2.182772416239378,
+              1.0302522827963458,
+              1.0298500772259176,
+              1.0293957570608465
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 6.0,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 0.8534466224059742,
+              "fit": 62.853591672019874,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.8581374804536885,
+              "fit": 62.4347677761276,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.32616591333387135,
+          "elapsed_seconds": 0.0005261250189505517
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 3,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.408950585173443,
+            0.4170375224197806,
+            -0.02007600432890991,
+            -0.027018940935490284,
+            0.08770377598808905
+          ],
+          "intercept": -0.07023025086000366,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              -5.622643847394635,
+              2.782038154834373,
+              2.783546853596118,
+              2.7851283272742253
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              2.182772416239378,
+              1.0302522827963458,
+              1.0298500772259176,
+              1.0293957570608465
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 4.815975739754813,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 0.9567651222929794,
+              "fit": 58.356636521131236,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.0031345683954964,
+              "fit": 56.08747564125945,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.3741382064094865,
+          "elapsed_seconds": 0.0004950420116074383
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 1,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.5213320162225257,
+            0.26439821911522177,
+            0.2609761014622887,
+            0.016049209385441073
+          ],
+          "intercept": -0.02283117828694221,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              -5.622643847394635,
+              -5.626896352823222,
+              2.782038154834373
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              2.182772416239378,
+              2.181228422116442,
+              1.0302522827963458
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 5.0,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 0.8700179945768177,
+              "fit": 62.13231990053203,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.8412837002184922,
+              "fit": 63.172547191205176,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.32558026537150964,
+          "elapsed_seconds": 0.0005488329916261137
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 1,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.2580655442082982,
+            -0.11967560956379913,
+            0.3830708087434524,
+            0.025149060329231886
+          ],
+          "intercept": -0.04150192290689001,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              -5.622643847394635,
+              -5.626896352823222,
+              2.782038154834373
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              2.182772416239378,
+              2.181228422116442,
+              1.0302522827963458
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 4.287354913824763,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 0.9502059389618035,
+              "fit": 58.6421260830104,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.9648901082201263,
+              "fit": 57.76163865183541,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.3650980495958868,
+          "elapsed_seconds": 0.0005277079762890935
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 2,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.5201342864512162,
+            0.2658809425278156,
+            0.2584650698918869,
+            0.005477152079097963,
+            0.010902948419247098
+          ],
+          "intercept": -0.022831319687115992,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              -5.622643847394635,
+              -5.626896352823222,
+              2.782038154834373,
+              2.783546853596118
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              2.182772416239378,
+              2.181228422116442,
+              1.0302522827963458,
+              1.0298500772259176
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 6.0,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 0.856760690472796,
+              "fit": 62.70934629989593,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.8285894191613037,
+              "fit": 63.72824325004211,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.320644923776916,
+          "elapsed_seconds": 0.0005669589736498892
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 2,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.250437837064903,
+            -0.11674544403363378,
+            0.37336052741491826,
+            -0.027911186787028888,
+            0.05465740311138234
+          ],
+          "intercept": -0.04133554438746701,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              -5.622643847394635,
+              -5.626896352823222,
+              2.782038154834373,
+              2.783546853596118
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              2.182772416239378,
+              2.181228422116442,
+              1.0302522827963458,
+              1.0298500772259176
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 5.199694129173074,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 0.891685577404856,
+              "fit": 61.18923469979434,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.9029388559318311,
+              "fit": 60.473573780853606,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.34209118807287764,
+          "elapsed_seconds": 0.0005550829810090363
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 3,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.5189816784732895,
+            0.26535426312577537,
+            0.25809529784122115,
+            0.20250707033923174,
+            -0.38669778633249835,
+            0.20188980935163808
+          ],
+          "intercept": -0.025090987325887323,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              -5.622643847394635,
+              -5.626896352823222,
+              2.782038154834373,
+              2.783546853596118,
+              2.7851283272742253
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              2.182772416239378,
+              2.181228422116442,
+              1.0302522827963458,
+              1.0298500772259176,
+              1.0293957570608465
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 7.0,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 0.8154205276510201,
+              "fit": 64.50868386619118,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.8055221816531463,
+              "fit": 64.73801866889346,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.3086647648715327,
+          "elapsed_seconds": 0.0005917089874856174
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 3,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.2495439861776696,
+            -0.11648277463934416,
+            0.3723426185821978,
+            0.01135288268709134,
+            -0.029712045447544577,
+            0.04554268274006735
+          ],
+          "intercept": -0.0417943283104558,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              -5.622643847394635,
+              -5.626896352823222,
+              2.782038154834373,
+              2.783546853596118,
+              2.7851283272742253
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              2.182772416239378,
+              2.181228422116442,
+              1.0302522827963458,
+              1.0298500772259176,
+              1.0293957570608465
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 5.338003706313675,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 0.8791985472483798,
+              "fit": 61.73273479554564,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.8911493756734089,
+              "fit": 60.98966190635099,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.33747712250559336,
+          "elapsed_seconds": 0.0005648329970426857
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 1,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.5352555442360754,
+            0.24985425143282733,
+            0.33889844505496747,
+            -0.04955020145887999,
+            0.01632185266413093
+          ],
+          "intercept": -0.024152022529302757,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              -5.622643847394635,
+              -5.626896352823222,
+              -5.631047131439164,
+              2.782038154834373
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              2.182772416239378,
+              2.181228422116442,
+              2.1797018463046935,
+              1.0302522827963458
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 6.0,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 0.8860387341929176,
+              "fit": 61.43501450395292,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.862174295017606,
+              "fit": 62.25805497661428,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.3326901052482446,
+          "elapsed_seconds": 0.000620707985945046
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 1,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.2002428297145076,
+            -0.13374984812335608,
+            0.19825258850742922,
+            0.14129427418231402,
+            0.02326223070390439
+          ],
+          "intercept": -0.03483310834910238,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              -5.622643847394635,
+              -5.626896352823222,
+              -5.631047131439164,
+              2.782038154834373
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              2.182772416239378,
+              2.181228422116442,
+              2.1797018463046935,
+              1.0302522827963458
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 4.807257857601842,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 0.8903153593112205,
+              "fit": 61.24887367365434,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.8819161143679635,
+              "fit": 61.39385076072823,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.3375121771768621,
+          "elapsed_seconds": 0.0007958750356920063
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 2,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.534450891268975,
+            0.25107633473604707,
+            0.341301156015335,
+            -0.05370854562074386,
+            -0.0010716831318087305,
+            0.017961526832983066
+          ],
+          "intercept": -0.024263103153493965,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              -5.622643847394635,
+              -5.626896352823222,
+              -5.631047131439164,
+              2.782038154834373,
+              2.783546853596118
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              2.182772416239378,
+              2.181228422116442,
+              2.1797018463046935,
+              1.0302522827963458,
+              1.0298500772259176
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 7.0,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 0.8643639106115995,
+              "fit": 62.37841485969958,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.8409872790144882,
+              "fit": 63.18552312060823,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.3245318225085973,
+          "elapsed_seconds": 0.0006948339869268239
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 2,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.1980907465722443,
+            -0.13163626914876345,
+            0.199456788157304,
+            0.13628345316226886,
+            -0.005905835806566187,
+            0.030114976875274837
+          ],
+          "intercept": -0.034977938589886674,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              -5.622643847394635,
+              -5.626896352823222,
+              -5.631047131439164,
+              2.782038154834373,
+              2.783546853596118
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              2.182772416239378,
+              2.181228422116442,
+              2.1797018463046935,
+              1.0302522827963458,
+              1.0298500772259176
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 5.719789275597926,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 0.8636930196404589,
+              "fit": 62.40761550248528,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.855219081543516,
+              "fit": 62.56252158630329,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.3273525733904685,
+          "elapsed_seconds": 0.0006376659730449319
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 3,
+            "estimator": "ols"
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.5334236431472192,
+            0.25039061629586495,
+            0.34176450250406454,
+            -0.05425281811240107,
+            0.1992631981590254,
+            -0.3863709204135978,
+            0.2053442934033271
+          ],
+          "intercept": -0.026575944807349768,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              -5.622643847394635,
+              -5.626896352823222,
+              -5.631047131439164,
+              2.782038154834373,
+              2.783546853596118,
+              2.7851283272742253
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              2.182772416239378,
+              2.181228422116442,
+              2.1797018463046935,
+              1.0302522827963458,
+              1.0298500772259176,
+              1.0293957570608465
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 8.0,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 0.819636908877542,
+              "fit": 64.32516516145336,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.8110451907522701,
+              "fit": 64.49624724635467,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.3105411054406607,
+          "elapsed_seconds": 0.0025024580536410213
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 3,
+            "estimator": "ridge",
+            "ridge_alpha": 0.1
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.197720547631108,
+            -0.13136983986091202,
+            0.19963034921813055,
+            0.13557379554526672,
+            0.022214961467771938,
+            -0.030428566973223513,
+            0.0327504293245847
+          ],
+          "intercept": -0.03534096245891974,
+          "diagnostics": {
+            "policy_version": "train_affine_v1",
+            "feature_center": [
+              -5.618419479169547,
+              -5.622643847394635,
+              -5.626896352823222,
+              -5.631047131439164,
+              2.782038154834373,
+              2.783546853596118,
+              2.7851283272742253
+            ],
+            "feature_scale": [
+              2.184326427081148,
+              2.182772416239378,
+              2.181228422116442,
+              2.1797018463046935,
+              1.0302522827963458,
+              1.0298500772259176,
+              1.0293957570608465
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "iterations": 1,
+            "effective_parameters": 5.859916291599878,
+            "downweighted_rows": 0
+          },
+          "validation": [
+            {
+              "rmse": 0.8553152908180609,
+              "fit": 62.772257563895714,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.8482629242494151,
+              "fit": 62.86702951200365,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.32445377827673716,
+          "elapsed_seconds": 0.0006686249980702996
+        }
+      ]
+    },
+    "single_horizon24": {
+      "winner": {
+        "configuration": {
+          "na": 3,
+          "nb": 1,
+          "ridge_alpha": 0.001
+        },
+        "status": "succeeded",
+        "theta": [
+          -0.9052511092796911,
+          -0.9311661895309526,
+          0.8402811771975431,
+          0.018324845838185458
+        ],
+        "intercept": -0.030546868265804376,
+        "diagnostics": {
+          "model_type": "OE",
+          "denominator": "shared",
+          "estimation_loss": "train_free_run_mse",
+          "train_start": 50,
+          "train_stop": 614,
+          "training_rows": 564,
+          "ridge_alpha": 0.001,
+          "max_nfev_per_start": 150,
+          "residual_evaluations_including_jacobian": 420,
+          "solver_starts": [
+            {
+              "nfev": 18,
+              "status": 2,
+              "cost": 0.027093352071380427
+            },
+            {
+              "nfev": 62,
+              "status": 2,
+              "cost": 0.027093352079086926
+            }
+          ],
+          "reflection_coefficients": [
+            -0.9949999999999999,
+            -0.580077388740859,
+            0.8402811771975431
+          ],
+          "max_pole_modulus": 0.9826115533936381,
+          "train_simulation_rmse": 0.4974600251673737,
+          "input_center": {
+            "u": 2.7806447157723535
+          },
+          "input_scale": {
+            "u": 1.030597548518473
+          },
+          "output_center": 5.614197275344722,
+          "output_scale": 2.18584031626993,
+          "initialization_policy": "fixed_measured_history_before_start",
+          "forecast_updates": false
+        },
+        "validation": [
+          {
+            "rmse": 0.8311529159587832,
+            "fit": 63.82392900898991,
+            "n_samples": 359
+          },
+          {
+            "rmse": 0.5944253137140573,
+            "fit": 73.97884900958844,
+            "n_samples": 185
+          }
+        ],
+        "validation_risk": 0.2678347047917406,
+        "elapsed_seconds": 0.02872262499295175
+      },
+      "candidates": [
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 1,
+            "ridge_alpha": 0.0
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9873645584142837,
+            0.06679665070598419
+          ],
+          "intercept": -0.12036779782889204,
+          "diagnostics": {
+            "model_type": "OE",
+            "denominator": "shared",
+            "estimation_loss": "train_free_run_mse",
+            "train_start": 50,
+            "train_stop": 614,
+            "training_rows": 564,
+            "ridge_alpha": 0.0,
+            "max_nfev_per_start": 150,
+            "residual_evaluations_including_jacobian": 92,
+            "solver_starts": [
+              {
+                "nfev": 7,
+                "status": 2,
+                "cost": 0.040815098899253936
+              },
+              {
+                "nfev": 16,
+                "status": 2,
+                "cost": 0.04081509889335232
+              }
+            ],
+            "reflection_coefficients": [
+              -0.9873645584142837
+            ],
+            "max_pole_modulus": 0.9873645584142837,
+            "train_simulation_rmse": 0.6245164126113718,
+            "input_center": {
+              "u": 2.7806447157723535
+            },
+            "input_scale": {
+              "u": 1.030597548518473
+            },
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "initialization_policy": "fixed_measured_history_before_start",
+            "forecast_updates": false
+          },
+          "validation": [
+            {
+              "rmse": 1.170522496079495,
+              "fit": 49.052810738323835,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.4184118326127586,
+              "fit": 37.90858563476734,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.49718846448919274,
+          "elapsed_seconds": 0.010969750001095235
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 1,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.98736355818727,
+            0.06679900412784248
+          ],
+          "intercept": -0.1203685466436953,
+          "diagnostics": {
+            "model_type": "OE",
+            "denominator": "shared",
+            "estimation_loss": "train_free_run_mse",
+            "train_start": 50,
+            "train_stop": 614,
+            "training_rows": 564,
+            "ridge_alpha": 0.001,
+            "max_nfev_per_start": 150,
+            "residual_evaluations_including_jacobian": 92,
+            "solver_starts": [
+              {
+                "nfev": 7,
+                "status": 2,
+                "cost": 0.04130303872123218
+              },
+              {
+                "nfev": 16,
+                "status": 2,
+                "cost": 0.04130303872249049
+              }
+            ],
+            "reflection_coefficients": [
+              -0.98736355818727
+            ],
+            "max_pole_modulus": 0.98736355818727,
+            "train_simulation_rmse": 0.624516416165231,
+            "input_center": {
+              "u": 2.7806447157723535
+            },
+            "input_scale": {
+              "u": 1.030597548518473
+            },
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "initialization_policy": "fixed_measured_history_before_start",
+            "forecast_updates": false
+          },
+          "validation": [
+            {
+              "rmse": 1.1704813971489894,
+              "fit": 49.05459957621285,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.4184209977829831,
+              "fit": 37.90818442662099,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.49718318024018376,
+          "elapsed_seconds": 0.006062957982067019
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 2,
+            "ridge_alpha": 0.0
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9848975943661711,
+            -0.36692159556809695,
+            0.44018198933340436
+          ],
+          "intercept": -0.12466309671811156,
+          "diagnostics": {
+            "model_type": "OE",
+            "denominator": "shared",
+            "estimation_loss": "train_free_run_mse",
+            "train_start": 50,
+            "train_stop": 614,
+            "training_rows": 564,
+            "ridge_alpha": 0.0,
+            "max_nfev_per_start": 150,
+            "residual_evaluations_including_jacobian": 95,
+            "solver_starts": [
+              {
+                "nfev": 5,
+                "status": 2,
+                "cost": 0.026427333974907197
+              },
+              {
+                "nfev": 14,
+                "status": 2,
+                "cost": 0.026427333974840532
+              }
+            ],
+            "reflection_coefficients": [
+              -0.9848975943661711
+            ],
+            "max_pole_modulus": 0.9848975943661711,
+            "train_simulation_rmse": 0.5025278165235566,
+            "input_center": {
+              "u": 2.7806447157723535
+            },
+            "input_scale": {
+              "u": 1.030597548518473
+            },
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "initialization_policy": "fixed_measured_history_before_start",
+            "forecast_updates": false
+          },
+          "validation": [
+            {
+              "rmse": 0.91072127054693,
+              "fit": 60.360702941981316,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.9766899295875495,
+              "fit": 57.24509784110994,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.3606395401069926,
+          "elapsed_seconds": 0.006201707990840077
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 2,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.98490349159109,
+            -0.3657534381507917,
+            0.4389993439204972
+          ],
+          "intercept": -0.12465537727687134,
+          "diagnostics": {
+            "model_type": "OE",
+            "denominator": "shared",
+            "estimation_loss": "train_free_run_mse",
+            "train_start": 50,
+            "train_stop": 614,
+            "training_rows": 564,
+            "ridge_alpha": 0.001,
+            "max_nfev_per_start": 150,
+            "residual_evaluations_including_jacobian": 95,
+            "solver_starts": [
+              {
+                "nfev": 5,
+                "status": 2,
+                "cost": 0.02694874393015443
+              },
+              {
+                "nfev": 14,
+                "status": 2,
+                "cost": 0.026948743930249944
+              }
+            ],
+            "reflection_coefficients": [
+              -0.98490349159109
+            ],
+            "max_pole_modulus": 0.98490349159109,
+            "train_simulation_rmse": 0.5025287893864947,
+            "input_center": {
+              "u": 2.7806447157723535
+            },
+            "input_scale": {
+              "u": 1.030597548518473
+            },
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "initialization_policy": "fixed_measured_history_before_start",
+            "forecast_updates": false
+          },
+          "validation": [
+            {
+              "rmse": 0.9111954617061491,
+              "fit": 60.34006369171841,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.9776202130422534,
+              "fit": 57.20437439666664,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.3609143779352114,
+          "elapsed_seconds": 0.0063056249637156725
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 3,
+            "ridge_alpha": 0.0
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9842119674160601,
+            0.8147142799657812,
+            -1.9444375017404674,
+            1.2057843306956013
+          ],
+          "intercept": -0.12860139681689897,
+          "diagnostics": {
+            "model_type": "OE",
+            "denominator": "shared",
+            "estimation_loss": "train_free_run_mse",
+            "train_start": 50,
+            "train_stop": 614,
+            "training_rows": 564,
+            "ridge_alpha": 0.0,
+            "max_nfev_per_start": 150,
+            "residual_evaluations_including_jacobian": 102,
+            "solver_starts": [
+              {
+                "nfev": 5,
+                "status": 2,
+                "cost": 0.025880109265895776
+              },
+              {
+                "nfev": 12,
+                "status": 2,
+                "cost": 0.02588010926585073
+              }
+            ],
+            "reflection_coefficients": [
+              -0.9842119674160601
+            ],
+            "max_pole_modulus": 0.9842119674160601,
+            "train_simulation_rmse": 0.4972977365894529,
+            "input_center": {
+              "u": 2.7806447157723535
+            },
+            "input_scale": {
+              "u": 1.030597548518473
+            },
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "initialization_policy": "fixed_measured_history_before_start",
+            "forecast_updates": false
+          },
+          "validation": [
+            {
+              "rmse": 0.8621296539827727,
+              "fit": 62.47566125667977,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.8994000690165812,
+              "fit": 60.6284852668219,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.3361999496691258,
+          "elapsed_seconds": 0.006417416036128998
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 3,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.984566044715269,
+            0.19443689335764547,
+            -0.6940239051173662,
+            0.574188214715109
+          ],
+          "intercept": -0.12652991103201727,
+          "diagnostics": {
+            "model_type": "OE",
+            "denominator": "shared",
+            "estimation_loss": "train_free_run_mse",
+            "train_start": 50,
+            "train_stop": 614,
+            "training_rows": 564,
+            "ridge_alpha": 0.001,
+            "max_nfev_per_start": 150,
+            "residual_evaluations_including_jacobian": 114,
+            "solver_starts": [
+              {
+                "nfev": 5,
+                "status": 2,
+                "cost": 0.026608843032628976
+              },
+              {
+                "nfev": 14,
+                "status": 2,
+                "cost": 0.026608843032767063
+              }
+            ],
+            "reflection_coefficients": [
+              -0.984566044715269
+            ],
+            "max_pole_modulus": 0.984566044715269,
+            "train_simulation_rmse": 0.4987335869261574,
+            "input_center": {
+              "u": 2.7806447157723535
+            },
+            "input_scale": {
+              "u": 1.030597548518473
+            },
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "initialization_policy": "fixed_measured_history_before_start",
+            "forecast_updates": false
+          },
+          "validation": [
+            {
+              "rmse": 0.8860227294161711,
+              "fit": 61.43571111456292,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.9376214491938114,
+              "fit": 58.95533259026535,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.34826199009465675,
+          "elapsed_seconds": 0.00697099999524653
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 1,
+            "ridge_alpha": 0.0
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.4475544307044124,
+            0.4548285735723339,
+            0.037331625394925606
+          ],
+          "intercept": -0.0659530372590312,
+          "diagnostics": {
+            "model_type": "OE",
+            "denominator": "shared",
+            "estimation_loss": "train_free_run_mse",
+            "train_start": 50,
+            "train_stop": 614,
+            "training_rows": 564,
+            "ridge_alpha": 0.0,
+            "max_nfev_per_start": 150,
+            "residual_evaluations_including_jacobian": 524,
+            "solver_starts": [
+              {
+                "nfev": 62,
+                "status": 2,
+                "cost": 0.037336431651352725
+              },
+              {
+                "nfev": 62,
+                "status": 2,
+                "cost": 0.037336431651352725
+              }
+            ],
+            "reflection_coefficients": [
+              -0.9949999999999589,
+              0.4548285735723339
+            ],
+            "max_pole_modulus": 0.9865030874901819,
+            "train_simulation_rmse": 0.5973100667845475,
+            "input_center": {
+              "u": 2.7806447157723535
+            },
+            "input_scale": {
+              "u": 1.030597548518473
+            },
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "initialization_policy": "fixed_measured_history_before_start",
+            "forecast_updates": false
+          },
+          "validation": [
+            {
+              "rmse": 1.1105848370581164,
+              "fit": 51.66160746653008,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.2791906917949016,
+              "fit": 44.003033907240265,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.4579831810711701,
+          "elapsed_seconds": 0.033903333998750895
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 1,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.445763960180043,
+            0.4530291057085861,
+            0.03737669163558025
+          ],
+          "intercept": -0.06614398963687347,
+          "diagnostics": {
+            "model_type": "OE",
+            "denominator": "shared",
+            "estimation_loss": "train_free_run_mse",
+            "train_start": 50,
+            "train_stop": 614,
+            "training_rows": 564,
+            "ridge_alpha": 0.001,
+            "max_nfev_per_start": 150,
+            "residual_evaluations_including_jacobian": 270,
+            "solver_starts": [
+              {
+                "nfev": 11,
+                "status": 2,
+                "cost": 0.038486024419404505
+              },
+              {
+                "nfev": 47,
+                "status": 2,
+                "cost": 0.03848602442138195
+              }
+            ],
+            "reflection_coefficients": [
+              -0.9949999999999999,
+              0.4530291057085861
+            ],
+            "max_pole_modulus": 0.986565979282775,
+            "train_simulation_rmse": 0.5973236896826627,
+            "input_center": {
+              "u": 2.7806447157723535
+            },
+            "input_scale": {
+              "u": 1.030597548518473
+            },
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "initialization_policy": "fixed_measured_history_before_start",
+            "forecast_updates": false
+          },
+          "validation": [
+            {
+              "rmse": 1.1130478489425715,
+              "fit": 51.554404458427825,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.2794015037555073,
+              "fit": 43.99380554880574,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.4584567625878155,
+          "elapsed_seconds": 0.01735779200680554
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 2,
+            "ridge_alpha": 0.0
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.4979679809571074,
+            0.5054954582483493,
+            -0.14986826227095726,
+            0.18616365544155802
+          ],
+          "intercept": -0.06146417511557878,
+          "diagnostics": {
+            "model_type": "OE",
+            "denominator": "shared",
+            "estimation_loss": "train_free_run_mse",
+            "train_start": 50,
+            "train_stop": 614,
+            "training_rows": 564,
+            "ridge_alpha": 0.0,
+            "max_nfev_per_start": 150,
+            "residual_evaluations_including_jacobian": 1078,
+            "solver_starts": [
+              {
+                "nfev": 104,
+                "status": 2,
+                "cost": 0.026005837301057093
+              },
+              {
+                "nfev": 104,
+                "status": 2,
+                "cost": 0.026005837301057093
+              }
+            ],
+            "reflection_coefficients": [
+              -0.9949999999999999,
+              0.5054954582483493
+            ],
+            "max_pole_modulus": 0.9845292297529421,
+            "train_simulation_rmse": 0.4985042329256601,
+            "input_center": {
+              "u": 2.7806447157723535
+            },
+            "input_scale": {
+              "u": 1.030597548518473
+            },
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "initialization_policy": "fixed_measured_history_before_start",
+            "forecast_updates": false
+          },
+          "validation": [
+            {
+              "rmse": 0.8906189175694984,
+              "fit": 61.23566124921291,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.873684812308668,
+              "fit": 61.75417854083963,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.335865979939055,
+          "elapsed_seconds": 0.07333166705211625
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 2,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.6646037035140114,
+            -0.3155590966426296,
+            -0.5004806740068715,
+            0.5968295675630476
+          ],
+          "intercept": -0.16411355807334754,
+          "diagnostics": {
+            "model_type": "OE",
+            "denominator": "shared",
+            "estimation_loss": "train_free_run_mse",
+            "train_start": 50,
+            "train_stop": 614,
+            "training_rows": 564,
+            "ridge_alpha": 0.001,
+            "max_nfev_per_start": 150,
+            "residual_evaluations_including_jacobian": 367,
+            "solver_starts": [
+              {
+                "nfev": 12,
+                "status": 2,
+                "cost": 0.02686724937990299
+              },
+              {
+                "nfev": 60,
+                "status": 2,
+                "cost": 0.026867249382561822
+              }
+            ],
+            "reflection_coefficients": [
+              -0.9710169282021982,
+              -0.3155590966426296
+            ],
+            "max_pole_modulus": 0.9849760563367214,
+            "train_simulation_rmse": 0.5034951914558549,
+            "input_center": {
+              "u": 2.7806447157723535
+            },
+            "input_scale": {
+              "u": 1.030597548518473
+            },
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "initialization_policy": "fixed_measured_history_before_start",
+            "forecast_updates": false
+          },
+          "validation": [
+            {
+              "rmse": 0.9157614601510967,
+              "fit": 60.141327838522585,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.0030115740617773,
+              "fit": 56.092859756058786,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.3669532210847623,
+          "elapsed_seconds": 0.025257708970457315
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 3,
+            "ridge_alpha": 0.0
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.511032368162685,
+            0.5186254956423169,
+            0.3220213114256123,
+            -0.761095097832323,
+            0.47549582828815085
+          ],
+          "intercept": -0.06137192717598712,
+          "diagnostics": {
+            "model_type": "OE",
+            "denominator": "shared",
+            "estimation_loss": "train_free_run_mse",
+            "train_start": 50,
+            "train_stop": 614,
+            "training_rows": 564,
+            "ridge_alpha": 0.0,
+            "max_nfev_per_start": 150,
+            "residual_evaluations_including_jacobian": 1516,
+            "solver_starts": [
+              {
+                "nfev": 134,
+                "status": 2,
+                "cost": 0.025643350434789148
+              },
+              {
+                "nfev": 134,
+                "status": 2,
+                "cost": 0.025643350434789148
+              }
+            ],
+            "reflection_coefficients": [
+              -0.9949999999990647,
+              0.5186254956423169
+            ],
+            "max_pole_modulus": 0.9839438723472708,
+            "train_simulation_rmse": 0.495017797436713,
+            "input_center": {
+              "u": 2.7806447157723535
+            },
+            "input_scale": {
+              "u": 1.030597548518473
+            },
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "initialization_policy": "fixed_measured_history_before_start",
+            "forecast_updates": false
+          },
+          "validation": [
+            {
+              "rmse": 0.8528036745434622,
+              "fit": 62.88157608628489,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.8094896456621669,
+              "fit": 64.56434171125734,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.3160111969625752,
+          "elapsed_seconds": 0.10056499997153878
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 3,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.6448946103435717,
+            -0.33460041371150573,
+            0.10639490249520284,
+            -0.6396902015632236,
+            0.6325540592327022
+          ],
+          "intercept": -0.1685678912590135,
+          "diagnostics": {
+            "model_type": "OE",
+            "denominator": "shared",
+            "estimation_loss": "train_free_run_mse",
+            "train_start": 50,
+            "train_stop": 614,
+            "training_rows": 564,
+            "ridge_alpha": 0.001,
+            "max_nfev_per_start": 150,
+            "residual_evaluations_including_jacobian": 473,
+            "solver_starts": [
+              {
+                "nfev": 14,
+                "status": 2,
+                "cost": 0.026521789491960115
+              },
+              {
+                "nfev": 69,
+                "status": 2,
+                "cost": 0.026521789482888903
+              }
+            ],
+            "reflection_coefficients": [
+              -0.9691839664955362,
+              -0.33460041371150573
+            ],
+            "max_pole_modulus": 0.984695505111999,
+            "train_simulation_rmse": 0.500043169401864,
+            "input_center": {
+              "u": 2.7806447157723535
+            },
+            "input_scale": {
+              "u": 1.030597548518473
+            },
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "initialization_policy": "fixed_measured_history_before_start",
+            "forecast_updates": false
+          },
+          "validation": [
+            {
+              "rmse": 0.8941700625482111,
+              "fit": 61.08109706447312,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.9693214760730896,
+              "fit": 57.56765416070473,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.3562284735840086,
+          "elapsed_seconds": 0.03055216697975993
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 1,
+            "ridge_alpha": 0.0
+          },
+          "status": "failed",
+          "error_code": "OE_NOT_CONVERGED",
+          "elapsed_seconds": 0.1067157500074245
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 1,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9052511092796911,
+            -0.9311661895309526,
+            0.8402811771975431,
+            0.018324845838185458
+          ],
+          "intercept": -0.030546868265804376,
+          "diagnostics": {
+            "model_type": "OE",
+            "denominator": "shared",
+            "estimation_loss": "train_free_run_mse",
+            "train_start": 50,
+            "train_stop": 614,
+            "training_rows": 564,
+            "ridge_alpha": 0.001,
+            "max_nfev_per_start": 150,
+            "residual_evaluations_including_jacobian": 420,
+            "solver_starts": [
+              {
+                "nfev": 18,
+                "status": 2,
+                "cost": 0.027093352071380427
+              },
+              {
+                "nfev": 62,
+                "status": 2,
+                "cost": 0.027093352079086926
+              }
+            ],
+            "reflection_coefficients": [
+              -0.9949999999999999,
+              -0.580077388740859,
+              0.8402811771975431
+            ],
+            "max_pole_modulus": 0.9826115533936381,
+            "train_simulation_rmse": 0.4974600251673737,
+            "input_center": {
+              "u": 2.7806447157723535
+            },
+            "input_scale": {
+              "u": 1.030597548518473
+            },
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "initialization_policy": "fixed_measured_history_before_start",
+            "forecast_updates": false
+          },
+          "validation": [
+            {
+              "rmse": 0.8311529159587832,
+              "fit": 63.82392900898991,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.5944253137140573,
+              "fit": 73.97884900958844,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.2678347047917406,
+          "elapsed_seconds": 0.02872262499295175
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 2,
+            "ridge_alpha": 0.0
+          },
+          "status": "failed",
+          "error_code": "OE_NOT_CONVERGED",
+          "elapsed_seconds": 0.13542958302423358
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 2,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9179116891571686,
+            -0.738147410558481,
+            0.6624445004005394,
+            -0.07542782116561067,
+            0.10590984451296845
+          ],
+          "intercept": -0.05116527809505381,
+          "diagnostics": {
+            "model_type": "OE",
+            "denominator": "shared",
+            "estimation_loss": "train_free_run_mse",
+            "train_start": 50,
+            "train_stop": 614,
+            "training_rows": 564,
+            "ridge_alpha": 0.001,
+            "max_nfev_per_start": 150,
+            "residual_evaluations_including_jacobian": 694,
+            "solver_starts": [
+              {
+                "nfev": 26,
+                "status": 2,
+                "cost": 0.026310257409283274
+              },
+              {
+                "nfev": 92,
+                "status": 2,
+                "cost": 0.026310257414482653
+              }
+            ],
+            "reflection_coefficients": [
+              -0.9949999999999999,
+              -0.2318058517621231,
+              0.6624445004005394
+            ],
+            "max_pole_modulus": 0.9837278996291968,
+            "train_simulation_rmse": 0.4926173204436812,
+            "input_center": {
+              "u": 2.7806447157723535
+            },
+            "input_scale": {
+              "u": 1.030597548518473
+            },
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "initialization_policy": "fixed_measured_history_before_start",
+            "forecast_updates": false
+          },
+          "validation": [
+            {
+              "rmse": 0.847774102288829,
+              "fit": 63.10048906781264,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.6898000207841921,
+              "fit": 69.8037918643403,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.2904252649817856,
+          "elapsed_seconds": 0.0500190409948118
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 3,
+            "ridge_alpha": 0.0
+          },
+          "status": "failed",
+          "error_code": "OE_NOT_CONVERGED",
+          "elapsed_seconds": 0.14286954200360924
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 3,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9908122992782367,
+            -0.5213386915915076,
+            0.5196824587021716,
+            0.11605899806263974,
+            -0.31443433456067543,
+            0.2343961703624402
+          ],
+          "intercept": -0.06054819149309189,
+          "diagnostics": {
+            "model_type": "OE",
+            "denominator": "shared",
+            "estimation_loss": "train_free_run_mse",
+            "train_start": 50,
+            "train_stop": 614,
+            "training_rows": 564,
+            "ridge_alpha": 0.001,
+            "max_nfev_per_start": 150,
+            "residual_evaluations_including_jacobian": 665,
+            "solver_starts": [
+              {
+                "nfev": 18,
+                "status": 2,
+                "cost": 0.026238125829604234
+              },
+              {
+                "nfev": 80,
+                "status": 2,
+                "cost": 0.026238125847211982
+              }
+            ],
+            "reflection_coefficients": [
+              -0.9949999999999999,
+              -0.008810322274934279,
+              0.5196824587021716
+            ],
+            "max_pole_modulus": 0.9837941928862741,
+            "train_simulation_rmse": 0.49322309626699484,
+            "input_center": {
+              "u": 2.7806447157723535
+            },
+            "input_scale": {
+              "u": 1.030597548518473
+            },
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "initialization_policy": "fixed_measured_history_before_start",
+            "forecast_updates": false
+          },
+          "validation": [
+            {
+              "rmse": 0.8470505322342202,
+              "fit": 63.13198257660012,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.7356788139483543,
+              "fit": 67.79543357837942,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.2997697576691617,
+          "elapsed_seconds": 0.046099208004307
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 1,
+            "ridge_alpha": 0.0
+          },
+          "status": "failed",
+          "error_code": "OE_NOT_CONVERGED",
+          "elapsed_seconds": 0.1288545840070583
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 1,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.6159038785002648,
+            -0.6777485370686104,
+            -0.4083041183922341,
+            0.7077069111772707,
+            0.027276128230023032
+          ],
+          "intercept": -0.04548819241526135,
+          "diagnostics": {
+            "model_type": "OE",
+            "denominator": "shared",
+            "estimation_loss": "train_free_run_mse",
+            "train_start": 50,
+            "train_stop": 614,
+            "training_rows": 564,
+            "ridge_alpha": 0.001,
+            "max_nfev_per_start": 150,
+            "residual_evaluations_including_jacobian": 488,
+            "solver_starts": [
+              {
+                "nfev": 23,
+                "status": 2,
+                "cost": 0.02679383713558067
+              },
+              {
+                "nfev": 57,
+                "status": 2,
+                "cost": 0.02679383712378649
+              }
+            ],
+            "reflection_coefficients": [
+              -0.9949999999999999,
+              -0.36179541179224584,
+              0.055244439113543264,
+              0.7077069111772707
+            ],
+            "max_pole_modulus": 0.9825078273571779,
+            "train_simulation_rmse": 0.49883762385827685,
+            "input_center": {
+              "u": 2.7806447157723535
+            },
+            "input_scale": {
+              "u": 1.030597548518473
+            },
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "initialization_policy": "fixed_measured_history_before_start",
+            "forecast_updates": false
+          },
+          "validation": [
+            {
+              "rmse": 0.8360349820280747,
+              "fit": 63.61143625908268,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.5944648770027123,
+              "fit": 73.97711711445542,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.2686953230278549,
+          "elapsed_seconds": 0.03480308305006474
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 2,
+            "ridge_alpha": 0.0
+          },
+          "status": "succeeded",
+          "theta": [
+            0.05686011075983566,
+            -1.6143676193254617,
+            -0.23147171328894167,
+            0.7995803244009843,
+            -0.1019608025438643,
+            0.15233728771103502
+          ],
+          "intercept": -0.08423797575438609,
+          "diagnostics": {
+            "model_type": "OE",
+            "denominator": "shared",
+            "estimation_loss": "train_free_run_mse",
+            "train_start": 50,
+            "train_stop": 614,
+            "training_rows": 564,
+            "ridge_alpha": 0.0,
+            "max_nfev_per_start": 150,
+            "residual_evaluations_including_jacobian": 942,
+            "solver_starts": [
+              {
+                "nfev": 65,
+                "status": 2,
+                "cost": 0.025294466631499347
+              },
+              {
+                "nfev": 65,
+                "status": 2,
+                "cost": 0.025294466631499347
+              }
+            ],
+            "reflection_coefficients": [
+              -0.6335344490410875,
+              -0.9307612349522209,
+              -0.7678346887775608,
+              0.7995803244009843
+            ],
+            "max_pole_modulus": 0.9868883520991922,
+            "train_simulation_rmse": 0.4916388485515988,
+            "input_center": {
+              "u": 2.7806447157723535
+            },
+            "input_scale": {
+              "u": 1.030597548518473
+            },
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "initialization_policy": "fixed_measured_history_before_start",
+            "forecast_updates": false
+          },
+          "validation": [
+            {
+              "rmse": 0.8323288718173854,
+              "fit": 63.772745331707114,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.6431884662194167,
+              "fit": 71.84422700605649,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.2781062942109759,
+          "elapsed_seconds": 0.07065129198599607
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 2,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.7720142617129924,
+            -0.5149365907064951,
+            -0.14608369028311044,
+            0.44058673350055105,
+            -0.0769758173384629,
+            0.11292132014031848
+          ],
+          "intercept": -0.06019494630535558,
+          "diagnostics": {
+            "model_type": "OE",
+            "denominator": "shared",
+            "estimation_loss": "train_free_run_mse",
+            "train_start": 50,
+            "train_stop": 614,
+            "training_rows": 564,
+            "ridge_alpha": 0.001,
+            "max_nfev_per_start": 150,
+            "residual_evaluations_including_jacobian": 516,
+            "solver_starts": [
+              {
+                "nfev": 15,
+                "status": 2,
+                "cost": 0.02583503890401588
+              },
+              {
+                "nfev": 60,
+                "status": 2,
+                "cost": 0.025835038904062118
+              }
+            ],
+            "reflection_coefficients": [
+              -0.9949999999999979,
+              -0.15498920972959146,
+              0.24079856750163905,
+              0.44058673350055105
+            ],
+            "max_pole_modulus": 0.9834543620738455,
+            "train_simulation_rmse": 0.49164064601655655,
+            "input_center": {
+              "u": 2.7806447157723535
+            },
+            "input_scale": {
+              "u": 1.030597548518473
+            },
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "initialization_policy": "fixed_measured_history_before_start",
+            "forecast_updates": false
+          },
+          "validation": [
+            {
+              "rmse": 0.8390530950963805,
+              "fit": 63.48007237823534,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.6565294936568145,
+              "fit": 71.26021942544604,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.28203441208631636,
+          "elapsed_seconds": 0.03934675001073629
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 3,
+            "ridge_alpha": 0.0
+          },
+          "status": "failed",
+          "error_code": "OE_NOT_CONVERGED",
+          "elapsed_seconds": 0.1756627500290051
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 3,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.7870807654292387,
+            -0.4979135013048508,
+            -0.13024900150270846,
+            0.4228850918563924,
+            -0.03031099165650415,
+            0.014834602217877198,
+            0.0518518541272618
+          ],
+          "intercept": -0.060916180197406786,
+          "diagnostics": {
+            "model_type": "OE",
+            "denominator": "shared",
+            "estimation_loss": "train_free_run_mse",
+            "train_start": 50,
+            "train_stop": 614,
+            "training_rows": 564,
+            "ridge_alpha": 0.001,
+            "max_nfev_per_start": 150,
+            "residual_evaluations_including_jacobian": 686,
+            "solver_starts": [
+              {
+                "nfev": 13,
+                "status": 2,
+                "cost": 0.025831669928774413
+              },
+              {
+                "nfev": 81,
+                "status": 2,
+                "cost": 0.0258316699312727
+              }
+            ],
+            "reflection_coefficients": [
+              -0.9949999999169731,
+              -0.13843217570055014,
+              0.24671647113201622,
+              0.4228850918563924
+            ],
+            "max_pole_modulus": 0.9834433454726175,
+            "train_simulation_rmse": 0.49168911472034565,
+            "input_center": {
+              "u": 2.7806447157723535
+            },
+            "input_scale": {
+              "u": 1.030597548518473
+            },
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "initialization_policy": "fixed_measured_history_before_start",
+            "forecast_updates": false
+          },
+          "validation": [
+            {
+              "rmse": 0.8376481999458869,
+              "fit": 63.54122067684964,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.6597464091540083,
+              "fit": 71.11939795983102,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.28245317832263805,
+          "elapsed_seconds": 0.053127167047932744
+        }
+      ]
+    },
+    "multihorizon24": {
+      "winner": {
+        "configuration": {
+          "na": 3,
+          "nb": 1,
+          "ridge_alpha": 0.0
+        },
+        "status": "succeeded",
+        "theta": [
+          -0.9067131449609165,
+          -0.9300257755517056,
+          0.8406771244852123,
+          0.018521236128557366
+        ],
+        "intercept": -0.030846269255693816,
+        "diagnostics": {
+          "model_type": "OE",
+          "estimation_loss": "balanced_multihorizon_simulation_mse",
+          "horizons": [
+            1,
+            16,
+            64,
+            0
+          ],
+          "ridge_alpha": 0.0,
+          "training_rows": 564,
+          "lineage": [
+            {
+              "name": "tanks_est_train",
+              "start": 50,
+              "stop": 614,
+              "history_start": 47
+            }
+          ],
+          "output_center": 5.614197275344722,
+          "output_scale": 2.18584031626993,
+          "input_center": {
+            "u": 2.7820381548343724
+          },
+          "input_scale": {
+            "u": 1.030252282796346
+          },
+          "effective_parameters": 5,
+          "max_pole_modulus": 0.9820398693572163,
+          "forecast_updates": false,
+          "residual_evaluations_including_jacobian": 454,
+          "solver_starts": [
+            {
+              "status": 2,
+              "nfev": 42,
+              "cost": 0.014762293710182261
+            },
+            {
+              "status": 2,
+              "nfev": 42,
+              "cost": 0.014762293710182261
+            }
+          ],
+          "objective": 0.029524587420364522
+        },
+        "validation": [
+          {
+            "rmse": 0.8333997914726633,
+            "fit": 63.72613337290731,
+            "n_samples": 359
+          },
+          {
+            "rmse": 0.5857688580332061,
+            "fit": 74.35778802028743,
+            "n_samples": 185
+          }
+        ],
+        "validation_risk": 0.2664400624612444,
+        "elapsed_seconds": 0.24995500000659376
+      },
+      "candidates": [
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 1,
+            "ridge_alpha": 0.0
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9877821690895786,
+            0.06565574498518027
+          ],
+          "intercept": -0.12020075208163691,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.0,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 49
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.7820381548343724
+            },
+            "input_scale": {
+              "u": 1.030252282796346
+            },
+            "effective_parameters": 3,
+            "max_pole_modulus": 0.9877821690895786,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 84,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 6,
+                "cost": 0.024833144029506385
+              },
+              {
+                "status": 2,
+                "nfev": 15,
+                "cost": 0.024833144028856717
+              }
+            ],
+            "objective": 0.049666288057713434
+          },
+          "validation": [
+            {
+              "rmse": 1.2126134166545581,
+              "fit": 47.220796314066014,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.427844298468969,
+              "fit": 37.49567653989253,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.5064850640065824,
+          "elapsed_seconds": 0.037050082988571376
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 1,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9877802998989567,
+            0.06565879503724667
+          ],
+          "intercept": -0.12019849691037673,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.001,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 49
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.7820381548343724
+            },
+            "input_scale": {
+              "u": 1.030252282796346
+            },
+            "effective_parameters": 3,
+            "max_pole_modulus": 0.9877802998989567,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 80,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 5,
+                "cost": 0.02532147877931682
+              },
+              {
+                "status": 2,
+                "nfev": 15,
+                "cost": 0.025321478780536706
+              }
+            ],
+            "objective": 0.05064295755863364
+          },
+          "validation": [
+            {
+              "rmse": 1.2125411902348437,
+              "fit": 47.2239399811781,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.4278795899411676,
+              "fit": 37.49413164483917,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.5064797379229514,
+          "elapsed_seconds": 0.034906958986539394
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 2,
+            "ridge_alpha": 0.0
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9853556032720869,
+            -0.36749673069770683,
+            0.44010941135577286
+          ],
+          "intercept": -0.12589452557916442,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.0,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 48
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.782306482243032
+            },
+            "input_scale": {
+              "u": 1.0293598762946101
+            },
+            "effective_parameters": 4,
+            "max_pole_modulus": 0.9853556032720869,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 85,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 5,
+                "cost": 0.015103971349073417
+              },
+              {
+                "status": 2,
+                "nfev": 12,
+                "cost": 0.015103971349139371
+              }
+            ],
+            "objective": 0.030207942698146834
+          },
+          "validation": [
+            {
+              "rmse": 0.9377181877730205,
+              "fit": 59.185657561814594,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.9690059498255186,
+              "fit": 57.58146641926787,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.36376721973327775,
+          "elapsed_seconds": 0.03809466602979228
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 2,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9853641224827273,
+            -0.3657560391282922,
+            0.43834475964848246
+          ],
+          "intercept": -0.12587589740234792,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.001,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 48
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.782306482243032
+            },
+            "input_scale": {
+              "u": 1.0293598762946101
+            },
+            "effective_parameters": 4,
+            "max_pole_modulus": 0.9853641224827273,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 90,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 5,
+                "cost": 0.015625734443170232
+              },
+              {
+                "status": 2,
+                "nfev": 13,
+                "cost": 0.015625734442885224
+              }
+            ],
+            "objective": 0.03125146888577045
+          },
+          "validation": [
+            {
+              "rmse": 0.9384854786776878,
+              "fit": 59.1522610956469,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.970461143676467,
+              "fit": 57.51776486073352,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.3642015934332512,
+          "elapsed_seconds": 0.038678792014252394
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 3,
+            "ridge_alpha": 0.0
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9841673767441332,
+            1.2604967140605732,
+            -2.842965223061523,
+            1.6597159354628257
+          ],
+          "intercept": -0.1319283792471973,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.0,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 47
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.7825754226233044
+            },
+            "input_scale": {
+              "u": 1.028470013271712
+            },
+            "effective_parameters": 5,
+            "max_pole_modulus": 0.9841673767441332,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 102,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 5,
+                "cost": 0.014342413682708936
+              },
+              {
+                "status": 2,
+                "nfev": 12,
+                "cost": 0.014342413682463036
+              }
+            ],
+            "objective": 0.02868482736492607
+          },
+          "validation": [
+            {
+              "rmse": 0.8549113514644356,
+              "fit": 62.7898390924595,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.8662234884247766,
+              "fit": 62.08080028942905,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.3280908755931945,
+          "elapsed_seconds": 0.04373304103501141
+        },
+        {
+          "configuration": {
+            "na": 1,
+            "nb": 3,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9848864591613007,
+            0.2607156410915764,
+            -0.8291887037614136,
+            0.6428974141287228
+          ],
+          "intercept": -0.12822860597715002,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.001,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 47
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.7825754226233044
+            },
+            "input_scale": {
+              "u": 1.028470013271712
+            },
+            "effective_parameters": 5,
+            "max_pole_modulus": 0.9848864591613007,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 108,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 5,
+                "cost": 0.015240920951560065
+              },
+              {
+                "status": 2,
+                "nfev": 13,
+                "cost": 0.015240920951505286
+              }
+            ],
+            "objective": 0.03048184190301057
+          },
+          "validation": [
+            {
+              "rmse": 0.9024606681020981,
+              "fit": 60.72024705803369,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.9249621062761874,
+              "fit": 59.509499221293716,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.34851890804221614,
+          "elapsed_seconds": 0.04855366703122854
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 1,
+            "ridge_alpha": 0.0
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.4486518003672733,
+            0.45593145765555126,
+            0.03697417283338129
+          ],
+          "intercept": -0.06527923239482764,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.0,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 48
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.7820381548343724
+            },
+            "input_scale": {
+              "u": 1.030252282796346
+            },
+            "effective_parameters": 4,
+            "max_pole_modulus": 0.9864643216736659,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 400,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 44,
+                "cost": 0.021944788143931367
+              },
+              {
+                "status": 2,
+                "nfev": 44,
+                "cost": 0.021944788143931367
+              }
+            ],
+            "objective": 0.04388957628786273
+          },
+          "validation": [
+            {
+              "rmse": 1.1384616862706156,
+              "fit": 50.44826289809563,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.298134739234493,
+              "fit": 43.173752402192754,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.46676137166331777,
+          "elapsed_seconds": 0.1968662080471404
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 1,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.4444405467548886,
+            0.4516990419647125,
+            0.03712982858390719
+          ],
+          "intercept": -0.06586496798863622,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.001,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 48
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.7820381548343724
+            },
+            "input_scale": {
+              "u": 1.030252282796346
+            },
+            "effective_parameters": 4,
+            "max_pole_modulus": 0.9866121819387275,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 254,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 12,
+                "cost": 0.023094175145992244
+              },
+              {
+                "status": 2,
+                "nfev": 46,
+                "cost": 0.02309417514599149
+              }
+            ],
+            "objective": 0.04618835029198298
+          },
+          "validation": [
+            {
+              "rmse": 1.1433253118172768,
+              "fit": 50.236572775049204,
+              "n_samples": 359
+            },
+            {
+              "rmse": 1.2973139332526127,
+              "fit": 43.209683436581074,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.4674411625885557,
+          "elapsed_seconds": 0.1388649579603225
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 2,
+            "ridge_alpha": 0.0
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.4952619892493169,
+            0.5027758685922783,
+            -0.15560456157686625,
+            0.19213588343127594
+          ],
+          "intercept": -0.062452298867801445,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.0,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 48
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.782306482243032
+            },
+            "input_scale": {
+              "u": 1.0293598762946101
+            },
+            "effective_parameters": 5,
+            "max_pole_modulus": 0.9846462589668052,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 554,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 52,
+                "cost": 0.014201080547940673
+              },
+              {
+                "status": 2,
+                "nfev": 52,
+                "cost": 0.014201080547940673
+              }
+            ],
+            "objective": 0.028402161095881347
+          },
+          "validation": [
+            {
+              "rmse": 0.9050353735773194,
+              "fit": 60.60818256753604,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.8668083631810923,
+              "fit": 62.0551972170271,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.33696370168268586,
+          "elapsed_seconds": 0.27915533300256357
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 2,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.49161048630072,
+            0.4991060163826333,
+            -0.1554061261502939,
+            0.1920814206261896
+          ],
+          "intercept": -0.06298558647194273,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.001,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 48
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.782306482243032
+            },
+            "input_scale": {
+              "u": 1.0293598762946101
+            },
+            "effective_parameters": 5,
+            "max_pole_modulus": 0.9848019885841302,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 366,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 16,
+                "cost": 0.01544851185326126
+              },
+              {
+                "status": 2,
+                "nfev": 50,
+                "cost": 0.015448511853289684
+              }
+            ],
+            "objective": 0.03089702370652252
+          },
+          "validation": [
+            {
+              "rmse": 0.9108868120817024,
+              "fit": 60.35349771873191,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.8675034146892051,
+              "fit": 62.024771123417956,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.3381288942671449,
+          "elapsed_seconds": 0.18211433303076774
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 3,
+            "ridge_alpha": 0.0
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.5223513606649082,
+            0.5300013675024206,
+            0.5989807393011961,
+            -1.3196879672928645,
+            0.7573519784430638
+          ],
+          "intercept": -0.06174692545854515,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.0,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 47
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.7825754226233044
+            },
+            "input_scale": {
+              "u": 1.028470013271712
+            },
+            "effective_parameters": 6,
+            "max_pole_modulus": 0.9834076510908348,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 556,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 44,
+                "cost": 0.013529312938551752
+              },
+              {
+                "status": 2,
+                "nfev": 44,
+                "cost": 0.013529312938551752
+              }
+            ],
+            "objective": 0.027058625877103504
+          },
+          "validation": [
+            {
+              "rmse": 0.8286589132839672,
+              "fit": 63.93248089647483,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.7655294823964178,
+              "fit": 66.48871138312408,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.30272054362877077,
+          "elapsed_seconds": 0.27337025001179427
+        },
+        {
+          "configuration": {
+            "na": 2,
+            "nb": 3,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.5104930646003365,
+            0.5180834820103891,
+            0.34628484872940635,
+            -0.8138738437517364,
+            0.5043062820672747
+          ],
+          "intercept": -0.06239275194689199,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.001,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 47
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.7825754226233044
+            },
+            "input_scale": {
+              "u": 1.028470013271712
+            },
+            "effective_parameters": 6,
+            "max_pole_modulus": 0.9839687274213238,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 436,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 15,
+                "cost": 0.015002001425872132
+              },
+              {
+                "status": 2,
+                "nfev": 55,
+                "cost": 0.015002001425828101
+              }
+            ],
+            "objective": 0.030004002851656202
+          },
+          "validation": [
+            {
+              "rmse": 0.856990903724909,
+              "fit": 62.699326229230714,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.7973311485098525,
+              "fit": 65.09658366481764,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.31423242508053245,
+          "elapsed_seconds": 0.21463262499310076
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 1,
+            "ridge_alpha": 0.0
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9067131449609165,
+            -0.9300257755517056,
+            0.8406771244852123,
+            0.018521236128557366
+          ],
+          "intercept": -0.030846269255693816,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.0,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 47
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.7820381548343724
+            },
+            "input_scale": {
+              "u": 1.030252282796346
+            },
+            "effective_parameters": 5,
+            "max_pole_modulus": 0.9820398693572163,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 454,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 42,
+                "cost": 0.014762293710182261
+              },
+              {
+                "status": 2,
+                "nfev": 42,
+                "cost": 0.014762293710182261
+              }
+            ],
+            "objective": 0.029524587420364522
+          },
+          "validation": [
+            {
+              "rmse": 0.8333997914726633,
+              "fit": 63.72613337290731,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.5857688580332061,
+              "fit": 74.35778802028743,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.2664400624612444,
+          "elapsed_seconds": 0.24995500000659376
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 1,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9058256781869559,
+            -0.9277425986569067,
+            0.8375523260791038,
+            0.018774668868445
+          ],
+          "intercept": -0.031319651716601296,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.001,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 47
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.7820381548343724
+            },
+            "input_scale": {
+              "u": 1.030252282796346
+            },
+            "effective_parameters": 5,
+            "max_pole_modulus": 0.9821832054329801,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 262,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 12,
+                "cost": 0.01595650722899635
+              },
+              {
+                "status": 2,
+                "nfev": 35,
+                "cost": 0.015956507228995647
+              }
+            ],
+            "objective": 0.031913014457991294
+          },
+          "validation": [
+            {
+              "rmse": 0.839758075097019,
+              "fit": 63.44938800468547,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.5913912415068533,
+              "fit": 74.11166645393006,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.2687109117996503,
+          "elapsed_seconds": 0.14429758297046646
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 2,
+            "ridge_alpha": 0.0
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9098791938816297,
+            -0.7789911943417447,
+            0.69494098701774,
+            -0.07392503402974475,
+            0.10294609304800145
+          ],
+          "intercept": -0.04895446272744925,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.0,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 47
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.782306482243032
+            },
+            "input_scale": {
+              "u": 1.0293598762946101
+            },
+            "effective_parameters": 6,
+            "max_pole_modulus": 0.9834564264934801,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 710,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 61,
+                "cost": 0.01355135621851598
+              },
+              {
+                "status": 2,
+                "nfev": 61,
+                "cost": 0.01355135621851598
+              }
+            ],
+            "objective": 0.02710271243703196
+          },
+          "validation": [
+            {
+              "rmse": 0.8440112374214228,
+              "fit": 63.264268396452586,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.6430967816853123,
+              "fit": 71.84824052474482,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.280127210083287,
+          "elapsed_seconds": 0.41372483398299664
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 2,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9421824233552089,
+            -0.6517499548213103,
+            0.6008640512917555,
+            -0.10430728720115234,
+            0.1376798896130393
+          ],
+          "intercept": -0.056608804183699395,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.001,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 47
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.782306482243032
+            },
+            "input_scale": {
+              "u": 1.0293598762946101
+            },
+            "effective_parameters": 6,
+            "max_pole_modulus": 0.9839191872642903,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 415,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 17,
+                "cost": 0.014457916011535978
+              },
+              {
+                "status": 2,
+                "nfev": 50,
+                "cost": 0.01445791601074786
+              }
+            ],
+            "objective": 0.02891583202149572
+          },
+          "validation": [
+            {
+              "rmse": 0.8642389753399667,
+              "fit": 62.38385268849027,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.7092768356150565,
+              "fit": 68.95118830282709,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.2973208055013632,
+          "elapsed_seconds": 0.22818154195556417
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 3,
+            "ridge_alpha": 0.0
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9449879905761305,
+            -0.6697334509717077,
+            0.6217436859186753,
+            0.4960226763970627,
+            -1.0639019561731575,
+            0.6011873120337236
+          ],
+          "intercept": -0.055696393269886735,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.0,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 47
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.7825754226233044
+            },
+            "input_scale": {
+              "u": 1.028470013271712
+            },
+            "effective_parameters": 7,
+            "max_pole_modulus": 0.9826592317922381,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 758,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 57,
+                "cost": 0.01316785558204345
+              },
+              {
+                "status": 2,
+                "nfev": 57,
+                "cost": 0.01316785558204345
+              }
+            ],
+            "objective": 0.0263357111640869
+          },
+          "validation": [
+            {
+              "rmse": 0.799350797656014,
+              "fit": 65.20812157728324,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.6272064713107518,
+              "fit": 72.54384375024918,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.2690488468019444,
+          "elapsed_seconds": 0.4177767079672776
+        },
+        {
+          "configuration": {
+            "na": 3,
+            "nb": 3,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.9823019806081311,
+            -0.5529508855291708,
+            0.5427500339819461,
+            0.32560323266711033,
+            -0.739526485807031,
+            0.44976542971091965
+          ],
+          "intercept": -0.06035982658903127,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.001,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 47
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.7825754226233044
+            },
+            "input_scale": {
+              "u": 1.028470013271712
+            },
+            "effective_parameters": 7,
+            "max_pole_modulus": 0.9833038660341149,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 449,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 15,
+                "cost": 0.014129453343138847
+              },
+              {
+                "status": 2,
+                "nfev": 49,
+                "cost": 0.014129453343781299
+              }
+            ],
+            "objective": 0.028258906686277695
+          },
+          "validation": [
+            {
+              "rmse": 0.827366360376296,
+              "fit": 63.988739480003474,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.6842554868470918,
+              "fit": 70.04650554328391,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.2857173288561766,
+          "elapsed_seconds": 0.24763170903315768
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 1,
+            "ridge_alpha": 0.0
+          },
+          "status": "succeeded",
+          "theta": [
+            -2.1055094396260143,
+            2.2500453139486236,
+            -1.966662352729477,
+            0.8254844426504201,
+            0.01568827854336765
+          ],
+          "intercept": -0.026026664658748703,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.0,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 46
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.7820381548343724
+            },
+            "input_scale": {
+              "u": 1.030252282796346
+            },
+            "effective_parameters": 6,
+            "max_pole_modulus": 0.9815326920113311,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 766,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 59,
+                "cost": 0.014617044838447547
+              },
+              {
+                "status": 2,
+                "nfev": 59,
+                "cost": 0.014617044838447547
+              }
+            ],
+            "objective": 0.029234089676895093
+          },
+          "validation": [
+            {
+              "rmse": 0.8481178573001869,
+              "fit": 63.08552707290699,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.5951386689094872,
+              "fit": 73.94762166643562,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.27094418991894753,
+          "elapsed_seconds": 0.4642042079940438
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 1,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.6884552829278383,
+            -0.5275610400427264,
+            -0.4850367125964907,
+            0.7069901715931461,
+            0.02807204006778285
+          ],
+          "intercept": -0.04696627854891023,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.001,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 46
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.7820381548343724
+            },
+            "input_scale": {
+              "u": 1.030252282796346
+            },
+            "effective_parameters": 6,
+            "max_pole_modulus": 0.9822853417696655,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 356,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 17,
+                "cost": 0.015962004428013214
+              },
+              {
+                "status": 2,
+                "nfev": 39,
+                "cost": 0.015962004432671203
+              }
+            ],
+            "objective": 0.03192400885602643
+          },
+          "validation": [
+            {
+              "rmse": 0.8546338982909536,
+              "fit": 62.801915288677854,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.6083018966807843,
+              "fit": 73.37139732091109,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.2747992538834887,
+          "elapsed_seconds": 0.21579124999698251
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 2,
+            "ridge_alpha": 0.0
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.8767009891494377,
+            1.7618162752840503,
+            -1.546110380731974,
+            0.6662424761402637,
+            -0.06148081207190855,
+            0.08645240959458196
+          ],
+          "intercept": -0.042001797695981995,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.0,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 46
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.782306482243032
+            },
+            "input_scale": {
+              "u": 1.0293598762946101
+            },
+            "effective_parameters": 7,
+            "max_pole_modulus": 0.9831913333784814,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 952,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 70,
+                "cost": 0.013486753218458675
+              },
+              {
+                "status": 2,
+                "nfev": 70,
+                "cost": 0.013486753218458675
+              }
+            ],
+            "objective": 0.02697350643691735
+          },
+          "validation": [
+            {
+              "rmse": 0.8475309443216064,
+              "fit": 63.11107255938846,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.6571326223918895,
+              "fit": 71.23381727950783,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.28363922301673644,
+          "elapsed_seconds": 0.5774635830312036
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 2,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.8503228950728527,
+            -0.42784798017436776,
+            -0.06038920340928722,
+            0.3464709028481976,
+            -0.11045350858138932,
+            0.14842005773064199
+          ],
+          "intercept": -0.06424444486716685,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.001,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 46
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.782306482243032
+            },
+            "input_scale": {
+              "u": 1.0293598762946101
+            },
+            "effective_parameters": 7,
+            "max_pole_modulus": 0.9836704020681698,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 377,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 8,
+                "cost": 0.01416127637801824
+              },
+              {
+                "status": 2,
+                "nfev": 47,
+                "cost": 0.014161276377284463
+              }
+            ],
+            "objective": 0.028322552754568926
+          },
+          "validation": [
+            {
+              "rmse": 0.8545211532605737,
+              "fit": 62.80682253515993,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.68131674701526,
+              "fit": 70.17514978356338,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.289852142581993,
+          "elapsed_seconds": 0.30809408298227936
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 3,
+            "ridge_alpha": 0.0
+          },
+          "status": "succeeded",
+          "theta": [
+            -1.7734650272842516,
+            1.5134228400709593,
+            -1.3157412508942667,
+            0.5819787774117647,
+            0.43259893558099305,
+            -0.9261454522092899,
+            0.5228292068381035
+          ],
+          "intercept": -0.0488532246868641,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.0,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 46
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.7825754226233044
+            },
+            "input_scale": {
+              "u": 1.028470013271712
+            },
+            "effective_parameters": 8,
+            "max_pole_modulus": 0.9824439581899275,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 952,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 60,
+                "cost": 0.01311588195836223
+              },
+              {
+                "status": 2,
+                "nfev": 60,
+                "cost": 0.01311588195836223
+              }
+            ],
+            "objective": 0.02623176391672446
+          },
+          "validation": [
+            {
+              "rmse": 0.8018260117206856,
+              "fit": 65.10038746722695,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.6375768915277,
+              "fit": 72.08987541465936,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.27162182347210573,
+          "elapsed_seconds": 0.6225959160365164
+        },
+        {
+          "configuration": {
+            "na": 4,
+            "nb": 3,
+            "ridge_alpha": 0.001
+          },
+          "status": "succeeded",
+          "theta": [
+            -0.8947304949897682,
+            -0.384368974270182,
+            -0.01550718711798793,
+            0.30277506245954966,
+            0.3118104764867799,
+            -0.7078996303046957,
+            0.43503051731657527
+          ],
+          "intercept": -0.06544679628045316,
+          "diagnostics": {
+            "model_type": "OE",
+            "estimation_loss": "balanced_multihorizon_simulation_mse",
+            "horizons": [
+              1,
+              16,
+              64,
+              0
+            ],
+            "ridge_alpha": 0.001,
+            "training_rows": 564,
+            "lineage": [
+              {
+                "name": "tanks_est_train",
+                "start": 50,
+                "stop": 614,
+                "history_start": 46
+              }
+            ],
+            "output_center": 5.614197275344722,
+            "output_scale": 2.18584031626993,
+            "input_center": {
+              "u": 2.7825754226233044
+            },
+            "input_scale": {
+              "u": 1.028470013271712
+            },
+            "effective_parameters": 8,
+            "max_pole_modulus": 0.98308316050883,
+            "forecast_updates": false,
+            "residual_evaluations_including_jacobian": 403,
+            "solver_starts": [
+              {
+                "status": 2,
+                "nfev": 12,
+                "cost": 0.013890296196026823
+              },
+              {
+                "status": 2,
+                "nfev": 39,
+                "cost": 0.013890296196043053
+              }
+            ],
+            "objective": 0.027780592392053646
+          },
+          "validation": [
+            {
+              "rmse": 0.8208847969229996,
+              "fit": 64.27085062359335,
+              "n_samples": 359
+            },
+            {
+              "rmse": 0.6539316533304683,
+              "fit": 71.37394068499077,
+              "n_samples": 185
+            }
+          ],
+          "validation_risk": 0.27832579306134164,
+          "elapsed_seconds": 0.26821937499335036
+        }
+      ]
+    }
+  },
+  "selected_arm": "multihorizon24"
+}

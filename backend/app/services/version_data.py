@@ -9,7 +9,7 @@ closed loop never has to care which kind of data it is running on.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from statistics import median
@@ -66,6 +66,8 @@ class VersionSeries:
     declared_output: str | None
     sample_period_seconds: float | None
     available_columns: tuple[str, ...] = ()
+    monitored_inputs: tuple[str, ...] = ()
+    input_context_versions: dict[str, str] = field(default_factory=dict)
 
     @property
     def n_samples(self) -> int:
@@ -121,6 +123,48 @@ class VersionSeries:
                 details={"available_columns": self.numeric_columns()},
             )
         return candidates, resolved_output
+
+
+def model_input_arrays(series: VersionSeries, input_columns: list[str]) -> dict[str, FloatArray]:
+    """Model features keep their roles; removed controls are context monitors only."""
+    return {c: series.values[c] for c in sorted(set(input_columns) | set(series.declared_inputs)
+                                               | set(series.monitored_inputs))}
+
+
+async def attach_model_input_context(
+    session: AsyncSession, series: VersionSeries, *, artifact_root: Path,
+) -> VersionSeries:
+    """Recover dropped controls through row-preserving feature-selection lineage.
+
+    Walk only that operation. Resampling, row deletion and lag changes cannot be
+    joined by row number. Ancestor values are never added to the model features.
+    """
+    values, sources = dict(series.values), dict(series.input_context_versions)
+    monitors = set(series.monitored_inputs)
+    version_id, visited = series.version_id, set()
+    while True:
+        if version_id in visited:
+            raise VersionDataError("MODEL_INPUT_CONTEXT_UNALIGNED", "控制量来源版本存在循环血缘")
+        visited.add(version_id)
+        version = await session.get(DatasetVersion, version_id)
+        if version is None or version.operation_name != "preprocessing.feature_selection":
+            break
+        if version.parent_version_id is None:
+            raise VersionDataError("MODEL_INPUT_CONTEXT_UNALIGNED", "被剔除控制量缺少来源版本")
+        parent = await load_version_series(session, version_id=version.parent_version_id,
+            dataset_id=series.dataset_id, artifact_root=artifact_root)
+        output = series.declared_output
+        if (parent.n_samples != series.n_samples or parent.timestamps != series.timestamps
+                or not output or output not in parent.values
+                or not np.array_equal(series.values[output], parent.values[output], equal_nan=True)):
+            raise VersionDataError("MODEL_INPUT_CONTEXT_UNALIGNED", "被剔除控制量的来源与当前建模数据无法逐行对齐")
+        for column in parent.declared_inputs:
+            if column not in values:
+                values[column] = parent.values[column]
+                sources[column] = str(parent.version_id)
+                monitors.add(column)
+        version_id = parent.version_id
+    return replace(series, values=values, monitored_inputs=tuple(sorted(monitors)), input_context_versions=sources)
 
 
 async def load_version_series(

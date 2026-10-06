@@ -165,11 +165,22 @@ class TestFullClosedLoop:
         assert abs(delays["u1"] - NK["u1"]) <= 3, delays
         assert abs(delays["u2"] - NK["u2"]) <= 3, delays
 
+        # Apply the confirmed delays to a new version; fit aligned inputs with nk=0.
+        aligned = client.post("/api/v1/preprocessing/delay/apply", json={
+            "version_id": clean_version, "dataset_id": dataset_id,
+            "lag_map": delays, "user_confirmed": True, "recommendation_source": "manual"})
+        assert aligned.status_code == 201, aligned.text
+        modeling_version = aligned.json()["data"]["result_version_id"]
+        aligned_selection = client.post("/api/v1/preprocessing/segment", json={
+            "version_id": modeling_version, "input_columns": ["u1", "u2"],
+            "output_column": "y", "window_size": 60, "max_segments": 6})
+        assert aligned_selection.status_code == 202, aligned_selection.text
+
         # 7. Collinearity
         collinearity = client.post(
             "/api/v1/preprocessing/collinearity",
             json={
-                "version_id": clean_version,
+                "version_id": modeling_version,
                 "dataset_id": dataset_id,
                 "input_columns": ["u1", "u2"],
             },
@@ -181,13 +192,13 @@ class TestFullClosedLoop:
         fitted = client.post(
             "/api/v1/modeling/arx/fit",
             json={
-                "version_id": clean_version,
+                "version_id": modeling_version,
                 "dataset_id": dataset_id,
                 "input_columns": ["u1", "u2"],
                 "output_column": "y",
                 "na": 2,
                 "nb": [2, 2],
-                "delays": [delays["u1"], delays["u2"]],
+                "delays": [0, 0],
                 "gain_sign": {"u1": "positive"},
             },
         )
@@ -201,7 +212,7 @@ class TestFullClosedLoop:
         study = client.post(
             "/api/v1/optimization/optuna/start",
             json={
-                "version_id": clean_version,
+                "version_id": modeling_version,
                 "input_columns": ["u1", "u2"],
                 "output_column": "y",
                 "max_trials": 8,
@@ -217,7 +228,7 @@ class TestFullClosedLoop:
         # 10. Provenance-bound report
         report = client.post(
             "/api/v1/reports/generate",
-            json={"dataset_id": dataset_id, "study_id": study_id},
+            json={"dataset_id": dataset_id, "version_id": modeling_version, "study_id": study_id},
         )
         assert report.status_code == 200, report.text
         report_data = report.json()["data"]
@@ -230,7 +241,7 @@ class TestFullClosedLoop:
         export = client.post(
             "/api/v1/delivery/export",
             json={
-                "version_id": clean_version,
+                "version_id": modeling_version,
                 "dataset_id": dataset_id,
                 "input_columns": ["u1", "u2"],
                 "output_column": "y",
@@ -268,7 +279,7 @@ class TestFullClosedLoop:
         chat = client.post(
             "/api/v1/copilot/chat",
             json={
-                "message": "提取 2 号塔高信噪比的动态数据，估计时滞并处理共线性，然后做 ARX 辨识",
+                "message": "清洗 2 号塔的异常和缺失数据，提取高信噪比的动态数据，估计时滞并处理共线性，然后做 ARX 辨识",
                 "dataset_id": dataset_id,
                 "active_version_id": version_id,
             },
@@ -278,13 +289,27 @@ class TestFullClosedLoop:
 
         assert data["compliance"]["passed"] is True
         assert data["executed"] is True
-        runs = {run["tool"]: run for run in data["step_runs"]}
-        for tool in ("detect_dynamic_segments", "estimate_delays", "fit_arx"):
-            assert runs[tool]["status"] == "completed", (tool, runs[tool])
-
-        # The agent reports the tools' numbers, not its own.
-        assert runs["fit_arx"]["result"]["val_free_run_fit"] is not None
-        assert runs["estimate_delays"]["result"]["delays"]
+        execution_id = data["execution_id"]
+        # Follow the public confirmation gates exactly as the UI does.
+        for _ in range(10):
+            snapshot = client.get(f"/api/v1/copilot/executions/{execution_id}")
+            assert snapshot.status_code == 200, snapshot.text
+            current = snapshot.json()["data"]
+            if current["workflow_status"] != "WAITING_CONFIRMATION":
+                break
+            step_id = current["pending_confirmation_step_id"]
+            confirmed = client.post("/api/v1/copilot/confirm", json={
+                "copilot_run_id": execution_id, "confirmation_id": step_id,
+                "execution_id": execution_id, "step_id": step_id, "approved": True})
+            assert confirmed.status_code == 200, confirmed.text
+        assert current["workflow_status"] == "SUCCEEDED", [(r["tool"], r["status"], r["error_code"], r["error_message"]) for r in current["step_runs"]]
+        runs = {run["tool"]: run for run in current["step_runs"]}
+        for tool in ("detect_dynamic_segments", "estimate_delays", "fit_arx", "evaluate_model"):
+            assert runs[tool]["status"] == "SUCCEEDED", (tool, runs[tool])
+        assert runs["fit_arx"]["result_payload"]["metrics"]["val_free_run_fit"] is not None
+        assert runs["fit_arx"]["result_payload"]["metrics"]["test_free_run_fit"] is None
+        assert runs["evaluate_model"]["result_payload"]["test"]["free_run"]["rmse"] is not None
+        assert runs["estimate_delays"]["result_payload"]["best_delays"]
 
         # And the whole run is citable by the report layer.
         report = client.post("/api/v1/reports/generate", json={"dataset_id": dataset_id})

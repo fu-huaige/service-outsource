@@ -1,0 +1,22 @@
+{
+  "recorded_at": "2026-10-03T14:03:56.330212+00:00",
+  "before_test_opened": true,
+  "changes": [
+    {
+      "path": "app/services/optimization_service.py",
+      "frozen_sha256": "d9f967589af22f9214e32b6261cb8d554e5cc202f43453ab7a91245f72cb1929",
+      "current_sha256": "8879359de894025040597f10e8acdc2e04db9bc8ef117db570009f844e67b676",
+      "scope": "Python type annotations only; no executed expressions changed",
+      "patch": "--- \n+++ \n@@ -765,9 +765,10 @@\n         }\n         cache_hit = False\n         selection_outcome = None\n-        last_error = None\n+        last_error: SegmentDomainError | ModelingDomainError | None = None\n         rejections: list[CandidateRejectionEvidence] = []\n-        policy_winners: dict[str, tuple[Any, ...]] = {}\n+        policy_winners: dict[str, tuple[float, ArxCoreResult, dict[str, Any], dict[str, Any],\n+            SegmentSelectionOutcome | FullTrainSelection]] = {}\n \n         def selected_data(source: VersionSeries, ratio: float, val_end: int | None = None) -> SegmentSelectionOutcome:\n             sp = _selection_params(sampled_params, input_columns, output_column, train_ratio=ratio)\n@@ -911,7 +912,7 @@\n         metrics.update(diagnose_validation_candidate(validation_feedback=metrics[\"validation_feedback\"],\n             selection_provenance=metrics[\"selection_provenance\"],\n             objective_components=metrics.get(\"objective_components\")).to_metrics())\n-        feedback = _feedback_actions(result, selection_outcome, sampled_params, payload.search_space) if selection_outcome is not None else {\n+        feedback: dict[str, Any] = _feedback_actions(result, selection_outcome, sampled_params, payload.search_space) if selection_outcome is not None else {\n             \"policy_version\": \"validation_actions_v2\", \"partition\": \"validation\", \"reasons\": [], \"parameters\": {}}\n         metrics[\"adaptive_feedback\"] = feedback\n         if payload.diagnose_feedback and feedback.get(\"parameters\") and trial.number % 3 == 0:\n"
+    },
+    {
+      "path": "app/services/report_service.py",
+      "frozen_sha256": "621b3d1d37a12314beb637de5a3ebd155ae586f36a8df42de523ff38a6f79ee0",
+      "current_sha256": "e49ad6c80583d202993d4b950ea866d701fca89eeaeb6888d096c92652420d48",
+      "scope": "Report narration only: boolean type clarification and filtering inactive selection parameters for full Train; no numerical computation",
+      "patch": "--- \n+++ \n@@ -398,10 +398,15 @@\n     def active_parameter(path: str) -> bool:\n         short, field = path.split(\".\", 1)\n         parent = field.rsplit(\".\", 1)[0] + \".\" if \".\" in field else \"\"\n+        if field.rsplit(\".\", 1)[-1] in {\"window_size\", \"max_segments\", \"max_anomaly_ratio\",\n+            \"max_missing_ratio\", \"min_input_activity_ratio\", \"selection_mode\",\n+            \"adaptive_windows\", \"temporal_coverage_bins\"} and resolve_path(\n+                index.records[short], parent + \"training_policy\") == \"full_train\":\n+            return False\n         if field.endswith(\"initialization_window\"):\n-            return resolve_path(index.records[short], parent + \"initialization_policy\") == \"past_residual\"\n+            return bool(resolve_path(index.records[short], parent + \"initialization_policy\") == \"past_residual\")\n         if field.endswith(\"kernel_decay\"):\n-            return resolve_path(index.records[short], parent + \"regularization_kernel\") == \"tc\"\n+            return bool(resolve_path(index.records[short], parent + \"regularization_kernel\") == \"tc\")\n         return True\n \n     relevant = [path for path in paths if active_parameter(path) and not any(token in path for token in\n",
+      "previous_report_sha256": "7030b4df34c8c901ce8b50f9266d4f35bba6fb972d98cfdcf37a3da1813ad090",
+      "additional_report_patch": "Exclude window_size, max_segments, gating thresholds, selection_mode, adaptive_windows, temporal_coverage_bins from narration evidence when sibling training_policy is full_train."
+    }
+  ]
+}

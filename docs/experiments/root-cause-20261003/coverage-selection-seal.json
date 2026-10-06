@@ -1,0 +1,23 @@
+{
+  "sealed_at": "2026-10-03T17:26:48.754223+00:00",
+  "before_any_coverage_target_scoring": true,
+  "rule": "minimum macro source Validation risk; within 1e-10 tie prefer earlier arm (single filtered, single full, multiple full)",
+  "choices": {
+    "distillation_b": {
+      "selected_arm": "single_filtered",
+      "validation_risks": {
+        "single_filtered": 0.984958209328277,
+        "single_full_controls": 0.9849582093282675,
+        "multiple_full_controls": 1.0296030553401443
+      }
+    },
+    "distillation_c": {
+      "selected_arm": "multiple_full_controls",
+      "validation_risks": {
+        "single_filtered": 1.2332045271118937,
+        "single_full_controls": 1.2332045271119312,
+        "multiple_full_controls": 0.8048037958031742
+      }
+    }
+  }
+}

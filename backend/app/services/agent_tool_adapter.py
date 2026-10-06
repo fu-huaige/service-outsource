@@ -756,7 +756,7 @@ def _model_producing_predecessor(
     return model_id, predecessor.source_version_id
 
 _OPTIMIZATION_PARAMETER_NAMES = frozenset(
-    {"max_trials", "timeout_seconds", "random_seed", "search_space"}
+    {"max_trials", "timeout_seconds", "random_seed", "search_space", "optimization_policy", "diagnose_feedback"}
 )
 
 

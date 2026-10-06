@@ -189,7 +189,7 @@ class TestObjective:
         assert breakdown["val_free_run_fit"] > 80
         assert breakdown["objective_semantics"] == {
             "name": "composite_identification_score",
-            "version": "v1",
+            "version": "v4",
             "direction": "maximize",
         }
         components = breakdown["objective_components"]
@@ -384,10 +384,10 @@ class TestValidationDiagnosisPolicy:
         )
 
         trial = outcome.trials[0]
-        assert trial.state == "failed"
-        assert trial.error_code == "SEGMENT_FAILURE"
+        assert trial.state == "complete"
+        assert trial.params["training_policy"] == "full_train"
+        assert trial.metrics["selection_failure"]["code"] == "SEGMENT_FAILURE"
         assert trial.metrics["diagnosis_codes"] == []
-        assert "rejection_provenance" not in trial.metrics
 
     def test_insufficient_excitation_is_diagnostic_only(
         self, monkeypatch: pytest.MonkeyPatch
@@ -803,6 +803,8 @@ class TestFormalEvaluation:
             declared_output="y",
             sample_period_seconds=1.0,
         )
+        # Make rank deficiency explicit; adaptive windows can cover S6 transitions.
+        series.values["u2"][:] = series.values["u1"]
         payload = OptimizationStartRequest(
             version_id=series.version_id,
             input_columns=["u1", "u2"],
@@ -877,7 +879,7 @@ class TestFormalEvaluation:
 
             semantics = trial.metrics["objective_semantics"]
             assert semantics["name"] == "composite_identification_score"
-            assert semantics["version"] == "v1"
+            assert semantics["version"] == "v4"
             assert semantics["direction"] == "maximize"
             components = trial.metrics["objective_components"]
             assert components["final_score"] == pytest.approx(trial.value)
@@ -886,9 +888,11 @@ class TestFormalEvaluation:
                 + components["normalized_error_component"]
                 + components["residual_whiteness_component"]
                 + components["complexity_component"]
+                + components["rolling_adjustment_component"]
+                + components["temporal_variability_component"]
             )
         assert all(
-            trial.params.get("estimator") == "ridge" or "ridge_alpha" not in trial.params
+            trial.params.get("estimator") in {"ridge", "huber"} or "ridge_alpha" not in trial.params
             for trial in completed
         )
         assert changed.best_number == outcome.best_number
@@ -1229,7 +1233,7 @@ class TestAgentSafeOptimizationEntry:
         assert len(result.processing_run_ids) == 2
         assert result.objective_semantics == {
             "name": "composite_identification_score",
-            "version": "v1",
+            "version": "v4",
             "direction": "maximize",
         }
         assert result.best_validation_feedback["partition"] == "validation"
@@ -1338,6 +1342,45 @@ class TestAgentSafeOptimizationEntry:
         assert snapshot["final_test_run_count"] == 0
 
 class TestOptimizationApi:
+    def test_full_train_fallback_persists_and_exports_without_selection(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        import csv
+
+        from app.services import modeling_service, optimization_service
+        from app.services.segment_service import SegmentDomainError
+
+        def reject_selection(*args: object, **kwargs: object) -> None:
+            raise SegmentDomainError("NO_DYNAMIC_SEGMENT_FOUND", "All windows rejected")
+
+        monkeypatch.setattr(optimization_service, "run_segment_selection", reject_selection)
+        monkeypatch.setattr(optimization_service, "_structure_grid", lambda _: [
+            {"na": 2, "nb": 2, "estimator": "ridge", "ridge_alpha": .1},
+            {"na": 0, "nb": 8, "model_type": "FIR", "estimator": "ridge", "ridge_alpha": .1}])
+        version_id = generate(client, seed=71)
+        response = client.post("/api/v1/optimization/optuna/start", json={
+            "version_id": version_id, "input_columns": ["u1", "u2"],
+            "output_column": "y", "max_trials": 2})
+        assert response.status_code == 202, response.text
+        study_id = response.json()["data"]["study_id"]
+        status = client.get(f"/api/v1/optimization/optuna/{study_id}/status").json()["data"]
+        assert status["best_params"]["training_policy"] == "full_train"
+        assert status["statistics"]["baseline_status"] == "failed"
+        saved = modeling_service.load_saved_arx_model(
+            model_id=UUID(status["optimized_model_id"]), artifact_root=tmp_path)
+        indices = saved.payload.training_sample_indices
+        assert indices and max(indices) < 1200 - saved.payload.history_guard
+        assert saved.payload.sample_weights == {}
+        export = client.post("/api/v1/delivery/export", json={
+            "dataset_id": str(saved.dataset_id), "version_id": version_id,
+            "input_columns": ["u1", "u2"], "output_column": "y",
+            "mode": "optimization_best", "study_id": study_id})
+        assert export.status_code == 200, export.text
+        delivered = export.json()["data"]
+        with (tmp_path / delivered["csv_uri"]).open() as f:
+            rows = list(csv.DictReader(f))
+        assert len(rows) == len(indices) == delivered["exported_rows"]
+
     def test_legacy_study_without_convergence_returns_null(
         self, client: TestClient, tmp_path: Path
     ) -> None:
@@ -1575,7 +1618,7 @@ class TestOptimizationApi:
         assert data["best_trial_id"] == selected["trial_id"]
         assert data["objective_semantics"] == {
             "name": "composite_identification_score",
-            "version": "v1",
+            "version": "v4",
             "direction": "maximize",
         }
         assert data["best_validation_feedback"] == selected["validation_feedback"]
@@ -1707,7 +1750,9 @@ class TestOptimizationApi:
         assert snapshot["optimized_model_id"] is None
         assert snapshot["final_test_run_count"] == 0
 
-    def test_diagnostics_replay_fixed_winner_without_changing_study(self, client: TestClient) -> None:
+    def test_diagnostics_replay_fixed_winner_without_changing_study(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         version_id = generate(client, seed=73)
         started = client.post(
             "/api/v1/optimization/optuna/start",
@@ -1723,6 +1768,10 @@ class TestOptimizationApi:
         study_id = started.json()["data"]["study_id"]
         before = client.get(f"/api/v1/optimization/optuna/{study_id}/status").json()["data"]
 
+        from app.services import modeling_service
+        def fail_if_refitted(*args: object, **kwargs: object) -> None:
+            raise AssertionError("Diagnostics must replay the frozen model")
+        monkeypatch.setattr(modeling_service, "estimate_parameters", fail_if_refitted)
         response = client.get(f"/api/v1/optimization/optuna/{study_id}/diagnostics")
         assert response.status_code == 200, response.text
         diagnostics = response.json()["data"]

@@ -1,0 +1,38 @@
+{
+  "artifact_root": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261004/boiler-api-regression/api-artifacts",
+  "results": [
+    {
+      "dataset": "boiler",
+      "status": "succeeded",
+      "seed": 31,
+      "study_id": "757fe745-0e1f-46af-a8f4-c3a4d0c20e48",
+      "database": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261004/boiler-api-regression/api-artifacts/integration-eca8f26a-3b56-4c84-bf98-983a36b59bb1.db",
+      "api_trials": 1,
+      "optimization_policy": "validation_guarded",
+      "source_sha256": "397bd391572e8b3670d8f021f93bef7d37a4cf5f356e1f83a1b222228a4ab214",
+      "model_matches_offline_frozen_parameters": true,
+      "upload_sha256": "5815acfcfe0b56f392e946cf567e11adffdb488c10d0ada24582dcccb4269695",
+      "upload_adapter": "remove auxiliary source_time only; original source preserved",
+      "evaluation_did_not_refit": true,
+      "model_artifact_unchanged": true,
+      "test_rmse": 1.8505245576592864,
+      "test_fit": 50.553012427113366,
+      "cleaning_no_op": true,
+      "exported_rows": 3184,
+      "export_path": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261004/boiler-api-regression/api-artifacts/exports/0425b826-fead-4cc9-9906-cc5bfae5db52.csv",
+      "export_sha256": "81d146eb9e0094b712854b93de2f05441ac0a21edd0d906bfe43fdb8fb436141",
+      "model_path": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261004/boiler-api-regression/api-artifacts/models/62bc7018-8341-4a56-bbd3-a9e786e589ed.json",
+      "model_sha256": "d6ef77f5c7e0d380c4cf1975bcf77bed7586d724a9d2c0d68dcac4bf3365afc8",
+      "report_markdown_path": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261004/boiler-api-regression/api-artifacts/reports/705275a1-2ead-40e3-b2da-9d69c3c25e99.md",
+      "report_html_path": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261004/boiler-api-regression/api-artifacts/reports/705275a1-2ead-40e3-b2da-9d69c3c25e99.html",
+      "report_bindings": 27,
+      "report_charts": 1,
+      "narration_source": "llm",
+      "llm_provider": "deepseek",
+      "llm_model": "deepseek-flash",
+      "llm_fallback_reason": null,
+      "export_mode": "optimization_best",
+      "warm_start_trials": 0
+    }
+  ]
+}

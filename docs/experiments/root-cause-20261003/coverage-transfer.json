@@ -1,0 +1,109 @@
+{
+  "seal_sha256": "0486bf580d1ba92093a7c2f2b9ea636a7b69dd7e2d1be5960ae07d2c3e931cda",
+  "results": [
+    {
+      "case": "distillation_b",
+      "member": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_004/test_anormal_experiment_001.csv",
+      "rows": 886,
+      "role": "unseen_anomalous_stress_same_apparatus",
+      "time_audit": {
+        "first_break_row": null,
+        "original_rows": 886,
+        "retained_rows": 886
+      },
+      "arms": {
+        "single_filtered": {
+          "status": "scored_for_research",
+          "rmse": 0.2463306585495512,
+          "fit": -44.67642859943308,
+          "n_samples": 843,
+          "unsupported_constant_controls": [
+            "TH101_SetPoint",
+            "TV101"
+          ],
+          "future_output_invariance": true,
+          "coefficient_refit": false,
+          "model_recommendation": "unsupported_operating_point",
+          "persistence_rmse": 0.2560111750330579
+        },
+        "single_full_controls": {
+          "status": "scored_for_research",
+          "rmse": 0.24633065854951408,
+          "fit": -44.67642859941128,
+          "n_samples": 843,
+          "unsupported_constant_controls": [
+            "TH101_SetPoint",
+            "TV101"
+          ],
+          "future_output_invariance": true,
+          "coefficient_refit": false,
+          "model_recommendation": "unsupported_operating_point",
+          "persistence_rmse": 0.2560111750330579
+        },
+        "multiple_full_controls": {
+          "status": "scored_for_research",
+          "rmse": 5.413204843987028,
+          "fit": -3079.316568699286,
+          "n_samples": 843,
+          "unsupported_constant_controls": [
+            "TV101"
+          ],
+          "future_output_invariance": true,
+          "coefficient_refit": false,
+          "model_recommendation": "unsupported_operating_point",
+          "persistence_rmse": 0.2560111750330579
+        }
+      }
+    },
+    {
+      "case": "distillation_c",
+      "member": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_004/test_anormal_experiment_001.csv",
+      "rows": 225,
+      "role": "unseen_anomalous_stress_same_apparatus",
+      "time_audit": {
+        "first_break_row": null,
+        "original_rows": 225,
+        "retained_rows": 225
+      },
+      "arms": {
+        "single_filtered": {
+          "status": "scored_for_research",
+          "rmse": 1.5278373015177766,
+          "fit": -205.685805878255,
+          "n_samples": 182,
+          "unsupported_constant_controls": [
+            "TH101_SetPoint"
+          ],
+          "future_output_invariance": true,
+          "coefficient_refit": false,
+          "model_recommendation": "unsupported_operating_point",
+          "persistence_rmse": 0.6673784204212418
+        },
+        "single_full_controls": {
+          "status": "scored_for_research",
+          "rmse": 1.527837301517798,
+          "fit": -205.68580587825926,
+          "n_samples": 182,
+          "unsupported_constant_controls": [
+            "TH101_SetPoint"
+          ],
+          "future_output_invariance": true,
+          "coefficient_refit": false,
+          "model_recommendation": "unsupported_operating_point",
+          "persistence_rmse": 0.6673784204212418
+        },
+        "multiple_full_controls": {
+          "status": "scored_for_research",
+          "rmse": 1.091183695516476,
+          "fit": -118.32126169049775,
+          "n_samples": 182,
+          "unsupported_constant_controls": [],
+          "future_output_invariance": true,
+          "coefficient_refit": false,
+          "model_recommendation": "requires_independent_validation",
+          "persistence_rmse": 0.6673784204212418
+        }
+      }
+    }
+  ]
+}

@@ -99,8 +99,7 @@ class OpenAiCompatibleProvider:
         import urllib.request
 
         endpoint = self.base_url.rstrip("/") + "/chat/completions"
-        body = json.dumps(
-            {
+        parameters: dict[str, Any] = {
                 "model": self.model,
                 "messages": [
                     {"role": message.role, "content": message.content} for message in messages
@@ -108,7 +107,10 @@ class OpenAiCompatibleProvider:
                 "temperature": temperature,
                 "stream": False,
             }
-        ).encode("utf-8")
+        if self.name in {"volcengine", "ark", "deepseek"}:
+            parameters["thinking"] = {"type": "disabled"}
+            parameters["max_tokens"] = 4096
+        body = json.dumps(parameters).encode("utf-8")
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"

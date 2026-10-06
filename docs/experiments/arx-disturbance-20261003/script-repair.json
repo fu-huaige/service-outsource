@@ -1,0 +1,17 @@
+{
+  "before_sha256": "c8ce02b937dd3512a6d623cabd8c54b87f6cd744c6df3c90e3735ff760942e7f",
+  "after_sha256": "0187f89bfbc7af7958af6f71c333f2187aea443ba3762548541d1153f2f9bfc8",
+  "reason": "Frozen dataclass payload assignment failed before any Test or target scoring; replace immutable object and resume completed datasets.",
+  "changes": [
+    "Use dataclasses.replace for saved payload",
+    "Allow an explicit script repair hash chain",
+    "Resume completed dataset rows; reject rerunning frozen development"
+  ],
+  "numerical_source_changed": false,
+  "test_or_target_scored": false,
+  "completed_rows": {
+    "boiler": "1f938961035e14ec4d22eeacc5a518485bbc5165a87af9491191d40287fd1505",
+    "exchanger": "04b10d72503fa84c5312bcf808e777a268e35c6b9e2e59eb8ed5a7e25c0c1e8f"
+  },
+  "failed_log_sha256": "5455b70606549404ac498060050b2e9e70d909639f70cb8a0d27293a41fd1157"
+}

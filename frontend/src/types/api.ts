@@ -635,6 +635,9 @@ export interface GatedWindow {
 
 /** Information-theoretic outcome of the D-optimal stage. */
 export interface SelectionSummary {
+  model_count?: number;
+  criterion?: string;
+  retention_definition?: string;
   candidate_count: number;
   gated_count: number;
   selected_count: number;
@@ -667,7 +670,14 @@ export interface SegmentRequest {
   min_snr_db?: number;
   na?: number;
   nb?: number;
-  nk?: number;
+  nk?: number | Record<string, number>;
+  selection_mode?: "single" | "ensemble";
+  adaptive_windows?: boolean;
+  standardize?: boolean;
+  quality_weighting?: boolean;
+  max_rows?: number;
+  history_guard?: number;
+  sample_weights?: Record<string, number>;
   train_ratio?: number;
   max_missing_ratio?: number;
   max_anomaly_ratio?: number;
@@ -685,6 +695,7 @@ export interface SegmentResponse {
   selection: SelectionSummary | null;
   gated_windows: GatedWindow[];
   selected_indices: number[];
+  sample_weights?: Record<string, number>;
 }
 
 export interface DelayPeak {
@@ -804,12 +815,25 @@ export interface FeatureSelectionApplyRequest {
 
 // Modeling & Optimization API Types
 export interface ARXFitRequest {
+  initialization_policy?: "fixed" | "past_residual";
+  initialization_window?: number;
+  model_type?: "ARX" | "FIR" | "OE";
+  simulation_horizons?: number[];
+  simulation_max_nfev?: number;
+  regularization_kernel?: "identity" | "tc";
+  kernel_decay?: number;
   dataset_id: string;
   version_id: string;
   na: number;
   nb: number[];
   delays: number[];
-  estimation_method?: "ols" | "ridge";
+  estimation_method?: "ols" | "ridge" | "huber";
+  fit_intercept?: boolean;
+  standardize?: boolean;
+  huber_delta?: number;
+  history_guard?: number;
+  training_sample_indices?: number[];
+  sample_weights?: Record<string, number>;
   ridge_alpha?: number;
   /** The standalone modeling page is validation-only; Test belongs to saved-model evaluation. */
   evaluate_test?: false;
@@ -837,6 +861,12 @@ export interface ArxMetrics {
 }
 
 export interface ModelValidationData {
+  input_support?: Record<string, unknown>;
+  initialization?: Record<string, unknown>;
+  reference_baselines?: Record<string, number | null>;
+  simulation_status?: "succeeded" | "diverged";
+  simulation_error_code?: string | null;
+  input_residual_test?: Record<string, unknown>;
   one_step_fit: number | null;
   free_run_fit: number | null;
   free_run_rmse: number | null;
@@ -851,13 +881,22 @@ export interface ModelValidationData {
 }
 
 export interface ArxModelStructure {
-  model_type: "ARX";
+  initialization_policy?: "fixed" | "past_residual";
+  initialization_window?: number;
+  fit_intercept?: boolean;
+  standardize?: boolean;
+  history_guard?: number | null;
+  model_type: "ARX" | "FIR" | "OE";
+  simulation_horizons?: number[];
+  simulation_max_nfev?: number;
+  regularization_kernel?: "identity" | "tc";
+  kernel_decay?: number;
   input_columns: string[];
   output_column: string;
   na: number;
   nb: Record<string, number>;
   delays: Record<string, number>;
-  estimator: "ols" | "ridge";
+  estimator: "ols" | "ridge" | "huber";
   ridge_alpha: number | null;
   parameter_count: number;
 }
@@ -876,10 +915,12 @@ export interface SplitIndices {
 }
 
 export interface ARXFitResponse {
+  intercept?: number;
+  preprocessing?: Record<string, unknown>;
   model_id: string;
   processing_run_id: string;
   task: TaskResource;
-  estimator: "ols" | "ridge";
+  estimator: "ols" | "ridge" | "huber";
   model_structure: ArxModelStructure;
   dataset_id: string | null;
   version_id: string | null;
@@ -908,6 +949,7 @@ export interface ARXFitResponse {
 }
 
 export interface OptunaStartRequest {
+  optimization_policy?: "established" | "paired_coverage" | "disturbance_aware" | "validation_guarded";
   version_id: string;
   input_columns: string[];
   output_column: string;
@@ -923,6 +965,7 @@ export interface OptunaTrialItem {
   state: "queued" | "running" | "complete" | "pruned" | "failed";
   value: number | null;
   params: Record<string, any>;
+  metrics?: Record<string, any>;
   created_at: string;
   finished_at: string | null;
   error_code: string | null;
@@ -1202,6 +1245,7 @@ export interface ArxEvaluationSeries {
 }
 
 export interface ArxModelHealth {
+  input_support?: Record<string, unknown>;
   stable: boolean;
   max_pole_modulus: number | null;
 }

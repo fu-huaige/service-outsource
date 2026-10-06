@@ -216,20 +216,20 @@ def _selection_experiment(
             if strategy == "full":
                 positions = full_rows
             elif strategy == "energy":
-                positions = select_by_energy(regressor, grid, budget_windows=payload.budget_windows)
+                positions = select_by_energy(regressor, grid, budget_rows=payload.budget_windows * payload.window_size)
             elif strategy == "weighted":
                 positions = select_by_weighted_score(
                     regressor,
                     grid,
                     inputs=scenario.inputs,
                     output=scenario.output,
-                    budget_windows=payload.budget_windows,
+                    budget_rows=payload.budget_windows * payload.window_size,
                 )
             else:
                 positions = select_informative_windows(
                     regressor,
                     grid,
-                    budget_windows=payload.budget_windows,
+                    budget_rows=payload.budget_windows * payload.window_size,
                     ridge=1e-6,
                     inputs=scenario.inputs,
                 ).row_positions

@@ -1,0 +1,2 @@
+distillation_b previously_scored_normal_run_regression selected within_run_pressure {'pooled': 2.9393515525246032, 'within_run': 2.9393509054530567, 'pooled_pressure': 2.934748942083188, 'within_run_pressure': 2.934665298896864, 'previous_temporal_pooled': 2.7953984153658626}
+distillation_c previously_unscored_normal_independent_run selected pooled {'pooled': 2.7042982601643106, 'within_run': 2.3000983320631785, 'pooled_pressure': 1.9301385895540364, 'within_run_pressure': 2.0024479131784947, 'previous_temporal_pooled': 2.7042982601643106}

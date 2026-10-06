@@ -243,6 +243,10 @@ def _recommend_structure(
     valid_candidates = 0
 
     for candidate in _structure_grid({}):
+        # The explicit fit_arx confirmation contract exposes ARX orders only.
+        # FIR remains available to the general optimizer and standalone modeling UI.
+        if candidate.get("model_type", "ARX") != "ARX":
+            continue
         estimator = str(candidate["estimator"])
         payload = ArxFitRequest(
             version_id=version_id,

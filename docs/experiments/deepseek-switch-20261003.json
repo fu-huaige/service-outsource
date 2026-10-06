@@ -1,0 +1,31 @@
+{
+  "checked_at": "2026-10-03T15:56:32.235690+00:00",
+  "provider": "deepseek",
+  "base_url": "https://api.deepseek.com",
+  "model": "deepseek-flash",
+  "key_configured": true,
+  "private_config": "backend/.env",
+  "git_ignored": true,
+  "thinking": "disabled",
+  "max_tokens": 4096,
+  "connection_test_passed": true,
+  "planner_source": "llm",
+  "planner_provider": "deepseek",
+  "planner_model": "deepseek-flash",
+  "latency_ms": 2680.9372499701567,
+  "tools": [
+    "profile_dataset",
+    "detect_anomalies",
+    "clean_data",
+    "detect_dynamic_segments",
+    "estimate_delays",
+    "apply_lag_compensation",
+    "fit_arx",
+    "evaluate_model"
+  ],
+  "fallback_reason": null,
+  "backend_focused_tests_passed": 39,
+  "frontend_settings_tests_passed": 9,
+  "vue_typecheck": "passed",
+  "official_documentation": "https://api-docs.deepseek.com/"
+}

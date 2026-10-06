@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import Field
@@ -224,7 +224,15 @@ class SegmentRequest(Schema):
     # large enough that the regressor spans the directions we care about.
     na: int = Field(default=2, ge=1, le=20)
     nb: int = Field(default=2, ge=1, le=20)
-    nk: int = Field(default=0, ge=0, le=1_000)
+    nk: int | dict[str, int] = 0
+    selection_mode: Literal["single", "ensemble"] = "ensemble"
+    standardize: bool = True
+    quality_weighting: bool = True
+    adaptive_windows: bool = True
+    temporal_coverage_bins: int = Field(default=0, ge=0, le=10)
+    max_rows: int | None = Field(default=None, ge=5)
+    history_guard: int | None = Field(default=None, ge=0)
+    sample_weights: dict[int, Annotated[float, Field(ge=0, le=1)]] = Field(default_factory=dict)
     train_ratio: float = Field(default=0.7, gt=0, lt=1)
     ridge: float = Field(default=1e-6, gt=0)
     max_missing_ratio: float = Field(default=0.20, ge=0, le=1)
@@ -290,6 +298,9 @@ class SelectionSummary(Schema):
     required_excitation_order: dict[str, int] = Field(default_factory=dict)
     rejection_counts: dict[str, int] = Field(default_factory=dict)
     noise_sigma: float = 0.0
+    model_count: int = 1
+    criterion: str = "regularized_logdet"
+    retention_definition: str = "regularized_logdet_gain_ratio"
 
 
 class SegmentData(Schema):
@@ -304,6 +315,7 @@ class SegmentData(Schema):
     selection: SelectionSummary | None = None
     gated_windows: list[GatedWindow] = Field(default_factory=list)
     selected_indices: list[int] = Field(default_factory=list)
+    sample_weights: dict[int, float] = Field(default_factory=dict)
 
 
 class DelayRequest(Schema):

@@ -15,7 +15,7 @@ import numpy as np
 from algorithms.identifiability.delay import prewhitened_cross_correlation
 from algorithms.identifiability.excitation import profile_excitation
 from algorithms.identifiability.regressor import IdentifiabilityError, build_regressor
-from algorithms.identifiability.validation import residual_whiteness_ratio
+from algorithms.identifiability.validation import one_step_predict, residual_whiteness_ratio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.optimization import OptimizationStudy
@@ -31,7 +31,13 @@ from app.schemas.diagnostics import (
 from app.schemas.modeling import ArxFitRequest, PredictionMetrics
 from app.schemas.preprocessing import SegmentRequest
 from app.services.evaluation_policy import generalization_risk
-from app.services.modeling_service import ModelingDomainError, _partition_rows, fit_arx_core
+from app.services.modeling_service import (
+    ModelingDomainError,
+    _partition_rows,
+    fit_arx_core,
+    load_saved_arx_model,
+    replay_saved_arx_core,
+)
 from app.services.optimization_service import OptimizationDomainError
 from app.services.segment_service import SegmentDomainError, run_segment_selection
 from app.services.version_data import VersionDataError, load_version_series
@@ -77,39 +83,60 @@ async def get_generalization_diagnostics(
         inputs, output = series.resolve_columns(
             input_columns=list(input_columns), output_column=output_column
         )
-        selection = run_segment_selection(
-            series,
-            SegmentRequest(
-                version_id=series.version_id,
+        if study.optimized_model_id is not None:
+            saved = load_saved_arx_model(model_id=study.optimized_model_id, artifact_root=artifact_root)
+            if saved.source_version_id != series.version_id:
+                raise ModelingDomainError("MODEL_SOURCE_VERSION_MISMATCH", "保存模型与寻优数据版本不一致", status_code=409)
+            result = replay_saved_arx_core(saved=saved, inputs={c: series.values[c] for c in inputs}, output=series.values[output])
+            selected = list(saved.payload.training_sample_indices)
+            configured_guard = saved.payload.history_guard or 0
+        else:
+            selection = run_segment_selection(
+                series,
+                SegmentRequest(
+                    version_id=series.version_id,
+                    input_columns=inputs,
+                    output_column=output,
+                    window_size=int(best["window_size"]),
+                    max_segments=int(best["max_segments"]),
+                    max_anomaly_ratio=float(best["max_anomaly_ratio"]),
+                    max_missing_ratio=float(best["max_missing_ratio"]),
+                    min_input_activity_ratio=float(best["min_input_activity_ratio"]),
+                    train_ratio=train_ratio,
+                    nk=best.get("delays", best.get("nk", 0)),
+                    history_guard=int(best.get("history_guard", parameters.get("history_guard", 32))),
+                    selection_mode=best.get("selection_mode", "ensemble"),
+                    adaptive_windows=best.get("adaptive_windows", True),
+                ),
+            )
+            result = fit_arx_core(
+                inputs={column: series.values[column] for column in inputs},
+                output=series.values[output],
+                payload=ArxFitRequest(
+                    version_id=series.version_id,
+                    input_columns=inputs,
+                    output_column=output,
+                    na=int(best["na"]),
+                    nb={column: int(best["nb"]) for column in inputs},
+                    delays={column: int(best.get("delays", {}).get(column, best.get("nk", 0))) for column in inputs},
+                    model_type=best.get("model_type", "ARX"),
+                    regularization_kernel=best.get("regularization_kernel", "identity"),
+                    kernel_decay=best.get("kernel_decay", 0.9),
+                    initialization_policy=best.get("initialization_policy", "fixed"),
+                    initialization_window=best.get("initialization_window", 32),
+                    history_guard=int(best.get("history_guard", parameters.get("history_guard", 32))),
+                    sample_weights=selection.sample_weights,
+                    estimator=best["estimator"],
+                    ridge_alpha=best.get("ridge_alpha"),
+                    train_ratio=train_ratio,
+                    validation_ratio=validation_ratio,
+                    training_sample_indices=selection.selected_sample_indices,
+                    evaluate_test=True,
+                ),
                 input_columns=inputs,
-                output_column=output,
-                window_size=int(best["window_size"]),
-                max_segments=int(best["max_segments"]),
-                max_anomaly_ratio=float(best["max_anomaly_ratio"]),
-                max_missing_ratio=float(best["max_missing_ratio"]),
-                min_input_activity_ratio=float(best["min_input_activity_ratio"]),
-                train_ratio=train_ratio,
-            ),
-        )
-        result = fit_arx_core(
-            inputs={column: series.values[column] for column in inputs},
-            output=series.values[output],
-            payload=ArxFitRequest(
-                version_id=series.version_id,
-                input_columns=inputs,
-                output_column=output,
-                na=int(best["na"]),
-                nb={column: int(best["nb"]) for column in inputs},
-                delays={column: int(best["nk"]) for column in inputs},
-                estimator=best["estimator"],
-                ridge_alpha=best.get("ridge_alpha"),
-                train_ratio=train_ratio,
-                validation_ratio=validation_ratio,
-                training_sample_indices=selection.selected_sample_indices,
-                evaluate_test=True,
-            ),
-            input_columns=inputs,
-        )
+            )
+            selected = selection.selected_sample_indices
+            configured_guard = int(best.get("history_guard", parameters.get("history_guard", 32)))
     except VersionDataError as error:
         raise OptimizationDomainError(
             error.code, error.message, status_code=error.status_code, details=error.details
@@ -126,7 +153,7 @@ async def get_generalization_diagnostics(
     n_samples = series.n_samples
     train_end = int(n_samples * train_ratio)
     val_end = int(n_samples * (train_ratio + validation_ratio))
-    guard = result.structure.max_history
+    guard = max(result.structure.max_history, configured_guard)
     windows = {
         "train": (0, max(train_end - guard, 0)),
         "validation": (train_end + guard, max(val_end - guard, train_end + guard)),
@@ -143,7 +170,6 @@ async def get_generalization_diagnostics(
         inputs={column: series.values[column] for column in inputs},
         output=series.values[output],
     )
-    selected = selection.selected_sample_indices
     first = min(selected) if selected else None
     last = max(selected) if selected else None
     span = None
@@ -182,9 +208,9 @@ async def get_generalization_diagnostics(
 
 
 _METRIC_SEMANTICS = {
-    "one_step": "使用真实历史输出 y(k-1..k-na) 的一步预测；分区内同一对齐样本计算。",
-    "free_run": "仅以分区起点前的真实输出暖启动，之后递推使用模型自身预测的连续仿真。",
-    "fit": "100 * (1 - ||y-y_hat|| / ||y-mean(y)||)；自由仿真 FIT 保留既有 -100% 下限。",
+    "one_step": "ARX 使用真实历史输出；带偏移初始化的 FIR 使用当前时刻之前的残差更新；分区内同一对齐样本计算。",
+    "free_run": "ARX 以预测起点前输出暖启动；FIR 可用预测前残差估计固定偏移；整个仿真区间不读取真实输出。",
+    "fit": "100 * (1 - ||y-y_hat|| / ||y-mean(y)||)；自由仿真 FIT 无下限，保留真实误差。",
     "r2": "1 - SSE/SST；只可与同一预测模式、同一对齐样本上的 FIT 进行数学比较。",
 }
 
@@ -193,7 +219,9 @@ def _partition_diagnostics(
     *, windows: dict[str, tuple[int, int]], result: Any, inputs: dict[str, np.ndarray], output: np.ndarray
 ) -> dict[str, PartitionDiagnostics]:
     regressor = build_regressor(inputs=inputs, output=output, structure=result.structure)
-    predicted = regressor.features @ result.theta
+    predicted = one_step_predict(regressor, result.theta, intercept=result.intercept, output=output,
+        initialization_policy=str(result.preprocessing.get("initialization_policy", "fixed")),
+        initialization_window=int(result.preprocessing.get("initialization_window", 32)))
     diagnostics: dict[str, PartitionDiagnostics] = {}
     for label, (start, stop) in windows.items():
         rows = _partition_rows(regressor, start, stop)

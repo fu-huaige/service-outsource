@@ -1,0 +1,1284 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="282" failures="0" errors="0" time="6.406792706">
+    <testsuite name="tests/unit/agent-composer-dataset-picker.spec.ts" timestamp="2026-10-04T04:57:17.303Z" hostname="yujiahuideMacBook-Air.local" tests="9" failures="0" errors="0" skipped="0" time="0.192688375">
+        <testcase classname="tests/unit/agent-composer-dataset-picker.spec.ts" name="AgentComposer dataset picker viewport positioning &gt; preserves an explicitly active dataset without loading a default" time="0.051157791">
+        </testcase>
+        <testcase classname="tests/unit/agent-composer-dataset-picker.spec.ts" name="AgentComposer dataset picker viewport positioning &gt; does not silently attach the first dataset on mount" time="0.002366875">
+        </testcase>
+        <testcase classname="tests/unit/agent-composer-dataset-picker.spec.ts" name="AgentComposer dataset picker viewport positioning &gt; defaults to the formal active version and submits an explicitly selected historical version" time="0.018781625">
+        </testcase>
+        <testcase classname="tests/unit/agent-composer-dataset-picker.spec.ts" name="AgentComposer dataset picker viewport positioning &gt; discards a previous dataset response and blocks submission while versions load" time="0.063374708">
+        </testcase>
+        <testcase classname="tests/unit/agent-composer-dataset-picker.spec.ts" name="AgentComposer dataset picker viewport positioning &gt; blocks missing active versions and lets a failed load be retried" time="0.010710959">
+        </testcase>
+        <testcase classname="tests/unit/agent-composer-dataset-picker.spec.ts" name="AgentComposer dataset picker viewport positioning &gt; loads datasets only after the picker is opened and allows an explicit choice" time="0.023174167">
+        </testcase>
+        <testcase classname="tests/unit/agent-composer-dataset-picker.spec.ts" name="AgentComposer dataset picker viewport positioning &gt; warns and does not submit when no dataset is attached" time="0.00270525">
+        </testcase>
+        <testcase classname="tests/unit/agent-composer-dataset-picker.spec.ts" name="AgentComposer dataset picker viewport positioning &gt; keeps the whole composer non-submittable while the parent request is pending" time="0.003068167">
+        </testcase>
+        <testcase classname="tests/unit/agent-composer-dataset-picker.spec.ts" name="AgentComposer dataset picker viewport positioning &gt; chooses the safer side, clamps to viewport margins, and keeps a long list internally scrollable" time="0.015943833">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/agent-entry-removal.spec.ts" timestamp="2026-10-04T04:57:17.304Z" hostname="yujiahuideMacBook-Air.local" tests="2" failures="0" errors="0" skipped="0" time="0.032760833">
+        <testcase classname="tests/unit/agent-entry-removal.spec.ts" name="single Agent entry &gt; does not render the global Open Agent action" time="0.025696125">
+            <system-err>
+[Vue warn]: Failed to resolve component: router-link
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;AppHeader ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+
+            </system-err>
+        </testcase>
+        <testcase classname="tests/unit/agent-entry-removal.spec.ts" name="single Agent entry &gt; does not mount a second CopilotView or Agent drawer in DefaultLayout" time="0.006129125">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/agent-plan-report-typography.spec.ts" timestamp="2026-10-04T04:57:17.304Z" hostname="yujiahuideMacBook-Air.local" tests="3" failures="0" errors="0" skipped="0" time="0.053147083">
+        <testcase classname="tests/unit/agent-plan-report-typography.spec.ts" name="Agent business typography &gt; uses Sans for raw tool keys and localized execution steps" time="0.031715084">
+        </testcase>
+        <testcase classname="tests/unit/agent-plan-report-typography.spec.ts" name="Agent business typography &gt; normalizes the real execution-stream report label by stable tool key" time="0.017082958">
+        </testcase>
+        <testcase classname="tests/unit/agent-plan-report-typography.spec.ts" name="Agent business typography &gt; renders the optimize step composite score as a decimal instead of FIT percent" time="0.003512833">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/artifact-workbench.spec.ts" timestamp="2026-10-04T04:57:17.304Z" hostname="yujiahuideMacBook-Air.local" tests="40" failures="0" errors="0" skipped="0" time="0.477288875">
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench profile_dataset rendering &gt; renders the persisted profile envelope as summary, cards, chart, details, and collapsed raw data" time="0.081039833">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench profile_dataset rendering &gt; handles malformed and missing profile fields without crashing or inventing values" time="0.007027916">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench profile_dataset rendering &gt; keeps unknown generic artifacts on the existing JSON renderer" time="0.002392958">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench profile_dataset rendering &gt; routes ARX artifacts to the dedicated business renderer" time="0.019915">
+            <system-err>
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;InputSupportWarning support=undefined &gt; 
+  at &lt;ArxModelArtifactRenderer key=4 payload= {
+  model_id: &apos;11111111-1111-1111-1111-111111111111&apos;,
+  processing_run_id: &apos;22222222-2222-2222-2222-222222222222&apos;,
+  version_id: &apos;33333333-3333-3333-3333-333333333333&apos;,
+  estimator: &apos;ols&apos;,
+  model_structure: {
+    model_type: &apos;ARX&apos;,
+    input_columns: [ &apos;u1&apos;, &apos;u2&apos;, &apos;u3&apos; ],
+    output_column: &apos;y&apos;,
+    na: 2,
+    nb: { u1: 2, u2: 3, u3: 1 },
+    delays: { u1: 0, u2: 4, u3: 1 },
+    estimator: &apos;ols&apos;,
+    ridge_alpha: null,
+    parameter_count: 8
+  },
+  validation: {
+    free_run_fit: 84.237,
+    free_run_rmse: 0.30000000000004,
+    one_step_fit: 92.415,
+    fit_gap: 8.178,
+    residual_whiteness_ratio: 0.81234,
+    stable: true,
+    steady_state_gains: { u1: 1.24, u2: -0.42 }
+  },
+  metrics: { aic: -126.789, bic: -112.456 },
+  coefficients: { a1: -1.2, a2: 0.35, b_u1_0: 0.42 },
+  prior_violations: []
+} &gt; 
+  at &lt;ArtifactWorkbench execution= {
+  execution_id: &apos;execution-1&apos;,
+  copilot_run_id: null,
+  dataset_id: &apos;dataset-1&apos;,
+  initial_version_id: &apos;version-0&apos;,
+  current_version_id: &apos;version-0&apos;,
+  planner_source: &apos;deterministic&apos;,
+  workflow_status: &apos;SUCCEEDED&apos;,
+  current_step_id: null,
+  pending_confirmation_step_id: null,
+  plan: {
+    goal: &apos;test artifact rendering&apos;,
+    dataset_id: &apos;dataset-1&apos;,
+    steps: [ [Object] ],
+    stop_conditions: [],
+    assumptions: []
+  },
+  artifacts: {},
+  error_code: null,
+  error_message: null,
+  created_at: &apos;2026-09-09T00:00:00Z&apos;,
+  updated_at: &apos;2026-09-09T00:00:01Z&apos;,
+  finished_at: &apos;2026-09-09T00:00:01Z&apos;,
+  step_runs: [
+    {
+      step_id: &apos;step-1&apos;,
+      sequence: 1,
+      tool: &apos;arx_fit&apos;,
+      status: &apos;completed&apos;,
+      requires_confirmation: false,
+      confirmation_status: &apos;NOT_REQUIRED&apos;,
+      attempt_count: 1,
+      source_version_id: &apos;version-0&apos;,
+      result_version_id: null,
+      input_payload: {},
+      result_payload: [Object],
+      processing_run_ids: [],
+      error_code: null,
+      error_message: null,
+      started_at: &apos;2026-09-09T00:00:00Z&apos;,
+      finished_at: &apos;2026-09-09T00:00:01Z&apos;
+    }
+  ]
+} ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+
+            </system-err>
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench profile_dataset rendering &gt; gracefully degrades historical ARX artifacts without guessing structure" time="0.014587833">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench model evaluation rendering &gt; defaults to Free-run and switches both metrics and prediction series" time="0.026238708">
+            <system-err>
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;InputSupportWarning support=undefined &gt; 
+  at &lt;ModelEvaluationArtifactRenderer key=5 payload= {
+  model_id: &apos;44444444-4444-4444-4444-444444444444&apos;,
+  source_version_id: &apos;55555555-5555-5555-5555-555555555555&apos;,
+  processing_run_id: &apos;66666666-6666-6666-6666-666666666666&apos;,
+  evaluation_scope: &apos;test&apos;,
+  model_structure: {
+    model_type: &apos;ARX&apos;,
+    input_columns: [ &apos;u1&apos;, &apos;u2&apos; ],
+    output_column: &apos;y&apos;,
+    na: 2,
+    nb: { u1: 2, u2: 2 },
+    delays: { u1: 0, u2: 0 },
+    estimator: &apos;ols&apos;,
+    ridge_alpha: null,
+    parameter_count: 6
+  },
+  model_health: { stable: true, max_pole_modulus: 0.743210000000004 },
+  test: {
+    free_run: {
+      fit: 84.567,
+      r2: 0.81234,
+      rmse: 0.30000000000004,
+      mae: 0.24567,
+      nrmse: 0.12345
+    },
+    one_step: {
+      fit: 92.345,
+      r2: 0.92345,
+      rmse: 0.18000000000003,
+      mae: 0.14567,
+      nrmse: 0.07345
+    },
+    n_samples: 4
+  },
+  series: {
+    sample_indices: [ 960, 961, 962, 963 ],
+    timestamps: [],
+    y_true: [ 1, 2, 1.5, 2.2 ],
+    free_run_prediction: [ 0.8, 1.7, 1.3, 2 ],
+    one_step_prediction: [ 0.95, 2.05, 1.48, 2.18 ],
+    one_step_residual: [ 0.05, -0.05, 0.02, 0.02 ],
+    free_run_residual: [ 0.2, 0.3, 0.2, 0.2 ]
+  },
+  residual_diagnostics: {
+    partition: &apos;test&apos;,
+    residual_type: &apos;one_step&apos;,
+    residual_whiteness_ratio: 0.81234,
+    acf_values: [ 1, 0.24, -0.11 ],
+    confidence_interval: 0.12
+  },
+  validation: { residual_whiteness_ratio: 0.11111 }
+} &gt; 
+  at &lt;ArtifactWorkbench execution= {
+  execution_id: &apos;execution-1&apos;,
+  copilot_run_id: null,
+  dataset_id: &apos;dataset-1&apos;,
+  initial_version_id: &apos;version-0&apos;,
+  current_version_id: &apos;version-0&apos;,
+  planner_source: &apos;deterministic&apos;,
+  workflow_status: &apos;SUCCEEDED&apos;,
+  current_step_id: null,
+  pending_confirmation_step_id: null,
+  plan: {
+    goal: &apos;test artifact rendering&apos;,
+    dataset_id: &apos;dataset-1&apos;,
+    steps: [ [Object] ],
+    stop_conditions: [],
+    assumptions: []
+  },
+  artifacts: {},
+  error_code: null,
+  error_message: null,
+  created_at: &apos;2026-09-09T00:00:00Z&apos;,
+  updated_at: &apos;2026-09-09T00:00:01Z&apos;,
+  finished_at: &apos;2026-09-09T00:00:01Z&apos;,
+  step_runs: [
+    {
+      step_id: &apos;step-1&apos;,
+      sequence: 1,
+      tool: &apos;evaluate_model&apos;,
+      status: &apos;completed&apos;,
+      requires_confirmation: false,
+      confirmation_status: &apos;NOT_REQUIRED&apos;,
+      attempt_count: 1,
+      source_version_id: &apos;version-0&apos;,
+      result_version_id: null,
+      input_payload: {},
+      result_payload: [Object],
+      processing_run_ids: [],
+      error_code: null,
+      error_message: null,
+      started_at: &apos;2026-09-09T00:00:00Z&apos;,
+      finished_at: &apos;2026-09-09T00:00:01Z&apos;
+    }
+  ]
+} ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+
+            </system-err>
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench model evaluation rendering &gt; keeps residuals fixed to Test one-step data and reads Test diagnostics" time="0.008589167">
+            <system-err>
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;InputSupportWarning support=undefined &gt; 
+  at &lt;ModelEvaluationArtifactRenderer key=5 payload= {
+  model_id: &apos;44444444-4444-4444-4444-444444444444&apos;,
+  source_version_id: &apos;55555555-5555-5555-5555-555555555555&apos;,
+  processing_run_id: &apos;66666666-6666-6666-6666-666666666666&apos;,
+  evaluation_scope: &apos;test&apos;,
+  model_structure: {
+    model_type: &apos;ARX&apos;,
+    input_columns: [ &apos;u1&apos;, &apos;u2&apos; ],
+    output_column: &apos;y&apos;,
+    na: 2,
+    nb: { u1: 2, u2: 2 },
+    delays: { u1: 0, u2: 0 },
+    estimator: &apos;ols&apos;,
+    ridge_alpha: null,
+    parameter_count: 6
+  },
+  model_health: { stable: true, max_pole_modulus: 0.743210000000004 },
+  test: {
+    free_run: {
+      fit: 84.567,
+      r2: 0.81234,
+      rmse: 0.30000000000004,
+      mae: 0.24567,
+      nrmse: 0.12345
+    },
+    one_step: {
+      fit: 92.345,
+      r2: 0.92345,
+      rmse: 0.18000000000003,
+      mae: 0.14567,
+      nrmse: 0.07345
+    },
+    n_samples: 4
+  },
+  series: {
+    sample_indices: [ 960, 961, 962, 963 ],
+    timestamps: [],
+    y_true: [ 1, 2, 1.5, 2.2 ],
+    free_run_prediction: [ 0.8, 1.7, 1.3, 2 ],
+    one_step_prediction: [ 0.95, 2.05, 1.48, 2.18 ],
+    one_step_residual: [ 0.05, -0.05, 0.02, 0.02 ],
+    free_run_residual: [ 0.2, 0.3, 0.2, 0.2 ]
+  },
+  residual_diagnostics: {
+    partition: &apos;test&apos;,
+    residual_type: &apos;one_step&apos;,
+    residual_whiteness_ratio: 0.81234,
+    acf_values: [ 1, 0.24, -0.11 ],
+    confidence_interval: 0.12
+  },
+  validation: { residual_whiteness_ratio: 0.11111 }
+} &gt; 
+  at &lt;ArtifactWorkbench execution= {
+  execution_id: &apos;execution-1&apos;,
+  copilot_run_id: null,
+  dataset_id: &apos;dataset-1&apos;,
+  initial_version_id: &apos;version-0&apos;,
+  current_version_id: &apos;version-0&apos;,
+  planner_source: &apos;deterministic&apos;,
+  workflow_status: &apos;SUCCEEDED&apos;,
+  current_step_id: null,
+  pending_confirmation_step_id: null,
+  plan: {
+    goal: &apos;test artifact rendering&apos;,
+    dataset_id: &apos;dataset-1&apos;,
+    steps: [ [Object] ],
+    stop_conditions: [],
+    assumptions: []
+  },
+  artifacts: {},
+  error_code: null,
+  error_message: null,
+  created_at: &apos;2026-09-09T00:00:00Z&apos;,
+  updated_at: &apos;2026-09-09T00:00:01Z&apos;,
+  finished_at: &apos;2026-09-09T00:00:01Z&apos;,
+  step_runs: [
+    {
+      step_id: &apos;step-1&apos;,
+      sequence: 1,
+      tool: &apos;evaluate_model&apos;,
+      status: &apos;completed&apos;,
+      requires_confirmation: false,
+      confirmation_status: &apos;NOT_REQUIRED&apos;,
+      attempt_count: 1,
+      source_version_id: &apos;version-0&apos;,
+      result_version_id: null,
+      input_payload: {},
+      result_payload: [Object],
+      processing_run_ids: [],
+      error_code: null,
+      error_message: null,
+      started_at: &apos;2026-09-09T00:00:00Z&apos;,
+      finished_at: &apos;2026-09-09T00:00:01Z&apos;
+    }
+  ]
+} ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+
+            </system-err>
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench model evaluation rendering &gt; renders Test one-step ACF and keeps complete UUIDs in closed technical details" time="0.012415459">
+            <system-err>
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;InputSupportWarning support=undefined &gt; 
+  at &lt;ModelEvaluationArtifactRenderer key=5 payload= {
+  model_id: &apos;44444444-4444-4444-4444-444444444444&apos;,
+  source_version_id: &apos;55555555-5555-5555-5555-555555555555&apos;,
+  processing_run_id: &apos;66666666-6666-6666-6666-666666666666&apos;,
+  evaluation_scope: &apos;test&apos;,
+  model_structure: {
+    model_type: &apos;ARX&apos;,
+    input_columns: [ &apos;u1&apos;, &apos;u2&apos; ],
+    output_column: &apos;y&apos;,
+    na: 2,
+    nb: { u1: 2, u2: 2 },
+    delays: { u1: 0, u2: 0 },
+    estimator: &apos;ols&apos;,
+    ridge_alpha: null,
+    parameter_count: 6
+  },
+  model_health: { stable: true, max_pole_modulus: 0.743210000000004 },
+  test: {
+    free_run: {
+      fit: 84.567,
+      r2: 0.81234,
+      rmse: 0.30000000000004,
+      mae: 0.24567,
+      nrmse: 0.12345
+    },
+    one_step: {
+      fit: 92.345,
+      r2: 0.92345,
+      rmse: 0.18000000000003,
+      mae: 0.14567,
+      nrmse: 0.07345
+    },
+    n_samples: 4
+  },
+  series: {
+    sample_indices: [ 960, 961, 962, 963 ],
+    timestamps: [],
+    y_true: [ 1, 2, 1.5, 2.2 ],
+    free_run_prediction: [ 0.8, 1.7, 1.3, 2 ],
+    one_step_prediction: [ 0.95, 2.05, 1.48, 2.18 ],
+    one_step_residual: [ 0.05, -0.05, 0.02, 0.02 ],
+    free_run_residual: [ 0.2, 0.3, 0.2, 0.2 ]
+  },
+  residual_diagnostics: {
+    partition: &apos;test&apos;,
+    residual_type: &apos;one_step&apos;,
+    residual_whiteness_ratio: 0.81234,
+    acf_values: [ 1, 0.24, -0.11 ],
+    confidence_interval: 0.12
+  },
+  validation: { residual_whiteness_ratio: 0.11111 }
+} &gt; 
+  at &lt;ArtifactWorkbench execution= {
+  execution_id: &apos;execution-1&apos;,
+  copilot_run_id: null,
+  dataset_id: &apos;dataset-1&apos;,
+  initial_version_id: &apos;version-0&apos;,
+  current_version_id: &apos;version-0&apos;,
+  planner_source: &apos;deterministic&apos;,
+  workflow_status: &apos;SUCCEEDED&apos;,
+  current_step_id: null,
+  pending_confirmation_step_id: null,
+  plan: {
+    goal: &apos;test artifact rendering&apos;,
+    dataset_id: &apos;dataset-1&apos;,
+    steps: [ [Object] ],
+    stop_conditions: [],
+    assumptions: []
+  },
+  artifacts: {},
+  error_code: null,
+  error_message: null,
+  created_at: &apos;2026-09-09T00:00:00Z&apos;,
+  updated_at: &apos;2026-09-09T00:00:01Z&apos;,
+  finished_at: &apos;2026-09-09T00:00:01Z&apos;,
+  step_runs: [
+    {
+      step_id: &apos;step-1&apos;,
+      sequence: 1,
+      tool: &apos;evaluate_model&apos;,
+      status: &apos;completed&apos;,
+      requires_confirmation: false,
+      confirmation_status: &apos;NOT_REQUIRED&apos;,
+      attempt_count: 1,
+      source_version_id: &apos;version-0&apos;,
+      result_version_id: null,
+      input_payload: {},
+      result_payload: [Object],
+      processing_run_ids: [],
+      error_code: null,
+      error_message: null,
+      started_at: &apos;2026-09-09T00:00:00Z&apos;,
+      finished_at: &apos;2026-09-09T00:00:01Z&apos;
+    }
+  ]
+} ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+
+            </system-err>
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench model evaluation rendering &gt; keeps historical metric-only evaluations usable without fake charts" time="0.007133125">
+            <system-err>
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;InputSupportWarning support=undefined &gt; 
+  at &lt;ModelEvaluationArtifactRenderer key=5 payload= {
+  model_id: &apos;44444444-4444-4444-4444-444444444444&apos;,
+  test: {
+    free_run: { fit: 70.5, r2: 0.61, rmse: 0.8, mae: 0.6, nrmse: 0.4 },
+    one_step: { fit: 81.2, r2: 0.77, rmse: 0.5, mae: 0.4, nrmse: 0.25 }
+  }
+} &gt; 
+  at &lt;ArtifactWorkbench execution= {
+  execution_id: &apos;execution-1&apos;,
+  copilot_run_id: null,
+  dataset_id: &apos;dataset-1&apos;,
+  initial_version_id: &apos;version-0&apos;,
+  current_version_id: &apos;version-0&apos;,
+  planner_source: &apos;deterministic&apos;,
+  workflow_status: &apos;SUCCEEDED&apos;,
+  current_step_id: null,
+  pending_confirmation_step_id: null,
+  plan: {
+    goal: &apos;test artifact rendering&apos;,
+    dataset_id: &apos;dataset-1&apos;,
+    steps: [ [Object] ],
+    stop_conditions: [],
+    assumptions: []
+  },
+  artifacts: {},
+  error_code: null,
+  error_message: null,
+  created_at: &apos;2026-09-09T00:00:00Z&apos;,
+  updated_at: &apos;2026-09-09T00:00:01Z&apos;,
+  finished_at: &apos;2026-09-09T00:00:01Z&apos;,
+  step_runs: [
+    {
+      step_id: &apos;step-1&apos;,
+      sequence: 1,
+      tool: &apos;evaluate_model&apos;,
+      status: &apos;completed&apos;,
+      requires_confirmation: false,
+      confirmation_status: &apos;NOT_REQUIRED&apos;,
+      attempt_count: 1,
+      source_version_id: &apos;version-0&apos;,
+      result_version_id: null,
+      input_payload: {},
+      result_payload: [Object],
+      processing_run_ids: [],
+      error_code: null,
+      error_message: null,
+      started_at: &apos;2026-09-09T00:00:00Z&apos;,
+      finished_at: &apos;2026-09-09T00:00:01Z&apos;
+    }
+  ]
+} ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+
+            </system-err>
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench segmentation rendering &gt; renders real selection facts, coverage, and information-gain ranking" time="0.008665625">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench segmentation rendering &gt; labels and explains the compact Top 8 ranking when more segments are selected" time="0.00442325">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench segmentation rendering &gt; deterministically merges persisted selected sample indices into intervals" time="0.002601125">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench segmentation rendering &gt; keeps raw JSON collapsed inside technical details" time="0.008931541">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench segmentation rendering &gt; shows a business empty state when no visual selection evidence exists" time="0.001416667">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench anomaly rendering &gt; renders the formal anomaly envelope without a default JSON wall or invented position evidence" time="0.004689">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench anomaly rendering &gt; uses the compact zero state for standalone anomaly results without drawing an empty chart" time="0.001544917">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench anomaly rendering &gt; keeps a larger anomaly ratio on the same true zero-to-one-hundred bar scale" time="0.008574208">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench anomaly rendering &gt; does not chart an invalid ratio and safely handles an empty historical envelope" time="0.006763708">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench cleaning rendering &gt; renders Normal Changed as impact facts without promoting version UUIDs" time="0.033430583">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench cleaning rendering &gt; keeps &apos;Converged&apos; semantics distinct" time="0.009532375">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench cleaning rendering &gt; keeps &apos;Reuse&apos; semantics distinct" time="0.01587275">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench cleaning rendering &gt; keeps first-clean zero-change certification distinct" time="0.021786417">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench cleaning rendering &gt; does not invent missing metrics, zeros, or before-after charts" time="0.003630416">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench cleaning rendering &gt; shows an empty action message for explicit zeros and charts missing data only from a complete pair" time="0.010631209">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench cleaning rendering &gt; uses one sample-size status for equal standalone row counts while preserving content changes" time="0.005896583">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench lag compensation rendering &gt; plots applied lags including zero and downloads the step result rather than the final version" time="0.006528">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench lag compensation rendering &gt; does not invent zero lags or a download for incomplete historical records" time="0.006989542">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench lag compensation rendering &gt; renders confirmed zero-lag no-op semantics without inventing a version or download" time="0.010868667">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench lag compensation rendering &gt; preserves the existing renderer for legacy artifacts without disposition" time="0.002100625">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench lag compensation rendering &gt; preserves the existing renderer for explicit APPLY_VERSION artifacts" time="0.00606025">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench optimization artifact &gt; groups best parameters and presents composite objective semantics for non-specialists" time="0.012143292">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench optimization artifact &gt; formats OLS and safely falls back when legacy objective semantics are absent" time="0.001357875">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench report and delivery actions &gt; uses the dedicated report renderer and restores real sibling results from a persisted snapshot" time="0.0287335">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench report and delivery actions &gt; uses compact zero states and keeps technical identifiers out of the primary report UI" time="0.038747834">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench report and delivery actions &gt; renders non-zero cleaning actions and changed row counts as comparison charts" time="0.020042667">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench report and delivery actions &gt; does not invent absent metrics and keeps raw JSON and UUIDs in closed technical details" time="0.001969542">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench report and delivery actions &gt; binds current-dataset download to the execution dataset and current version" time="0.002866625">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench report and delivery actions &gt; shows the formal no-selection message without falling back to a full dataset download" time="0.005423167">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench report and delivery actions &gt; shows real export metrics and persisted artifact download routes after success" time="0.002477416">
+        </testcase>
+        <testcase classname="tests/unit/artifact-workbench.spec.ts" name="ArtifactWorkbench report and delivery actions &gt; renders export artifact downloads as equal formal Element Plus actions" time="0.001460375">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/arx-version-lineage-picker.spec.ts" timestamp="2026-10-04T04:57:17.307Z" hostname="yujiahuideMacBook-Air.local" tests="5" failures="0" errors="0" skipped="0" time="0.215064834">
+        <testcase classname="tests/unit/arx-version-lineage-picker.spec.ts" name="ARXModelingView VersionLineagePicker source contract &gt; uses parent lineage eligibility and defaults to an active FeatureSet with a Lag ancestor" time="0.103812125">
+        </testcase>
+        <testcase classname="tests/unit/arx-version-lineage-picker.spec.ts" name="ARXModelingView VersionLineagePicker source contract &gt; does not infer eligibility from a version number and preserves branching plus unknown operations" time="0.031805041">
+        </testcase>
+        <testcase classname="tests/unit/arx-version-lineage-picker.spec.ts" name="ARXModelingView VersionLineagePicker source contract &gt; chooses the newest eligible source when the active version is not eligible" time="0.019460458">
+        </testcase>
+        <testcase classname="tests/unit/arx-version-lineage-picker.spec.ts" name="ARXModelingView VersionLineagePicker source contract &gt; fits with the selected UUID and clears the old model when the source changes" time="0.03507275">
+        </testcase>
+        <testcase classname="tests/unit/arx-version-lineage-picker.spec.ts" name="ARXModelingView VersionLineagePicker source contract &gt; shows an empty source state when no Lag-ready lineage exists" time="0.023862833">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/asset-information-architecture.spec.ts" timestamp="2026-10-04T04:57:17.307Z" hostname="yujiahuideMacBook-Air.local" tests="18" failures="0" errors="0" skipped="0" time="0.1491235">
+        <testcase classname="tests/unit/asset-information-architecture.spec.ts" name="Function Center information architecture &gt; keeps secondary module hover and focus feedback aligned with first-level cards" time="0.003590625">
+        </testcase>
+        <testcase classname="tests/unit/asset-information-architecture.spec.ts" name="Function Center information architecture &gt; uses the formal Function Center heading, introduction, and no technical eyebrow" time="0.020897708">
+        </testcase>
+        <testcase classname="tests/unit/asset-information-architecture.spec.ts" name="Function Center information architecture &gt; renders exactly the six formal first-level entries" time="0.01206075">
+        </testcase>
+        <testcase classname="tests/unit/asset-information-architecture.spec.ts" name="Function Center information architecture &gt; navigates from the preprocessing first-level card to its category route" time="0.018067583">
+        </testcase>
+        <testcase classname="tests/unit/asset-information-architecture.spec.ts" name="Function Center information architecture &gt; maps preprocessing to the four existing formal module routes" time="0.006065166">
+        </testcase>
+        <testcase classname="tests/unit/asset-information-architecture.spec.ts" name="Function Center information architecture &gt; maps modeling to ARX and Optuna" time="0.003488209">
+        </testcase>
+        <testcase classname="tests/unit/asset-information-architecture.spec.ts" name="Function Center information architecture &gt; maps analysis and delivery to Benchmark and Deliverables without Settings" time="0.015010625">
+        </testcase>
+        <testcase classname="tests/unit/asset-information-architecture.spec.ts" name="Function Center information architecture &gt; keeps Settings as a direct independent first-level route" time="0.005666708">
+        </testcase>
+        <testcase classname="tests/unit/asset-information-architecture.spec.ts" name="Function Center information architecture &gt; renders a Chinese breadcrumb for the preprocessing category" time="0.006874792">
+        </testcase>
+        <testcase classname="tests/unit/asset-information-architecture.spec.ts" name="Function Center information architecture &gt; renders a Chinese breadcrumb for the modeling category" time="0.002557625">
+        </testcase>
+        <testcase classname="tests/unit/asset-information-architecture.spec.ts" name="Function Center information architecture &gt; renders a Chinese breadcrumb for the delivery category" time="0.002661334">
+        </testcase>
+        <testcase classname="tests/unit/asset-information-architecture.spec.ts" name="Primary navigation &gt; shows Function Center and no longer exposes the old name" time="0.032629292">
+        </testcase>
+        <testcase classname="tests/unit/asset-information-architecture.spec.ts" name="Asset routes &gt; adds the three category routes and preserves every atomic feature route" time="0.001345166">
+        </testcase>
+        <testcase classname="tests/unit/asset-information-architecture.spec.ts" name="Command Palette hierarchy &gt; places Settings in its own group and gives Chinese group titles Sans semantics" time="0.0147265">
+        </testcase>
+        <testcase classname="tests/unit/asset-information-architecture.spec.ts" name="Chinese structural typography &gt; uses the shared Sans rule for industrial card titles including Benchmark configuration" time="0.00075425">
+        </testcase>
+        <testcase classname="tests/unit/asset-information-architecture.spec.ts" name="Chinese structural typography &gt; keeps the Home hierarchy Chinese-first without changing Suggested Workflows" time="0.000287959">
+        </testcase>
+        <testcase classname="tests/unit/asset-information-architecture.spec.ts" name="Chinese structural typography &gt; uses the shared PageHeader hierarchy for Task History without an eyebrow" time="0.000361166">
+        </testcase>
+        <testcase classname="tests/unit/asset-information-architecture.spec.ts" name="Chinese structural typography &gt; uses concise Sans panel headers while preserving technical body typography" time="0.000685875">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/business-ui-typography.spec.ts" timestamp="2026-10-04T04:57:17.308Z" hostname="yujiahuideMacBook-Air.local" tests="3" failures="0" errors="0" skipped="0" time="0.054872583">
+        <testcase classname="tests/unit/business-ui-typography.spec.ts" name="business UI typography contract &gt; renders lag variables and recommendations as ordinary Sans UI" time="0.050233292">
+        </testcase>
+        <testcase classname="tests/unit/business-ui-typography.spec.ts" name="business UI typography contract &gt; keeps delay result values and sampling units in Sans" time="0.0003695">
+        </testcase>
+        <testcase classname="tests/unit/business-ui-typography.spec.ts" name="business UI typography contract &gt; uses Sans for model parameters and Mono for raw technical evidence" time="0.000706208">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/chart-container-interaction.spec.ts" timestamp="2026-10-04T04:57:17.309Z" hostname="yujiahuideMacBook-Air.local" tests="3" failures="0" errors="0" skipped="0" time="0.02593625">
+        <testcase classname="tests/unit/chart-container-interaction.spec.ts" name="ChartContainer interaction bridge &gt; forwards chart clicks and exposes generic chart actions" time="0.0203405">
+        </testcase>
+        <testcase classname="tests/unit/chart-container-interaction.spec.ts" name="ChartContainer interaction bridge &gt; emits calculated dataZoom snapshots for direct and batch events" time="0.00254725">
+        </testcase>
+        <testcase classname="tests/unit/chart-container-interaction.spec.ts" name="ChartContainer interaction bridge &gt; emits a resize change without reading or attaching dataZoom ranges" time="0.001948084">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/cleaning-version-compare-workbench.spec.ts" timestamp="2026-10-04T04:57:17.309Z" hostname="yujiahuideMacBook-Air.local" tests="24" failures="0" errors="0" skipped="0" time="0.588422292">
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; uses two independent lineage pickers with the exact eligibility contract" time="0.066322334">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; implements all four deterministic default-pair cases" time="0.033004416">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; loads channels for pair changes, ignores stale metadata, and handles empty/warning states" time="0.020608291">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; executes only on explicit submit and clears a result when the channel changes" time="0.021603">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; protects execution results from stale requests" time="0.020865584">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; renders relation, summary, identity, projection notices, and the overlay contract" time="0.022857958">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; renders same-version zero diff and scoped API errors without fallback" time="0.021163625">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; maps an ordinary hit target to anchored detail, repositions across viewport changes, and closes cleanly" time="0.063060542">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; maps the ambiguity custom strip to timestamp detail without a business y anchor" time="0.023544041">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; tracks normalized time windows for ambiguity visibility without losing selection or calling APIs" time="0.033044583">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; keeps every ordinary difference kind on the real two-dimensional containment path" time="0.014741333">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; does not retain temporary compare-click diagnostics in production components" time="0.000508084">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; renders direct evidence by property presence and isolates unknown scalar audit fields" time="0.017768084">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; renders legacy totals without invented breakdown and keeps artifact identity separate from convergence" time="0.01678475">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; renders a status-only identical sibling with two neutral null-convergence states" time="0.016888209">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; labels replayed direct evidence and renders Compare convergence independently" time="0.021282333">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; deduplicates warnings across metadata and result sources while preserving notices" time="0.016227625">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; clears selected detail on channel, pair, and new-request transitions" time="0.036731542">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; clears selected detail when Compare or dataset identity changes" time="0.075424625">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; explains DIRECT_PARENT without inferring from timestamps or names" time="0.013876">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; explains ANCESTOR_DESCENDANT without inferring from timestamps or names" time="0.005651625">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; explains SIBLING without inferring from timestamps or names" time="0.007382084">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; explains SAME_VERSION without inferring from timestamps or names" time="0.009409834">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-compare-workbench.spec.ts" name="CleaningVersionCompareWorkbench &gt; explains UNRELATED_WITHIN_DATASET without inferring from timestamps or names" time="0.008102542">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/cleaning-version-difference-detail-card.spec.ts" timestamp="2026-10-04T04:57:17.310Z" hostname="yujiahuideMacBook-Air.local" tests="4" failures="0" errors="0" skipped="0" time="0.065943583">
+        <testcase classname="tests/unit/cleaning-version-difference-detail-card.spec.ts" name="CleaningVersionDifferenceDetailCard &gt; renders VALUE_CHANGED using the Backend delta and never derives a missing delta" time="0.052095791">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-difference-detail-card.spec.ts" name="CleaningVersionDifferenceDetailCard &gt; renders POINT_ADDED and POINT_REMOVED with explicit non-existence semantics" time="0.006275125">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-difference-detail-card.spec.ts" name="CleaningVersionDifferenceDetailCard &gt; renders AMBIGUOUS occurrence groups without pairing or delta" time="0.002625292">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-version-difference-detail-card.spec.ts" name="CleaningVersionDifferenceDetailCard &gt; emits close from the explicit close control" time="0.002768709">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/cleaning-view-contract.spec.ts" timestamp="2026-10-04T04:57:17.310Z" hostname="yujiahuideMacBook-Air.local" tests="15" failures="0" errors="0" skipped="0" time="0.585455625">
+        <testcase classname="tests/unit/cleaning-view-contract.spec.ts" name="CleaningView request contract &gt; mounts the additive version compare workbench with existing dataset context" time="0.134790416">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-view-contract.spec.ts" name="CleaningView request contract &gt; shows full lineage eligibility and serializes the selected source with canonical API fields" time="0.033051208">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-view-contract.spec.ts" name="CleaningView request contract &gt; uses the backend primary series, real timestamps, and classified repair evidence" time="0.028923041">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-view-contract.spec.ts" name="CleaningView request contract &gt; resets the shared x-axis zoom without requesting another clean" time="0.023607292">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-view-contract.spec.ts" name="CleaningView request contract &gt; accepts every visual repair category and maps the transparent hit area to its visual marker" time="0.054806541">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-view-contract.spec.ts" name="CleaningView request contract &gt; anchors the detail card to data pixels, avoids edges, and follows viewport changes" time="0.046667208">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-view-contract.spec.ts" name="CleaningView request contract &gt; opens repair evidence only for stable repair series metadata and keeps it through zoom reset" time="0.045531958">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-view-contract.spec.ts" name="CleaningView request contract &gt; shows every repair type for a combined point and clears selection on channel switch" time="0.049572209">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-view-contract.spec.ts" name="CleaningView request contract &gt; does not default to an active downstream version and selects the newest eligible source" time="0.009466666">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-view-contract.spec.ts" name="CleaningView request contract &gt; reloads lineage and advances the source to a newly created effective version" time="0.020666834">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-view-contract.spec.ts" name="CleaningView request contract &gt; shows convergence without adding lineage or changing the selected Cleaning source" time="0.029458709">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-view-contract.spec.ts" name="CleaningView request contract &gt; reloads lineage and advances to an idempotently reused Cleaning version" time="0.015159833">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-view-contract.spec.ts" name="CleaningView request contract &gt; distinguishes first-clean zero-change certification from repeated convergence" time="0.028781458">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-view-contract.spec.ts" name="CleaningView request contract &gt; preserves branching lineage and renders an empty state when no source is eligible" time="0.052919625">
+        </testcase>
+        <testcase classname="tests/unit/cleaning-view-contract.spec.ts" name="CleaningView request contract &gt; shows a field-level validation error and prevents duplicate in-flight submissions" time="0.01073925">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/client.spec.ts" timestamp="2026-10-04T04:57:17.311Z" hostname="yujiahuideMacBook-Air.local" tests="1" failures="0" errors="0" skipped="0" time="0.003378916">
+        <testcase classname="tests/unit/client.spec.ts" name="ApiClient &amp; ApiError &gt; should create ApiError with code and requestId" time="0.001565167">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/collinearity-source-selector.spec.ts" timestamp="2026-10-04T04:57:17.311Z" hostname="yujiahuideMacBook-Air.local" tests="19" failures="0" errors="0" skipped="0" time="0.667271666">
+        <testcase classname="tests/unit/collinearity-source-selector.spec.ts" name="CollinearityView dataset and Lag Compensation source context &gt; loads datasets, preselects a valid active Dataset ID, selects the default source, and rehydrates complete results" time="0.155949584">
+        </testcase>
+        <testcase classname="tests/unit/collinearity-source-selector.spec.ts" name="CollinearityView dataset and Lag Compensation source context &gt; switches the rehydrated heatmap between Pearson and Spearman without analyzing again" time="0.075450708">
+        </testcase>
+        <testcase classname="tests/unit/collinearity-source-selector.spec.ts" name="CollinearityView dataset and Lag Compensation source context &gt; shows an explicit unavailable state when a historical result has no Spearman matrix" time="0.02970075">
+        </testcase>
+        <testcase classname="tests/unit/collinearity-source-selector.spec.ts" name="CollinearityView dataset and Lag Compensation source context &gt; renders nullable VIF as N/A without creating a zero-height value" time="0.013992541">
+        </testcase>
+        <testcase classname="tests/unit/collinearity-source-selector.spec.ts" name="CollinearityView dataset and Lag Compensation source context &gt; resets correlation mode to Pearson when the source or Dataset changes" time="0.058110584">
+        </testcase>
+        <testcase classname="tests/unit/collinearity-source-selector.spec.ts" name="CollinearityView dataset and Lag Compensation source context &gt; does not treat a stale active DatasetVersion ID as a Dataset ID" time="0.0106665">
+        </testcase>
+        <testcase classname="tests/unit/collinearity-source-selector.spec.ts" name="CollinearityView dataset and Lag Compensation source context &gt; clears a complete result when switching sources and never auto-POSTs not_analyzed or unrehydratable sources" time="0.02235075">
+        </testcase>
+        <testcase classname="tests/unit/collinearity-source-selector.spec.ts" name="CollinearityView dataset and Lag Compensation source context &gt; shows the explicit no-source state and disables Analyze without falling back" time="0.022911541">
+        </testcase>
+        <testcase classname="tests/unit/collinearity-source-selector.spec.ts" name="CollinearityView dataset and Lag Compensation source context &gt; keeps Dataset-detail inputs and Analyze available for a not_analyzed source from the older selector contract" time="0.007537792">
+        </testcase>
+        <testcase classname="tests/unit/collinearity-source-selector.spec.ts" name="CollinearityView dataset and Lag Compensation source context &gt; shows a reanalyze warning rather than crashing when a legacy persisted result lacks input diagnostics" time="0.0107495">
+        </testcase>
+        <testcase classname="tests/unit/collinearity-source-selector.spec.ts" name="CollinearityView dataset and Lag Compensation source context &gt; clears Dataset A results immediately, requests Dataset B sources, and updates the SPA context" time="0.016010458">
+        </testcase>
+        <testcase classname="tests/unit/collinearity-source-selector.spec.ts" name="CollinearityView dataset and Lag Compensation source context &gt; ignores an older Dataset detail request that resolves after a newer selection" time="0.013190875">
+        </testcase>
+        <testcase classname="tests/unit/collinearity-source-selector.spec.ts" name="CollinearityView dataset and Lag Compensation source context &gt; ignores an older complete-result rehydrate after the user selects a newer source" time="0.01654825">
+        </testcase>
+        <testcase classname="tests/unit/collinearity-source-selector.spec.ts" name="CollinearityView dataset and Lag Compensation source context &gt; POSTs Analyze with the selected source version, refreshes its status, and exposes no manual version input" time="0.025011958">
+        </testcase>
+        <testcase classname="tests/unit/collinearity-source-selector.spec.ts" name="CollinearityView dataset and Lag Compensation source context &gt; keeps Feature Apply bound to the selected Lag source and its persisted result provenance" time="0.051751584">
+        </testcase>
+        <testcase classname="tests/unit/collinearity-source-selector.spec.ts" name="CollinearityView dataset and Lag Compensation source context &gt; reports a post-success lineage refresh failure without misreporting Feature Apply as failed" time="0.015282709">
+        </testcase>
+        <testcase classname="tests/unit/collinearity-source-selector.spec.ts" name="CollinearityView dataset and Lag Compensation source context &gt; rehydrates a constant formal input as N/A without issuing a new Analyze POST" time="0.065045083">
+        </testcase>
+        <testcase classname="tests/unit/collinearity-source-selector.spec.ts" name="CollinearityView dataset and Lag Compensation source context &gt; localizes the u4 Feature Apply confirmation and does not apply after cancellation" time="0.03898975">
+        </testcase>
+        <testcase classname="tests/unit/collinearity-source-selector.spec.ts" name="CollinearityView dataset and Lag Compensation source context &gt; keeps formal inputs visible when recommendations are missing" time="0.016502083">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/copilot-api.spec.ts" timestamp="2026-10-04T04:57:17.312Z" hostname="yujiahuideMacBook-Air.local" tests="8" failures="0" errors="0" skipped="0" time="0.005573958">
+        <testcase classname="tests/unit/copilot-api.spec.ts" name="Copilot API &gt; allows enough time for a real LLM to generate and validate a plan" time="0.002883333">
+        </testcase>
+        <testcase classname="tests/unit/copilot-api.spec.ts" name="Copilot API &gt; loads an execution snapshot by its exact execution_id" time="0.000332917">
+        </testcase>
+        <testcase classname="tests/unit/copilot-api.spec.ts" name="Copilot API &gt; executes model evaluation with only execution_id" time="0.000254667">
+        </testcase>
+        <testcase classname="tests/unit/copilot-api.spec.ts" name="Copilot API &gt; executes pipeline optimization with only execution_id and its dedicated timeout" time="0.000256542">
+        </testcase>
+        <testcase classname="tests/unit/copilot-api.spec.ts" name="Copilot API &gt; sends persistent execution and step identifiers when confirming a step" time="0.000220708">
+        </testcase>
+        <testcase classname="tests/unit/copilot-api.spec.ts" name="Copilot API &gt; validates controlled ARX structure overrides without confirming a model" time="0.000201709">
+        </testcase>
+        <testcase classname="tests/unit/copilot-api.spec.ts" name="Copilot API &gt; validates controlled Feature Selection without using the confirm endpoint" time="0.000152875">
+        </testcase>
+        <testcase classname="tests/unit/copilot-api.spec.ts" name="Copilot API &gt; validates controlled Lag overrides without using the confirm endpoint" time="0.000142584">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/copilot-execution-store.spec.ts" timestamp="2026-10-04T04:57:17.312Z" hostname="yujiahuideMacBook-Air.local" tests="2" failures="0" errors="0" skipped="0" time="0.004444417">
+        <testcase classname="tests/unit/copilot-execution-store.spec.ts" name="Copilot execution store &gt; persists only the active execution UUID" time="0.003021875">
+        </testcase>
+        <testcase classname="tests/unit/copilot-execution-store.spec.ts" name="Copilot execution store &gt; hydrates the UUID from localStorage and clears it explicitly" time="0.000387042">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/dataset-detail-freeze-segments.spec.ts" timestamp="2026-10-04T04:57:17.313Z" hostname="yujiahuideMacBook-Air.local" tests="4" failures="0" errors="0" skipped="0" time="0.071103917">
+        <testcase classname="tests/unit/dataset-detail-freeze-segments.spec.ts" name="DatasetDetailView candidate frozen segments &gt; renders a Chinese summary and bounded structured details instead of raw JSON" time="0.045342875">
+            <system-err>
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve directive: loading 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve directive: loading 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+
+            </system-err>
+        </testcase>
+        <testcase classname="tests/unit/dataset-detail-freeze-segments.spec.ts" name="DatasetDetailView candidate frozen segments &gt; renders the no-candidate empty state" time="0.008271666">
+            <system-err>
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve directive: loading 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve directive: loading 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+
+            </system-err>
+        </testcase>
+        <testcase classname="tests/unit/dataset-detail-freeze-segments.spec.ts" name="DatasetDetailView candidate frozen segments &gt; renders persisted simulation truth and preserves sigma zero" time="0.00651425">
+            <system-err>
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve directive: loading 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve directive: loading 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+
+            </system-err>
+        </testcase>
+        <testcase classname="tests/unit/dataset-detail-freeze-segments.spec.ts" name="DatasetDetailView candidate frozen segments &gt; uses missing semantics and hides simulation truth for uploaded datasets" time="0.009451583">
+            <system-err>
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve directive: loading 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve directive: loading 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve directive: loading 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+
+[Vue warn]: Failed to resolve component: el-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve component: el-pagination
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+[Vue warn]: Failed to resolve directive: loading 
+  at &lt;DatasetDetailView ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+
+            </system-err>
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/dataset-detail-version-preview.spec.ts" timestamp="2026-10-04T04:57:17.313Z" hostname="yujiahuideMacBook-Air.local" tests="15" failures="0" errors="0" skipped="0" time="0.379297125">
+        <testcase classname="tests/unit/dataset-detail-version-preview.spec.ts" name="DatasetDetailView version audit and preview &gt; loads the first page for the explicit active version and preserves explicit null values" time="0.117565334">
+        </testcase>
+        <testcase classname="tests/unit/dataset-detail-version-preview.spec.ts" name="DatasetDetailView version audit and preview &gt; keeps all preview rows after viewport changes without issuing another request" time="0.023615167">
+        </testcase>
+        <testcase classname="tests/unit/dataset-detail-version-preview.spec.ts" name="DatasetDetailView version audit and preview &gt; replaces the table rows and range label when the user changes page" time="0.017554209">
+        </testcase>
+        <testcase classname="tests/unit/dataset-detail-version-preview.spec.ts" name="DatasetDetailView version audit and preview &gt; resets to page one when page size changes" time="0.014931083">
+        </testcase>
+        <testcase classname="tests/unit/dataset-detail-version-preview.spec.ts" name="DatasetDetailView version audit and preview &gt; renders the actual range for the last page and a small dataset" time="0.021118708">
+        </testcase>
+        <testcase classname="tests/unit/dataset-detail-version-preview.spec.ts" name="DatasetDetailView version audit and preview &gt; keeps the latest page when overlapping preview requests resolve out of order" time="0.010157">
+        </testcase>
+        <testcase classname="tests/unit/dataset-detail-version-preview.spec.ts" name="DatasetDetailView version audit and preview &gt; keeps the current page while switching tabs and back" time="0.012932083">
+        </testcase>
+        <testcase classname="tests/unit/dataset-detail-version-preview.spec.ts" name="DatasetDetailView version audit and preview &gt; keeps the previous page visible when a page request fails" time="0.007904042">
+        </testcase>
+        <testcase classname="tests/unit/dataset-detail-version-preview.spec.ts" name="DatasetDetailView version audit and preview &gt; keeps raw JSON out of the initial DAG and exposes a collapsed full audit entry" time="0.04328">
+        </testcase>
+        <testcase classname="tests/unit/dataset-detail-version-preview.spec.ts" name="DatasetDetailView version audit and preview &gt; distinguishes loading, empty and error states and can retry an error" time="0.020598333">
+        </testcase>
+        <testcase classname="tests/unit/dataset-detail-version-preview.spec.ts" name="DatasetDetailView version audit and preview &gt; labels simulation request and resolved evidence as separate provenance groups" time="0.009552291">
+        </testcase>
+        <testcase classname="tests/unit/dataset-detail-version-preview.spec.ts" name="DatasetDetailView version audit and preview &gt; renders resolved simulation evidence as localized structured tables" time="0.030218291">
+        </testcase>
+        <testcase classname="tests/unit/dataset-detail-version-preview.spec.ts" name="DatasetDetailView version audit and preview &gt; distinguishes missing evidence from explicitly empty injection arrays" time="0.018006083">
+        </testcase>
+        <testcase classname="tests/unit/dataset-detail-version-preview.spec.ts" name="DatasetDetailView version audit and preview &gt; localizes cleaning enums and units with a safe unknown fallback" time="0.013564834">
+        </testcase>
+        <testcase classname="tests/unit/dataset-detail-version-preview.spec.ts" name="DatasetDetailView version audit and preview &gt; copies the exact raw audit JSON and reports both success and failure" time="0.016782583">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/datasets-view-column-widths.spec.ts" timestamp="2026-10-04T04:57:17.314Z" hostname="yujiahuideMacBook-Air.local" tests="5" failures="0" errors="0" skipped="0" time="0.092257666">
+        <testcase classname="tests/unit/datasets-view-column-widths.spec.ts" name="DatasetsView resizable columns &gt; uses native bordered columns and keeps the action column fixed and non-resizable" time="0.046246792">
+        </testcase>
+        <testcase classname="tests/unit/datasets-view-column-widths.spec.ts" name="DatasetsView resizable columns &gt; restores only valid persisted widths and falls back per invalid field" time="0.004711583">
+        </testcase>
+        <testcase classname="tests/unit/datasets-view-column-widths.spec.ts" name="DatasetsView resizable columns &gt; clamps one resized column, preserves the others and persists only six widths" time="0.00816475">
+        </testcase>
+        <testcase classname="tests/unit/datasets-view-column-widths.spec.ts" name="DatasetsView resizable columns &gt; resets widths without refetching the dataset list" time="0.014147417">
+        </testcase>
+        <testcase classname="tests/unit/datasets-view-column-widths.spec.ts" name="DatasetsView resizable columns &gt; survives invalid JSON and unavailable browser storage" time="0.017869">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/default-layout-bounce.spec.ts" timestamp="2026-10-04T04:57:17.314Z" hostname="yujiahuideMacBook-Air.local" tests="1" failures="0" errors="0" skipped="0" time="0.027263">
+        <testcase classname="tests/unit/default-layout-bounce.spec.ts" name="default layout boundary rebound &gt; moves the page slightly and settles when scrolling beyond the top" time="0.026184292">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/delay-hitl-apply.spec.ts" timestamp="2026-10-04T04:57:17.314Z" hostname="yujiahuideMacBook-Air.local" tests="18" failures="0" errors="0" skipped="0" time="0.627047">
+        <testcase classname="tests/unit/delay-hitl-apply.spec.ts" name="DelayView UNCERTAIN HITL review and formal Apply &gt; shows the complete lineage while keeping only Cleaning eligible and defaults away from active Lag" time="0.179646708">
+        </testcase>
+        <testcase classname="tests/unit/delay-hitl-apply.spec.ts" name="DelayView UNCERTAIN HITL review and formal Apply &gt; keeps parameters on the left and groups Spectrum with result cards in the right analysis column" time="0.075901292">
+        </testcase>
+        <testcase classname="tests/unit/delay-hitl-apply.spec.ts" name="DelayView UNCERTAIN HITL review and formal Apply &gt; rehydrates the real persisted result without automatically re-running Delay Analyze" time="0.012207042">
+        </testcase>
+        <testcase classname="tests/unit/delay-hitl-apply.spec.ts" name="DelayView UNCERTAIN HITL review and formal Apply &gt; does not treat a default UNCERTAIN recommendation as human confirmation" time="0.010596083">
+        </testcase>
+        <testcase classname="tests/unit/delay-hitl-apply.spec.ts" name="DelayView UNCERTAIN HITL review and formal Apply &gt; enables Apply only after every UNCERTAIN channel is explicitly reviewed" time="0.035169875">
+        </testcase>
+        <testcase classname="tests/unit/delay-hitl-apply.spec.ts" name="DelayView UNCERTAIN HITL review and formal Apply &gt; uses the reviewed final lag map and records manual review provenance in the formal payload" time="0.028664459">
+        </testcase>
+        <testcase classname="tests/unit/delay-hitl-apply.spec.ts" name="DelayView UNCERTAIN HITL review and formal Apply &gt; uses delay_analysis only when all channels are confirmed and preserves their recommendations" time="0.019082">
+        </testcase>
+        <testcase classname="tests/unit/delay-hitl-apply.spec.ts" name="DelayView UNCERTAIN HITL review and formal Apply &gt; blocks invalid final lag -1" time="0.0321395">
+        </testcase>
+        <testcase classname="tests/unit/delay-hitl-apply.spec.ts" name="DelayView UNCERTAIN HITL review and formal Apply &gt; blocks invalid final lag 5.5" time="0.022456167">
+        </testcase>
+        <testcase classname="tests/unit/delay-hitl-apply.spec.ts" name="DelayView UNCERTAIN HITL review and formal Apply &gt; blocks invalid final lag null" time="0.012005541">
+        </testcase>
+        <testcase classname="tests/unit/delay-hitl-apply.spec.ts" name="DelayView UNCERTAIN HITL review and formal Apply &gt; requires a new review after an UNCERTAIN value changes" time="0.033938541">
+        </testcase>
+        <testcase classname="tests/unit/delay-hitl-apply.spec.ts" name="DelayView UNCERTAIN HITL review and formal Apply &gt; prevents duplicate Apply requests while the formal request is in flight" time="0.019492208">
+        </testcase>
+        <testcase classname="tests/unit/delay-hitl-apply.spec.ts" name="DelayView UNCERTAIN HITL review and formal Apply &gt; shows an unestimated source input with its explicit no-compensation system recommendation" time="0.016422958">
+        </testcase>
+        <testcase classname="tests/unit/delay-hitl-apply.spec.ts" name="DelayView UNCERTAIN HITL review and formal Apply &gt; requires explicit review before applying the zero no-compensation system recommendation" time="0.025395">
+        </testcase>
+        <testcase classname="tests/unit/delay-hitl-apply.spec.ts" name="DelayView UNCERTAIN HITL review and formal Apply &gt; blocks invalid manually specified lag -1 for an unestimated input" time="0.012032375">
+        </testcase>
+        <testcase classname="tests/unit/delay-hitl-apply.spec.ts" name="DelayView UNCERTAIN HITL review and formal Apply &gt; blocks invalid manually specified lag 5.5 for an unestimated input" time="0.016844875">
+        </testcase>
+        <testcase classname="tests/unit/delay-hitl-apply.spec.ts" name="DelayView UNCERTAIN HITL review and formal Apply &gt; blocks invalid manually specified lag null for an unestimated input" time="0.023589709">
+        </testcase>
+        <testcase classname="tests/unit/delay-hitl-apply.spec.ts" name="DelayView UNCERTAIN HITL review and formal Apply &gt; requires review of the human-specified lag and submits it with distinct evidence" time="0.049995042">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/deliverables-view.spec.ts" timestamp="2026-10-04T04:57:17.315Z" hostname="yujiahuideMacBook-Air.local" tests="4" failures="0" errors="0" skipped="0" time="0.089544291">
+        <testcase classname="tests/unit/deliverables-view.spec.ts" name="DeliverablesView scoped selectors &gt; does not silently choose the first dataset without a legal context" time="0.062961292">
+        </testcase>
+        <testcase classname="tests/unit/deliverables-view.spec.ts" name="DeliverablesView scoped selectors &gt; uses active_version_id and ignores a stale A response after switching to B" time="0.012258708">
+        </testcase>
+        <testcase classname="tests/unit/deliverables-view.spec.ts" name="DeliverablesView scoped selectors &gt; clears the old Study immediately when a historical version is selected" time="0.007839">
+        </testcase>
+        <testcase classname="tests/unit/deliverables-view.spec.ts" name="DeliverablesView scoped selectors &gt; disambiguates duplicate names without displaying a full UUID" time="0.005671584">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/element-plus-locale-contract.spec.ts" timestamp="2026-10-04T04:57:17.315Z" hostname="yujiahuideMacBook-Air.local" tests="1" failures="0" errors="0" skipped="0" time="0.002050459">
+        <testcase classname="tests/unit/element-plus-locale-contract.spec.ts" name="Element Plus locale contract &gt; registers the official simplified-Chinese locale globally" time="0.001234292">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/home-view-final-polish.spec.ts" timestamp="2026-10-04T04:57:17.315Z" hostname="yujiahuideMacBook-Air.local" tests="3" failures="0" errors="0" skipped="0" time="0.074509583">
+        <testcase classname="tests/unit/home-view-final-polish.spec.ts" name="HomeView final polish &gt; resolves recent dataset names with one list request and safely falls back when absent" time="0.062711">
+        </testcase>
+        <testcase classname="tests/unit/home-view-final-polish.spec.ts" name="HomeView final polish &gt; keeps long names accessible while using formal responsive layout spacing" time="0.010283333">
+        </testcase>
+        <testcase classname="tests/unit/home-view-final-polish.spec.ts" name="HomeView final polish &gt; shares one paginated list load across concurrent name consumers without per-dataset requests" time="0.000612916">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/input-support-warning.spec.ts" timestamp="2026-10-04T04:57:17.316Z" hostname="yujiahuideMacBook-Air.local" tests="2" failures="0" errors="0" skipped="0" time="0.024852333">
+        <testcase classname="tests/unit/input-support-warning.spec.ts" name="input support evidence &gt; names unsupported controls and asks for actual excitation data" time="0.018358375">
+        </testcase>
+        <testcase classname="tests/unit/input-support-warning.spec.ts" name="input support evidence &gt; distinguishes extrapolation from missing or historical evidence" time="0.005334417">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/landing-gate.spec.ts" timestamp="2026-10-04T04:57:17.316Z" hostname="yujiahuideMacBook-Air.local" tests="6" failures="0" errors="0" skipped="0" time="0.677900333">
+        <testcase classname="tests/unit/landing-gate.spec.ts" name="formal landing gate &gt; serves the accepted light landing at / without WorkspaceLayout" time="0.036547959">
+        </testcase>
+        <testcase classname="tests/unit/landing-gate.spec.ts" name="formal landing gate &gt; gates a fresh /home session and preserves its full target" time="0.000927666">
+        </testcase>
+        <testcase classname="tests/unit/landing-gate.spec.ts" name="formal landing gate &gt; preserves an Agent execution deep link including query and hash" time="0.000539625">
+        </testcase>
+        <testcase classname="tests/unit/landing-gate.spec.ts" name="formal landing gate &gt; allows business routes directly after entry, including across router instances" time="0.628791167">
+        </testcase>
+        <testcase classname="tests/unit/landing-gate.spec.ts" name="formal landing gate &gt; routes removed preview URLs through the existing public 404 flow" time="0.00912925">
+        </testcase>
+        <testcase classname="tests/unit/landing-gate.spec.ts" name="formal landing gate &gt; preserves the existing public 404 behavior without a gate loop" time="0.000742042">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/landing.spec.ts" timestamp="2026-10-04T04:57:17.316Z" hostname="yujiahuideMacBook-Air.local" tests="10" failures="0" errors="0" skipped="0" time="0.156757625">
+        <testcase classname="tests/unit/landing.spec.ts" name="formal landing &gt; resolves outside WorkspaceLayout without changing business routes" time="0.0037185">
+        </testcase>
+        <testcase classname="tests/unit/landing.spec.ts" name="formal landing &gt; renders the core landing content" time="0.0436975">
+        </testcase>
+        <testcase classname="tests/unit/landing.spec.ts" name="formal landing &gt; marks the session and pushes to /home from every Enter Workspace CTA" time="0.014172625">
+        </testcase>
+        <testcase classname="tests/unit/landing.spec.ts" name="formal landing &gt; navigates to benchmark section when CTA is clicked" time="0.0170295">
+        </testcase>
+        <testcase classname="tests/unit/landing.spec.ts" name="formal landing &gt; displays the ablation benchmark table with known strategy rows" time="0.019419042">
+        </testcase>
+        <testcase classname="tests/unit/landing.spec.ts" name="formal landing &gt; shows all 8 workflow stages" time="0.012364208">
+        </testcase>
+        <testcase classname="tests/unit/landing.spec.ts" name="formal landing &gt; shows HITL confirmation demo card" time="0.024451084">
+        </testcase>
+        <testcase classname="tests/unit/landing.spec.ts" name="formal landing &gt; shows hero stats strip" time="0.005798833">
+        </testcase>
+        <testcase classname="tests/unit/landing.spec.ts" name="formal landing &gt; shows all 8 features in the features section" time="0.004041958">
+        </testcase>
+        <testcase classname="tests/unit/landing.spec.ts" name="formal landing &gt; renders sticky nav with enter CTA" time="0.010363167">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/optuna-quality-warning.spec.ts" timestamp="2026-10-04T04:57:17.316Z" hostname="yujiahuideMacBook-Air.local" tests="7" failures="0" errors="0" skipped="0" time="0.201303958">
+        <testcase classname="tests/unit/optuna-quality-warning.spec.ts" name="optimization model quality &gt; shows insufficient evidence with 模型效果不足" time="0.087243542">
+        </testcase>
+        <testcase classname="tests/unit/optuna-quality-warning.spec.ts" name="optimization model quality &gt; shows inconclusive evidence with 模型效果尚不能确认" time="0.032326875">
+        </testcase>
+        <testcase classname="tests/unit/optuna-quality-warning.spec.ts" name="optimization model quality &gt; shows passed evidence with 仍需独立测试和现场工况验证" time="0.020595958">
+        </testcase>
+        <testcase classname="tests/unit/optuna-quality-warning.spec.ts" name="optimization model quality &gt; shows no_winner evidence with 本次寻优未得到可用模型" time="0.009931834">
+        </testcase>
+        <testcase classname="tests/unit/optuna-quality-warning.spec.ts" name="optimization model quality &gt; shows passed evidence with 仍需独立测试和现场工况验证" time="0.022948667">
+        </testcase>
+        <testcase classname="tests/unit/optuna-quality-warning.spec.ts" name="optimization model quality &gt; shows passed evidence with 仍需独立测试和现场工况验证" time="0.019448375">
+        </testcase>
+        <testcase classname="tests/unit/optuna-quality-warning.spec.ts" name="optimization model quality &gt; shows passed evidence with 仍需独立测试和现场工况验证" time="0.007553208">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/runs-view-final-polish.spec.ts" timestamp="2026-10-04T04:57:17.317Z" hostname="yujiahuideMacBook-Air.local" tests="2" failures="0" errors="0" skipped="0" time="0.088034792">
+        <testcase classname="tests/unit/runs-view-final-polish.spec.ts" name="RunsView final polish &gt; keeps metadata content, filtering, sorting, and detail navigation while using Sans" time="0.083174333">
+        </testcase>
+        <testcase classname="tests/unit/runs-view-final-polish.spec.ts" name="RunsView final polish &gt; uses a non-ID fallback when the dataset name cannot be resolved" time="0.003773958">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/segmentation-lineage-picker.spec.ts" timestamp="2026-10-04T04:57:17.317Z" hostname="yujiahuideMacBook-Air.local" tests="3" failures="0" errors="0" skipped="0" time="0.147706875">
+        <testcase classname="tests/unit/segmentation-lineage-picker.spec.ts" name="SegmentationView lineage source picker &gt; shows the real lineage, disables non-Cleaning versions, and executes against Cleaning instead of active V2" time="0.094100875">
+        </testcase>
+        <testcase classname="tests/unit/segmentation-lineage-picker.spec.ts" name="SegmentationView lineage source picker &gt; uses parent_version_id for branches, survives unknown operations, and clears results when the source changes" time="0.045397417">
+        </testcase>
+        <testcase classname="tests/unit/segmentation-lineage-picker.spec.ts" name="SegmentationView lineage source picker &gt; shows a guided empty state and keeps Analyze disabled when no Cleaning version exists" time="0.007069792">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/simulation-view.spec.ts" timestamp="2026-10-04T04:57:17.317Z" hostname="yujiahuideMacBook-Air.local" tests="16" failures="0" errors="0" skipped="0" time="0.24766275">
+        <testcase classname="tests/unit/simulation-view.spec.ts" name="SimulationView scenario dataset names &gt; starts with the S1 default dataset name" time="0.057644042">
+        </testcase>
+        <testcase classname="tests/unit/simulation-view.spec.ts" name="SimulationView scenario dataset names &gt; updates the default dataset name when switching to S2" time="0.011951708">
+        </testcase>
+        <testcase classname="tests/unit/simulation-view.spec.ts" name="SimulationView scenario dataset names &gt; preserves a manually edited dataset name when switching scenarios" time="0.008731917">
+        </testcase>
+        <testcase classname="tests/unit/simulation-view.spec.ts" name="SimulationView seed range &gt; matches the backend seed bounds and preserves the default seed" time="0.012972292">
+        </testcase>
+        <testcase classname="tests/unit/simulation-view.spec.ts" name="SimulationView seed range &gt; preserves legal seed 0 in the generation request" time="0.020160792">
+        </testcase>
+        <testcase classname="tests/unit/simulation-view.spec.ts" name="SimulationView seed range &gt; preserves legal seed 260903 in the generation request" time="0.016299583">
+        </testcase>
+        <testcase classname="tests/unit/simulation-view.spec.ts" name="SimulationView seed range &gt; preserves legal seed 20260903 in the generation request" time="0.027310292">
+        </testcase>
+        <testcase classname="tests/unit/simulation-view.spec.ts" name="SimulationView seed range &gt; preserves legal seed 2147483647 in the generation request" time="0.01511825">
+        </testcase>
+        <testcase classname="tests/unit/simulation-view.spec.ts" name="SimulationView optional input count &gt; renders an initially unselected input count with S1 fixed semantics" time="0.010595833">
+        </testcase>
+        <testcase classname="tests/unit/simulation-view.spec.ts" name="SimulationView optional input count &gt; shows the backend default value in helper text for flexible scenarios" time="0.011433083">
+        </testcase>
+        <testcase classname="tests/unit/simulation-view.spec.ts" name="SimulationView optional input count &gt; omits input_count from the POST body when the optional field is empty" time="0.011402833">
+        </testcase>
+        <testcase classname="tests/unit/simulation-view.spec.ts" name="SimulationView optional input count &gt; includes an explicitly selected input_count in the POST body" time="0.00881125">
+        </testcase>
+        <testcase classname="tests/unit/simulation-view.spec.ts" name="SimulationView optional input count &gt; omits input_count again after the selection is cleared" time="0.008467833">
+        </testcase>
+        <testcase classname="tests/unit/simulation-view.spec.ts" name="SimulationView optional input count &gt; clears and disables a custom count when switching to fixed-input S1" time="0.008758125">
+        </testcase>
+        <testcase classname="tests/unit/simulation-view.spec.ts" name="SimulationView optional input count &gt; preserves a valid custom count when switching between flexible scenarios" time="0.006343875">
+        </testcase>
+        <testcase classname="tests/unit/simulation-view.spec.ts" name="SimulationView optional input count &gt; does not submit an unsupported programmatic input count" time="0.010056209">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/store.spec.ts" timestamp="2026-10-04T04:57:17.318Z" hostname="yujiahuideMacBook-Air.local" tests="7" failures="0" errors="0" skipped="0" time="0.003875042">
+        <testcase classname="tests/unit/store.spec.ts" name="Pinia Stores &gt; should manage active dataset state" time="0.0018055">
+        </testcase>
+        <testcase classname="tests/unit/store.spec.ts" name="Pinia Stores &gt; starts connecting and accepts only the current readiness contract" time="0.000417833">
+        </testcase>
+        <testcase classname="tests/unit/store.spec.ts" name="Pinia Stores &gt; moves offline when database disconnected" time="0.000231375">
+        </testcase>
+        <testcase classname="tests/unit/store.spec.ts" name="Pinia Stores &gt; moves offline when queue disconnected" time="0.000165083">
+        </testcase>
+        <testcase classname="tests/unit/store.spec.ts" name="Pinia Stores &gt; moves offline when legacy healthy status" time="0.000148334">
+        </testcase>
+        <testcase classname="tests/unit/store.spec.ts" name="Pinia Stores &gt; moves offline after a failed request and recovers on a later success" time="0.000232209">
+        </testcase>
+        <testcase classname="tests/unit/store.spec.ts" name="Pinia Stores &gt; does not overlap health requests" time="0.000219625">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/system-status-components.spec.ts" timestamp="2026-10-04T04:57:17.318Z" hostname="yujiahuideMacBook-Air.local" tests="9" failures="0" errors="0" skipped="0" time="0.132241958">
+        <testcase classname="tests/unit/system-status-components.spec.ts" name="system status components &gt; renders connecting as 正在检测 in the header" time="0.032379167">
+            <system-err>
+[Vue warn]: Failed to resolve component: router-link
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;AppHeader ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+
+            </system-err>
+        </testcase>
+        <testcase classname="tests/unit/system-status-components.spec.ts" name="system status components &gt; renders ready as 系统就绪 in the header" time="0.005242292">
+            <system-err>
+[Vue warn]: Failed to resolve component: router-link
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;AppHeader ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+
+            </system-err>
+        </testcase>
+        <testcase classname="tests/unit/system-status-components.spec.ts" name="system status components &gt; renders offline as 服务离线 in the header" time="0.00367075">
+            <system-err>
+[Vue warn]: Failed to resolve component: router-link
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at &lt;AppHeader ref=&quot;VTU_COMPONENT&quot; &gt; 
+  at &lt;VTUROOT&gt;
+
+            </system-err>
+        </testcase>
+        <testcase classname="tests/unit/system-status-components.spec.ts" name="system status components &gt; shows Dashboard failure instead of normal zero-data KPIs and supports a manual retry" time="0.029735625">
+        </testcase>
+        <testcase classname="tests/unit/system-status-components.spec.ts" name="system status components &gt; retries a failed Dashboard request once when health recovers" time="0.017630166">
+        </testcase>
+        <testcase classname="tests/unit/system-status-components.spec.ts" name="system status components &gt; reports a real offline result in Settings without a mock success" time="0.016171625">
+        </testcase>
+        <testcase classname="tests/unit/system-status-components.spec.ts" name="system status components &gt; loads the real Agent configuration without rendering a secret" time="0.007984625">
+        </testcase>
+        <testcase classname="tests/unit/system-status-components.spec.ts" name="system status components &gt; fills the current official DeepSeek endpoint and default model" time="0.005749209">
+        </testcase>
+        <testcase classname="tests/unit/system-status-components.spec.ts" name="system status components &gt; saves a new runtime configuration and immediately clears the input key" time="0.012468333">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/version-lineage-picker.spec.ts" timestamp="2026-10-04T04:57:17.319Z" hostname="yujiahuideMacBook-Air.local" tests="6" failures="0" errors="0" skipped="0" time="0.108420292">
+        <testcase classname="tests/unit/version-lineage-picker.spec.ts" name="VersionLineagePicker &gt; declares a viewport-safe Popover positioning contract" time="0.050842583">
+        </testcase>
+        <testcase classname="tests/unit/version-lineage-picker.spec.ts" name="VersionLineagePicker &gt; renders the Chinese panel title with the explicit Sans typography contract" time="0.021094875">
+        </testcase>
+        <testcase classname="tests/unit/version-lineage-picker.spec.ts" name="VersionLineagePicker &gt; keeps the default selected badge and supports an additive custom label" time="0.013258417">
+        </testcase>
+        <testcase classname="tests/unit/version-lineage-picker.spec.ts" name="VersionLineagePicker &gt; builds the displayed chain from parent_version_id and renders selected, eligibility, and metadata" time="0.003326541">
+        </testcase>
+        <testcase classname="tests/unit/version-lineage-picker.spec.ts" name="VersionLineagePicker &gt; preserves branches, ignores disabled mouse and keyboard actions, and emits eligible selection" time="0.015736417">
+        </testcase>
+        <testcase classname="tests/unit/version-lineage-picker.spec.ts" name="VersionLineagePicker &gt; shows the supplied empty state when no version is eligible" time="0.002991125">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/workspace-dataset-guard.spec.ts" timestamp="2026-10-04T04:57:17.319Z" hostname="yujiahuideMacBook-Air.local" tests="7" failures="0" errors="0" skipped="0" time="0.133590917">
+        <testcase classname="tests/unit/workspace-dataset-guard.spec.ts" name="WorkspaceView dataset context guard &gt; blocks a composer task without both dataset and version" time="0.056593209">
+        </testcase>
+        <testcase classname="tests/unit/workspace-dataset-guard.spec.ts" name="WorkspaceView dataset context guard &gt; starts normally when dataset and version are both explicit" time="0.025364708">
+        </testcase>
+        <testcase classname="tests/unit/workspace-dataset-guard.spec.ts" name="WorkspaceView dataset context guard &gt; shows thinking immediately, blocks duplicate submits, then renders the formal execution" time="0.0167745">
+        </testcase>
+        <testcase classname="tests/unit/workspace-dataset-guard.spec.ts" name="WorkspaceView dataset context guard &gt; clears the thinking state and restores retry UI when submission fails" time="0.019728834">
+            <system-err>
+Failed to start task Error: Planner unavailable
+    at /Users/maguayuhui/Documents/竞赛/服外 9.22/service-outsource/frontend/tests/unit/workspace-dataset-guard.spec.ts:193:16
+    at file:///Users/maguayuhui/Documents/%E7%AB%9E%E8%B5%9B/%E6%9C%8D%E5%A4%96%209.22/service-outsource/frontend/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20
+
+            </system-err>
+        </testcase>
+        <testcase classname="tests/unit/workspace-dataset-guard.spec.ts" name="WorkspaceView dataset context guard &gt; blocks a direct Home query that has a prompt but no dataset context" time="0.004809459">
+        </testcase>
+        <testcase classname="tests/unit/workspace-dataset-guard.spec.ts" name="WorkspaceView dataset context guard &gt; shows the resolved dataset name and hides dataset and version UUIDs from the current-task summary" time="0.007838459">
+        </testcase>
+        <testcase classname="tests/unit/workspace-dataset-guard.spec.ts" name="WorkspaceView dataset context guard &gt; lets the title shrink while status and workbench controls remain intact" time="0.001322958">
+        </testcase>
+    </testsuite>
+</testsuites>

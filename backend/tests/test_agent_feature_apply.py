@@ -95,10 +95,10 @@ def _upload(feature_harness: FeatureHarness) -> tuple[UUID, UUID]:
         json={
             "dataset_id": str(dataset_id),
             "version_id": str(version_id),
-            "lag_map": {"u1": 0, "u2": 0, "u3": 0},
+            "lag_map": {"u1": 1, "u2": 1, "u3": 1},
             "user_confirmed": True,
             "recommendation_source": "manual",
-            "evidence_summary": {"fixture": "already_time_aligned"},
+            "evidence_summary": {"fixture": "shared_nonzero_alignment"},
         },
     )
     assert lagged.status_code == 201, lagged.text
@@ -355,4 +355,33 @@ def test_reject_does_not_apply_features_or_create_v3(feature_harness: FeatureHar
     assert persisted.current_version_id == source
     assert rejected.status == "CANCELLED"
     assert rejected.confirmation_status == "REJECTED"
+    assert asyncio.run(_counts(feature_harness, execution.dataset_id)) == before
+
+
+def test_confirm_keep_all_preserves_version_and_resumes_modeling(feature_harness: FeatureHarness) -> None:
+    execution, _ = _chat_to_feature_confirmation(feature_harness)
+    apply = next(step for step in execution.step_runs if step.tool_name == "select_variables")
+    source = execution.current_version_id
+    before = asyncio.run(_counts(feature_harness, execution.dataset_id))
+    _, source_bytes = asyncio.run(_version_artifact(feature_harness, source))
+    response = _confirm(feature_harness, execution_id=execution.id, step_id=apply.step_id, drop_columns=[])
+    assert response.status_code == 200, response.text
+    result = response.json()["data"]
+    assert result["step_status"] == "SUCCEEDED"
+    assert result["result_version_id"] is None
+    assert result["current_version_id"] == str(source)
+    assert result["result_payload"]["operation_name"] == "feature_selection_noop"
+    assert result["result_payload"]["summary"]["kept_input_columns"] == ["u1", "u2", "u3"]
+    persisted = asyncio.run(_load_execution(feature_harness, execution.id))
+    downstream = next(step for step in persisted.step_runs if step.tool_name == "fit_arx")
+    assert downstream.status == "WAITING_CONFIRMATION"
+    assert downstream.input_payload["arx_structure_recommendation"]["source_version_id"] == str(source)
+    assert asyncio.run(_counts(feature_harness, execution.dataset_id)) == before
+    assert asyncio.run(_version_artifact(feature_harness, source))[1] == source_bytes
+    replay = _confirm(feature_harness, execution_id=execution.id, step_id=apply.step_id, drop_columns=[])
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["data"]["result_payload"] == result["result_payload"]
+    assert asyncio.run(_counts(feature_harness, execution.dataset_id)) == before
+    conflict = _confirm(feature_harness, execution_id=execution.id, step_id=apply.step_id, drop_columns=["u1"])
+    assert conflict.status_code == 409, conflict.text
     assert asyncio.run(_counts(feature_harness, execution.dataset_id)) == before

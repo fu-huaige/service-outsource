@@ -50,7 +50,7 @@ class ArxFitResult:
     model_id: UUID
     dataset_id: UUID
     version_id: UUID
-    estimator: Literal["ols", "ridge"]
+    estimator: Literal["ols", "ridge", "huber"]
     coefficients: dict[str, float]
     a_coefficients: list[float]
     b_coefficients: dict[str, list[float]]
@@ -60,6 +60,7 @@ class ArxFitResult:
     artifact_uri: str
     validation: ModelValidationData | None = None
     prior_violations: tuple[PriorViolation, ...] = ()
+    intercept: float = 0.0
 
 
 def fit_arx(payload: ArxFitRequest, *, artifact_root: Path) -> ArxFitResult:
@@ -109,6 +110,7 @@ def fit_arx(payload: ArxFitRequest, *, artifact_root: Path) -> ArxFitResult:
         payload=payload,
         estimator=result.estimator,
         coefficients=result.coefficients,
+        intercept=result.intercept,
         metrics=result.metrics,
     )
     return ArxFitResult(
@@ -125,6 +127,7 @@ def fit_arx(payload: ArxFitRequest, *, artifact_root: Path) -> ArxFitResult:
         artifact_uri=artifact_uri,
         validation=to_validation_data(result.validation),
         prior_violations=result.prior_violations,
+        intercept=result.intercept,
     )
 
 
@@ -153,9 +156,10 @@ def _persist_model_result(
     model_id: UUID,
     dataset: SimulationDataset,
     payload: ArxFitRequest,
-    estimator: Literal["ols", "ridge"],
+    estimator: Literal["ols", "ridge", "huber"],
     coefficients: dict[str, float],
     metrics: ArxMetrics,
+    intercept: float = 0.0,
 ) -> str:
     models_root = artifact_root / "models"
     models_root.mkdir(parents=True, exist_ok=True)
@@ -168,6 +172,7 @@ def _persist_model_result(
         "estimator": estimator,
         "configuration": payload.model_dump(mode="json"),
         "coefficients": coefficients,
+        "intercept": intercept,
         "metrics": metrics.model_dump(mode="json"),
         "generated_at": datetime.now(UTC).isoformat(),
     }

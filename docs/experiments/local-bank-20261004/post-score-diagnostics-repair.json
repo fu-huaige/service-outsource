@@ -1,0 +1,13 @@
+{
+  "role": "post-score metadata correction; no model fitting algorithm changes",
+  "changes": {
+    "backend/algorithms/identifiability/experiments.py": {
+      "before_sha256": "8d71f3256158df68f80ed59b9d2324fdb21847f01ef33c7b3657fa220543e342",
+      "after_sha256": "2a54b69ba5286f758b99f080cd3d3d8b19fbf83718ee3e514ba3e8b95f81e54c"
+    }
+  },
+  "reason": "Native JSON booleans, actual input lag history support, and within-run versus between-run excitation evidence. Frozen protocols/results unchanged.",
+  "exact_theta_and_intercept_replays": 226,
+  "all_match": true,
+  "default_formal_model_changed": false
+}

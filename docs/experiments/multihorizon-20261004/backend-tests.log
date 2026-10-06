@@ -1,0 +1,225 @@
+........................................................................ [ 10%]
+.............F.......................................................... [ 20%]
+........................................................................ [ 30%]
+........................................................................ [ 40%]
+........................................................................ [ 50%]
+...............................................................F........ [ 60%]
+........................................................................ [ 70%]
+........................................................................ [ 80%]
+........................................................................ [ 90%]
+...................................................................sss   [100%]
+=================================== FAILURES ===================================
+_______ test_optimized_model_is_the_only_new_dag_evaluation_predecessor ________
+
+arx_harness = ArxHarness(client=<starlette.testclient.TestClient object at 0x116bc6610>, session_factory=async_sessionmaker(class_='...ivate/var/folders/dv/3j2g1_pd2xx16fqyll2d1bm00000gn/T/pytest-of-maguayuhui/pytest-67/test_optimized_model_is_the_on0'))
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x117236890>
+
+    def test_optimized_model_is_the_only_new_dag_evaluation_predecessor(
+        arx_harness: ArxHarness,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        execution = _chat_to_arx_confirmation(
+            arx_harness,
+            message="使用当前变量进行 ARX 建模并闭环寻优 1 次试验",
+        )
+        fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
+        optimization = next(
+            step for step in execution.step_runs if step.tool_name == "optimize_pipeline"
+        )
+        evaluation = next(step for step in execution.step_runs if step.tool_name == "evaluate_model")
+        assert optimization.input_payload["depends_on"] == [fit.step_id]
+        assert evaluation.input_payload["depends_on"] == [optimization.step_id]
+        assert optimization.status == "PENDING"
+        assert evaluation.status == "PENDING"
+    
+        confirmed_fit = _confirm(arx_harness, execution_id=execution.id, step_id=fit.step_id)
+        assert confirmed_fit.status_code == 200, confirmed_fit.text
+        source_version_id = execution.current_version_id
+    
+        waiting = asyncio.run(_load_execution(arx_harness, execution.id))
+        pending_optimization = next(
+            step for step in waiting.step_runs if step.step_id == optimization.step_id
+        )
+        assert waiting.workflow_status == "WAITING_CONFIRMATION"
+        assert pending_optimization.status == "WAITING_CONFIRMATION"
+        assert next(step for step in waiting.step_runs if step.step_id == evaluation.step_id).status == "PENDING"
+    
+        from app.services import agent_tool_adapter
+    
+        observed_model_ids: list[UUID] = []
+        formal_evaluation = agent_tool_adapter.evaluate_saved_arx_model
+    
+        async def spy_saved_evaluation(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+            observed_model_ids.append(kwargs["model_id"])  # type: ignore[index]
+            return await formal_evaluation(*args, **kwargs)  # type: ignore[arg-type]
+    
+        monkeypatch.setattr(agent_tool_adapter, "evaluate_saved_arx_model", spy_saved_evaluation)
+        before_versions = asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id))
+        before_runs = asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id))
+        before_model_runs = asyncio.run(_model_counts(arx_harness, execution.dataset_id))[0]
+        approved = _confirm(
+            arx_harness,
+            execution_id=execution.id,
+            step_id=optimization.step_id,
+        )
+        assert approved.status_code == 200, approved.text
+    
+        persisted = asyncio.run(_load_execution(arx_harness, execution.id))
+        fitted = next(step for step in persisted.step_runs if step.tool_name == "fit_arx")
+        optimized = next(step for step in persisted.step_runs if step.tool_name == "optimize_pipeline")
+        evaluated = next(step for step in persisted.step_runs if step.tool_name == "evaluate_model")
+        assert approved.json()["data"]["workflow_status"] == "SUCCEEDED", [
+            (step.tool_name, step.status, step.error_code, step.error_message)
+            for step in persisted.step_runs
+        ]
+        assert persisted.workflow_status == "SUCCEEDED"
+        assert persisted.finished_at is not None
+        assert optimized.status == "SUCCEEDED"
+        assert optimized.source_version_id == fitted.source_version_id == source_version_id
+        assert optimized.result_payload["model_id"] == optimized.result_payload["optimized_model_id"]
+        assert optimized.result_payload["model_id"] != fitted.result_payload["model_id"]
+        assert observed_model_ids == [UUID(optimized.result_payload["model_id"])]
+        assert evaluated.status == "SUCCEEDED"
+        assert evaluated.source_version_id == optimized.source_version_id == source_version_id
+        assert evaluated.result_version_id is None
+        assert evaluated.result_payload["model_id"] == optimized.result_payload["model_id"]
+        saved = modeling_service.load_saved_arx_model(
+            model_id=UUID(optimized.result_payload["model_id"]),
+            artifact_root=arx_harness.artifact_root,
+        )
+        expected_stable, expected_modulus = modeling_service.is_stable(
+            saved.theta[: saved.structure.na]
+        )
+        assert evaluated.result_payload["evaluation_scope"] == "test"
+>       assert evaluated.result_payload["model_structure"] == {
+            "model_type": saved.payload.model_type,
+            "regularization_kernel": saved.payload.regularization_kernel,
+            "kernel_decay": saved.payload.kernel_decay,
+            "initialization_policy": saved.payload.initialization_policy,
+            "initialization_window": saved.payload.initialization_window,
+            "input_columns": saved.payload.input_columns,
+            "output_column": saved.payload.output_column,
+            "na": saved.structure.na,
+            "nb": saved.structure.nb,
+            "delays": saved.structure.nk,
+            "estimator": saved.payload.resolved_estimator(),
+            "ridge_alpha": saved.payload.ridge_alpha,
+            "parameter_count": saved.structure.parameter_count,
+            "fit_intercept": saved.payload.fit_intercept,
+            "standardize": saved.payload.standardize,
+            "history_guard": saved.payload.history_guard,
+        }
+E       AssertionError: assert {'delays': {'...ard': 32, ...} == {'delays': {'...ard': 32, ...}
+E         
+E         Omitting 16 identical items, use -vv to show
+E         Left contains 2 more items:
+E         {'simulation_horizons': [1, 16, 64, 0], 'simulation_max_nfev': 150}
+E         Use -v to get more diff
+
+tests/test_agent_arx_modeling.py:1559: AssertionError
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-10-04T21:52:01.831524+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "43286254-39ba-4408-95b1-2f178f81b3bc", "duration_ms": 63.15, "status_code": 202}
+{"timestamp": "2026-10-04T21:52:01.831908+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: POST http://testserver/api/v1/datasets/upload \"HTTP/1.1 202 Accepted\"", "request_id": null}
+{"timestamp": "2026-10-04T21:52:01.851091+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "7a7a0f47-a048-4098-bd72-75f0d758ca51", "duration_ms": 18.89, "status_code": 200}
+{"timestamp": "2026-10-04T21:52:01.851441+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: POST http://testserver/api/v1/datasets/c6b63843-4517-4576-a9e8-3f11945d5a6e/config \"HTTP/1.1 200 OK\"", "request_id": null}
+{"timestamp": "2026-10-04T21:52:01.991388+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "1e446619-7b7b-444b-895b-eb2764ff901e", "duration_ms": 139.68, "status_code": 202}
+{"timestamp": "2026-10-04T21:52:01.991710+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: POST http://testserver/api/v1/preprocessing/clean \"HTTP/1.1 202 Accepted\"", "request_id": null}
+{"timestamp": "2026-10-04T21:52:02.013359+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "33d41ab2-2dc7-4eb8-b4ae-c83280958ac6", "duration_ms": 20.09, "status_code": 201}
+{"timestamp": "2026-10-04T21:52:02.013614+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: POST http://testserver/api/v1/preprocessing/delay/apply \"HTTP/1.1 201 Created\"", "request_id": null}
+{"timestamp": "2026-10-04T21:52:02.030874+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "e4739d84-4d22-465a-8f82-8765565ecfb3", "duration_ms": 16.99, "status_code": 201}
+{"timestamp": "2026-10-04T21:52:02.031117+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: POST http://testserver/api/v1/preprocessing/features/apply \"HTTP/1.1 201 Created\"", "request_id": null}
+{"timestamp": "2026-10-04T21:52:02.674354+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "0e060ff8-7bd7-4eb7-a7af-0469080151e9", "duration_ms": 643.11, "status_code": 200}
+{"timestamp": "2026-10-04T21:52:02.674653+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: POST http://testserver/api/v1/copilot/chat \"HTTP/1.1 200 OK\"", "request_id": null}
+{"timestamp": "2026-10-04T21:52:02.747796+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "ec06562e-cc4b-4501-a840-763815909930", "duration_ms": 69.57, "status_code": 200}
+{"timestamp": "2026-10-04T21:52:02.748084+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: POST http://testserver/api/v1/copilot/confirm \"HTTP/1.1 200 OK\"", "request_id": null}
+{"timestamp": "2026-10-04T21:52:03.850722+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "f1d19613-7145-4d94-8abf-e852699e2e61", "duration_ms": 1097.48, "status_code": 200}
+{"timestamp": "2026-10-04T21:52:03.851025+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: POST http://testserver/api/v1/copilot/confirm \"HTTP/1.1 200 OK\"", "request_id": null}
+------------------------------ Captured log call -------------------------------
+INFO     app.core.middleware:middleware.py:38 request_completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/datasets/upload "HTTP/1.1 202 Accepted"
+INFO     app.core.middleware:middleware.py:38 request_completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/datasets/c6b63843-4517-4576-a9e8-3f11945d5a6e/config "HTTP/1.1 200 OK"
+INFO     app.core.middleware:middleware.py:38 request_completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/preprocessing/clean "HTTP/1.1 202 Accepted"
+INFO     app.core.middleware:middleware.py:38 request_completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/preprocessing/delay/apply "HTTP/1.1 201 Created"
+INFO     app.core.middleware:middleware.py:38 request_completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/preprocessing/features/apply "HTTP/1.1 201 Created"
+INFO     app.core.middleware:middleware.py:38 request_completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/copilot/chat "HTTP/1.1 200 OK"
+INFO     app.core.middleware:middleware.py:38 request_completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/copilot/confirm "HTTP/1.1 200 OK"
+INFO     app.core.middleware:middleware.py:38 request_completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/copilot/confirm "HTTP/1.1 200 OK"
+_______ TestModelingApi.test_fit_returns_free_run_metrics_and_validation _______
+
+self = <test_modeling.TestModelingApi object at 0x110c91d90>
+client = <starlette.testclient.TestClient object at 0x1196bbc10>
+
+    def test_fit_returns_free_run_metrics_and_validation(self, client: TestClient) -> None:
+        version_id = self._lag_version(client)
+        response = client.post(
+            "/api/v1/modeling/arx/fit",
+            json={
+                "version_id": version_id,
+                "input_columns": ["u1", "u2"],
+                "output_column": "y",
+                "na": 2,
+                "nb": [2, 2],
+                "delays": [0, 0],
+            },
+        )
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+    
+>       assert data["model_structure"] == {
+            "model_type": "ARX",
+            "regularization_kernel": "identity",
+            "kernel_decay": 0.9,
+            "initialization_policy": "fixed",
+            "initialization_window": 32,
+            "input_columns": ["u1", "u2"],
+            "output_column": "y",
+            "na": 2,
+            "nb": {"u1": 2, "u2": 2},
+            "delays": {"u1": 0, "u2": 0},
+            "estimator": "ols",
+            "ridge_alpha": None,
+            "parameter_count": 6,
+            "fit_intercept": True,
+            "standardize": True,
+            "history_guard": None,
+        }
+E       AssertionError: assert {'delays': {'...d': None, ...} == {'delays': {'...d': None, ...}
+E         
+E         Omitting 16 identical items, use -vv to show
+E         Left contains 2 more items:
+E         {'simulation_horizons': [1, 16, 64, 0], 'simulation_max_nfev': 150}
+E         Use -v to get more diff
+
+tests/test_modeling.py:283: AssertionError
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-10-04T22:30:17.841842+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "30dd5c76-e21c-4297-a16b-caebb72616b1", "duration_ms": 56.26, "status_code": 201}
+{"timestamp": "2026-10-04T22:30:17.842123+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: POST http://testserver/api/v1/simulation/generate \"HTTP/1.1 201 Created\"", "request_id": null}
+{"timestamp": "2026-10-04T22:30:17.873462+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "c0821762-3dbf-47bd-aeeb-e3f7582f95a5", "duration_ms": 31.04, "status_code": 201}
+{"timestamp": "2026-10-04T22:30:17.873731+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: POST http://testserver/api/v1/preprocessing/delay/apply \"HTTP/1.1 201 Created\"", "request_id": null}
+{"timestamp": "2026-10-04T22:30:17.896246+00:00", "level": "INFO", "service": "indusopt-backend", "message": "request_completed", "request_id": "07967a07-4318-48de-9f76-58be33fb89c3", "duration_ms": 22.23, "status_code": 200}
+{"timestamp": "2026-10-04T22:30:17.896536+00:00", "level": "INFO", "service": "indusopt-backend", "message": "HTTP Request: POST http://testserver/api/v1/modeling/arx/fit \"HTTP/1.1 200 OK\"", "request_id": null}
+------------------------------ Captured log call -------------------------------
+INFO     app.core.middleware:middleware.py:38 request_completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/simulation/generate "HTTP/1.1 201 Created"
+INFO     app.core.middleware:middleware.py:38 request_completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/preprocessing/delay/apply "HTTP/1.1 201 Created"
+INFO     app.core.middleware:middleware.py:38 request_completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/api/v1/modeling/arx/fit "HTTP/1.1 200 OK"
+=============================== warnings summary ===============================
+.venv/lib/python3.11/site-packages/fastapi/testclient.py:1
+  /Users/maguayuhui/Documents/竞赛/服外 9.22/service-outsource/backend/.venv/lib/python3.11/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /Users/maguayuhui/Documents/竞赛/服外 9.22/service-outsource/docs/experiments/multihorizon-20261004/backend-tests.xml -
+=========================== short test summary info ============================
+FAILED tests/test_agent_arx_modeling.py::test_optimized_model_is_the_only_new_dag_evaluation_predecessor
+FAILED tests/test_modeling.py::TestModelingApi::test_fit_returns_free_run_metrics_and_validation
+2 failed, 713 passed, 3 skipped, 1 warning in 261.21s (0:04:21)

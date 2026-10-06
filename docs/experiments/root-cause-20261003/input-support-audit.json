@@ -1,0 +1,234 @@
+{
+  "scope": "support module check on newly scored known input trajectories; no predictions/coefficient changes",
+  "records": [
+    {
+      "case": "distillation_b",
+      "arm": "single_filtered",
+      "known_input_support": {
+        "policy_version": "known_input_support_v1",
+        "start": 43,
+        "stop": 886,
+        "status": "unsupported",
+        "unsupported_constant_inputs": [
+          "TH101_SetPoint",
+          "TV101"
+        ],
+        "extrapolated_inputs": [
+          "M101"
+        ],
+        "unavailable_inputs": [],
+        "evidence": {
+          "M101": {
+            "constant_in_train": false,
+            "outside_train_range_fraction": 0.5907473309608541
+          },
+          "TH101_SetPoint": {
+            "constant_in_train": true,
+            "outside_train_range_fraction": 1.0
+          },
+          "TV101": {
+            "constant_in_train": true,
+            "outside_train_range_fraction": 0.5670225385527876
+          },
+          "T116": {
+            "constant_in_train": false,
+            "outside_train_range_fraction": 0.0
+          }
+        },
+        "coefficient_updates": false,
+        "deployment_ready": false
+      }
+    },
+    {
+      "case": "distillation_b",
+      "arm": "single_full_controls",
+      "known_input_support": {
+        "policy_version": "known_input_support_v1",
+        "start": 43,
+        "stop": 886,
+        "status": "unsupported",
+        "unsupported_constant_inputs": [
+          "TH101_SetPoint",
+          "TV101"
+        ],
+        "extrapolated_inputs": [
+          "M101"
+        ],
+        "unavailable_inputs": [],
+        "evidence": {
+          "M101": {
+            "constant_in_train": false,
+            "outside_train_range_fraction": 0.5907473309608541
+          },
+          "TH101_SetPoint": {
+            "constant_in_train": true,
+            "outside_train_range_fraction": 1.0
+          },
+          "TV101": {
+            "constant_in_train": true,
+            "outside_train_range_fraction": 0.5670225385527876
+          },
+          "T116": {
+            "constant_in_train": false,
+            "outside_train_range_fraction": 0.0
+          }
+        },
+        "coefficient_updates": false,
+        "deployment_ready": false
+      }
+    },
+    {
+      "case": "distillation_b",
+      "arm": "multiple_full_controls",
+      "known_input_support": {
+        "policy_version": "known_input_support_v1",
+        "start": 43,
+        "stop": 886,
+        "status": "unsupported",
+        "unsupported_constant_inputs": [
+          "TV101"
+        ],
+        "extrapolated_inputs": [
+          "M101",
+          "TH101_SetPoint"
+        ],
+        "unavailable_inputs": [],
+        "evidence": {
+          "M101": {
+            "constant_in_train": false,
+            "outside_train_range_fraction": 0.5895610913404508
+          },
+          "TH101_SetPoint": {
+            "constant_in_train": false,
+            "outside_train_range_fraction": 0.5670225385527876
+          },
+          "TV101": {
+            "constant_in_train": true,
+            "outside_train_range_fraction": 0.5670225385527876
+          },
+          "T116": {
+            "constant_in_train": false,
+            "outside_train_range_fraction": 0.0
+          }
+        },
+        "coefficient_updates": false,
+        "deployment_ready": false
+      }
+    },
+    {
+      "case": "distillation_c",
+      "arm": "single_filtered",
+      "known_input_support": {
+        "policy_version": "known_input_support_v1",
+        "start": 43,
+        "stop": 225,
+        "status": "unsupported",
+        "unsupported_constant_inputs": [
+          "TH101_SetPoint"
+        ],
+        "extrapolated_inputs": [
+          "M101",
+          "TV101",
+          "T116"
+        ],
+        "unavailable_inputs": [],
+        "evidence": {
+          "M101": {
+            "constant_in_train": false,
+            "outside_train_range_fraction": 0.027472527472527472
+          },
+          "TH101_SetPoint": {
+            "constant_in_train": true,
+            "outside_train_range_fraction": 0.8296703296703297
+          },
+          "TV101": {
+            "constant_in_train": false,
+            "outside_train_range_fraction": 0.08791208791208792
+          },
+          "T116": {
+            "constant_in_train": false,
+            "outside_train_range_fraction": 1.0
+          }
+        },
+        "coefficient_updates": false,
+        "deployment_ready": false
+      }
+    },
+    {
+      "case": "distillation_c",
+      "arm": "single_full_controls",
+      "known_input_support": {
+        "policy_version": "known_input_support_v1",
+        "start": 43,
+        "stop": 225,
+        "status": "unsupported",
+        "unsupported_constant_inputs": [
+          "TH101_SetPoint"
+        ],
+        "extrapolated_inputs": [
+          "M101",
+          "TV101",
+          "T116"
+        ],
+        "unavailable_inputs": [],
+        "evidence": {
+          "M101": {
+            "constant_in_train": false,
+            "outside_train_range_fraction": 0.027472527472527472
+          },
+          "TH101_SetPoint": {
+            "constant_in_train": true,
+            "outside_train_range_fraction": 0.8296703296703297
+          },
+          "TV101": {
+            "constant_in_train": false,
+            "outside_train_range_fraction": 0.08791208791208792
+          },
+          "T116": {
+            "constant_in_train": false,
+            "outside_train_range_fraction": 1.0
+          }
+        },
+        "coefficient_updates": false,
+        "deployment_ready": false
+      }
+    },
+    {
+      "case": "distillation_c",
+      "arm": "multiple_full_controls",
+      "known_input_support": {
+        "policy_version": "known_input_support_v1",
+        "start": 43,
+        "stop": 225,
+        "status": "extrapolation",
+        "unsupported_constant_inputs": [],
+        "extrapolated_inputs": [
+          "TH101_SetPoint",
+          "TV101",
+          "T116"
+        ],
+        "unavailable_inputs": [],
+        "evidence": {
+          "M101": {
+            "constant_in_train": false,
+            "outside_train_range_fraction": 0.0
+          },
+          "TH101_SetPoint": {
+            "constant_in_train": false,
+            "outside_train_range_fraction": 0.2692307692307692
+          },
+          "TV101": {
+            "constant_in_train": false,
+            "outside_train_range_fraction": 0.08791208791208792
+          },
+          "T116": {
+            "constant_in_train": false,
+            "outside_train_range_fraction": 1.0
+          }
+        },
+        "coefficient_updates": false,
+        "deployment_ready": false
+      }
+    }
+  ]
+}

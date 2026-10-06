@@ -10,6 +10,8 @@
       </p>
     </header>
 
+    <InputSupportWarning :support="modelHealth.input_support" />
+
     <div class="prediction-mode" role="group" aria-label="预测模式" data-test="prediction-mode">
       <button
         type="button"
@@ -143,6 +145,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import InputSupportWarning from "../InputSupportWarning.vue";
 import ChartContainer, {
   type ChartOption,
   type ChartViewportChange,

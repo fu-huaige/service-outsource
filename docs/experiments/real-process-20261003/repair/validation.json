@@ -1,0 +1,68 @@
+{
+  "backend_full": {
+    "passed": 578,
+    "failed": 23,
+    "skipped": 3,
+    "failure_names_identical_to_pre_repair": true,
+    "new_failures": [],
+    "historical_failures": [
+      "tests/test_agent_arx_modeling.py::test_agent_evaluation_fails_on_saved_model_source_version_mismatch",
+      "tests/test_agent_arx_modeling.py::test_agent_evaluation_fails_when_fit_model_id_is_missing",
+      "tests/test_agent_arx_modeling.py::test_explicit_evaluation_trigger_returns_failed_snapshot_for_business_error",
+      "tests/test_agent_arx_modeling.py::test_explicit_optimization_trigger_persists_business_failure_without_replay",
+      "tests/test_agent_arx_modeling.py::test_explicit_optimization_trigger_requires_confirmation_and_persists_real_result",
+      "tests/test_agent_arx_modeling.py::test_manual_override_runs_formal_arx_once_and_keeps_v3_immutable",
+      "tests/test_agent_arx_modeling.py::test_optimization_adapter_rejects_missing_declared_fit_predecessor",
+      "tests/test_agent_arx_modeling.py::test_optimized_artifact_source_mismatch_fails_evaluation_without_refit",
+      "tests/test_agent_chat_execution.py::test_failed_step_marks_persistent_execution_failed",
+      "tests/test_agent_chat_execution.py::test_persistent_state_sync_never_dispatches_a_tool_twice",
+      "tests/test_agent_execution_api.py::test_confirm_api_approve_does_not_complete_step",
+      "tests/test_agent_execution_api.py::test_confirm_api_approves_waiting_execution",
+      "tests/test_agent_execution_api.py::test_confirm_api_duplicate_approve_is_idempotent",
+      "tests/test_agent_execution_workflow.py::test_waiting_confirmation_is_not_persisted_as_a_succeeded_run",
+      "tests/test_agent_feature_apply.py::test_completed_feature_apply_rejects_a_different_selection_replay",
+      "tests/test_agent_feature_apply.py::test_feature_recommendation_is_formal_and_validation_is_authoritative",
+      "tests/test_agent_feature_apply.py::test_manual_feature_adjustment_persists_final_selection_and_provenance",
+      "tests/test_agent_feature_apply.py::test_recommendation_approve_creates_v3_once_and_resumes_to_arx_confirmation",
+      "tests/test_agent_feature_apply.py::test_reject_does_not_apply_features_or_create_v3",
+      "tests/test_delay_collinearity.py::TestCollinearity::test_qualification_rejects_missing_and_true_non_numeric_inputs",
+      "tests/test_end_to_end.py::TestFullClosedLoop::test_industrial_csv_through_the_entire_pipeline",
+      "tests/test_end_to_end.py::TestFullClosedLoop::test_one_sentence_drives_the_same_pipeline",
+      "tests/test_simulation_dataset_lifecycle.py::test_s4_lineage_separates_user_request_from_ground_truth_resolved_parameters"
+    ]
+  },
+  "focused_tests": {
+    "collected": 207,
+    "failures_in_full_run": [],
+    "passed_in_full_run": 207
+  },
+  "frontend": {
+    "related_tests_passed": 45,
+    "vue_tsc": "passed",
+    "build": "passed",
+    "existing_build_warning": "bundle size >500kB"
+  },
+  "scoped_ruff": "passed",
+  "git_diff_check": "passed",
+  "mypy": {
+    "errors": 22,
+    "normalized_errors_identical_to_pre_repair": true,
+    "new_errors": []
+  },
+  "real_api_fir": {
+    "datasets": 3,
+    "saved_parameter_evaluation_no_refit": true,
+    "artifact_hash_unchanged": true,
+    "csv_export_verified": true
+  },
+  "checksums": {
+    "benchmark_repaired_models.py": "1ed3326cf9e83ab46f1a6d3de8104ce162931d7d11199da8712a9b1e0e0f655c",
+    "benchmark_real_optimization.py": "85258bebf1aa170227378b22f34cfd663262f73804f87dd63d73344765f9061e",
+    "smoke_real_process_api.py": "97549ccaaad481ae20a6ee4f8ca8aa0c69555042739d31807d95ca386dac9fe6"
+  },
+  "result_checksums": {
+    "model-ablation.json": "b0d47bc8332b40b077930bf318af1ac6c3e1831be5cbb66a1411b7b3e4a167e5",
+    "optimizer-results.json": "b402cbee362f97400443d32be7ad9b2f425d343206c4e3fd160fe23b7904e9f5",
+    "fir-api-smoke.json": "4f5191512ab782b4f15e48df3e9eead0323099be8c48b316e41dbc7230a9a9fd"
+  }
+}

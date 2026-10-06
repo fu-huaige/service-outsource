@@ -57,7 +57,7 @@ def evaluation_harness(
     asyncio.run(engine.dispose())
 
 
-def _fit_saved_model(harness: EvaluationHarness) -> tuple[UUID, UUID, UUID, dict[str, object]]:
+def _fit_saved_model(harness: EvaluationHarness, *, family: str = "ARX") -> tuple[UUID, UUID, UUID, dict[str, object]]:
     generated = harness.client.post(
         "/api/v1/simulation/generate",
         json={"scenario": "S2", "n_steps": 1_200, "seed": 37, "input_count": 2},
@@ -85,6 +85,8 @@ def _fit_saved_model(harness: EvaluationHarness) -> tuple[UUID, UUID, UUID, dict
             "na": 2,
             "nb": [2, 2],
             "delays": [0, 0],
+            "model_type": family,
+            **({"estimator": "ridge", "ridge_alpha": .001} if family == "OE" else {}),
         },
     )
     assert fitted.status_code == 200, fitted.text
@@ -92,6 +94,18 @@ def _fit_saved_model(harness: EvaluationHarness) -> tuple[UUID, UUID, UUID, dict
     model_id = UUID(data["model_id"])
     artifact = json.loads((harness.artifact_root / data["artifact_uri"]).read_text(encoding="utf-8"))
     return dataset_id, version_id, model_id, artifact
+
+
+def test_oe_api_artifact_replays_without_fitting(evaluation_harness, monkeypatch):
+    _, version_id, model_id, artifact = _fit_saved_model(evaluation_harness, family="OE")
+    assert artifact["configuration"]["simulation_horizons"] == [1, 16, 64, 0]
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Saved OE Test evaluation must not fit")
+    monkeypatch.setattr(modeling_service, "fit_multihorizon", forbidden)
+    result = asyncio.run(_evaluate(evaluation_harness, model_id=model_id, expected_source_version_id=version_id))
+    assert result.model_structure.model_type == "OE"
+    assert result.model_health.stable
+    assert result.test.free_run.rmse is not None
 
 
 async def _evaluate(

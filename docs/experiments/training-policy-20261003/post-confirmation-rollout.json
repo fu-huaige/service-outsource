@@ -1,0 +1,19 @@
+{
+  "recorded_at": "2026-10-03T14:25:31.894854+00:00",
+  "reason": "Experimental paired search regressed three of five known datasets. Preserve established default; paired_coverage explicitly reproduces the frozen experimental computation.",
+  "test_results_unchanged_sha256": "b3c37a2e014e72c21dbbf385c4d832c4922a43c9ef72c42a207c06e203c6bd27",
+  "changes": [
+    {
+      "path": "app/services/optimization_service.py",
+      "before_sha256": "8879359de894025040597f10e8acdc2e04db9bc8ef117db570009f844e67b676",
+      "current_sha256": "e421bc2b9710440a6953af5b8b14000d81bb6eb6552bd30baf66b50c9c441120",
+      "patch": "--- \n+++ \n@@ -754,7 +754,8 @@\n         sampled_params = _suggest(trial, payload.search_space)\n         sampled_params[\"selection_mode\"] = trial.suggest_categorical(\"selection_mode\", [\"single\", \"ensemble\"])\n         sampled_params[\"adaptive_windows\"] = trial.suggest_categorical(\"adaptive_windows\", [False, True])\n-        sampled_params[\"temporal_coverage_bins\"] = trial.suggest_categorical(\"temporal_coverage_bins\", [0, 3])\n+        sampled_params[\"temporal_coverage_bins\"] = (trial.suggest_categorical(\"temporal_coverage_bins\", [0, 3])\n+            if payload.optimization_policy == \"paired_coverage\" else 0)\n         sampled_params[\"history_guard\"] = payload.history_guard\n         sampled_params[\"delays\"] = {c: trial.suggest_categorical(f\"nk_{c}\", options) for c, options in delay_options.items()}\n         params = dict(sampled_params)\n@@ -788,7 +789,9 @@\n             metrics[\"selection_failure\"] = {\"code\": error.code, \"details\": error.details}\n             last_error = error\n \n-        for policy in (\"full_train\", \"selected\"):\n+        policies = ((\"full_train\", \"selected\") if payload.optimization_policy == \"paired_coverage\"\n+            else (\"selected\",) if selection_outcome is not None else (\"full_train\",))\n+        for policy in policies:\n             if policy == \"selected\" and selection_outcome is None:\n                 continue\n             screened = []\n@@ -901,6 +904,7 @@\n         metrics.update(breakdown)\n         metrics[\"selection_provenance\"] = _selection_provenance(training)\n         metrics[\"data_policy_comparison\"] = {\"policy_version\": \"paired_train_policy_v1\",\n+            \"search_policy\": payload.optimization_policy,\n             \"partition\": \"validation\", \"selected_policy\": params[\"training_policy\"],\n             \"same_delays\": True, \"same_structure_grid\": True, \"same_fold_boundaries\": True,\n             \"policies\": {policy: {\"rolling_score\": item[0],\n@@ -925,7 +929,8 @@\n         direction=\"maximize\",\n         sampler=TPESampler(seed=payload.random_seed),\n     )\n-    study.enqueue_trial({f\"nk_{c}\": options[len(options) // 2] for c, options in delay_options.items()})\n+    if payload.optimization_policy == \"paired_coverage\":\n+        study.enqueue_trial({f\"nk_{c}\": options[len(options) // 2] for c, options in delay_options.items()})\n     for candidate in (warm_start or [])[:WARM_START_LIMIT]:\n         enqueued = _sanitise_warm_start(candidate)\n         if enqueued:\n"
+    },
+    {
+      "path": "app/schemas/optimization.py",
+      "before_sha256": "8a88be2a1d0b0012577e2cde8bbd6c57157bf4840ba1935e68c694d812009678",
+      "current_sha256": "af75a83c8312231d4b6cc199324fe4dd112cb77a911b306ebaa246d7eeac6938",
+      "patch": "--- \n+++ \n@@ -22,6 +22,7 @@\n     diagnose_feedback: bool = True\n     rolling_folds: int = Field(default=3, ge=1, le=5)\n     structure_shortlist: int = Field(default=6, ge=1, le=20)\n+    optimization_policy: Literal[\"established\", \"paired_coverage\"] = \"established\"\n \n     @model_validator(mode=\"after\")\n     def validate_time_split(self) -> \"OptimizationStartRequest\":\n"
+    }
+  ]
+}

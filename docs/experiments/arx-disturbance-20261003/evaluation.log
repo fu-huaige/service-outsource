@@ -1,0 +1,134 @@
+[
+  {
+    "source": "distillation_a",
+    "member": "ContinuousDistillationData/ScenarioA_SingleComponent_Water/operating_point_007/test_anormal_experiment_001.csv",
+    "rows": 2193,
+    "role": "unseen_anomalous_run",
+    "models": {
+      "fixed": {
+        "state": "succeeded",
+        "rmse": 6.62566470553327,
+        "fit": 4.883481273306622,
+        "persistence_rmse": 6.972862293071585,
+        "persistence_skill": 0.04979269243324935,
+        "offset": 0,
+        "initialization": {},
+        "coefficient_refit": false,
+        "future_output_invariance": true,
+        "forecast_start": 43
+      },
+      "past_residual": {
+        "state": "succeeded",
+        "rmse": 6.624786295072097,
+        "fit": 4.8960915318683185,
+        "persistence_rmse": 6.972862293071585,
+        "persistence_skill": 0.04991866802609102,
+        "offset": 0.3247632377640315,
+        "initialization": {
+          "policy": "past_residual",
+          "window": 32,
+          "context_start": 11,
+          "context_stop": 43,
+          "forecast_updates": false,
+          "offset_kind": "equation_disturbance",
+          "assumption": "constant_disturbance_over_forecast",
+          "status": "initialized",
+          "samples": 32,
+          "offset": 0.3247632377640315
+        },
+        "coefficient_refit": false,
+        "future_output_invariance": true,
+        "forecast_start": 43
+      }
+    },
+    "chosen_policy_by_source_validation": "fixed"
+  },
+  {
+    "source": "distillation_b",
+    "member": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_007/train_normal_experiment_001.csv",
+    "rows": 548,
+    "role": "unseen_normal_run",
+    "models": {
+      "fixed": {
+        "state": "succeeded",
+        "rmse": 6.492779105767018,
+        "fit": -152.27188180119654,
+        "persistence_rmse": 2.7283345298791146,
+        "persistence_skill": -1.3797591661366746,
+        "offset": 0,
+        "initialization": {},
+        "coefficient_refit": false,
+        "future_output_invariance": true,
+        "forecast_start": 43
+      },
+      "past_residual": {
+        "state": "succeeded",
+        "rmse": 5.507099324247785,
+        "fit": -113.97406059295854,
+        "persistence_rmse": 2.7283345298791146,
+        "persistence_skill": -1.0184839006863982,
+        "offset": -0.47633582882460646,
+        "initialization": {
+          "policy": "past_residual",
+          "window": 32,
+          "context_start": 13,
+          "context_stop": 43,
+          "forecast_updates": false,
+          "offset_kind": "equation_disturbance",
+          "assumption": "constant_disturbance_over_forecast",
+          "status": "initialized",
+          "samples": 30,
+          "offset": -0.47633582882460646
+        },
+        "coefficient_refit": false,
+        "future_output_invariance": true,
+        "forecast_start": 43
+      }
+    },
+    "chosen_policy_by_source_validation": "past_residual"
+  },
+  {
+    "source": "distillation_c",
+    "member": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv",
+    "rows": 385,
+    "role": "unseen_normal_run",
+    "models": {
+      "fixed": {
+        "state": "succeeded",
+        "rmse": 2.017967641510041,
+        "fit": -288.6623087912483,
+        "persistence_rmse": 0.7269293746915639,
+        "persistence_skill": -1.7760160914755505,
+        "offset": 0,
+        "initialization": {},
+        "coefficient_refit": false,
+        "future_output_invariance": true,
+        "forecast_start": 43
+      },
+      "past_residual": {
+        "state": "succeeded",
+        "rmse": 0.7473219852778219,
+        "fit": -43.93485912945059,
+        "persistence_rmse": 0.7269293746915639,
+        "persistence_skill": -0.028053083691810476,
+        "offset": -0.10907206288302618,
+        "initialization": {
+          "policy": "past_residual",
+          "window": 32,
+          "context_start": 11,
+          "context_stop": 43,
+          "forecast_updates": false,
+          "offset_kind": "equation_disturbance",
+          "assumption": "constant_disturbance_over_forecast",
+          "status": "initialized",
+          "samples": 32,
+          "offset": -0.10907206288302618
+        },
+        "coefficient_refit": false,
+        "future_output_invariance": true,
+        "forecast_start": 43
+      }
+    },
+    "chosen_policy_by_source_validation": "fixed"
+  }
+]

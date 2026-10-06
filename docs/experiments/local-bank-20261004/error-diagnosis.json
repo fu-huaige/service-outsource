@@ -1,0 +1,57 @@
+{
+  "role": "posthoc diagnosis; does not choose or change any model",
+  "results": [
+    {
+      "case": "distillation_b",
+      "role": "posthoc_diagnosis_of_already_scored_targets",
+      "models": {
+        "stage1_selected": {
+          "actual_mean": 91.78459405940595,
+          "predicted_mean": 93.23622926696443,
+          "actual_std": 2.573722865746753,
+          "predicted_std": 0.02810625081886986,
+          "bias_mse_fraction": 0.24467963971155504,
+          "free_run_rmse": 2.934665298896864,
+          "online_one_step_rmse": 1.3685579201039304,
+          "online_one_step_uses_measured_past": true
+        },
+        "stage2_selected_global": {
+          "actual_mean": 91.78459405940595,
+          "predicted_mean": 93.24535312819324,
+          "actual_std": 2.573722865746753,
+          "predicted_std": 0.027674400863187846,
+          "bias_mse_fraction": 0.24697563972045802,
+          "free_run_rmse": 2.9393515525246032,
+          "online_one_step_rmse": 1.3731383191988122,
+          "online_one_step_uses_measured_past": true
+        }
+      }
+    },
+    {
+      "case": "distillation_c",
+      "role": "posthoc_diagnosis_of_already_scored_targets",
+      "models": {
+        "stage1_selected": {
+          "actual_mean": 92.77272727272727,
+          "predicted_mean": 95.17988869934246,
+          "actual_std": 0.964472315672024,
+          "predicted_std": 0.5149376680965078,
+          "bias_mse_fraction": 0.7923211580624168,
+          "free_run_rmse": 2.7042982601643106,
+          "online_one_step_rmse": 0.28108285789160187,
+          "online_one_step_uses_measured_past": true
+        },
+        "stage2_selected_global": {
+          "actual_mean": 92.77272727272727,
+          "predicted_mean": 93.9321420370051,
+          "actual_std": 0.964472315672024,
+          "predicted_std": 0.4706325046252611,
+          "bias_mse_fraction": 0.7547587069575853,
+          "free_run_rmse": 1.33454972641989,
+          "online_one_step_rmse": 0.25250853435725035,
+          "online_one_step_uses_measured_past": true
+        }
+      }
+    }
+  ]
+}

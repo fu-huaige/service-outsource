@@ -1,0 +1,239 @@
+{
+  "protocol_sha256": "49463a053ac68a7bd1984a6c99b7f93ca5a1cb5d50ab30db30bf4413f235b18c",
+  "results": [
+    {
+      "source_dataset": "distillation_a",
+      "member": "ContinuousDistillationData/ScenarioA_SingleComponent_Water/operating_point_003/test_anormal_experiment_001.csv",
+      "rows": 3044,
+      "role": "anomalous_stress",
+      "previously_performance_scored": false,
+      "time_audit": {
+        "status": "monotonic",
+        "nominal_seconds": 30,
+        "median_interval_seconds": 30.0,
+        "min_interval_seconds": 30.0,
+        "max_interval_seconds": 60.0,
+        "non_30_second_intervals": 1
+      },
+      "arms": {
+        "initial24": {
+          "status": "succeeded",
+          "rmse": 2.2720178137645424,
+          "fit": -37.78032876911341,
+          "n_samples": 3001,
+          "future_output_invariance": true
+        },
+        "affine24": {
+          "status": "succeeded",
+          "rmse": 1.4574931027021916,
+          "fit": 11.614302646557405,
+          "n_samples": 3001,
+          "future_output_invariance": true
+        },
+        "current102": {
+          "status": "succeeded",
+          "rmse": 1.817771475562374,
+          "fit": -10.233797469712801,
+          "n_samples": 3001,
+          "future_output_invariance": true
+        },
+        "oe24": {
+          "status": "succeeded",
+          "rmse": 1.762739058942102,
+          "fit": -6.896506534332092,
+          "n_samples": 3001,
+          "future_output_invariance": true
+        }
+      },
+      "validation_chosen_family": "current102",
+      "selected_result": {
+        "status": "succeeded",
+        "rmse": 1.817771475562374,
+        "fit": -10.233797469712801,
+        "n_samples": 3001,
+        "future_output_invariance": true
+      },
+      "persistence_rmse": 1.688379694066538
+    },
+    {
+      "source_dataset": "distillation_b",
+      "member": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_003/test_anormal_experiment_001.csv",
+      "rows": 1068,
+      "role": "anomalous_stress",
+      "previously_performance_scored": false,
+      "time_audit": {
+        "status": "duplicate_time",
+        "nominal_seconds": 30,
+        "median_interval_seconds": 30.0,
+        "min_interval_seconds": 0.0,
+        "max_interval_seconds": 30.0,
+        "non_30_second_intervals": 1
+      },
+      "arms": {},
+      "validation_chosen_family": "current102",
+      "status": "invalid_time_order"
+    },
+    {
+      "source_dataset": "distillation_c",
+      "member": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_007/test_anormal_experiment_001.csv",
+      "rows": 557,
+      "role": "anomalous_stress",
+      "previously_performance_scored": false,
+      "time_audit": {
+        "status": "monotonic",
+        "nominal_seconds": 30,
+        "median_interval_seconds": 30.0,
+        "min_interval_seconds": 30.0,
+        "max_interval_seconds": 60.0,
+        "non_30_second_intervals": 1
+      },
+      "arms": {
+        "initial24": {
+          "status": "succeeded",
+          "rmse": 4.9738293948326975,
+          "fit": -616.1937468283472,
+          "n_samples": 514,
+          "future_output_invariance": true
+        },
+        "affine24": {
+          "status": "succeeded",
+          "rmse": 1.2779181266704094,
+          "fit": -84.01052762902982,
+          "n_samples": 514,
+          "future_output_invariance": true
+        },
+        "current102": {
+          "status": "succeeded",
+          "rmse": 1.8345310064329614,
+          "fit": -164.1585649348947,
+          "n_samples": 514,
+          "future_output_invariance": true
+        },
+        "oe24": {
+          "status": "succeeded",
+          "rmse": 3.2936352212580586,
+          "fit": -374.25851643589914,
+          "n_samples": 514,
+          "future_output_invariance": true
+        }
+      },
+      "validation_chosen_family": "oe24",
+      "selected_result": {
+        "status": "succeeded",
+        "rmse": 3.2936352212580586,
+        "fit": -374.25851643589914,
+        "n_samples": 514,
+        "future_output_invariance": true
+      },
+      "persistence_rmse": 1.0965963436269688
+    },
+    {
+      "source_dataset": "distillation_b",
+      "member": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv",
+      "rows": 158,
+      "role": "short_normal_boundary",
+      "previously_performance_scored": false,
+      "time_audit": {
+        "status": "monotonic",
+        "nominal_seconds": 30,
+        "median_interval_seconds": 30.0,
+        "min_interval_seconds": 30.0,
+        "max_interval_seconds": 30.0,
+        "non_30_second_intervals": 0
+      },
+      "arms": {
+        "initial24": {
+          "status": "succeeded",
+          "rmse": 0.05756553714237129,
+          "fit": 2.980861517327804,
+          "n_samples": 115,
+          "future_output_invariance": true
+        },
+        "affine24": {
+          "status": "succeeded",
+          "rmse": 0.8391493151565995,
+          "fit": -1314.2757569249356,
+          "n_samples": 115,
+          "future_output_invariance": true
+        },
+        "current102": {
+          "status": "succeeded",
+          "rmse": 0.05935558074561711,
+          "fit": -0.0360214451955887,
+          "n_samples": 115,
+          "future_output_invariance": true
+        },
+        "oe24": {
+          "status": "succeeded",
+          "rmse": 0.07131337380010301,
+          "fit": -20.18930825343044,
+          "n_samples": 115,
+          "future_output_invariance": true
+        }
+      },
+      "validation_chosen_family": "current102",
+      "selected_result": {
+        "status": "succeeded",
+        "rmse": 0.05935558074561711,
+        "fit": -0.0360214451955887,
+        "n_samples": 115,
+        "future_output_invariance": true
+      },
+      "persistence_rmse": 0.07703471831639663
+    },
+    {
+      "source_dataset": "distillation_c",
+      "member": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv",
+      "rows": 172,
+      "role": "short_normal_boundary",
+      "previously_performance_scored": false,
+      "time_audit": {
+        "status": "monotonic",
+        "nominal_seconds": 30,
+        "median_interval_seconds": 30.0,
+        "min_interval_seconds": 30.0,
+        "max_interval_seconds": 30.0,
+        "non_30_second_intervals": 0
+      },
+      "arms": {
+        "initial24": {
+          "status": "succeeded",
+          "rmse": 2.2485446891153473,
+          "fit": -217.15060203415612,
+          "n_samples": 129,
+          "future_output_invariance": true
+        },
+        "affine24": {
+          "status": "succeeded",
+          "rmse": 3.691217103456038,
+          "fit": -420.6352945826653,
+          "n_samples": 129,
+          "future_output_invariance": true
+        },
+        "current102": {
+          "status": "succeeded",
+          "rmse": 4.266521562521101,
+          "fit": -501.7802931360205,
+          "n_samples": 129,
+          "future_output_invariance": true
+        },
+        "oe24": {
+          "status": "succeeded",
+          "rmse": 3.841213722376851,
+          "fit": -441.79187564778977,
+          "n_samples": 129,
+          "future_output_invariance": true
+        }
+      },
+      "validation_chosen_family": "oe24",
+      "selected_result": {
+        "status": "succeeded",
+        "rmse": 3.841213722376851,
+        "fit": -441.79187564778977,
+        "n_samples": 129,
+        "future_output_invariance": true
+      },
+      "persistence_rmse": 1.111757111948918
+    }
+  ]
+}

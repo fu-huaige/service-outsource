@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 from algorithms.agent.llm import (
+    LlmMessage,
     LlmUnavailableError,
     NullProvider,
     StaticProvider,
@@ -80,6 +81,22 @@ class TestJsonExtraction:
 
 
 class TestProviderConstruction:
+    @pytest.mark.parametrize("name", ["deepseek", "volcengine", "ark"])
+    def test_cloud_flash_requests_disable_thinking(self, monkeypatch, name):
+        import io
+
+        captured = {}
+        def respond(request, timeout):
+            captured.update(json.loads(request.data))
+            return io.BytesIO(json.dumps({"choices": [{"message": {"content": "connection-ok"}}]}).encode())
+        monkeypatch.setattr("urllib.request.urlopen", respond)
+        provider = build_provider(provider=name, base_url="https://example.invalid", model="flash",
+                                  api_key="test-only-secret")
+        result = provider.complete([LlmMessage(role="user", content="connection-test")])
+        assert captured["thinking"] == {"type": "disabled"}
+        assert captured["max_tokens"] == 4096
+        assert result.text == "connection-ok" and result.provider == name
+
     def test_disabled_provider_is_null(self) -> None:
         provider = build_provider(provider="none", base_url="", model="", api_key="")
         assert isinstance(provider, NullProvider)
@@ -284,6 +301,18 @@ class TestLlmPlanning:
 
 
 class TestLlmNarration:
+    def test_step_reference_kind_is_preserved_and_wrong_kind_retried(self) -> None:
+        path = "step11.test.free_run.rmse"
+        outcome = LlmNarrator(StaticProvider(responses=[
+            f"最终测试误差为 {{{{run:{path}}}}}。",
+            f"最终测试误差为 {{{{step:{path}}}}}。",
+        ])).narrate(context="冻结模型评价", available_paths=[path],
+            reference_kinds={"step11": "step"})
+        assert outcome.source == "llm"
+        assert outcome.attempts == 2
+        assert "{{step:" in outcome.text
+        assert outcome.violations[0]["reason"] == "UNKNOWN_REPORT_REFERENCE"
+
     def test_a_placeholder_only_draft_is_accepted(self) -> None:
         draft = "验证集自由仿真 FIT 为 {{run:r1.validation.free_run_fit}}，模型可用于多步预测。"
         outcome = LlmNarrator(StaticProvider(responses=[draft])).narrate(
@@ -321,6 +350,23 @@ class TestLlmNarration:
         outcome = LlmNarrator(NullProvider()).narrate(context="x", available_paths=[])
         assert outcome.source == "template"
         assert outcome.fallback_reason
+
+    def test_unknown_placeholder_is_rejected_even_without_bare_digits(self) -> None:
+        outcome = LlmNarrator(StaticProvider(responses=[
+            "范围为 {{run:r1.test.evaluation_scope}}。"
+        ]), max_attempts=2).narrate(context="已完成评价", available_paths=["r1.evaluation_scope"])
+        assert outcome.source == "template"
+        assert outcome.text == ""
+        assert outcome.attempts == 2
+        assert outcome.violations[0]["reason"] == "UNKNOWN_REPORT_REFERENCE"
+
+    def test_unknown_reference_can_be_corrected_on_retry(self) -> None:
+        outcome = LlmNarrator(StaticProvider(responses=[
+            "范围为 {{run:r1.test.evaluation_scope}}。", "范围为 {{run:r1.evaluation_scope}}。"
+        ])).narrate(context="已完成评价", available_paths=["r1.evaluation_scope"])
+        assert outcome.source == "llm"
+        assert outcome.attempts == 2
+        assert "test.evaluation_scope" not in outcome.text
 
 
 @pytest.fixture

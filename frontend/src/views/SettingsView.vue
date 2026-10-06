@@ -293,7 +293,7 @@ const apiKeyPlaceholder = computed(() => agentConfig.value?.has_api_key
 const providerDefaults: Record<string, { baseUrl: string; model: string }> = {
   deepseek: {
     baseUrl: "https://api.deepseek.com",
-    model: "deepseek-v4-flash",
+    model: "deepseek-flash",
   },
 };
 

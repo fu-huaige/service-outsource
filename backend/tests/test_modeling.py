@@ -282,6 +282,12 @@ class TestModelingApi:
 
         assert data["model_structure"] == {
             "model_type": "ARX",
+            "simulation_horizons": [1, 16, 64, 0],
+            "simulation_max_nfev": 150,
+            "regularization_kernel": "identity",
+            "kernel_decay": 0.9,
+            "initialization_policy": "fixed",
+            "initialization_window": 32,
             "input_columns": ["u1", "u2"],
             "output_column": "y",
             "na": 2,
@@ -290,6 +296,9 @@ class TestModelingApi:
             "estimator": "ols",
             "ridge_alpha": None,
             "parameter_count": 6,
+            "fit_intercept": True,
+            "standardize": True,
+            "history_guard": None,
         }
         assert data["metrics"]["val_free_run_fit"] is not None
         assert data["validation"]["free_run_fit"] is not None
@@ -353,6 +362,10 @@ class TestModelingApi:
         )
 
         assert response.status_code == 200, response.text
+
+        body = response.json()["data"]
+        assert body["preprocessing"]["training_input_support"]["u2"]["modelled"] is False
+        assert body["preprocessing"]["input_support_sources"]["u2"] == lag_version_id
 
     def test_raw_source_is_rejected_before_core_fitting(
         self,

@@ -154,6 +154,7 @@ def hampel_anomaly_mask(
     *,
     window: int = 11,
     threshold: float = 3.0,
+    scale_floor: float = 0.0,
 ) -> np.ndarray:
     """Flag points whose deviation from the rolling median exceeds ``threshold`` MADs."""
 
@@ -171,10 +172,23 @@ def hampel_anomaly_mask(
         warnings.simplefilter("ignore", RuntimeWarning)
         centre = np.nanmedian(frames, axis=1)
         deviation = np.nanmedian(np.abs(frames - centre[:, None]), axis=1)
-    scale = MAD_TO_SIGMA * deviation
+    scale = np.maximum(MAD_TO_SIGMA * deviation, scale_floor)
     finite = np.isfinite(values) & np.isfinite(centre) & (scale > 0)
     mask[finite] = np.abs(values[finite] - centre[finite]) > threshold * scale[finite]
     return mask
+
+
+def input_anomaly_mask(signal: FloatArray, *, window: int = 11, threshold: float = 3.0) -> np.ndarray:
+    """Protect recurring excitation levels from a collapsed local MAD.
+
+    The robust training-wide spread supplies a scale floor for inputs only. A PRBS
+    level can be a minority within eleven samples without being a sensor anomaly.
+    The caller must pass only the training partition.
+    """
+    values = np.asarray(signal, dtype=float)
+    finite = values[np.isfinite(values)]
+    spread = float(np.diff(np.percentile(finite, [10, 90]))[0] / 2.563103) if finite.size else 0.0
+    return hampel_anomaly_mask(values, window=window, threshold=threshold, scale_floor=spread)
 
 
 def gate_windows(
@@ -205,7 +219,7 @@ def gate_windows(
 
     noise_sigma = estimate_noise_sigma(measured)
     anomaly_masks = {
-        name: hampel_anomaly_mask(
+        name: input_anomaly_mask(
             values, window=limits.hampel_window, threshold=limits.hampel_threshold
         )
         for name, values in signals.items()
@@ -216,7 +230,12 @@ def gate_windows(
 
     rows = np.asarray(time_indices, dtype=int)
     sample_sets = [rows[np.asarray(positions, dtype=int)] for positions in window_positions]
-    activities = [_input_activity(signals, samples) for samples in sample_sets]
+    activity_signals = {}
+    for column, signal in signals.items():
+        finite = signal[np.isfinite(signal)]
+        scale = float(np.std(finite)) if finite.size else 0.0
+        activity_signals[column] = signal / scale if scale > 0 else np.zeros_like(signal)
+    activities = [_input_activity(activity_signals, samples) for samples in sample_sets]
     activity_reference = _activity_reference(activities)
 
     windows: list[WindowQuality] = []

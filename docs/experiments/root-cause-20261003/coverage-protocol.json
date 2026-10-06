@@ -1,0 +1,97 @@
+{
+  "archive": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261003/ContinuousDistillationData.zip",
+  "archive_sha256": "8076e5cec0c1137ab0902c305a2603a4c4ec672308db563ff9749a9b9a7a34ec",
+  "cases": {
+    "distillation_b": {
+      "scenario": "ScenarioB_BinaryComponent_n-butanolwater",
+      "runs": [
+        "006",
+        "001"
+      ],
+      "filtered": [
+        "M101",
+        "T116"
+      ]
+    },
+    "distillation_c": {
+      "scenario": "ScenarioC_ReactiveOME",
+      "runs": [
+        "006",
+        "001",
+        "002"
+      ],
+      "filtered": [
+        "M101",
+        "TV101",
+        "T116"
+      ]
+    }
+  },
+  "targets": [
+    {
+      "case": "distillation_b",
+      "member": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_004/test_anormal_experiment_001.csv",
+      "rows": 886,
+      "role": "unseen_anomalous_stress_same_apparatus"
+    },
+    {
+      "case": "distillation_c",
+      "member": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_004/test_anormal_experiment_001.csv",
+      "rows": 225,
+      "role": "unseen_anomalous_stress_same_apparatus"
+    }
+  ],
+  "arms": [
+    "single_filtered",
+    "single_full_controls",
+    "multiple_full_controls"
+  ],
+  "controls": [
+    "M101",
+    "TH101_SetPoint",
+    "TV101",
+    "T116"
+  ],
+  "train_ratio": 0.6,
+  "validation_ratio": 0.2,
+  "guard": 10,
+  "delay": 1,
+  "grid": {
+    "na": [
+      1,
+      2,
+      4
+    ],
+    "nb": [
+      1,
+      2,
+      3
+    ],
+    "alpha": [
+      0.01,
+      0.1,
+      1.0
+    ],
+    "initialization": [
+      "fixed",
+      "past_residual"
+    ]
+  },
+  "run_balance": "equal total weight per run",
+  "dynamic_boundaries": "separate per-run regressors, no signal concatenation",
+  "source_role": "previously_inspected_normal_runs_development",
+  "macro_validation": "mean RMSE / frozen-context persistence RMSE, across source validation runs with >=8 samples",
+  "time_policy": "first contiguous 30-second block; no interpolation or concatenation; target forecast begins at43",
+  "selection": "Validation only; all coefficients and initialization policy sealed before target values scored",
+  "scope": "data coverage ablation; different data volume, not equal fitting budget; controlled inputs retain their physical roles; no causal/deployment claim",
+  "code_sha256": {
+    "backend/scripts/benchmark_experiment_coverage.py": "edb9dba14a791f660c5e7d24e936d62766a0ce41c5d0b3ddbe65c02b8db99642",
+    "backend/algorithms/identifiability/experiments.py": "8d71f3256158df68f80ed59b9d2324fdb21847f01ef33c7b3657fa220543e342",
+    "backend/algorithms/identifiability/estimation.py": "93f99e695e518aafe60e97bc486d630911f3d8dc0aa70fd5aa54b11618963d76",
+    "backend/algorithms/identifiability/regressor.py": "2e42a2d99fd9e9a49bc634593e38385dc88681bd2f61c4965cf723b3c8100d5b",
+    "backend/algorithms/identifiability/validation.py": "8b51dd4a46235483e5b09458e421037db72b4fd79f44233b07bf01399a67077f",
+    "backend/scripts/benchmark_validation_guarded.py": "b752f00dfc187ff9412aaea5b890e5372f684bee2f52cf834c06e3ce297be496",
+    "backend/scripts/benchmark_initial_and_oe.py": "3a667b2329dccca8e2289456e067d5328e21257c4c0ebc35031699bce16139c7",
+    "backend/scripts/benchmark_oe_transfer.py": "af7f01d50c408da822f33c962b2f03d29c9ef1cc1a71e38996f3e52051cde25a"
+  }
+}

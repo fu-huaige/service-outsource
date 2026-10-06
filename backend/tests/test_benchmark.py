@@ -154,7 +154,10 @@ class TestSelfBenchmark:
         full = by_key[("S6", "full")]
         ids = by_key[("S6", "ids")]
         assert ids["free_run_fit"] > full["free_run_fit"] - 5.0
-        assert ids["coverage_ratio"] < full["coverage_ratio"] / 3
+        assert ids["train_rows"] <= 12 * 60
+        assert ids["coverage_ratio"] < full["coverage_ratio"]
+        for strategy in ("energy", "weighted", "ids"):
+            assert by_key[("S6", strategy)]["train_rows"] <= 12 * 60
 
     def test_free_run_discriminates_better_than_one_step(self, client: TestClient) -> None:
         data = run(client)

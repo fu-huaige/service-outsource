@@ -24,6 +24,7 @@ from typing import Any
 
 import numpy as np
 
+from algorithms.identifiability.estimation import estimate_parameters
 from algorithms.identifiability.regressor import (
     ArxStructure,
     FloatArray,
@@ -241,6 +242,7 @@ def estimate_delays(
     nb: int = 2,
     max_ar_order: int = 20,
     max_combinations: int = 400,
+    history_guard: int = 0,
 ) -> DelayResult:
     """Generate candidates by prewhitening, then refine them on the validation split.
 
@@ -302,6 +304,7 @@ def estimate_delays(
             nb=nb,
             start=train_stop,
             stop=validation_stop,
+            history_guard=history_guard,
         )
 
     combinations = 1
@@ -434,24 +437,27 @@ def _validation_fit(
     nb: int,
     start: int,
     stop: int,
+    history_guard: int = 0,
 ) -> float:
     """Fit ARX on the training rows and score free-run simulation on the validation rows."""
 
     structure = ArxStructure.create(na=na, nb=nb, nk=dict(delays), input_columns=tuple(signals))
+    guard = max(structure.max_history, history_guard)
     try:
         train = build_regressor(
-            inputs=dict(signals), output=output, structure=structure, start=0, stop=start
+            inputs=dict(signals), output=output, structure=structure, start=0, stop=start - guard
         )
         if train.n_rows <= train.n_parameters * 2:
             return float("-inf")
-        theta, _, _, _ = np.linalg.lstsq(train.features, train.targets, rcond=None)
+        estimate = estimate_parameters(train.features, train.targets, estimator="ols")
         measured, simulated = free_run_simulate(
-            np.asarray(theta, dtype=float),
+            estimate.theta,
             structure,
             inputs=dict(signals),
             output=output,
-            start=start,
-            stop=stop,
+            start=start + guard,
+            stop=stop - guard,
+            intercept=estimate.intercept,
         )
         return fit_percentage(measured, simulated)
     except IdentifiabilityError:

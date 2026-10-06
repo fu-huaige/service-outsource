@@ -66,13 +66,14 @@ describe("business UI typography contract", () => {
     expect(source).not.toContain('class="aw-kv__val font-mono">{{ val }} 采样点');
   });
 
-  it("preserves Mono only for explicit technical evidence in key artifact surfaces", () => {
+  it("uses Sans for model parameters and Mono for raw technical evidence", () => {
     const workbench = readFileSync(resolve(process.cwd(), "src/components/artifact/ArtifactWorkbench.vue"), "utf8");
     const report = readFileSync(resolve(process.cwd(), "src/components/artifact/ReportArtifactRenderer.vue"), "utf8");
     const mainCss = readFileSync(resolve(process.cwd(), "src/assets/main.css"), "utf8");
 
     expect(workbench).toContain('class="aw-json font-mono"');
-    expect(workbench).toContain('class="aw-kv__val font-mono" style="font-size:11px"');
+    expect(workbench).toContain('<span class="aw-kv__val">{{ parameter.value }}</span>');
+    expect(workbench).not.toContain('class="aw-kv__val font-mono"');
     expect(report).toContain('class="report-raw font-mono"');
     expect(report).toContain('<dd class="font-mono">{{ item.value }}</dd>');
     expect(mainCss).toMatch(/\.font-mono\s*\{\s*font-family: var\(--font-mono\);/);

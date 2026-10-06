@@ -18,6 +18,11 @@ class OptimizationStartRequest(Schema):
     random_seed: int = Field(default=42, ge=0, le=2_147_483_647)
     train_ratio: float = Field(default=0.6, gt=0, lt=1)
     validation_ratio: float = Field(default=0.2, gt=0, lt=1)
+    history_guard: int = Field(default=32, ge=0)
+    diagnose_feedback: bool = True
+    rolling_folds: int = Field(default=3, ge=1, le=5)
+    structure_shortlist: int = Field(default=6, ge=1, le=20)
+    optimization_policy: Literal["established", "paired_coverage", "disturbance_aware", "validation_guarded"] = "established"
 
     @model_validator(mode="after")
     def validate_time_split(self) -> "OptimizationStartRequest":
@@ -35,7 +40,7 @@ class OptimizationObjectiveSemantics(Schema):
     """Authoritative meaning of the score stored in ``value``/``best_value``."""
 
     name: Literal["composite_identification_score"] = "composite_identification_score"
-    version: Literal["v1"] = "v1"
+    version: Literal["v1", "v2", "v3", "v4"] = "v1"
     direction: Literal["maximize"] = "maximize"
 
 
@@ -53,6 +58,10 @@ class OptimizationObjectiveComponents(Schema):
     complexity_component: float | None = None
     stability_gate: bool
     final_score: float | None = None
+    latest_validation_score: float | None = None
+    rolling_mean_score: float | None = None
+    rolling_adjustment_component: float | None = None
+    temporal_variability_component: float | None = None
 
 
 class OptimizationSelectionProvenance(Schema):
@@ -69,6 +78,11 @@ class OptimizationSelectionProvenance(Schema):
     persistent_excitation_order: dict[str, int] = Field(default_factory=dict)
     required_excitation_order: dict[str, int] = Field(default_factory=dict)
     condition_number: float | None = None
+    model_count: int = 1
+    criterion: str = "regularized_logdet"
+    training_policy: Literal["selected", "full_train"] = "selected"
+    temporal_coverage_bins: int = 0
+    covered_temporal_bins: int = 0
 
 
 class OptimizationValidationFeedback(Schema):

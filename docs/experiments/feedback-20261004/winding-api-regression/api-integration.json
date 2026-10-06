@@ -1,0 +1,38 @@
+{
+  "artifact_root": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261004/winding-api-regression/api-artifacts",
+  "results": [
+    {
+      "dataset": "winding_tension_1",
+      "status": "succeeded",
+      "seed": 7,
+      "study_id": "ace6b539-56f0-4a05-a2da-cc31210e931e",
+      "database": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261004/winding-api-regression/api-artifacts/integration-c2f324f7-add0-4918-b9c0-31f1cbb33a70.db",
+      "api_trials": 2,
+      "optimization_policy": "validation_guarded",
+      "source_sha256": "3a849867c05495a9299aa23d8e1096e2bd62d7c3c2d1e73664ed49b8e6d96e26",
+      "model_matches_offline_frozen_parameters": true,
+      "upload_sha256": "3a849867c05495a9299aa23d8e1096e2bd62d7c3c2d1e73664ed49b8e6d96e26",
+      "upload_adapter": "remove auxiliary source_time only; original source preserved",
+      "evaluation_did_not_refit": true,
+      "model_artifact_unchanged": true,
+      "test_rmse": 0.3030741996186469,
+      "test_fit": 70.15343616418338,
+      "cleaning_no_op": true,
+      "exported_rows": 720,
+      "export_path": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261004/winding-api-regression/api-artifacts/exports/1fed401c-e442-4f89-b8db-1bc4edc04dad.csv",
+      "export_sha256": "af8752d6df90e6c011f597083f5c9fe3ebfa2a55f5c9e307bb835bbb85143640",
+      "model_path": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261004/winding-api-regression/api-artifacts/models/420b6cbe-b241-42a3-80bf-a16979dba85d.json",
+      "model_sha256": "363136f22d7d712739a93079ac5fedb476544e98cede10e20f93f358f5805889",
+      "report_markdown_path": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261004/winding-api-regression/api-artifacts/reports/ff9a01d2-bfeb-4afc-b152-e8d9c3142360.md",
+      "report_html_path": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261004/winding-api-regression/api-artifacts/reports/ff9a01d2-bfeb-4afc-b152-e8d9c3142360.html",
+      "report_bindings": 29,
+      "report_charts": 1,
+      "narration_source": "llm",
+      "llm_provider": "deepseek",
+      "llm_model": "deepseek-flash",
+      "llm_fallback_reason": null,
+      "export_mode": "optimization_best",
+      "warm_start_trials": 0
+    }
+  ]
+}

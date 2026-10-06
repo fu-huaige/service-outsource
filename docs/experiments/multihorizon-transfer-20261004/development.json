@@ -1,0 +1,3314 @@
+{
+  "results": [
+    {
+      "case": "distillation_b",
+      "arms": {
+        "pooled_controls": {
+          "winner": {
+            "na": 2,
+            "nb": 1,
+            "alpha": 0.0,
+            "columns": [
+              "M101",
+              "TH101_SetPoint",
+              "TV101",
+              "T116"
+            ],
+            "status": "succeeded",
+            "theta": [
+              -0.38318740814518126,
+              -0.237654800366561,
+              -2.783497143167809e-07,
+              0.03840351161185865,
+              0.0,
+              0.0020810993379908544
+            ],
+            "intercept": 32.240168484133456,
+            "validation": [
+              {
+                "rmse": 0.4798620081000798,
+                "fit": -9.065808724055202,
+                "n_samples": 170,
+                "persistence_rmse": 0.5923343650338023,
+                "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+              },
+              {
+                "rmse": 0.38183407556691107,
+                "fit": -587.7226952520839,
+                "n_samples": 12,
+                "persistence_rmse": 0.06608075867199546,
+                "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+              }
+            ],
+            "validation_risk": 3.294207261149595,
+            "elapsed_seconds": 0.0017890000017359853
+          },
+          "candidates": [
+            {
+              "na": 1,
+              "nb": 1,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.5015756782516235,
+                -1.5469088410539798e-05,
+                0.05046773154035456,
+                0.0,
+                0.002757028344861268
+              ],
+              "intercept": 42.38189838549309,
+              "validation": [
+                {
+                  "rmse": 0.4690743183792504,
+                  "fit": -6.613920298203735,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.6856793883619877,
+                  "fit": -1134.9795558266583,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 5.584146461008578,
+              "elapsed_seconds": 0.0023689999943599105
+            },
+            {
+              "na": 1,
+              "nb": 1,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.5015751441113511,
+                -1.5471139194801713e-05,
+                0.050467701434858674,
+                0.0,
+                0.0027570007976522445
+              ],
+              "intercept": 42.381957640359886,
+              "validation": [
+                {
+                  "rmse": 0.4690751857320426,
+                  "fit": -6.614117435155897,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.685682251384284,
+                  "fit": -1134.9847124261767,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 5.58416885621212,
+              "elapsed_seconds": 0.0014288750244304538
+            },
+            {
+              "na": 1,
+              "nb": 2,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.5002016896457746,
+                -9.10408797115536e-05,
+                0.00010949639381846915,
+                0.025312197994502763,
+                0.025312197994502753,
+                2.635589973954096e-18,
+                9.818337760694682e-27,
+                -0.0006757823631911762,
+                0.0035531599816015693
+              ],
+              "intercept": 42.48569188741061,
+              "validation": [
+                {
+                  "rmse": 0.5240152962597928,
+                  "fit": -19.101223071675367,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.6881926392547115,
+                  "fit": -1139.5061808409987,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 5.649539630721261,
+              "elapsed_seconds": 0.0016519579803571105
+            },
+            {
+              "na": 1,
+              "nb": 2,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.5001578742567574,
+                -9.104295130478255e-05,
+                0.00010949505980859873,
+                0.02531439544118799,
+                0.025314395441183444,
+                4.542000055114225e-16,
+                8.181948133912235e-26,
+                -0.0006755341170702414,
+                0.0035531434954419175
+              ],
+              "intercept": 42.48942403176905,
+              "validation": [
+                {
+                  "rmse": 0.5240102677785016,
+                  "fit": -19.10008016940463,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.6881955157677435,
+                  "fit": -1139.5113617387287,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 5.649557151223758,
+              "elapsed_seconds": 0.0015423750155605376
+            },
+            {
+              "na": 2,
+              "nb": 1,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.38318740814518126,
+                -0.237654800366561,
+                -2.783497143167809e-07,
+                0.03840351161185865,
+                0.0,
+                0.0020810993379908544
+              ],
+              "intercept": 32.240168484133456,
+              "validation": [
+                {
+                  "rmse": 0.4798620081000798,
+                  "fit": -9.065808724055202,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.38183407556691107,
+                  "fit": -587.7226952520839,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 3.294207261149595,
+              "elapsed_seconds": 0.0017890000017359853
+            },
+            {
+              "na": 2,
+              "nb": 1,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.38317007828757527,
+                -0.23768824044705475,
+                -2.7780419764097693e-07,
+                0.038401818013974694,
+                0.0,
+                0.002080984781746794
+              ],
+              "intercept": 32.23880908694239,
+              "validation": [
+                {
+                  "rmse": 0.47986297670947403,
+                  "fit": -9.0660288751927,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.3818369962333968,
+                  "fit": -587.7279556747544,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 3.2942301779903476,
+              "elapsed_seconds": 0.0014535830123350024
+            },
+            {
+              "na": 2,
+              "nb": 2,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.3823947499104122,
+                -0.23664241528017224,
+                -7.062290931968258e-05,
+                0.00010179204489869876,
+                0.01930132380063349,
+                0.019301323800633492,
+                0.0,
+                6.545558507129788e-27,
+                -0.0011552364083017251,
+                0.003352983918792276
+              ],
+              "intercept": 32.38135128406555,
+              "validation": [
+                {
+                  "rmse": 0.5444144433160465,
+                  "fit": -23.73765903329712,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.38625706818747074,
+                  "fit": -595.6889628031797,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 3.3821636924255607,
+              "elapsed_seconds": 0.0016149579896591604
+            },
+            {
+              "na": 2,
+              "nb": 2,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.3823554217081497,
+                -0.23665395051492016,
+                -7.062347835983246e-05,
+                0.00010179062309315845,
+                0.01930271529408237,
+                0.019302715294092106,
+                -4.11152035936839e-16,
+                -5.26262903973235e-24,
+                -0.0011550396456955483,
+                0.00335293172584396
+              ],
+              "intercept": 32.3837195016827,
+              "validation": [
+                {
+                  "rmse": 0.5444081731401601,
+                  "fit": -23.73623391150721,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.3862600471984806,
+                  "fit": -595.6943283103777,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 3.382180940342365,
+              "elapsed_seconds": 0.00154916598694399
+            }
+          ]
+        },
+        "multihorizon_controls": {
+          "winner": {
+            "na": 1,
+            "nb": 1,
+            "alpha": 0.001,
+            "columns": [
+              "M101",
+              "TH101_SetPoint",
+              "TV101",
+              "T116"
+            ],
+            "status": "succeeded",
+            "theta": [
+              -0.575211576091998,
+              1.4772532931470721e-05,
+              0.043027258135025316,
+              1.2094962835031011e-21,
+              0.002480963969065862
+            ],
+            "intercept": 36.106070037030726,
+            "validation": [
+              {
+                "rmse": 0.47350535689417206,
+                "fit": -7.621032324077159,
+                "n_samples": 170,
+                "persistence_rmse": 0.5923343650338023,
+                "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+              },
+              {
+                "rmse": 0.06092933257250339,
+                "fit": -9.74003499939018,
+                "n_samples": 12,
+                "persistence_rmse": 0.06608075867199546,
+                "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+              }
+            ],
+            "validation_risk": 0.8607160544106822,
+            "elapsed_seconds": 0.1749962079920806
+          },
+          "candidates": [
+            {
+              "na": 1,
+              "nb": 1,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.9949999999999998,
+                6.684828001185659e-05,
+                0.0005550609769802657,
+                -12692.149304066897,
+                9.150611856192265e-06
+              ],
+              "intercept": 0.42005340514467465,
+              "validation": [
+                {
+                  "rmse": 0.4762044413888419,
+                  "fit": -8.234495837038436,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 4708.192920681005,
+                  "fit": -8479842.813825998,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 35624.93939701909,
+              "elapsed_seconds": 0.231129374995362
+            },
+            {
+              "na": 1,
+              "nb": 1,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.575211576091998,
+                1.4772532931470721e-05,
+                0.043027258135025316,
+                1.2094962835031011e-21,
+                0.002480963969065862
+              ],
+              "intercept": 36.106070037030726,
+              "validation": [
+                {
+                  "rmse": 0.47350535689417206,
+                  "fit": -7.621032324077159,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.06092933257250339,
+                  "fit": -9.74003499939018,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 0.8607160544106822,
+              "elapsed_seconds": 0.1749962079920806
+            },
+            {
+              "na": 1,
+              "nb": 2,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.9949999999988238,
+                -0.00011615433116995595,
+                0.00018516013814533658,
+                757.5041183469077,
+                -757.5035629819806,
+                -0.00759379820750632,
+                -0.0998356630895069,
+                0.00022121340033603732,
+                -0.0002145300597012398
+              ],
+              "intercept": 0.4202411186326705,
+              "validation": [
+                {
+                  "rmse": 1.547611069702588,
+                  "fit": -251.7499824078798,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 8894.681243771916,
+                  "fit": -16020141.643684963,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 67302.9038547312,
+              "elapsed_seconds": 0.37242275004973635
+            },
+            {
+              "na": 1,
+              "nb": 2,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.4886517816683347,
+                -0.0001199345527847571,
+                0.0001467376203486712,
+                0.02589950699623532,
+                0.02589950699623532,
+                -1.2310302141466057e-21,
+                -9.49220256226509e-22,
+                -1.3476791869087988e-05,
+                0.0030063141868201084
+              ],
+              "intercept": 43.46232631358283,
+              "validation": [
+                {
+                  "rmse": 0.5428306640593498,
+                  "fit": -23.37768853645383,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.06094138686208635,
+                  "fit": -9.761746022716311,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 0.9193259911651024,
+              "elapsed_seconds": 0.24340775003656745
+            },
+            {
+              "na": 2,
+              "nb": 1,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.6983654590312142,
+                -0.2981251668023061,
+                8.4636418345283e-05,
+                0.00043268878855796424,
+                143.76141603784293,
+                -2.0932216332100033e-05
+              ],
+              "intercept": 0.2913978029162716,
+              "validation": [
+                {
+                  "rmse": 2.256781012903826,
+                  "fit": -412.93422302795426,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 1919.7310325368344,
+                  "fit": -3457534.308554381,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 14527.548089425407,
+              "elapsed_seconds": 0.45239645801484585
+            },
+            {
+              "na": 2,
+              "nb": 1,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.6110961015565004,
+                -0.38479105197281016,
+                9.096777562760446e-05,
+                0.0005023803208180703,
+                4.857016211660877e-22,
+                -2.2444290498169933e-05
+              ],
+              "intercept": 0.3419868206765625,
+              "validation": [
+                {
+                  "rmse": 0.4741006213172709,
+                  "fit": -7.756327460208023,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.06578209412777127,
+                  "fit": -18.48036088897853,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 0.8979369435905626,
+              "elapsed_seconds": 0.4396048750495538
+            },
+            {
+              "na": 2,
+              "nb": 2,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.6970947684832065,
+                -0.29940224273044524,
+                -0.00010811298160850463,
+                0.00019582748239514725,
+                -0.5912594234325282,
+                0.591691641048953,
+                0.00541598774389399,
+                -0.16802749224092778,
+                -0.0006127566164871488,
+                0.0005899055811713836
+              ],
+              "intercept": 0.29099720554175285,
+              "validation": [
+                {
+                  "rmse": 6.395734359691934,
+                  "fit": -1353.6594449013896,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 1184.8936921708037,
+                  "fit": -2134016.1926343106,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8970.895790556315,
+              "elapsed_seconds": 0.7047489160322584
+            },
+            {
+              "na": 2,
+              "nb": 2,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.6102271300267536,
+                -0.3855968790712568,
+                -0.00010859575798719294,
+                0.0002028873857573953,
+                0.00025445244599031955,
+                0.0002544524459903433,
+                3.990472609688109e-21,
+                -1.47604466312682e-21,
+                -0.0006904625524470977,
+                0.000666573314807931
+              ],
+              "intercept": 0.3474958619059239,
+              "validation": [
+                {
+                  "rmse": 0.5539270459046979,
+                  "fit": -25.899738291268726,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.06585800235437728,
+                  "fit": -18.617079462656893,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 0.9658942115725038,
+              "elapsed_seconds": 0.6683232079958543
+            }
+          ]
+        },
+        "pooled_pressure": {
+          "winner": {
+            "na": 2,
+            "nb": 2,
+            "alpha": 0.0,
+            "columns": [
+              "M101",
+              "TH101_SetPoint",
+              "TV101",
+              "T116",
+              "PIC101"
+            ],
+            "status": "succeeded",
+            "theta": [
+              -0.3821785655819428,
+              -0.23505069084451327,
+              -7.075118746217499e-05,
+              9.946549955834564e-05,
+              0.02204885898745171,
+              0.022048858987451722,
+              0.0,
+              -2.1084719791632767e-17,
+              -0.0011215347824699447,
+              0.0032785806791851453,
+              -0.004571866751382153,
+              0.001614239595571101
+            ],
+            "intercept": 34.71641957005302,
+            "validation": [
+              {
+                "rmse": 0.5026766405224197,
+                "fit": -14.251250150719684,
+                "n_samples": 170,
+                "persistence_rmse": 0.5923343650338023,
+                "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+              },
+              {
+                "rmse": 0.4143399444561115,
+                "fit": -646.2691299326481,
+                "n_samples": 12,
+                "persistence_rmse": 0.06608075867199546,
+                "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+              }
+            ],
+            "validation_risk": 3.5594211264002165,
+            "elapsed_seconds": 0.0018992500263266265
+          },
+          "candidates": [
+            {
+              "na": 1,
+              "nb": 1,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.49860599024096075,
+                -1.737059985986515e-05,
+                0.060563965603459474,
+                -4.2169439583265533e-17,
+                0.002685899025267977,
+                -0.005452606874933435
+              ],
+              "intercept": 46.65498348791978,
+              "validation": [
+                {
+                  "rmse": 0.4888521730405735,
+                  "fit": -11.109145335927817,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.8294298802639055,
+                  "fit": -1393.8890719242493,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 6.6885292661896285,
+              "elapsed_seconds": 0.0017155410023406148
+            },
+            {
+              "na": 1,
+              "nb": 1,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.49863454718314043,
+                -1.7365052197522577e-05,
+                0.06052400232960888,
+                5.20089754860275e-16,
+                0.0026860352439431355,
+                -0.005432027442306165
+              ],
+              "intercept": 46.63739723079126,
+              "validation": [
+                {
+                  "rmse": 0.48885319815675354,
+                  "fit": -11.10937833025394,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.8294339115520198,
+                  "fit": -1393.8963326914375,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 6.688560634246303,
+              "elapsed_seconds": 0.001508207991719246
+            },
+            {
+              "na": 1,
+              "nb": 2,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.49837589957024636,
+                -9.06662740399046e-05,
+                0.00010622516320569959,
+                0.02914909450266901,
+                0.029149094502668994,
+                1.5462127847197364e-16,
+                -2.4598839756904896e-17,
+                -0.0006367866826395412,
+                0.0034534959388498043,
+                -0.005314426857369135,
+                0.0011451487761953104
+              ],
+              "intercept": 45.71574077777369,
+              "validation": [
+                {
+                  "rmse": 0.4852526769806526,
+                  "fit": -10.291031081939096,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.8064881501298953,
+                  "fit": -1352.56864116363,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 6.5119022873217585,
+              "elapsed_seconds": 0.0017750000115484
+            },
+            {
+              "na": 1,
+              "nb": 2,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.4983510874059682,
+                -9.067357447295193e-05,
+                0.00010623692047450928,
+                0.02913430319997409,
+                0.02913430319997042,
+                1.2650831874979662e-15,
+                -3.9358143611047833e-16,
+                -0.0006366928489786457,
+                0.0034538191117417846,
+                -0.005303642970905082,
+                0.0011522024703362534
+              ],
+              "intercept": 45.70470493638387,
+              "validation": [
+                {
+                  "rmse": 0.48524987008481774,
+                  "fit": -10.290393114442043,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.8064940625434747,
+                  "fit": -1352.5792900325039,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 6.5119446542428685,
+              "elapsed_seconds": 0.0016658749664202332
+            },
+            {
+              "na": 2,
+              "nb": 1,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.3817143932780806,
+                -0.2354984596272143,
+                -2.0471716272696103e-06,
+                0.04717285325312732,
+                -2.8112959722177024e-17,
+                0.0020262223239795136,
+                -0.004676883461179911
+              ],
+              "intercept": 35.99735676139293,
+              "validation": [
+                {
+                  "rmse": 0.5031247061929581,
+                  "fit": -14.35308910419768,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.5683882025027615,
+                  "fit": -923.7259888194229,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 4.725405350113709,
+              "elapsed_seconds": 0.001578875002451241
+            },
+            {
+              "na": 2,
+              "nb": 1,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.3817124033311352,
+                -0.2355498702692129,
+                -2.0393902679486844e-06,
+                0.047138257790371264,
+                -2.305262697218516e-15,
+                0.002026181083605395,
+                -0.004660454020648759
+              ],
+              "intercept": 35.98105275386335,
+              "validation": [
+                {
+                  "rmse": 0.503125612414846,
+                  "fit": -14.353295075542372,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.5683915965986114,
+                  "fit": -923.7321019373848,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 4.725431796494906,
+              "elapsed_seconds": 0.0014971670461818576
+            },
+            {
+              "na": 2,
+              "nb": 2,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.3821785655819428,
+                -0.23505069084451327,
+                -7.075118746217499e-05,
+                9.946549955834564e-05,
+                0.02204885898745171,
+                0.022048858987451722,
+                0.0,
+                -2.1084719791632767e-17,
+                -0.0011215347824699447,
+                0.0032785806791851453,
+                -0.004571866751382153,
+                0.001614239595571101
+              ],
+              "intercept": 34.71641957005302,
+              "validation": [
+                {
+                  "rmse": 0.5026766405224197,
+                  "fit": -14.251250150719684,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.4143399444561115,
+                  "fit": -646.2691299326481,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 3.5594211264002165,
+              "elapsed_seconds": 0.0018992500263266265
+            },
+            {
+              "na": 2,
+              "nb": 2,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.38214859279547625,
+                -0.2350710886571208,
+                -7.075484177018685e-05,
+                9.9473714055541e-05,
+                0.02203721034260488,
+                0.022037210342611215,
+                -1.813285902080418e-15,
+                -6.255133538184388e-16,
+                -0.0011214723652436585,
+                0.0032787812053576312,
+                -0.004563341915798457,
+                0.0016192022964721903
+              ],
+              "intercept": 34.70729388531457,
+              "validation": [
+                {
+                  "rmse": 0.502673669554672,
+                  "fit": -14.250574892010647,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.4143455522970889,
+                  "fit": -646.2792302347382,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 3.5594610502769846,
+              "elapsed_seconds": 0.0016929160337895155
+            }
+          ]
+        },
+        "multihorizon_pressure": {
+          "winner": {
+            "na": 2,
+            "nb": 2,
+            "alpha": 0.001,
+            "columns": [
+              "M101",
+              "TH101_SetPoint",
+              "TV101",
+              "T116",
+              "PIC101"
+            ],
+            "status": "succeeded",
+            "theta": [
+              -0.6016159954024318,
+              -0.3915740794325952,
+              -0.0001102170841093876,
+              0.00018314884108857073,
+              0.003123980921470703,
+              0.00312398092147079,
+              -2.5687709282504714e-21,
+              2.7726329901904845e-21,
+              0.000796254831188009,
+              -0.0008725049340800341,
+              -0.007179051330031473,
+              0.004116235381484144
+            ],
+            "intercept": 2.835585525609049,
+            "validation": [
+              {
+                "rmse": 0.5411600087214617,
+                "fit": -22.997972342110053,
+                "n_samples": 170,
+                "persistence_rmse": 0.5923343650338023,
+                "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+              },
+              {
+                "rmse": 0.1614132504847063,
+                "fit": -190.72197264722496,
+                "n_samples": 12,
+                "persistence_rmse": 0.06608075867199546,
+                "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+              }
+            ],
+            "validation_risk": 1.678136025329946,
+            "elapsed_seconds": 0.755660250026267
+          },
+          "candidates": [
+            {
+              "na": 1,
+              "nb": 1,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.9949999999999701,
+                5.0814871303703556e-05,
+                0.004340320890778262,
+                6769.881770774238,
+                -3.7684660805224335e-05,
+                -0.0021171795830609865
+              ],
+              "intercept": 1.984829057423803,
+              "validation": [
+                {
+                  "rmse": 0.4773758848223642,
+                  "fit": -8.500748266476332,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 5265.445522147663,
+                  "fit": -9483512.432489274,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 39841.391684732625,
+              "elapsed_seconds": 0.2519010840333067
+            },
+            {
+              "na": 1,
+              "nb": 1,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.5909371747866077,
+                1.544246863470477e-05,
+                0.04391092888550736,
+                -1.084813147591288e-19,
+                0.0023688719383433434,
+                -0.0013774358451034093
+              ],
+              "intercept": 35.78465467501215,
+              "validation": [
+                {
+                  "rmse": 0.49221371789522234,
+                  "fit": -11.873176665655393,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.19613580791278457,
+                  "fit": -253.26089284451027,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 1.899547787429684,
+              "elapsed_seconds": 0.23322958400240168
+            },
+            {
+              "na": 1,
+              "nb": 2,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.9949999997766231,
+                -0.00010509106451414942,
+                0.0001582850132170416,
+                315.7112474527259,
+                -315.7072535925521,
+                -0.07580013933753531,
+                0.035055529303839025,
+                0.001062421580399195,
+                -0.0011008190334088133,
+                -0.008488525577434292,
+                0.006560931537156066
+              ],
+              "intercept": 1.846194923080931,
+              "validation": [
+                {
+                  "rmse": 8.702156132495476,
+                  "fit": -1877.8763065478404,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 11488.805869818963,
+                  "fit": -20692428.623300668,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 86937.38474206938,
+              "elapsed_seconds": 0.4239459169912152
+            },
+            {
+              "na": 1,
+              "nb": 2,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.4948599209613091,
+                -0.00011910161167551336,
+                0.00014449327786335902,
+                0.02635907899607344,
+                0.026359078996073447,
+                -4.03240762279371e-21,
+                -2.9633055591319614e-21,
+                1.7281936146867822e-05,
+                0.0029235968125338107,
+                -0.003493405905734137,
+                0.0026314103369580373
+              ],
+              "intercept": 43.57051078525374,
+              "validation": [
+                {
+                  "rmse": 0.4794212192705726,
+                  "fit": -8.965623693035397,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.20741133694347869,
+                  "fit": -273.56928780341747,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 1.9740656913143617,
+              "elapsed_seconds": 0.3063872919883579
+            },
+            {
+              "na": 2,
+              "nb": 1,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.6710469775595747,
+                -0.32313058289143054,
+                6.487008629741707e-05,
+                0.006367839247138613,
+                1.1534857201195245,
+                -7.68174973550591e-05,
+                -0.003187080489487942
+              ],
+              "intercept": 2.843060742255194,
+              "validation": [
+                {
+                  "rmse": 3.3232457101244335,
+                  "fit": -655.3264789569995,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 1876.5497327849957,
+                  "fit": -3379760.3178341137,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 14201.717046250213,
+              "elapsed_seconds": 0.47638558299513534
+            },
+            {
+              "na": 2,
+              "nb": 1,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.595925945111327,
+                -0.397326271936957,
+                6.938632506593987e-05,
+                0.006750616342187663,
+                -1.4377697066422228e-21,
+                -7.869504351699482e-05,
+                -0.0033447035967304945
+              ],
+              "intercept": 3.037572960871575,
+              "validation": [
+                {
+                  "rmse": 0.4956525885220273,
+                  "fit": -12.65478304348655,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.1748091559512699,
+                  "fit": -214.8493850556883,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 1.7410825069035734,
+              "elapsed_seconds": 0.4645966669777408
+            },
+            {
+              "na": 2,
+              "nb": 2,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.6833807403935066,
+                -0.3111249699467886,
+                -0.00010738092372233521,
+                0.0001760342087365982,
+                0.0938510718995791,
+                -0.08834894805109476,
+                0.01869578708658573,
+                -0.012696933999822947,
+                0.0007354848016074025,
+                -0.0008087108689815931,
+                -0.009699928057863122,
+                0.006973218932103081
+              ],
+              "intercept": 2.4766319728068535,
+              "validation": [
+                {
+                  "rmse": 160.36672497187476,
+                  "fit": -36349.07547637703,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 1465.949331744149,
+                  "fit": -2640226.492687294,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 11227.472688882333,
+              "elapsed_seconds": 0.7687419580179267
+            },
+            {
+              "na": 2,
+              "nb": 2,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.6016159954024318,
+                -0.3915740794325952,
+                -0.0001102170841093876,
+                0.00018314884108857073,
+                0.003123980921470703,
+                0.00312398092147079,
+                -2.5687709282504714e-21,
+                2.7726329901904845e-21,
+                0.000796254831188009,
+                -0.0008725049340800341,
+                -0.007179051330031473,
+                0.004116235381484144
+              ],
+              "intercept": 2.835585525609049,
+              "validation": [
+                {
+                  "rmse": 0.5411600087214617,
+                  "fit": -22.997972342110053,
+                  "n_samples": 170,
+                  "persistence_rmse": 0.5923343650338023,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 0.1614132504847063,
+                  "fit": -190.72197264722496,
+                  "n_samples": 12,
+                  "persistence_rmse": 0.06608075867199546,
+                  "run": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 1.678136025329946,
+              "elapsed_seconds": 0.755660250026267
+            }
+          ]
+        }
+      },
+      "selected_arm": "multihorizon_controls"
+    },
+    {
+      "case": "distillation_c",
+      "arms": {
+        "pooled_controls": {
+          "winner": {
+            "na": 1,
+            "nb": 1,
+            "alpha": 0.001,
+            "columns": [
+              "M101",
+              "TH101_SetPoint",
+              "TV101",
+              "T116"
+            ],
+            "status": "succeeded",
+            "theta": [
+              -0.9181956504162156,
+              0.00010450156089376799,
+              0.005102503324037992,
+              0.10741075836326391,
+              0.00852922643802936
+            ],
+            "intercept": 3.6534429561650072,
+            "validation": [
+              {
+                "rmse": 0.7610820355484487,
+                "fit": -261.3694480043069,
+                "n_samples": 19,
+                "persistence_rmse": 0.2167098472491211,
+                "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+              },
+              {
+                "rmse": 2.5132214546030283,
+                "fit": -1189.454515345588,
+                "n_samples": 14,
+                "persistence_rmse": 0.20331186459652498,
+                "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+              },
+              {
+                "rmse": 3.746823931037407,
+                "fit": -752.994188860061,
+                "n_samples": 57,
+                "persistence_rmse": 0.4584891282263455,
+                "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+              }
+            ],
+            "validation_risk": 8.01516927405912,
+            "elapsed_seconds": 0.0018033329979516566
+          },
+          "candidates": [
+            {
+              "na": 1,
+              "nb": 1,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.9182108918122487,
+                0.0001044604495640093,
+                0.005097325622095561,
+                0.10741138577267727,
+                0.008539708778289523
+              ],
+              "intercept": 3.6521872509329527,
+              "validation": [
+                {
+                  "rmse": 0.7610769422626291,
+                  "fit": -261.3670296606867,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 2.513121668115155,
+                  "fit": -1189.4033180517233,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.7470662612396066,
+                  "fit": -753.0493572528292,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.015174018376593,
+              "elapsed_seconds": 0.002062375016976148
+            },
+            {
+              "na": 1,
+              "nb": 1,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.9181956504162156,
+                0.00010450156089376799,
+                0.005102503324037992,
+                0.10741075836326391,
+                0.00852922643802936
+              ],
+              "intercept": 3.6534429561650072,
+              "validation": [
+                {
+                  "rmse": 0.7610820355484487,
+                  "fit": -261.3694480043069,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 2.5132214546030283,
+                  "fit": -1189.454515345588,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.746823931037407,
+                  "fit": -752.994188860061,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.01516927405912,
+              "elapsed_seconds": 0.0018033329979516566
+            },
+            {
+              "na": 1,
+              "nb": 2,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.9401809304843736,
+                0.00021732787694844777,
+                0.0007405240628532069,
+                -0.001934689548030839,
+                0.031996671369030054,
+                0.07141692422942382,
+                -0.13152560190823293,
+                0.09645182271197934,
+                -0.16336463925248337
+              ],
+              "intercept": 6.273311595149083,
+              "validation": [
+                {
+                  "rmse": 0.9365622639878369,
+                  "fit": -344.6892352610313,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.102804844706212,
+                  "fit": -1491.9511230953385,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 5.192570833149357,
+                  "fit": -1082.1299392347737,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 10.302812280263154,
+              "elapsed_seconds": 0.0021688329870812595
+            },
+            {
+              "na": 1,
+              "nb": 2,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.9401611108611188,
+                0.0002173565851373858,
+                0.0007405397606674882,
+                -0.0019352382178944685,
+                0.03200377725943012,
+                0.07141451938660327,
+                -0.13152176747877248,
+                0.09638039600125295,
+                -0.16330566789654558
+              ],
+              "intercept": 6.274835628135195,
+              "validation": [
+                {
+                  "rmse": 0.93648312816261,
+                  "fit": -344.6516607708397,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.1030186638784594,
+                  "fit": -1492.0608269563402,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 5.192466542452865,
+                  "fit": -1082.1061966304517,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 10.30296529533913,
+              "elapsed_seconds": 0.0020719580352306366
+            },
+            {
+              "na": 2,
+              "nb": 1,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.7170017052143395,
+                -0.20949024331832503,
+                4.794389069090545e-05,
+                0.00550865899160624,
+                0.09534824927099117,
+                0.0059180016082868965
+              ],
+              "intercept": 3.2668027382855716,
+              "validation": [
+                {
+                  "rmse": 0.8531071434687819,
+                  "fit": -305.0638999798333,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 2.637261355117822,
+                  "fit": -1253.0954688751215,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.761875444333135,
+                  "fit": -756.4207852550643,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.371026560007117,
+              "elapsed_seconds": 0.001932125014718622
+            },
+            {
+              "na": 2,
+              "nb": 1,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.7169549436255881,
+                -0.20952660990847294,
+                4.796609331239436e-05,
+                0.005512753291531388,
+                0.0953456234408652,
+                0.0059093911436985435
+              ],
+              "intercept": 3.267712413691479,
+              "validation": [
+                {
+                  "rmse": 0.85279774132329,
+                  "fit": -304.91699271188395,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 2.6373070809577137,
+                  "fit": -1253.1189293587208,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.761630608460622,
+                  "fit": -756.3650464265734,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.370447617914245,
+              "elapsed_seconds": 0.0018860420095734298
+            },
+            {
+              "na": 2,
+              "nb": 2,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.9060870429056592,
+                -0.03602645041367992,
+                0.00020330660767902407,
+                0.0007138861933503752,
+                -0.0005714117170630495,
+                0.029918497113329022,
+                0.06901152368853433,
+                -0.12835309383436821,
+                0.07376902902300198,
+                -0.1390171221715147
+              ],
+              "intercept": 6.084171724278975,
+              "validation": [
+                {
+                  "rmse": 1.0428589799749306,
+                  "fit": -395.1599910886156,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.0753219220844303,
+                  "fit": -1477.8505039061126,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 5.123394735587617,
+                  "fit": -1066.3814518987695,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 10.37096158178421,
+              "elapsed_seconds": 0.002131209010258317
+            },
+            {
+              "na": 2,
+              "nb": 2,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.9059454062128816,
+                -0.03615643340484489,
+                0.0002032843459145128,
+                0.0007138065358842973,
+                -0.0005665929121931436,
+                0.029917167733303576,
+                0.06900100757212628,
+                -0.12833808590445883,
+                0.07362720529917799,
+                -0.13888079002828738
+              ],
+              "intercept": 6.084915444243663,
+              "validation": [
+                {
+                  "rmse": 1.0422588796934775,
+                  "fit": -394.8750574056131,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.075449924093146,
+                  "fit": -1477.9161776921646,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 5.123395453701383,
+                  "fit": -1066.3816153830642,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 10.37024891814432,
+              "elapsed_seconds": 0.0020459580118767917
+            }
+          ]
+        },
+        "multihorizon_controls": {
+          "winner": {
+            "na": 2,
+            "nb": 2,
+            "alpha": 0.0,
+            "columns": [
+              "M101",
+              "TH101_SetPoint",
+              "TV101",
+              "T116"
+            ],
+            "status": "succeeded",
+            "theta": [
+              -1.25881572094658,
+              0.28539493566006857,
+              0.0009148708913552489,
+              -0.0014325855030216524,
+              0.09754260187839761,
+              -0.0864892863431182,
+              0.10728002475137424,
+              -0.12635273027828348,
+              0.7672641410053157,
+              -0.7944684582148952
+            ],
+            "intercept": 2.8964254234492848,
+            "validation": [
+              {
+                "rmse": 0.4109959654194049,
+                "fit": -95.14504116311264,
+                "n_samples": 19,
+                "persistence_rmse": 0.2167098472491211,
+                "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+              },
+              {
+                "rmse": 3.164911652067255,
+                "fit": -1523.8161634954672,
+                "n_samples": 14,
+                "persistence_rmse": 0.20331186459652498,
+                "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+              },
+              {
+                "rmse": 3.9828457806167847,
+                "fit": -806.7264351146827,
+                "n_samples": 57,
+                "persistence_rmse": 0.4584891282263455,
+                "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+              }
+            ],
+            "validation_risk": 8.716733962363497,
+            "elapsed_seconds": 0.8363108750199899
+          },
+          "candidates": [
+            {
+              "na": 1,
+              "nb": 1,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.890002383112795,
+                0.0003543664994044789,
+                0.034739906393812914,
+                0.017832982228963686,
+                -0.06494934049090877
+              ],
+              "intercept": 8.238561851152355,
+              "validation": [
+                {
+                  "rmse": 0.459429735506674,
+                  "fit": -118.14188505602007,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.5286080606618246,
+                  "fit": -1710.4172986315336,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.2029215546860197,
+                  "fit": -629.1704984827936,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.820494308581834,
+              "elapsed_seconds": 0.17367341596400365
+            },
+            {
+              "na": 1,
+              "nb": 1,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.8891051070180809,
+                0.0003668290195122337,
+                0.03498737184346592,
+                0.018181267145023668,
+                -0.06537822664039937
+              ],
+              "intercept": 8.300432396026872,
+              "validation": [
+                {
+                  "rmse": 0.4574937542757534,
+                  "fit": -117.22266158721189,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.531335376776681,
+                  "fit": -1711.816598352072,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.195954751832579,
+                  "fit": -627.5844505503856,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.816922907507008,
+              "elapsed_seconds": 0.1840407910058275
+            },
+            {
+              "na": 1,
+              "nb": 2,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.9652951175869919,
+                0.0006020355392566898,
+                -0.0012859167633268208,
+                0.1276734083189181,
+                -0.1130314589551932,
+                0.1027350318779174,
+                -0.12694652965834996,
+                0.7143074952765688,
+                -0.7498386127091478
+              ],
+              "intercept": 3.727023269039454,
+              "validation": [
+                {
+                  "rmse": 0.3494695355334588,
+                  "fit": -65.93166997962645,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.24273087761213,
+                  "fit": -1563.7427491832316,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.963870942283215,
+                  "fit": -802.4066626537941,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.73588755581116,
+              "elapsed_seconds": 0.4019483749871142
+            },
+            {
+              "na": 1,
+              "nb": 2,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.9600850287228401,
+                0.0005461500908743231,
+                -0.0011886385074936412,
+                0.11179990930087026,
+                -0.0956108424951972,
+                0.09949188131243732,
+                -0.12111187329666032,
+                0.6129291887173408,
+                -0.650661266816732
+              ],
+              "intercept": 4.027760081694609,
+              "validation": [
+                {
+                  "rmse": 0.3461614364720311,
+                  "fit": -64.36095108739796,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.2685882760775895,
+                  "fit": -1577.0093632913158,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.9568185642019533,
+                  "fit": -800.8011328419636,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.768065581225214,
+              "elapsed_seconds": 0.6418841669801623
+            },
+            {
+              "na": 2,
+              "nb": 1,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.5637533630292946,
+                -0.29312536920100746,
+                0.0004663593992053781,
+                0.044669442223343625,
+                0.026245919351742718,
+                -0.08338229945183442
+              ],
+              "intercept": 10.672229775701249,
+              "validation": [
+                {
+                  "rmse": 0.47630231107287085,
+                  "fit": -126.15315458279821,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.5394991557544624,
+                  "fit": -1716.0051753857047,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.159275913716967,
+                  "fit": -619.2342221055457,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.832571586193637,
+              "elapsed_seconds": 0.3712324170046486
+            },
+            {
+              "na": 2,
+              "nb": 1,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.5354244851843625,
+                -0.3178518578632095,
+                0.00048291607366160254,
+                0.04570322669265789,
+                0.02740064898823051,
+                -0.08525019056600036
+              ],
+              "intercept": 10.929886920685979,
+              "validation": [
+                {
+                  "rmse": 0.490616240149666,
+                  "fit": -132.94955287845207,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.5380901587714213,
+                  "fit": -1715.282263555327,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.150547246777584,
+                  "fit": -617.2470718383252,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.845932588314946,
+              "elapsed_seconds": 0.29779733304167166
+            },
+            {
+              "na": 2,
+              "nb": 2,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -1.25881572094658,
+                0.28539493566006857,
+                0.0009148708913552489,
+                -0.0014325855030216524,
+                0.09754260187839761,
+                -0.0864892863431182,
+                0.10728002475137424,
+                -0.12635273027828348,
+                0.7672641410053157,
+                -0.7944684582148952
+              ],
+              "intercept": 2.8964254234492848,
+              "validation": [
+                {
+                  "rmse": 0.4109959654194049,
+                  "fit": -95.14504116311264,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.164911652067255,
+                  "fit": -1523.8161634954672,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.9828457806167847,
+                  "fit": -806.7264351146827,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.716733962363497,
+              "elapsed_seconds": 0.8363108750199899
+            },
+            {
+              "na": 2,
+              "nb": 2,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -1.230745824577081,
+                0.2583874765621662,
+                0.0008722682847798616,
+                -0.0014127454733371071,
+                0.09531864281897244,
+                -0.08387290960333571,
+                0.10413660048870715,
+                -0.12288290427721163,
+                0.6983270585125816,
+                -0.7260427207207211
+              ],
+              "intercept": 2.9516486681202974,
+              "validation": [
+                {
+                  "rmse": 0.4012023526707275,
+                  "fit": -90.49493477818508,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.308900988109277,
+                  "fit": -1597.6925420298553,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.94969062359447,
+                  "fit": -799.1784006216537,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.913638237507742,
+              "elapsed_seconds": 0.6419914999860339
+            }
+          ]
+        },
+        "pooled_pressure": {
+          "winner": {
+            "na": 2,
+            "nb": 2,
+            "alpha": 0.0,
+            "columns": [
+              "M101",
+              "TH101_SetPoint",
+              "TV101",
+              "T116",
+              "PIC101"
+            ],
+            "status": "succeeded",
+            "theta": [
+              -0.9186590887736001,
+              0.008367485592234108,
+              0.00015614392187684106,
+              0.0004720042489589624,
+              0.013740379091670413,
+              0.01039753521412815,
+              0.040288122748130775,
+              -0.042533411043795016,
+              0.03029993048220585,
+              -0.07651647435431717,
+              -0.002310021746042378,
+              0.0064177347101401295
+            ],
+            "intercept": 1.5858739527166117,
+            "validation": [
+              {
+                "rmse": 0.5441572284880052,
+                "fit": -158.37135565098515,
+                "n_samples": 19,
+                "persistence_rmse": 0.2167098472491211,
+                "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+              },
+              {
+                "rmse": 3.187461772518961,
+                "fit": -1535.385917758381,
+                "n_samples": 14,
+                "persistence_rmse": 0.20331186459652498,
+                "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+              },
+              {
+                "rmse": 3.538958107352133,
+                "fit": -705.6718852424856,
+                "n_samples": 57,
+                "persistence_rmse": 0.4584891282263455,
+                "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+              }
+            ],
+            "validation_risk": 8.635810236244422,
+            "elapsed_seconds": 0.002326332964003086
+          },
+          "candidates": [
+            {
+              "na": 1,
+              "nb": 1,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.9387871556409814,
+                0.0001482722681628781,
+                0.010412406442422932,
+                0.06935383488701347,
+                -0.007772067658284552,
+                -0.0032593198583203346
+              ],
+              "intercept": 7.37278591717512,
+              "validation": [
+                {
+                  "rmse": 2.3124288875777004,
+                  "fit": -997.9646235520325,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 2.3778380844160067,
+                  "fit": -1119.9935859592708,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 4.292768693828795,
+                  "fit": -877.2828447112312,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 10.576333610216437,
+              "elapsed_seconds": 0.0022605000413022935
+            },
+            {
+              "na": 1,
+              "nb": 1,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.9387711968938595,
+                0.00014831032040628714,
+                0.010417231439800112,
+                0.06935510355154823,
+                -0.007781548934849602,
+                -0.003259183940590689
+              ],
+              "intercept": 7.373866781246887,
+              "validation": [
+                {
+                  "rmse": 2.312228275497003,
+                  "fit": -997.8693709071424,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 2.3780171986899665,
+                  "fit": -1120.0854838335695,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 4.29253090186382,
+                  "fit": -877.2287094841661,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 10.576145817860377,
+              "elapsed_seconds": 0.001955542014911771
+            },
+            {
+              "na": 1,
+              "nb": 2,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.9108938973360398,
+                0.0001533114536596098,
+                0.00046651686834380554,
+                0.013931286654768183,
+                0.010095429601414739,
+                0.039572949876955456,
+                -0.04183819769679067,
+                0.026048698220869648,
+                -0.07202123404906725,
+                -0.0023357614072739767,
+                0.006399849723466321
+              ],
+              "intercept": 1.5936933501971007,
+              "validation": [
+                {
+                  "rmse": 0.6681309427286394,
+                  "fit": -217.23532903316834,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.2225081226580556,
+                  "fit": -1553.3670926168363,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.5572067192230152,
+                  "fit": -709.8263264884919,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.89722733142415,
+              "elapsed_seconds": 0.002312666969373822
+            },
+            {
+              "na": 1,
+              "nb": 2,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.9108746527420132,
+                0.00015333498443410078,
+                0.00046654005393607223,
+                0.013931925747769086,
+                0.010099846258127248,
+                0.03957394640015947,
+                -0.04183471727887761,
+                0.026003515072411276,
+                -0.07198521074653913,
+                -0.002335532545342866,
+                0.006400039012545785
+              ],
+              "intercept": 1.5945444285628727,
+              "validation": [
+                {
+                  "rmse": 0.6681002925230579,
+                  "fit": -217.22077600556435,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.22268655222402,
+                  "fit": -1553.4586391890975,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.5570565213588274,
+                  "fit": -709.792132753294,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.897363527337713,
+              "elapsed_seconds": 0.002172833017539233
+            },
+            {
+              "na": 2,
+              "nb": 1,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.675279531460252,
+                -0.28322863589209163,
+                9.001447580175471e-05,
+                0.013170656595993646,
+                0.03727668506779953,
+                -0.0180748451603987,
+                -0.0046097135472921895
+              ],
+              "intercept": 8.393259686563077,
+              "validation": [
+                {
+                  "rmse": 2.099480508196652,
+                  "fit": -896.8545792781754,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 2.535289714732728,
+                  "fit": -1200.7770423031488,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 4.546108071546042,
+                  "fit": -934.9575636143968,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 10.691114893118597,
+              "elapsed_seconds": 0.002178124967031181
+            },
+            {
+              "na": 2,
+              "nb": 1,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.675242475865507,
+                -0.28325647530028003,
+                9.003428476476662e-05,
+                0.013174172734558898,
+                0.03727480396983074,
+                -0.018082169302631308,
+                -0.0046097321352979595
+              ],
+              "intercept": 8.394080199818411,
+              "validation": [
+                {
+                  "rmse": 2.099196914846378,
+                  "fit": -896.7199262872233,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 2.5353958466474236,
+                  "fit": -1200.8314952350127,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 4.545881295023548,
+                  "fit": -934.9059361401901,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 10.690687815371534,
+              "elapsed_seconds": 0.0020128340111114085
+            },
+            {
+              "na": 2,
+              "nb": 2,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.9186590887736001,
+                0.008367485592234108,
+                0.00015614392187684106,
+                0.0004720042489589624,
+                0.013740379091670413,
+                0.01039753521412815,
+                0.040288122748130775,
+                -0.042533411043795016,
+                0.03029993048220585,
+                -0.07651647435431717,
+                -0.002310021746042378,
+                0.0064177347101401295
+              ],
+              "intercept": 1.5858739527166117,
+              "validation": [
+                {
+                  "rmse": 0.5441572284880052,
+                  "fit": -158.37135565098515,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.187461772518961,
+                  "fit": -1535.385917758381,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.538958107352133,
+                  "fit": -705.6718852424856,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.635810236244422,
+              "elapsed_seconds": 0.002326332964003086
+            },
+            {
+              "na": 2,
+              "nb": 2,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.918524986296852,
+                0.008244069394854826,
+                0.0001561255609810246,
+                0.0004719461099821552,
+                0.013743809512652225,
+                0.010397590441852426,
+                0.040278552494349515,
+                -0.042519608459156644,
+                0.030189390297211294,
+                -0.07641161397993733,
+                -0.0023101587827472187,
+                0.006417669107553272
+              ],
+              "intercept": 1.5868335607629147,
+              "validation": [
+                {
+                  "rmse": 0.5447243361506566,
+                  "fit": -158.6406241048959,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.1875289245241265,
+                  "fit": -1535.420371330356,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.538811419780463,
+                  "fit": -705.6384906532243,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.636685986985752,
+              "elapsed_seconds": 0.0021939160069450736
+            }
+          ]
+        },
+        "multihorizon_pressure": {
+          "winner": {
+            "na": 2,
+            "nb": 2,
+            "alpha": 0.0,
+            "columns": [
+              "M101",
+              "TH101_SetPoint",
+              "TV101",
+              "T116",
+              "PIC101"
+            ],
+            "status": "succeeded",
+            "theta": [
+              -1.3154514748019595,
+              0.33538685355001474,
+              0.0009533074244034033,
+              -0.001718864832894754,
+              0.0864355049723636,
+              -0.07761700833524389,
+              0.010541845942835325,
+              -0.02840733119718015,
+              0.7708476805391875,
+              -0.793295300709559,
+              -0.006980105813579942,
+              0.006901583858521937
+            ],
+            "intercept": 2.4218701184040983,
+            "validation": [
+              {
+                "rmse": 0.5575499824244478,
+                "fit": -164.73037067330424,
+                "n_samples": 19,
+                "persistence_rmse": 0.2167098472491211,
+                "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+              },
+              {
+                "rmse": 3.213976112044186,
+                "fit": -1548.9895875661446,
+                "n_samples": 14,
+                "persistence_rmse": 0.20331186459652498,
+                "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+              },
+              {
+                "rmse": 1.4017496748480112,
+                "fit": -219.1194325885435,
+                "n_samples": 57,
+                "persistence_rmse": 0.4584891282263455,
+                "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+              }
+            ],
+            "validation_risk": 7.146075845753676,
+            "elapsed_seconds": 0.8533608749858104
+          },
+          "candidates": [
+            {
+              "na": 1,
+              "nb": 1,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.8884539728601147,
+                0.000438383431198179,
+                0.03429548720787619,
+                0.017954163741892945,
+                -0.06414995691835698,
+                0.0005196612124246429
+              ],
+              "intercept": 7.674094827238524,
+              "validation": [
+                {
+                  "rmse": 0.3461353842376716,
+                  "fit": -64.34858122303375,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.5284815499092907,
+                  "fit": -1710.3523899619074,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.57170927839972,
+                  "fit": -713.1279491238271,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.914140735988303,
+              "elapsed_seconds": 0.22490091598592699
+            },
+            {
+              "na": 1,
+              "nb": 1,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.8875484380597657,
+                0.00045253478110991155,
+                0.03452814576315861,
+                0.0183067840448156,
+                -0.06454894386871042,
+                0.0005291000493772593
+              ],
+              "intercept": 7.723898375952484,
+              "validation": [
+                {
+                  "rmse": 0.3448654982219044,
+                  "fit": -63.745626499216776,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.5312418219673294,
+                  "fit": -1711.7685983355473,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.5633157975612813,
+                  "fit": -711.2171066312859,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.910610693017587,
+              "elapsed_seconds": 0.21582433400908485
+            },
+            {
+              "na": 1,
+              "nb": 2,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.9722380743501378,
+                0.000629467065300727,
+                -0.001576998038593643,
+                0.13100859604434228,
+                -0.11850865287621834,
+                0.01617555471493175,
+                -0.040389481054641393,
+                0.7451901464545115,
+                -0.7766366473991738,
+                -0.006330719544462521,
+                0.006196306961504248
+              ],
+              "intercept": 3.3656697061156273,
+              "validation": [
+                {
+                  "rmse": 0.5921356636156202,
+                  "fit": -181.15200189982562,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.3602668188980713,
+                  "fit": -1624.0467267451652,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.209426706282848,
+                  "fit": -630.651447844674,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.753347616299342,
+              "elapsed_seconds": 0.5583540840307251
+            },
+            {
+              "na": 1,
+              "nb": 2,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.9647199352453399,
+                0.0005943332951570697,
+                -0.0014348754556804608,
+                0.11317476980278934,
+                -0.09916986519834146,
+                0.01752720772380461,
+                -0.03886404437053301,
+                0.6265621615968997,
+                -0.6601452028852403,
+                -0.005853518365257395,
+                0.006151419197706498
+              ],
+              "intercept": 3.271671633952469,
+              "validation": [
+                {
+                  "rmse": 0.5850961290409679,
+                  "fit": -177.80955968646265,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.3848769427857546,
+                  "fit": -1636.6734036788937,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.355894305663284,
+                  "fit": -663.9959586696607,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.889354140873822,
+              "elapsed_seconds": 0.9683985419687815
+            },
+            {
+              "na": 2,
+              "nb": 1,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.5065725362510103,
+                -0.34698803627470565,
+                0.00036792356794401883,
+                0.04719219981731557,
+                0.026480545922260745,
+                -0.08821880089651277,
+                -0.0007673257065965946
+              ],
+              "intercept": 11.945191445537677,
+              "validation": [
+                {
+                  "rmse": 0.2996368846157518,
+                  "fit": -42.270623320252575,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.543352030087997,
+                  "fit": -1717.9819634627506,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.572008233389503,
+                  "fit": -713.1960085986542,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.867216595149747,
+              "elapsed_seconds": 0.6881280840025283
+            },
+            {
+              "na": 2,
+              "nb": 1,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -0.48833166558044916,
+                -0.36299386824982316,
+                0.000373166544481616,
+                0.04793247069847325,
+                0.02709888152915291,
+                -0.08958033567158079,
+                -0.0008119008847238319
+              ],
+              "intercept": 12.166476760071061,
+              "validation": [
+                {
+                  "rmse": 0.2954257687254242,
+                  "fit": -40.27114290461877,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.5416282064739595,
+                  "fit": -1717.0975240359312,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.5644564095455404,
+                  "fit": -711.4767759971875,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 8.852422638207555,
+              "elapsed_seconds": 0.415166541992221
+            },
+            {
+              "na": 2,
+              "nb": 2,
+              "alpha": 0.0,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -1.3154514748019595,
+                0.33538685355001474,
+                0.0009533074244034033,
+                -0.001718864832894754,
+                0.0864355049723636,
+                -0.07761700833524389,
+                0.010541845942835325,
+                -0.02840733119718015,
+                0.7708476805391875,
+                -0.793295300709559,
+                -0.006980105813579942,
+                0.006901583858521937
+              ],
+              "intercept": 2.4218701184040983,
+              "validation": [
+                {
+                  "rmse": 0.5575499824244478,
+                  "fit": -164.73037067330424,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.213976112044186,
+                  "fit": -1548.9895875661446,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 1.4017496748480112,
+                  "fit": -219.1194325885435,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 7.146075845753676,
+              "elapsed_seconds": 0.8533608749858104
+            },
+            {
+              "na": 2,
+              "nb": 2,
+              "alpha": 0.001,
+              "columns": [
+                "M101",
+                "TH101_SetPoint",
+                "TV101",
+                "T116",
+                "PIC101"
+              ],
+              "status": "succeeded",
+              "theta": [
+                -1.2971138093902603,
+                0.31750398447787226,
+                0.0009437098823402022,
+                -0.0017173080466131787,
+                0.0854065214602518,
+                -0.07661843154701771,
+                0.010058967863289315,
+                -0.02778317001956538,
+                0.7098191323133086,
+                -0.7320213821305135,
+                -0.00679167958390751,
+                0.00683447926587985
+              ],
+              "intercept": 2.2767237004745753,
+              "validation": [
+                {
+                  "rmse": 0.5784188064881884,
+                  "fit": -174.63909940446993,
+                  "n_samples": 19,
+                  "persistence_rmse": 0.2167098472491211,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_006/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 3.3498946199063,
+                  "fit": -1618.7250791842202,
+                  "n_samples": 14,
+                  "persistence_rmse": 0.20331186459652498,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv"
+                },
+                {
+                  "rmse": 1.6003759235302806,
+                  "fit": -264.33827366553504,
+                  "n_samples": 57,
+                  "persistence_rmse": 0.4584891282263455,
+                  "run": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_002/train_normal_experiment_001.csv"
+                }
+              ],
+              "validation_risk": 7.545422453606098,
+              "elapsed_seconds": 1.1359537080279551
+            }
+          ]
+        }
+      },
+      "selected_arm": "multihorizon_pressure"
+    }
+  ]
+}

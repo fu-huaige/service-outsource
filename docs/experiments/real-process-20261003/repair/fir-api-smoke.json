@@ -1,0 +1,68 @@
+{
+  "mode": "isolated_api_integration",
+  "results": [
+    {
+      "dataset": "dryer2",
+      "output": "dry_bulb_temperature",
+      "model_type": "FIR",
+      "status": "succeeded",
+      "source_sha256": "c665e6ee5f98634f87cc6fd9e11e64fe05766ed9332c5d9a452d7e76a0af72b8",
+      "estimated_delays": {
+        "fuel_flow": 2,
+        "exhaust_fan_speed": 1,
+        "raw_material_flow": 9
+      },
+      "model_id": "6810d41f-5d3f-4229-bc69-ee31b2194a70",
+      "source_version_id": "e5cf5235-a8f3-4ea4-abae-8c092f2a9dca",
+      "training_rows": 136,
+      "intercept": -3.2493480685633713,
+      "validation_fit": -254.10093173708327,
+      "test_fit": -307.38389789434643,
+      "exported_rows": 180,
+      "model_artifact_unchanged": true,
+      "fixed_coefficient_replay_verified": true
+    },
+    {
+      "dataset": "evaporator",
+      "output": "product_dry_matter",
+      "model_type": "FIR",
+      "status": "succeeded",
+      "source_sha256": "2c743bd96fafab927cd938a482524f06b0f7b3596ef5f10a9d370c7bf74bca22",
+      "estimated_delays": {
+        "feed_flow": 6,
+        "vapor_flow": 2,
+        "cooling_water_flow": 1
+      },
+      "model_id": "984cdc72-b30f-4b4d-8f7f-117729387ec3",
+      "source_version_id": "de80161d-ff6c-43f8-a558-cb0616afaaff",
+      "training_rows": 140,
+      "intercept": -0.5544543646378183,
+      "validation_fit": 12.108913671978616,
+      "test_fit": 9.602883532412998,
+      "exported_rows": 180,
+      "model_artifact_unchanged": true,
+      "fixed_coefficient_replay_verified": true
+    },
+    {
+      "dataset": "glassfurnace",
+      "output": "temperature_sensor_1",
+      "model_type": "FIR",
+      "status": "succeeded",
+      "source_sha256": "dc8af4bd4dd2107b5326e761f04287ee928333962658532d3b226f5c5231a8ad",
+      "estimated_delays": {
+        "heating_input_1": 12,
+        "cooling_input": 2,
+        "heating_input_2": 2
+      },
+      "model_id": "52639573-51d7-498c-ae12-4892fed8a31e",
+      "source_version_id": "9bfc8bd9-551a-43e9-93a3-a4fcbb3dda10",
+      "training_rows": 146,
+      "intercept": -0.5568035746919356,
+      "validation_fit": 7.8173650407785455,
+      "test_fit": -26.676932015315113,
+      "exported_rows": 180,
+      "model_artifact_unchanged": true,
+      "fixed_coefficient_replay_verified": true
+    }
+  ]
+}

@@ -3,7 +3,7 @@
     <PageHeader
       eyebrow="CLOSED-LOOP OPTIMIZATION / OPTUNA"
       title="闭环参数自动寻优"
-      description="以验证集自由仿真 FIT 为反馈目标，自动迭代寻优质量门控阈值、优选预算与 ARX 模型结构；保留完整试验轨迹与重要度分析"
+      description="通过滚动验证调整质量门控和 ARX / FIR 结构；可选实验模式比较全量训练与优选片段，保留验证证据和试验轨迹"
     />
 
     <div class="optuna-layout">
@@ -30,6 +30,15 @@
           <el-form-item label="随机种子">
             <el-input-number v-model="form.random_seed" :min="0" :max="99999" />
           </el-form-item>
+          <el-form-item label="搜索方案">
+            <el-select v-model="searchPolicy">
+              <el-option label="现有默认方案" value="established" />
+              <el-option label="实验：全量对照与时间覆盖" value="paired_coverage" />
+              <el-option label="实验：ARX 历史扰动补偿" value="disturbance_aware" />
+              <el-option label="实验：全折验证与质量验收" value="validation_guarded" />
+            </el-select>
+            <span v-if="searchPolicy !== 'established'">仍需验证泛化效果，耗时增加</span>
+          </el-form-item>
           <el-form-item class="parameter-form-actions">
             <el-button
               type="primary"
@@ -47,7 +56,7 @@
         </el-alert>
         <el-alert v-if="isSearching" type="info" :closable="false" show-icon class="alert-gap">
           <template #title>
-            正在执行真实闭环：门控 → D-最优优选 → ARX 结构扫描 → 自由仿真评价，请稍候
+            正在执行质量门控、数据策略对照、模型结构扫描和滚动自由仿真验证，请稍候
           </template>
         </el-alert>
       </div>
@@ -91,6 +100,14 @@
               {{ pct(status.statistics.hit_rate) }}
             </el-descriptions-item>
           </el-descriptions>
+
+          <el-alert v-if="validationQuality" :type="validationQuality === 'passed' ? 'info' : 'warning'"
+            :closable="false" show-icon class="alert-gap">
+            <template #title>{{ qualityMessage }}</template>
+          </el-alert>
+          <p v-if="status.best_params.training_policy" class="alert-gap">
+            采用数据策略：{{ status.best_params.training_policy === 'full_train' ? '全量有效训练行' : '优选片段' }}（依据滚动验证选择）
+          </p>
 
           <el-alert type="info" :closable="false" class="alert-gap">
             <template #title>
@@ -202,9 +219,20 @@ const STATE_LABELS: Record<string, string> = {
 };
 
 const isSearching = ref(false);
+const searchPolicy = ref<"established" | "paired_coverage" | "disturbance_aware" | "validation_guarded">("established");
 const status = ref<OptunaStatusResponse | null>(null);
 const errorMessage = ref("");
 const inputColumnsText = ref("u1,u2");
+const validationQuality = computed(() => status.value?.trials
+  .find((trial) => trial.trial_id === status.value?.best_trial_id)
+  ?.metrics?.validation_acceptance?.status as string | undefined);
+const qualityMessage = computed(() => {
+  if (validationQuality.value === "insufficient") {
+    return "模型效果不足：存在自由仿真 FIT 非正或未优于持值预测的验证段。请补充激励或调整模型后复核。";
+  }
+  if (validationQuality.value === "inconclusive") return "验证对照证据不足，模型效果尚不能确认。";
+  return "已通过本次滚动验证的效果检查，仍需独立测试和现场工况验证。";
+});
 
 const form = reactive<OptunaStartRequest>({
   version_id: "",
@@ -232,10 +260,18 @@ const handleStart = async () => {
   isSearching.value = true;
   status.value = null;
   try {
-    const started = await startOptunaStudy(form);
+    const started = await startOptunaStudy({ ...form,
+      optimization_policy: searchPolicy.value });
     // No mock convergence loop: the curve shown must come from real trials.
     status.value = await getOptunaStatus(started.study_id);
-    ElMessage.success(`闭环寻优完成：最优目标值 ${num(status.value.best_value)}`);
+    if (status.value.best_trial_id == null || status.value.best_value == null) {
+      errorMessage.value = "本次寻优未得到可用模型，请查看试验失败原因并调整数据或参数。";
+      ElMessage.warning(errorMessage.value);
+    } else if (validationQuality.value && validationQuality.value !== "passed") {
+      ElMessage.warning(`寻优已完成，模型效果仍需复核：${num(status.value.best_value)}`);
+    } else {
+      ElMessage.success(`闭环寻优完成：最优目标值 ${num(status.value.best_value)}`);
+    }
   } catch (err) {
     status.value = null;
     errorMessage.value = err instanceof ApiError ? err.message : String(err);

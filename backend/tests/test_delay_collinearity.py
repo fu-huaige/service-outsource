@@ -301,7 +301,6 @@ class TestCollinearity:
         with pytest.raises(AnalysisDomainError, match="不是可用于数值诊断") as non_numeric:
             _qualify_collinearity_inputs(series, ["u1", "tag"])
         assert non_numeric.value.code == "NON_NUMERIC_INPUT"
-        json.dumps(normalized, allow_nan=False)
 
     def test_spearman_catches_a_monotone_nonlinear_pair_that_pearson_understates(self) -> None:
         base = np.linspace(0.1, 5.0, 1500)

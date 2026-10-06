@@ -1,0 +1,63 @@
+{
+  "created_at": "2026-10-03T16:29:24.501419+00:00",
+  "source": "/Users/maguayuhui/Documents/竞赛/服外 9.22/service-outsource/docs/experiments/initial-and-oe-20261003",
+  "source_seal_sha256": "b98c727e0dd27048c66faab763cc1f24ab6ed0a5e11d88edcb19fbdca59b5f08",
+  "source_development_sha256": "c69c8b2ab5b5c9c4ae24fbe80ef61a7cddd97fcd1de36e87daddd13769d11c47",
+  "archive": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261003/ContinuousDistillationData.zip",
+  "archive_sha256": "8076e5cec0c1137ab0902c305a2603a4c4ec672308db563ff9749a9b9a7a34ec",
+  "targets": [
+    {
+      "source_dataset": "distillation_a",
+      "member": "ContinuousDistillationData/ScenarioA_SingleComponent_Water/operating_point_003/test_anormal_experiment_001.csv",
+      "rows": 3044,
+      "role": "anomalous_stress",
+      "previously_performance_scored": false
+    },
+    {
+      "source_dataset": "distillation_b",
+      "member": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_003/test_anormal_experiment_001.csv",
+      "rows": 1068,
+      "role": "anomalous_stress",
+      "previously_performance_scored": false
+    },
+    {
+      "source_dataset": "distillation_c",
+      "member": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_007/test_anormal_experiment_001.csv",
+      "rows": 557,
+      "role": "anomalous_stress",
+      "previously_performance_scored": false
+    },
+    {
+      "source_dataset": "distillation_b",
+      "member": "ContinuousDistillationData/ScenarioB_BinaryComponent_n-butanolwater/operating_point_001/train_normal_experiment_001.csv",
+      "rows": 158,
+      "role": "short_normal_boundary",
+      "previously_performance_scored": false
+    },
+    {
+      "source_dataset": "distillation_c",
+      "member": "ContinuousDistillationData/ScenarioC_ReactiveOME/operating_point_001/train_normal_experiment_001.csv",
+      "rows": 172,
+      "role": "short_normal_boundary",
+      "previously_performance_scored": false
+    }
+  ],
+  "script_sha256": "5862d123b6601fb477a498ed8ee3d204fbf1e899374997e4088f122e79444f16",
+  "source_code_sha256": {
+    "backend/scripts/benchmark_initial_and_oe.py": "33fb654a08adb7e68c54b30aa958d1332b4ac39d62d7cfb430caa32a126f2c1e",
+    "backend/algorithms/identifiability/output_error.py": "2c8b3918119c0345d33a38bc5ed420ad71f688b79bcc61884cacc0a064d1bc2d",
+    "backend/algorithms/identifiability/estimation.py": "93f99e695e518aafe60e97bc486d630911f3d8dc0aa70fd5aa54b11618963d76",
+    "backend/algorithms/identifiability/regressor.py": "2e42a2d99fd9e9a49bc634593e38385dc88681bd2f61c4965cf723b3c8100d5b",
+    "backend/algorithms/identifiability/validation.py": "8b51dd4a46235483e5b09458e421037db72b4fd79f44233b07bf01399a67077f",
+    "backend/app/services/optimization_service.py": "753b7126334c51c68546a0da0cf9d020bea49b9bbe20d9a8fe4d5127aec0bcea"
+  },
+  "transfer_start": 43,
+  "nominal_sample_period_seconds": 30,
+  "model_choice": "source Validation choice current102 versus OE24 remains frozen; all four arms shown diagnostically",
+  "target_fitting": false,
+  "target_model_selection": false,
+  "forecast_output_updates": false,
+  "warm_start": "measured target history strictly before sample 43; known physical input trajectory",
+  "input_roles": "unchanged source physical columns; labels, alarms and states excluded",
+  "scope": "new runs/operating conditions on the same pilot apparatus; not new factories; stress and short normal results reported separately"
+}

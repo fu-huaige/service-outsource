@@ -91,7 +91,7 @@ async def _seed_dataset_version(session: AsyncSession) -> tuple[UUID, UUID]:
 
 def _plan(dataset_id: UUID) -> ExecutionPlan:
     return ExecutionPlan(
-        goal="Confirm a persistent execution without dispatching tools.",
+        goal="Confirm an export with an unavailable artifact and persist its failure.",
         dataset_id=dataset_id,
         steps=[
             ExecutionPlanStep(
@@ -177,11 +177,11 @@ def test_confirm_api_approves_waiting_execution(api_harness: ApiHarness) -> None
     assert response.status_code == 200, response.text
     data = response.json()["data"]
     assert data["execution_id"] == str(execution_id)
-    assert data["workflow_status"] == "RUNNING"
+    assert data["workflow_status"] == "FAILED"
     assert data["current_step_id"] == "s2"
     assert data["pending_confirmation_step_id"] is None
     assert data["step_id"] == "s2"
-    assert data["step_status"] == "RUNNING"
+    assert data["step_status"] == "FAILED"
     assert data["confirmation_status"] == "APPROVED"
 
 
@@ -229,9 +229,11 @@ def test_confirm_api_duplicate_approve_is_idempotent(api_harness: ApiHarness) ->
     after_replay = asyncio.run(_load_execution(api_harness.session_factory, execution_id))
     before_step = next(step for step in before_replay.step_runs if step.step_id == "s2")
     after_step = next(step for step in after_replay.step_runs if step.step_id == "s2")
-    assert second.json()["data"]["step_status"] == "RUNNING"
+    assert second.json()["data"]["step_status"] == "FAILED"
     assert after_step.attempt_count == before_step.attempt_count == 0
     assert after_step.started_at == before_step.started_at
+    assert after_step.finished_at == before_step.finished_at
+    assert second.json()["data"] == first.json()["data"]
 
 
 def test_confirm_api_cannot_approve_cancelled_execution(api_harness: ApiHarness) -> None:
@@ -248,7 +250,7 @@ def test_confirm_api_cannot_approve_cancelled_execution(api_harness: ApiHarness)
     assert response.status_code == 409, response.text
 
 
-def test_confirm_api_approve_does_not_complete_step(api_harness: ApiHarness) -> None:
+def test_confirm_api_approve_persists_export_failure(api_harness: ApiHarness) -> None:
     execution_id = asyncio.run(_create_waiting_execution(api_harness.session_factory))
 
     response = api_harness.client.post(
@@ -256,7 +258,7 @@ def test_confirm_api_approve_does_not_complete_step(api_harness: ApiHarness) -> 
     )
 
     assert response.status_code == 200, response.text
-    assert response.json()["data"]["step_status"] == "RUNNING"
+    assert response.json()["data"]["step_status"] == "FAILED"
     assert response.json()["data"]["step_status"] != "SUCCEEDED"
 
 

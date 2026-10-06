@@ -1,0 +1,1742 @@
+{
+  "selection_partition": "validation",
+  "seed": 42,
+  "results": [
+    {
+      "dataset": "dryer2",
+      "output": "dry_bulb_temperature",
+      "request": {
+        "version_id": "6dc15fdc-8a56-57a4-b77f-fb32a4c80f79",
+        "input_columns": [
+          "fuel_flow",
+          "exhaust_fan_speed",
+          "raw_material_flow"
+        ],
+        "output_column": "dry_bulb_temperature",
+        "max_trials": 10,
+        "timeout_seconds": null,
+        "search_space": {},
+        "random_seed": 42,
+        "train_ratio": 0.6,
+        "validation_ratio": 0.2,
+        "history_guard": 32,
+        "diagnose_feedback": true
+      },
+      "best_parameters": {
+        "window_size": 70,
+        "max_segments": 4,
+        "max_anomaly_ratio": 0.1,
+        "max_missing_ratio": 0.08,
+        "min_input_activity_ratio": 0.28,
+        "nk": 16,
+        "selection_mode": "ensemble",
+        "adaptive_windows": false,
+        "history_guard": 32,
+        "delays": {
+          "fuel_flow": 5,
+          "exhaust_fan_speed": 18,
+          "raw_material_flow": 3
+        },
+        "na": 1,
+        "nb": 2,
+        "estimator": "huber",
+        "ridge_alpha": 0.1
+      },
+      "best_validation_score": 0.10870687611562331,
+      "test": {
+        "status": "succeeded",
+        "validation_fit": 49.04942917117951,
+        "test_fit": -14.086923688361686,
+        "test_rmse": 2.0532219297838035,
+        "parameters": {
+          "window_size": 70,
+          "max_segments": 4,
+          "max_anomaly_ratio": 0.1,
+          "max_missing_ratio": 0.08,
+          "min_input_activity_ratio": 0.28,
+          "nk": 16,
+          "selection_mode": "ensemble",
+          "adaptive_windows": false,
+          "history_guard": 32,
+          "delays": {
+            "fuel_flow": 5,
+            "exhaust_fan_speed": 18,
+            "raw_material_flow": 3
+          },
+          "na": 1,
+          "nb": 2,
+          "estimator": "huber",
+          "ridge_alpha": 0.1
+        },
+        "error_code": null
+      },
+      "trials": [
+        {
+          "number": 0,
+          "state": "complete",
+          "value": -0.2333301215870047,
+          "parameters": {
+            "window_size": 90,
+            "max_segments": 20,
+            "max_anomaly_ratio": 0.22,
+            "max_missing_ratio": 0.24,
+            "min_input_activity_ratio": 0.06,
+            "nk": 3,
+            "selection_mode": "ensemble",
+            "adaptive_windows": true,
+            "history_guard": 32,
+            "delays": {
+              "fuel_flow": 3,
+              "exhaust_fan_speed": 17,
+              "raw_material_flow": 6
+            },
+            "na": 1,
+            "nb": 1,
+            "estimator": "ols"
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "expand_information_coverage",
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "fuel_flow",
+              "exhaust_fan_speed",
+              "raw_material_flow"
+            ],
+            "parameters": {
+              "window_size": 90,
+              "max_segments": 20,
+              "max_anomaly_ratio": 0.22,
+              "max_missing_ratio": 0.24,
+              "min_input_activity_ratio": 0.06,
+              "nk": 3,
+              "selection_mode": "ensemble",
+              "adaptive_windows": true,
+              "nk_fuel_flow": 3,
+              "nk_exhaust_fan_speed": 17,
+              "nk_raw_material_flow": 6
+            }
+          }
+        },
+        {
+          "number": 1,
+          "state": "complete",
+          "value": -0.2865322741661609,
+          "parameters": {
+            "window_size": 80,
+            "max_segments": 4,
+            "max_anomaly_ratio": 0.22,
+            "max_missing_ratio": 0.18,
+            "min_input_activity_ratio": 0.04,
+            "nk": 10,
+            "selection_mode": "ensemble",
+            "adaptive_windows": true,
+            "history_guard": 32,
+            "delays": {
+              "fuel_flow": 6,
+              "exhaust_fan_speed": 0,
+              "raw_material_flow": 5
+            },
+            "na": 1,
+            "nb": 3,
+            "estimator": "ols"
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "expand_information_coverage",
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "fuel_flow",
+              "exhaust_fan_speed",
+              "raw_material_flow"
+            ],
+            "parameters": {
+              "window_size": 80,
+              "max_segments": 5,
+              "max_anomaly_ratio": 0.22,
+              "max_missing_ratio": 0.18,
+              "min_input_activity_ratio": 0.04,
+              "nk": 10,
+              "selection_mode": "ensemble",
+              "adaptive_windows": true,
+              "nk_fuel_flow": 6,
+              "nk_exhaust_fan_speed": 0,
+              "nk_raw_material_flow": 5
+            }
+          }
+        },
+        {
+          "number": 2,
+          "state": "complete",
+          "value": -0.23915675607528702,
+          "parameters": {
+            "window_size": 30,
+            "max_segments": 17,
+            "max_anomaly_ratio": 0.22,
+            "max_missing_ratio": 0.30000000000000004,
+            "min_input_activity_ratio": 0.24,
+            "nk": 1,
+            "selection_mode": "single",
+            "adaptive_windows": false,
+            "history_guard": 32,
+            "delays": {
+              "fuel_flow": 8,
+              "exhaust_fan_speed": 3,
+              "raw_material_flow": 4
+            },
+            "na": 1,
+            "nb": 3,
+            "estimator": "ols"
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "expand_information_coverage",
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "fuel_flow",
+              "raw_material_flow"
+            ],
+            "parameters": {
+              "window_size": 30,
+              "max_segments": 18,
+              "max_anomaly_ratio": 0.22,
+              "max_missing_ratio": 0.30000000000000004,
+              "min_input_activity_ratio": 0.24,
+              "nk": 1,
+              "selection_mode": "single",
+              "adaptive_windows": false,
+              "nk_fuel_flow": 8,
+              "nk_exhaust_fan_speed": 3,
+              "nk_raw_material_flow": 4
+            }
+          }
+        },
+        {
+          "number": 3,
+          "state": "complete",
+          "value": 0.10870687611562331,
+          "parameters": {
+            "window_size": 70,
+            "max_segments": 4,
+            "max_anomaly_ratio": 0.1,
+            "max_missing_ratio": 0.08,
+            "min_input_activity_ratio": 0.28,
+            "nk": 16,
+            "selection_mode": "ensemble",
+            "adaptive_windows": false,
+            "history_guard": 32,
+            "delays": {
+              "fuel_flow": 5,
+              "exhaust_fan_speed": 18,
+              "raw_material_flow": 3
+            },
+            "na": 1,
+            "nb": 2,
+            "estimator": "huber",
+            "ridge_alpha": 0.1
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "expand_information_coverage",
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "fuel_flow",
+              "exhaust_fan_speed",
+              "raw_material_flow"
+            ],
+            "parameters": {
+              "window_size": 70,
+              "max_segments": 5,
+              "max_anomaly_ratio": 0.1,
+              "max_missing_ratio": 0.08,
+              "min_input_activity_ratio": 0.28,
+              "nk": 16,
+              "selection_mode": "ensemble",
+              "adaptive_windows": false,
+              "nk_fuel_flow": 5,
+              "nk_exhaust_fan_speed": 18,
+              "nk_raw_material_flow": 3
+            }
+          }
+        },
+        {
+          "number": 4,
+          "state": "complete",
+          "value": -0.10865566124874249,
+          "parameters": {
+            "window_size": 70,
+            "max_segments": 5,
+            "max_anomaly_ratio": 0.1,
+            "max_missing_ratio": 0.08,
+            "min_input_activity_ratio": 0.28,
+            "nk": 16,
+            "selection_mode": "ensemble",
+            "adaptive_windows": false,
+            "history_guard": 32,
+            "delays": {
+              "fuel_flow": 5,
+              "exhaust_fan_speed": 18,
+              "raw_material_flow": 3
+            },
+            "na": 1,
+            "nb": 3,
+            "estimator": "ols"
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "expand_information_coverage",
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "fuel_flow",
+              "exhaust_fan_speed",
+              "raw_material_flow"
+            ],
+            "parameters": {
+              "window_size": 70,
+              "max_segments": 6,
+              "max_anomaly_ratio": 0.1,
+              "max_missing_ratio": 0.08,
+              "min_input_activity_ratio": 0.28,
+              "nk": 16,
+              "selection_mode": "ensemble",
+              "adaptive_windows": false,
+              "nk_fuel_flow": 5,
+              "nk_exhaust_fan_speed": 18,
+              "nk_raw_material_flow": 3
+            }
+          }
+        },
+        {
+          "number": 5,
+          "state": "complete",
+          "value": -0.19005534451717196,
+          "parameters": {
+            "window_size": 80,
+            "max_segments": 3,
+            "max_anomaly_ratio": 0.19999999999999998,
+            "max_missing_ratio": 0.22,
+            "min_input_activity_ratio": 0.02,
+            "nk": 5,
+            "selection_mode": "single",
+            "adaptive_windows": true,
+            "history_guard": 32,
+            "delays": {
+              "fuel_flow": 2,
+              "exhaust_fan_speed": 2,
+              "raw_material_flow": 6
+            },
+            "na": 1,
+            "nb": 1,
+            "estimator": "ols"
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "expand_information_coverage",
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "fuel_flow",
+              "exhaust_fan_speed",
+              "raw_material_flow"
+            ],
+            "parameters": {
+              "window_size": 80,
+              "max_segments": 4,
+              "max_anomaly_ratio": 0.19999999999999998,
+              "max_missing_ratio": 0.22,
+              "min_input_activity_ratio": 0.02,
+              "nk": 5,
+              "selection_mode": "single",
+              "adaptive_windows": true,
+              "nk_fuel_flow": 2,
+              "nk_exhaust_fan_speed": 2,
+              "nk_raw_material_flow": 6
+            }
+          }
+        },
+        {
+          "number": 6,
+          "state": "complete",
+          "value": -0.21512506225228523,
+          "parameters": {
+            "window_size": 90,
+            "max_segments": 5,
+            "max_anomaly_ratio": 0.28,
+            "max_missing_ratio": 0.36000000000000004,
+            "min_input_activity_ratio": 0.08,
+            "nk": 13,
+            "selection_mode": "single",
+            "adaptive_windows": false,
+            "history_guard": 32,
+            "delays": {
+              "fuel_flow": 4,
+              "exhaust_fan_speed": 15,
+              "raw_material_flow": 6
+            },
+            "na": 1,
+            "nb": 2,
+            "estimator": "ols"
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "expand_information_coverage",
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "fuel_flow",
+              "exhaust_fan_speed",
+              "raw_material_flow"
+            ],
+            "parameters": {
+              "window_size": 90,
+              "max_segments": 6,
+              "max_anomaly_ratio": 0.28,
+              "max_missing_ratio": 0.36000000000000004,
+              "min_input_activity_ratio": 0.08,
+              "nk": 13,
+              "selection_mode": "single",
+              "adaptive_windows": false,
+              "nk_fuel_flow": 4,
+              "nk_exhaust_fan_speed": 15,
+              "nk_raw_material_flow": 6
+            }
+          }
+        },
+        {
+          "number": 7,
+          "state": "complete",
+          "value": -0.18552026608584857,
+          "parameters": {
+            "window_size": 90,
+            "max_segments": 6,
+            "max_anomaly_ratio": 0.28,
+            "max_missing_ratio": 0.36000000000000004,
+            "min_input_activity_ratio": 0.08,
+            "nk": 13,
+            "selection_mode": "single",
+            "adaptive_windows": false,
+            "history_guard": 32,
+            "delays": {
+              "fuel_flow": 4,
+              "exhaust_fan_speed": 15,
+              "raw_material_flow": 6
+            },
+            "na": 1,
+            "nb": 3,
+            "estimator": "ols"
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "expand_information_coverage",
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "fuel_flow",
+              "exhaust_fan_speed",
+              "raw_material_flow"
+            ],
+            "parameters": {
+              "window_size": 90,
+              "max_segments": 7,
+              "max_anomaly_ratio": 0.28,
+              "max_missing_ratio": 0.36000000000000004,
+              "min_input_activity_ratio": 0.08,
+              "nk": 13,
+              "selection_mode": "single",
+              "adaptive_windows": false,
+              "nk_fuel_flow": 4,
+              "nk_exhaust_fan_speed": 15,
+              "nk_raw_material_flow": 6
+            }
+          }
+        },
+        {
+          "number": 8,
+          "state": "complete",
+          "value": -0.1795494261859833,
+          "parameters": {
+            "window_size": 80,
+            "max_segments": 16,
+            "max_anomaly_ratio": 0.19999999999999998,
+            "max_missing_ratio": 0.34,
+            "min_input_activity_ratio": 0.19999999999999998,
+            "nk": 11,
+            "selection_mode": "ensemble",
+            "adaptive_windows": false,
+            "history_guard": 32,
+            "delays": {
+              "fuel_flow": 2,
+              "exhaust_fan_speed": 17,
+              "raw_material_flow": 3
+            },
+            "na": 1,
+            "nb": 1,
+            "estimator": "ols"
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "expand_information_coverage",
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "fuel_flow",
+              "exhaust_fan_speed",
+              "raw_material_flow"
+            ],
+            "parameters": {
+              "window_size": 80,
+              "max_segments": 17,
+              "max_anomaly_ratio": 0.19999999999999998,
+              "max_missing_ratio": 0.34,
+              "min_input_activity_ratio": 0.19999999999999998,
+              "nk": 11,
+              "selection_mode": "ensemble",
+              "adaptive_windows": false,
+              "nk_fuel_flow": 2,
+              "nk_exhaust_fan_speed": 17,
+              "nk_raw_material_flow": 3
+            }
+          }
+        },
+        {
+          "number": 9,
+          "state": "complete",
+          "value": -0.27918711105412514,
+          "parameters": {
+            "window_size": 180,
+            "max_segments": 8,
+            "max_anomaly_ratio": 0.06,
+            "max_missing_ratio": 0.24,
+            "min_input_activity_ratio": 0.3,
+            "nk": 14,
+            "selection_mode": "single",
+            "adaptive_windows": true,
+            "history_guard": 32,
+            "delays": {
+              "fuel_flow": 4,
+              "exhaust_fan_speed": 2,
+              "raw_material_flow": 0
+            },
+            "na": 1,
+            "nb": 3,
+            "estimator": "ols"
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "expand_information_coverage",
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "fuel_flow",
+              "exhaust_fan_speed",
+              "raw_material_flow"
+            ],
+            "parameters": {
+              "window_size": 180,
+              "max_segments": 9,
+              "max_anomaly_ratio": 0.06,
+              "max_missing_ratio": 0.24,
+              "min_input_activity_ratio": 0.3,
+              "nk": 14,
+              "selection_mode": "single",
+              "adaptive_windows": true,
+              "nk_fuel_flow": 4,
+              "nk_exhaust_fan_speed": 2,
+              "nk_raw_material_flow": 0
+            }
+          }
+        }
+      ],
+      "elapsed_seconds": 2.1067375000566244
+    },
+    {
+      "dataset": "evaporator",
+      "output": "product_dry_matter",
+      "request": {
+        "version_id": "7c23a52f-776a-5eaa-8a3b-f289cd87ae53",
+        "input_columns": [
+          "feed_flow",
+          "vapor_flow",
+          "cooling_water_flow"
+        ],
+        "output_column": "product_dry_matter",
+        "max_trials": 10,
+        "timeout_seconds": null,
+        "search_space": {},
+        "random_seed": 42,
+        "train_ratio": 0.6,
+        "validation_ratio": 0.2,
+        "history_guard": 32,
+        "diagnose_feedback": true
+      },
+      "best_parameters": {
+        "window_size": 180,
+        "max_segments": 8,
+        "max_anomaly_ratio": 0.06,
+        "max_missing_ratio": 0.24,
+        "min_input_activity_ratio": 0.3,
+        "nk": 14,
+        "selection_mode": "single",
+        "adaptive_windows": true,
+        "history_guard": 32,
+        "delays": {
+          "feed_flow": 8,
+          "vapor_flow": 6,
+          "cooling_water_flow": 1
+        },
+        "na": 2,
+        "nb": 3,
+        "estimator": "ols"
+      },
+      "best_validation_score": -0.0717770445754069,
+      "test": {
+        "status": "succeeded",
+        "validation_fit": 31.46435819535349,
+        "test_fit": 29.89135501150485,
+        "test_rmse": 0.6103771045895395,
+        "parameters": {
+          "window_size": 180,
+          "max_segments": 8,
+          "max_anomaly_ratio": 0.06,
+          "max_missing_ratio": 0.24,
+          "min_input_activity_ratio": 0.3,
+          "nk": 14,
+          "selection_mode": "single",
+          "adaptive_windows": true,
+          "history_guard": 32,
+          "delays": {
+            "feed_flow": 8,
+            "vapor_flow": 6,
+            "cooling_water_flow": 1
+          },
+          "na": 2,
+          "nb": 3,
+          "estimator": "ols"
+        },
+        "error_code": null
+      },
+      "trials": [
+        {
+          "number": 0,
+          "state": "complete",
+          "value": -0.23792406140146097,
+          "parameters": {
+            "window_size": 90,
+            "max_segments": 20,
+            "max_anomaly_ratio": 0.22,
+            "max_missing_ratio": 0.24,
+            "min_input_activity_ratio": 0.06,
+            "nk": 3,
+            "selection_mode": "ensemble",
+            "adaptive_windows": true,
+            "history_guard": 32,
+            "delays": {
+              "feed_flow": 7,
+              "vapor_flow": 11,
+              "cooling_water_flow": 7
+            },
+            "na": 2,
+            "nb": 3,
+            "estimator": "ridge",
+            "ridge_alpha": 1.0
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "feed_flow",
+              "vapor_flow",
+              "cooling_water_flow"
+            ],
+            "parameters": {
+              "window_size": 90,
+              "max_segments": 20,
+              "max_anomaly_ratio": 0.22,
+              "max_missing_ratio": 0.24,
+              "min_input_activity_ratio": 0.06,
+              "nk": 3,
+              "selection_mode": "ensemble",
+              "adaptive_windows": true,
+              "nk_feed_flow": 7,
+              "nk_vapor_flow": 11,
+              "nk_cooling_water_flow": 7
+            }
+          }
+        },
+        {
+          "number": 1,
+          "state": "complete",
+          "value": -0.42292830004175413,
+          "parameters": {
+            "window_size": 80,
+            "max_segments": 4,
+            "max_anomaly_ratio": 0.22,
+            "max_missing_ratio": 0.18,
+            "min_input_activity_ratio": 0.04,
+            "nk": 10,
+            "selection_mode": "ensemble",
+            "adaptive_windows": true,
+            "history_guard": 32,
+            "delays": {
+              "feed_flow": 10,
+              "vapor_flow": 4,
+              "cooling_water_flow": 6
+            },
+            "na": 2,
+            "nb": 3,
+            "estimator": "huber",
+            "ridge_alpha": 0.1
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "feed_flow",
+              "vapor_flow",
+              "cooling_water_flow"
+            ],
+            "parameters": {
+              "window_size": 80,
+              "max_segments": 5,
+              "max_anomaly_ratio": 0.22,
+              "max_missing_ratio": 0.18,
+              "min_input_activity_ratio": 0.04,
+              "nk": 10,
+              "selection_mode": "ensemble",
+              "adaptive_windows": true,
+              "nk_feed_flow": 10,
+              "nk_vapor_flow": 4,
+              "nk_cooling_water_flow": 6
+            }
+          }
+        },
+        {
+          "number": 2,
+          "state": "complete",
+          "value": -0.21038855416550956,
+          "parameters": {
+            "window_size": 30,
+            "max_segments": 17,
+            "max_anomaly_ratio": 0.22,
+            "max_missing_ratio": 0.30000000000000004,
+            "min_input_activity_ratio": 0.24,
+            "nk": 1,
+            "selection_mode": "single",
+            "adaptive_windows": false,
+            "history_guard": 32,
+            "delays": {
+              "feed_flow": 12,
+              "vapor_flow": 8,
+              "cooling_water_flow": 5
+            },
+            "na": 4,
+            "nb": 3,
+            "estimator": "huber",
+            "ridge_alpha": 0.1
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "feed_flow",
+              "vapor_flow",
+              "cooling_water_flow"
+            ],
+            "parameters": {
+              "window_size": 30,
+              "max_segments": 18,
+              "max_anomaly_ratio": 0.22,
+              "max_missing_ratio": 0.30000000000000004,
+              "min_input_activity_ratio": 0.24,
+              "nk": 1,
+              "selection_mode": "single",
+              "adaptive_windows": false,
+              "nk_feed_flow": 12,
+              "nk_vapor_flow": 8,
+              "nk_cooling_water_flow": 5
+            }
+          }
+        },
+        {
+          "number": 3,
+          "state": "complete",
+          "value": -0.19928055193033653,
+          "parameters": {
+            "window_size": 70,
+            "max_segments": 4,
+            "max_anomaly_ratio": 0.1,
+            "max_missing_ratio": 0.08,
+            "min_input_activity_ratio": 0.28,
+            "nk": 16,
+            "selection_mode": "ensemble",
+            "adaptive_windows": false,
+            "history_guard": 32,
+            "delays": {
+              "feed_flow": 9,
+              "vapor_flow": 12,
+              "cooling_water_flow": 4
+            },
+            "na": 1,
+            "nb": 3,
+            "estimator": "huber",
+            "ridge_alpha": 0.1
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "feed_flow",
+              "vapor_flow",
+              "cooling_water_flow"
+            ],
+            "parameters": {
+              "window_size": 70,
+              "max_segments": 5,
+              "max_anomaly_ratio": 0.1,
+              "max_missing_ratio": 0.08,
+              "min_input_activity_ratio": 0.28,
+              "nk": 16,
+              "selection_mode": "ensemble",
+              "adaptive_windows": false,
+              "nk_feed_flow": 9,
+              "nk_vapor_flow": 12,
+              "nk_cooling_water_flow": 4
+            }
+          }
+        },
+        {
+          "number": 4,
+          "state": "complete",
+          "value": -0.26669968270924405,
+          "parameters": {
+            "window_size": 70,
+            "max_segments": 5,
+            "max_anomaly_ratio": 0.1,
+            "max_missing_ratio": 0.08,
+            "min_input_activity_ratio": 0.28,
+            "nk": 16,
+            "selection_mode": "ensemble",
+            "adaptive_windows": false,
+            "history_guard": 32,
+            "delays": {
+              "feed_flow": 9,
+              "vapor_flow": 12,
+              "cooling_water_flow": 4
+            },
+            "na": 1,
+            "nb": 3,
+            "estimator": "huber",
+            "ridge_alpha": 0.1
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "feed_flow",
+              "vapor_flow",
+              "cooling_water_flow"
+            ],
+            "parameters": {
+              "window_size": 70,
+              "max_segments": 6,
+              "max_anomaly_ratio": 0.1,
+              "max_missing_ratio": 0.08,
+              "min_input_activity_ratio": 0.28,
+              "nk": 16,
+              "selection_mode": "ensemble",
+              "adaptive_windows": false,
+              "nk_feed_flow": 9,
+              "nk_vapor_flow": 12,
+              "nk_cooling_water_flow": 4
+            }
+          }
+        },
+        {
+          "number": 5,
+          "state": "complete",
+          "value": -0.4224285324833935,
+          "parameters": {
+            "window_size": 80,
+            "max_segments": 3,
+            "max_anomaly_ratio": 0.19999999999999998,
+            "max_missing_ratio": 0.22,
+            "min_input_activity_ratio": 0.02,
+            "nk": 5,
+            "selection_mode": "single",
+            "adaptive_windows": true,
+            "history_guard": 32,
+            "delays": {
+              "feed_flow": 6,
+              "vapor_flow": 6,
+              "cooling_water_flow": 7
+            },
+            "na": 4,
+            "nb": 3,
+            "estimator": "huber",
+            "ridge_alpha": 0.1
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "feed_flow",
+              "vapor_flow",
+              "cooling_water_flow"
+            ],
+            "parameters": {
+              "window_size": 80,
+              "max_segments": 4,
+              "max_anomaly_ratio": 0.19999999999999998,
+              "max_missing_ratio": 0.22,
+              "min_input_activity_ratio": 0.02,
+              "nk": 5,
+              "selection_mode": "single",
+              "adaptive_windows": true,
+              "nk_feed_flow": 6,
+              "nk_vapor_flow": 6,
+              "nk_cooling_water_flow": 7
+            }
+          }
+        },
+        {
+          "number": 6,
+          "state": "complete",
+          "value": -0.1542920296607875,
+          "parameters": {
+            "window_size": 90,
+            "max_segments": 5,
+            "max_anomaly_ratio": 0.28,
+            "max_missing_ratio": 0.36000000000000004,
+            "min_input_activity_ratio": 0.08,
+            "nk": 13,
+            "selection_mode": "single",
+            "adaptive_windows": false,
+            "history_guard": 32,
+            "delays": {
+              "feed_flow": 8,
+              "vapor_flow": 9,
+              "cooling_water_flow": 7
+            },
+            "na": 2,
+            "nb": 3,
+            "estimator": "ridge",
+            "ridge_alpha": 1.0
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "feed_flow",
+              "vapor_flow",
+              "cooling_water_flow"
+            ],
+            "parameters": {
+              "window_size": 90,
+              "max_segments": 6,
+              "max_anomaly_ratio": 0.28,
+              "max_missing_ratio": 0.36000000000000004,
+              "min_input_activity_ratio": 0.08,
+              "nk": 13,
+              "selection_mode": "single",
+              "adaptive_windows": false,
+              "nk_feed_flow": 8,
+              "nk_vapor_flow": 9,
+              "nk_cooling_water_flow": 7
+            }
+          }
+        },
+        {
+          "number": 7,
+          "state": "complete",
+          "value": -0.14913744522324768,
+          "parameters": {
+            "window_size": 90,
+            "max_segments": 6,
+            "max_anomaly_ratio": 0.28,
+            "max_missing_ratio": 0.36000000000000004,
+            "min_input_activity_ratio": 0.08,
+            "nk": 13,
+            "selection_mode": "single",
+            "adaptive_windows": false,
+            "history_guard": 32,
+            "delays": {
+              "feed_flow": 8,
+              "vapor_flow": 9,
+              "cooling_water_flow": 7
+            },
+            "na": 3,
+            "nb": 3,
+            "estimator": "ols"
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "feed_flow",
+              "vapor_flow",
+              "cooling_water_flow"
+            ],
+            "parameters": {
+              "window_size": 90,
+              "max_segments": 7,
+              "max_anomaly_ratio": 0.28,
+              "max_missing_ratio": 0.36000000000000004,
+              "min_input_activity_ratio": 0.08,
+              "nk": 13,
+              "selection_mode": "single",
+              "adaptive_windows": false,
+              "nk_feed_flow": 8,
+              "nk_vapor_flow": 9,
+              "nk_cooling_water_flow": 7
+            }
+          }
+        },
+        {
+          "number": 8,
+          "state": "complete",
+          "value": -0.2629978119781061,
+          "parameters": {
+            "window_size": 80,
+            "max_segments": 16,
+            "max_anomaly_ratio": 0.19999999999999998,
+            "max_missing_ratio": 0.34,
+            "min_input_activity_ratio": 0.19999999999999998,
+            "nk": 11,
+            "selection_mode": "ensemble",
+            "adaptive_windows": false,
+            "history_guard": 32,
+            "delays": {
+              "feed_flow": 6,
+              "vapor_flow": 11,
+              "cooling_water_flow": 4
+            },
+            "na": 3,
+            "nb": 1,
+            "estimator": "huber",
+            "ridge_alpha": 0.1
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "feed_flow",
+              "vapor_flow",
+              "cooling_water_flow"
+            ],
+            "parameters": {
+              "window_size": 80,
+              "max_segments": 17,
+              "max_anomaly_ratio": 0.19999999999999998,
+              "max_missing_ratio": 0.34,
+              "min_input_activity_ratio": 0.19999999999999998,
+              "nk": 11,
+              "selection_mode": "ensemble",
+              "adaptive_windows": false,
+              "nk_feed_flow": 6,
+              "nk_vapor_flow": 11,
+              "nk_cooling_water_flow": 4
+            }
+          }
+        },
+        {
+          "number": 9,
+          "state": "complete",
+          "value": -0.0717770445754069,
+          "parameters": {
+            "window_size": 180,
+            "max_segments": 8,
+            "max_anomaly_ratio": 0.06,
+            "max_missing_ratio": 0.24,
+            "min_input_activity_ratio": 0.3,
+            "nk": 14,
+            "selection_mode": "single",
+            "adaptive_windows": true,
+            "history_guard": 32,
+            "delays": {
+              "feed_flow": 8,
+              "vapor_flow": 6,
+              "cooling_water_flow": 1
+            },
+            "na": 2,
+            "nb": 3,
+            "estimator": "ols"
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "feed_flow",
+              "vapor_flow",
+              "cooling_water_flow"
+            ],
+            "parameters": {
+              "window_size": 180,
+              "max_segments": 9,
+              "max_anomaly_ratio": 0.06,
+              "max_missing_ratio": 0.24,
+              "min_input_activity_ratio": 0.3,
+              "nk": 14,
+              "selection_mode": "single",
+              "adaptive_windows": true,
+              "nk_feed_flow": 8,
+              "nk_vapor_flow": 6,
+              "nk_cooling_water_flow": 1
+            }
+          }
+        }
+      ],
+      "elapsed_seconds": 8.927238042000681
+    },
+    {
+      "dataset": "glassfurnace",
+      "output": "temperature_sensor_1",
+      "request": {
+        "version_id": "fabb3201-f5d7-5427-82ea-26743e2a0bbd",
+        "input_columns": [
+          "heating_input_1",
+          "cooling_input",
+          "heating_input_2"
+        ],
+        "output_column": "temperature_sensor_1",
+        "max_trials": 10,
+        "timeout_seconds": null,
+        "search_space": {},
+        "random_seed": 42,
+        "train_ratio": 0.6,
+        "validation_ratio": 0.2,
+        "history_guard": 32,
+        "diagnose_feedback": true
+      },
+      "best_parameters": {
+        "window_size": 150,
+        "max_segments": 16,
+        "max_anomaly_ratio": 0.24,
+        "max_missing_ratio": 0.04,
+        "min_input_activity_ratio": 0.12000000000000001,
+        "nk": 2,
+        "selection_mode": "single",
+        "adaptive_windows": false,
+        "history_guard": 32,
+        "delays": {
+          "heating_input_1": 5,
+          "cooling_input": 2,
+          "heating_input_2": 1
+        },
+        "na": 2,
+        "nb": 3,
+        "estimator": "huber",
+        "ridge_alpha": 0.1
+      },
+      "best_validation_score": -0.08495588994061001,
+      "test": {
+        "status": "succeeded",
+        "validation_fit": 34.381836915458486,
+        "test_fit": 0.4183023035591704,
+        "test_rmse": 0.8374035848685407,
+        "parameters": {
+          "window_size": 150,
+          "max_segments": 16,
+          "max_anomaly_ratio": 0.24,
+          "max_missing_ratio": 0.04,
+          "min_input_activity_ratio": 0.12000000000000001,
+          "nk": 2,
+          "selection_mode": "single",
+          "adaptive_windows": false,
+          "history_guard": 32,
+          "delays": {
+            "heating_input_1": 5,
+            "cooling_input": 2,
+            "heating_input_2": 1
+          },
+          "na": 2,
+          "nb": 3,
+          "estimator": "huber",
+          "ridge_alpha": 0.1
+        },
+        "error_code": null
+      },
+      "trials": [
+        {
+          "number": 0,
+          "state": "complete",
+          "value": -0.3756940870540504,
+          "parameters": {
+            "window_size": 90,
+            "max_segments": 20,
+            "max_anomaly_ratio": 0.22,
+            "max_missing_ratio": 0.24,
+            "min_input_activity_ratio": 0.06,
+            "nk": 3,
+            "selection_mode": "ensemble",
+            "adaptive_windows": true,
+            "history_guard": 32,
+            "delays": {
+              "heating_input_1": 2,
+              "cooling_input": 7,
+              "heating_input_2": 9
+            },
+            "na": 1,
+            "nb": 1,
+            "estimator": "huber",
+            "ridge_alpha": 0.1
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "heating_input_1",
+              "cooling_input",
+              "heating_input_2"
+            ],
+            "parameters": {
+              "window_size": 90,
+              "max_segments": 20,
+              "max_anomaly_ratio": 0.22,
+              "max_missing_ratio": 0.24,
+              "min_input_activity_ratio": 0.06,
+              "nk": 3,
+              "selection_mode": "ensemble",
+              "adaptive_windows": true,
+              "nk_heating_input_1": 2,
+              "nk_cooling_input": 7,
+              "nk_heating_input_2": 9
+            }
+          }
+        },
+        {
+          "number": 1,
+          "state": "complete",
+          "value": -0.3456195618018626,
+          "parameters": {
+            "window_size": 40,
+            "max_segments": 15,
+            "max_anomaly_ratio": 0.13999999999999999,
+            "max_missing_ratio": 0.06,
+            "min_input_activity_ratio": 0.16,
+            "nk": 0,
+            "selection_mode": "single",
+            "adaptive_windows": false,
+            "history_guard": 32,
+            "delays": {
+              "heating_input_1": 4,
+              "cooling_input": 7,
+              "heating_input_2": 7
+            },
+            "na": 1,
+            "nb": 1,
+            "estimator": "ridge",
+            "ridge_alpha": 1.0
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "heating_input_1",
+              "cooling_input",
+              "heating_input_2"
+            ],
+            "parameters": {
+              "window_size": 40,
+              "max_segments": 16,
+              "max_anomaly_ratio": 0.13999999999999999,
+              "max_missing_ratio": 0.06,
+              "min_input_activity_ratio": 0.16,
+              "nk": 0,
+              "selection_mode": "single",
+              "adaptive_windows": false,
+              "nk_heating_input_1": 4,
+              "nk_cooling_input": 7,
+              "nk_heating_input_2": 7
+            }
+          }
+        },
+        {
+          "number": 2,
+          "state": "complete",
+          "value": -0.08495588994061001,
+          "parameters": {
+            "window_size": 150,
+            "max_segments": 16,
+            "max_anomaly_ratio": 0.24,
+            "max_missing_ratio": 0.04,
+            "min_input_activity_ratio": 0.12000000000000001,
+            "nk": 2,
+            "selection_mode": "single",
+            "adaptive_windows": false,
+            "history_guard": 32,
+            "delays": {
+              "heating_input_1": 5,
+              "cooling_input": 2,
+              "heating_input_2": 1
+            },
+            "na": 2,
+            "nb": 3,
+            "estimator": "huber",
+            "ridge_alpha": 0.1
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "heating_input_1",
+              "cooling_input",
+              "heating_input_2"
+            ],
+            "parameters": {
+              "window_size": 150,
+              "max_segments": 17,
+              "max_anomaly_ratio": 0.24,
+              "max_missing_ratio": 0.04,
+              "min_input_activity_ratio": 0.12000000000000001,
+              "nk": 2,
+              "selection_mode": "single",
+              "adaptive_windows": false,
+              "nk_heating_input_1": 5,
+              "nk_cooling_input": 2,
+              "nk_heating_input_2": 1
+            }
+          }
+        },
+        {
+          "number": 3,
+          "state": "complete",
+          "value": -0.43981647833964016,
+          "parameters": {
+            "window_size": 50,
+            "max_segments": 19,
+            "max_anomaly_ratio": 0.26,
+            "max_missing_ratio": 0.26,
+            "min_input_activity_ratio": 0.28,
+            "nk": 16,
+            "selection_mode": "ensemble",
+            "adaptive_windows": true,
+            "history_guard": 32,
+            "delays": {
+              "heating_input_1": 1,
+              "cooling_input": 10,
+              "heating_input_2": 0
+            },
+            "na": 4,
+            "nb": 1,
+            "estimator": "huber",
+            "ridge_alpha": 0.1
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "cooling_input",
+              "heating_input_2"
+            ],
+            "parameters": {
+              "window_size": 50,
+              "max_segments": 20,
+              "max_anomaly_ratio": 0.26,
+              "max_missing_ratio": 0.26,
+              "min_input_activity_ratio": 0.28,
+              "nk": 16,
+              "selection_mode": "ensemble",
+              "adaptive_windows": true,
+              "nk_heating_input_1": 1,
+              "nk_cooling_input": 10,
+              "nk_heating_input_2": 0
+            }
+          }
+        },
+        {
+          "number": 4,
+          "state": "complete",
+          "value": -0.43981647833964016,
+          "parameters": {
+            "window_size": 50,
+            "max_segments": 20,
+            "max_anomaly_ratio": 0.26,
+            "max_missing_ratio": 0.26,
+            "min_input_activity_ratio": 0.28,
+            "nk": 16,
+            "selection_mode": "ensemble",
+            "adaptive_windows": true,
+            "history_guard": 32,
+            "delays": {
+              "heating_input_1": 1,
+              "cooling_input": 10,
+              "heating_input_2": 0
+            },
+            "na": 4,
+            "nb": 1,
+            "estimator": "huber",
+            "ridge_alpha": 0.1
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "cooling_input",
+              "heating_input_2"
+            ],
+            "parameters": {
+              "window_size": 50,
+              "max_segments": 20,
+              "max_anomaly_ratio": 0.26,
+              "max_missing_ratio": 0.26,
+              "min_input_activity_ratio": 0.28,
+              "nk": 16,
+              "selection_mode": "ensemble",
+              "adaptive_windows": true,
+              "nk_heating_input_1": 1,
+              "nk_cooling_input": 10,
+              "nk_heating_input_2": 0
+            }
+          }
+        },
+        {
+          "number": 5,
+          "state": "complete",
+          "value": -0.34462204443872785,
+          "parameters": {
+            "window_size": 30,
+            "max_segments": 8,
+            "max_anomaly_ratio": 0.28,
+            "max_missing_ratio": 0.1,
+            "min_input_activity_ratio": 0.06,
+            "nk": 10,
+            "selection_mode": "single",
+            "adaptive_windows": true,
+            "history_guard": 32,
+            "delays": {
+              "heating_input_1": 8,
+              "cooling_input": 10,
+              "heating_input_2": 1
+            },
+            "na": 2,
+            "nb": 1,
+            "estimator": "ols"
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "heating_input_1",
+              "cooling_input"
+            ],
+            "parameters": {
+              "window_size": 30,
+              "max_segments": 9,
+              "max_anomaly_ratio": 0.28,
+              "max_missing_ratio": 0.1,
+              "min_input_activity_ratio": 0.06,
+              "nk": 10,
+              "selection_mode": "single",
+              "adaptive_windows": true,
+              "nk_heating_input_1": 8,
+              "nk_cooling_input": 10,
+              "nk_heating_input_2": 1
+            }
+          }
+        },
+        {
+          "number": 6,
+          "state": "complete",
+          "value": -0.3222512108774426,
+          "parameters": {
+            "window_size": 140,
+            "max_segments": 17,
+            "max_anomaly_ratio": 0.18,
+            "max_missing_ratio": 0.22,
+            "min_input_activity_ratio": 0.08,
+            "nk": 1,
+            "selection_mode": "ensemble",
+            "adaptive_windows": false,
+            "history_guard": 32,
+            "delays": {
+              "heating_input_1": 9,
+              "cooling_input": 8,
+              "heating_input_2": 9
+            },
+            "na": 1,
+            "nb": 1,
+            "estimator": "huber",
+            "ridge_alpha": 0.1
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "cooling_input",
+              "heating_input_2"
+            ],
+            "parameters": {
+              "window_size": 140,
+              "max_segments": 18,
+              "max_anomaly_ratio": 0.18,
+              "max_missing_ratio": 0.22,
+              "min_input_activity_ratio": 0.08,
+              "nk": 1,
+              "selection_mode": "ensemble",
+              "adaptive_windows": false,
+              "nk_heating_input_1": 9,
+              "nk_cooling_input": 8,
+              "nk_heating_input_2": 9
+            }
+          }
+        },
+        {
+          "number": 7,
+          "state": "complete",
+          "value": -0.3222512108774426,
+          "parameters": {
+            "window_size": 140,
+            "max_segments": 18,
+            "max_anomaly_ratio": 0.18,
+            "max_missing_ratio": 0.22,
+            "min_input_activity_ratio": 0.08,
+            "nk": 1,
+            "selection_mode": "ensemble",
+            "adaptive_windows": false,
+            "history_guard": 32,
+            "delays": {
+              "heating_input_1": 9,
+              "cooling_input": 8,
+              "heating_input_2": 9
+            },
+            "na": 1,
+            "nb": 1,
+            "estimator": "huber",
+            "ridge_alpha": 0.1
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "cooling_input",
+              "heating_input_2"
+            ],
+            "parameters": {
+              "window_size": 140,
+              "max_segments": 19,
+              "max_anomaly_ratio": 0.18,
+              "max_missing_ratio": 0.22,
+              "min_input_activity_ratio": 0.08,
+              "nk": 1,
+              "selection_mode": "ensemble",
+              "adaptive_windows": false,
+              "nk_heating_input_1": 9,
+              "nk_cooling_input": 8,
+              "nk_heating_input_2": 9
+            }
+          }
+        },
+        {
+          "number": 8,
+          "state": "complete",
+          "value": -0.3750820304453079,
+          "parameters": {
+            "window_size": 40,
+            "max_segments": 9,
+            "max_anomaly_ratio": 0.08,
+            "max_missing_ratio": 0.1,
+            "min_input_activity_ratio": 0.3,
+            "nk": 8,
+            "selection_mode": "single",
+            "adaptive_windows": false,
+            "history_guard": 32,
+            "delays": {
+              "heating_input_1": 10,
+              "cooling_input": 7,
+              "heating_input_2": 9
+            },
+            "na": 1,
+            "nb": 3,
+            "estimator": "ridge",
+            "ridge_alpha": 1.0
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "heating_input_1",
+              "cooling_input",
+              "heating_input_2"
+            ],
+            "parameters": {
+              "window_size": 40,
+              "max_segments": 10,
+              "max_anomaly_ratio": 0.08,
+              "max_missing_ratio": 0.1,
+              "min_input_activity_ratio": 0.3,
+              "nk": 8,
+              "selection_mode": "single",
+              "adaptive_windows": false,
+              "nk_heating_input_1": 10,
+              "nk_cooling_input": 7,
+              "nk_heating_input_2": 9
+            }
+          }
+        },
+        {
+          "number": 9,
+          "state": "complete",
+          "value": -0.17627573612128955,
+          "parameters": {
+            "window_size": 40,
+            "max_segments": 14,
+            "max_anomaly_ratio": 0.3,
+            "max_missing_ratio": 0.06,
+            "min_input_activity_ratio": 0.16,
+            "nk": 18,
+            "selection_mode": "single",
+            "adaptive_windows": false,
+            "history_guard": 32,
+            "delays": {
+              "heating_input_1": 5,
+              "cooling_input": 3,
+              "heating_input_2": 8
+            },
+            "na": 2,
+            "nb": 2,
+            "estimator": "huber",
+            "ridge_alpha": 0.1
+          },
+          "error_code": null,
+          "feedback": {
+            "policy_version": "validation_actions_v1",
+            "partition": "validation",
+            "reasons": [
+              "check_unmodelled_input_dynamics"
+            ],
+            "channels": [
+              "heating_input_1",
+              "cooling_input",
+              "heating_input_2"
+            ],
+            "parameters": {
+              "window_size": 40,
+              "max_segments": 15,
+              "max_anomaly_ratio": 0.3,
+              "max_missing_ratio": 0.06,
+              "min_input_activity_ratio": 0.16,
+              "nk": 18,
+              "selection_mode": "single",
+              "adaptive_windows": false,
+              "nk_heating_input_1": 5,
+              "nk_cooling_input": 3,
+              "nk_heating_input_2": 8
+            }
+          }
+        }
+      ],
+      "elapsed_seconds": 2.6797539580147713
+    }
+  ]
+}

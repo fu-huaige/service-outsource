@@ -233,7 +233,7 @@ describe("system status components", () => {
     await nextTick();
 
     const inputs = wrapper.findAllComponents({ name: "ElInput" });
-    expect(inputs[0]!.props("modelValue")).toBe("deepseek-v4-flash");
+    expect(inputs[0]!.props("modelValue")).toBe("deepseek-flash");
     expect(inputs[1]!.props("modelValue")).toBe("https://api.deepseek.com");
   });
 

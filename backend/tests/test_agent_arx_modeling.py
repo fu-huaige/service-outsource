@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 from uuid import UUID, uuid4
 
 import numpy as np
@@ -29,6 +30,7 @@ from app.services.agent_execution_service import (
     ExecutionStateError,
     approve_step,
     create_execution,
+    get_execution,
     mark_step_failed,
     mark_step_succeeded,
     start_step,
@@ -278,6 +280,22 @@ def _confirm(
             "arx_structure_overrides": overrides or {},
         },
     )
+
+
+async def _pause_continuation(session, *, execution_id, artifact_root):
+    """Hold the controller between steps for focused adapter fault injection."""
+    return await get_execution(session, execution_id=execution_id)
+
+
+def _confirm_for_adapter_test(harness, **kwargs):
+    # Full automatic continuation is covered by the positive public API tests below.
+    with patch("app.api.routes.continue_agent_execution", _pause_continuation):
+        return _confirm(harness, **kwargs)
+
+
+async def _approve_for_trigger_test(harness, execution_id, step_id):
+    async with harness.session_factory() as session:
+        return await approve_step(session, execution_id=execution_id, step_id=step_id)
 
 
 async def _execute_evaluation_step(
@@ -709,11 +727,12 @@ def test_manual_override_runs_formal_arx_once_and_keeps_v3_immutable(
     assert fitted.input_payload["manual_overrides"] == {"na": manual_na}
     assert fitted.input_payload["final_structure"]["na"] == manual_na
     assert fitted.result_payload["metrics"]["test_free_run_fit"] is None
-    assert persisted.workflow_status == "RUNNING"
+    assert persisted.workflow_status == "SUCCEEDED"
     assert persisted.current_version_id == source
-    assert evaluate.status == "PENDING"
+    assert evaluate.status == "SUCCEEDED"
     assert asyncio.run(_version_bytes(arx_harness, source)) == source_before
 
+    assert asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id)) == 1
     after_first = asyncio.run(_model_counts(arx_harness, execution.dataset_id))
     assert after_first[0] == before[0] + 1
     assert len(after_first[1]) == len(before[1]) + 1
@@ -842,11 +861,18 @@ def test_agent_evaluation_consumes_confirmed_model_without_refit(
     assert asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id)) == before_versions
     assert asyncio.run(_model_counts(arx_harness, execution.dataset_id))[0] == before_model_runs + 1
 
+    replay = arx_harness.client.post("/api/v1/copilot/evaluate-model/execute",
+        json={"execution_id": str(execution.id)})
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["data"]["step_status"] == "SUCCEEDED"
+    assert observed_model_ids == [UUID(fitted.result_payload["model_id"])]
+    assert asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id)) == before_runs + 1
+
 
 def test_agent_evaluation_fails_when_fit_model_id_is_missing(arx_harness: ArxHarness) -> None:
     execution = _chat_to_arx_confirmation(arx_harness)
     fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
-    confirmed = _confirm(arx_harness, execution_id=execution.id, step_id=fit.step_id)
+    confirmed = _confirm_for_adapter_test(arx_harness, execution_id=execution.id, step_id=fit.step_id)
     assert confirmed.status_code == 200, confirmed.text
 
     async def remove_model_id() -> None:
@@ -912,7 +938,7 @@ def test_agent_evaluation_fails_on_saved_model_source_version_mismatch(
 ) -> None:
     execution = _chat_to_arx_confirmation(arx_harness)
     fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
-    confirmed = _confirm(arx_harness, execution_id=execution.id, step_id=fit.step_id)
+    confirmed = _confirm_for_adapter_test(arx_harness, execution_id=execution.id, step_id=fit.step_id)
     assert confirmed.status_code == 200, confirmed.text
 
     async def change_source_version() -> None:
@@ -997,7 +1023,8 @@ def test_continuation_evaluates_saved_model_once(
         "/api/v1/copilot/evaluate-model/execute",
         json={"execution_id": str(execution.id)},
     )
-    assert replay.status_code == 409, replay.text
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["data"]["step_status"] == "SUCCEEDED"
     assert asyncio.run(_evaluation_run_count(arx_harness, execution.dataset_id)) == before_runs + 1
     assert asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id)) == before_versions
 
@@ -1064,7 +1091,7 @@ def test_explicit_evaluation_trigger_returns_failed_snapshot_for_business_error(
 ) -> None:
     execution = _chat_to_arx_confirmation(arx_harness)
     fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
-    confirmed = _confirm(arx_harness, execution_id=execution.id, step_id=fit.step_id)
+    confirmed = _confirm_for_adapter_test(arx_harness, execution_id=execution.id, step_id=fit.step_id)
     assert confirmed.status_code == 200, confirmed.text
     source_version_id = execution.current_version_id
     before_versions = asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id))
@@ -1107,7 +1134,7 @@ def test_explicit_optimization_trigger_requires_confirmation_and_persists_real_r
 ) -> None:
     execution = _chat_to_arx_confirmation(arx_harness)
     fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
-    confirmed_fit = _confirm(arx_harness, execution_id=execution.id, step_id=fit.step_id)
+    confirmed_fit = _confirm_for_adapter_test(arx_harness, execution_id=execution.id, step_id=fit.step_id)
     assert confirmed_fit.status_code == 200, confirmed_fit.text
     source_version_id = execution.current_version_id
     before_versions = asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id))
@@ -1126,6 +1153,7 @@ def test_explicit_optimization_trigger_requires_confirmation_and_persists_real_r
 
     monkeypatch.setattr(agent_tool_adapter, "execute_agent_optimization_study", spy_safe_entry)
     monkeypatch.setattr(agent_tool_adapter, "evaluate_saved_arx_model", fail_if_evaluated)
+    monkeypatch.setattr("app.api.routes.continue_agent_execution", _pause_continuation)
 
     pending_execution = asyncio.run(
         _prepare_confirmable_optimization_step(arx_harness, execution.id, start=False)
@@ -1158,10 +1186,10 @@ def test_explicit_optimization_trigger_requires_confirmation_and_persists_real_r
     )
     assert forbidden.status_code == 409, forbidden.text
 
-    approved = _confirm(arx_harness, execution_id=execution.id, step_id=optimization.step_id)
-    assert approved.status_code == 200, approved.text
-    assert approved.json()["data"]["step_status"] == "RUNNING"
-    assert approved.json()["data"]["confirmation_status"] == "APPROVED"
+    approved = asyncio.run(_approve_for_trigger_test(arx_harness, execution.id, optimization.step_id))
+    approved_step = next(step for step in approved.step_runs if step.step_id == optimization.step_id)
+    assert approved_step.status == "RUNNING"
+    assert approved_step.confirmation_status == "APPROVED"
 
     response = arx_harness.client.post(
         "/api/v1/copilot/optimize-pipeline/execute",
@@ -1353,14 +1381,13 @@ def test_explicit_optimization_trigger_persists_business_failure_without_replay(
 ) -> None:
     execution = _chat_to_arx_confirmation(arx_harness)
     fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
-    confirmed_fit = _confirm(arx_harness, execution_id=execution.id, step_id=fit.step_id)
+    confirmed_fit = _confirm_for_adapter_test(arx_harness, execution_id=execution.id, step_id=fit.step_id)
     assert confirmed_fit.status_code == 200, confirmed_fit.text
     source_version_id = execution.current_version_id
     before_versions = asyncio.run(_dataset_version_count(arx_harness, execution.dataset_id))
     waiting = asyncio.run(_prepare_confirmable_optimization_step(arx_harness, execution.id))
     optimization = next(step for step in waiting.step_runs if step.tool_name == "optimize_pipeline")
-    approved = _confirm(arx_harness, execution_id=execution.id, step_id=optimization.step_id)
-    assert approved.status_code == 200, approved.text
+    asyncio.run(_approve_for_trigger_test(arx_harness, execution.id, optimization.step_id))
     calls = 0
 
     from app.services.optimization_service import OptimizationDomainError
@@ -1406,12 +1433,11 @@ def test_optimization_adapter_rejects_missing_declared_fit_predecessor(
 ) -> None:
     execution = _chat_to_arx_confirmation(arx_harness)
     fit = next(step for step in execution.step_runs if step.tool_name == "fit_arx")
-    confirmed_fit = _confirm(arx_harness, execution_id=execution.id, step_id=fit.step_id)
+    confirmed_fit = _confirm_for_adapter_test(arx_harness, execution_id=execution.id, step_id=fit.step_id)
     assert confirmed_fit.status_code == 200, confirmed_fit.text
     waiting = asyncio.run(_prepare_confirmable_optimization_step(arx_harness, execution.id))
     optimization = next(step for step in waiting.step_runs if step.tool_name == "optimize_pipeline")
-    approved = _confirm(arx_harness, execution_id=execution.id, step_id=optimization.step_id)
-    assert approved.status_code == 200, approved.text
+    asyncio.run(_approve_for_trigger_test(arx_harness, execution.id, optimization.step_id))
     calls = 0
 
     async def fail_if_safe_entry_called(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
@@ -1531,7 +1557,13 @@ def test_optimized_model_is_the_only_new_dag_evaluation_predecessor(
     )
     assert evaluated.result_payload["evaluation_scope"] == "test"
     assert evaluated.result_payload["model_structure"] == {
-        "model_type": "ARX",
+        "model_type": saved.payload.model_type,
+        "simulation_horizons": saved.payload.simulation_horizons,
+        "simulation_max_nfev": saved.payload.simulation_max_nfev,
+        "regularization_kernel": saved.payload.regularization_kernel,
+        "kernel_decay": saved.payload.kernel_decay,
+        "initialization_policy": saved.payload.initialization_policy,
+        "initialization_window": saved.payload.initialization_window,
         "input_columns": saved.payload.input_columns,
         "output_column": saved.payload.output_column,
         "na": saved.structure.na,
@@ -1540,6 +1572,9 @@ def test_optimized_model_is_the_only_new_dag_evaluation_predecessor(
         "estimator": saved.payload.resolved_estimator(),
         "ridge_alpha": saved.payload.ridge_alpha,
         "parameter_count": saved.structure.parameter_count,
+        "fit_intercept": saved.payload.fit_intercept,
+        "standardize": saved.payload.standardize,
+        "history_guard": saved.payload.history_guard,
     }
     assert evaluated.result_payload["model_health"]["stable"] is expected_stable
     assert evaluated.result_payload["model_health"]["max_pole_modulus"] == pytest.approx(
@@ -1637,6 +1672,7 @@ def test_evaluation_resolver_requires_one_declared_model_producer() -> None:
 
 def test_optimized_artifact_source_mismatch_fails_evaluation_without_refit(
     arx_harness: ArxHarness,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     execution = _chat_to_arx_confirmation(
         arx_harness,
@@ -1657,6 +1693,7 @@ def test_optimized_artifact_source_mismatch_fails_evaluation_without_refit(
     )
     assert waiting.workflow_status == "WAITING_CONFIRMATION"
     assert optimization.status == "WAITING_CONFIRMATION"
+    monkeypatch.setattr("app.api.routes.continue_agent_execution", _pause_continuation)
     approved = _confirm(
         arx_harness,
         execution_id=execution.id,

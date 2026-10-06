@@ -1,0 +1,240 @@
+{
+  "generated_at": "2026-10-03T14:31:52.027577+00:00",
+  "total_trials": 300,
+  "model_fit_evaluations": 69344,
+  "validation_only_seed_choice": true,
+  "test_refit_disabled": true,
+  "protocol_sha256": "7e91713f3b6f2069c6c13005b69466f7e61b54822b6f4e33f4d2e6aa0824351f",
+  "development_sha256": "963d7233afc2fc611de4b16c84c3e8f2a52824d3cfb3f157e0c73cb92b732d90",
+  "test_results_sha256": "b3c37a2e014e72c21dbbf385c4d832c4922a43c9ef72c42a207c06e203c6bd27",
+  "datasets": [
+    {
+      "dataset": "boiler",
+      "evidence_role": "regression",
+      "chosen_seed_by_validation": 19,
+      "training_policy": "selected",
+      "temporal_coverage_bins": 3,
+      "validation_acceptance": {
+        "policy_version": "validation_quality_v1",
+        "partition": "validation",
+        "status": "passed",
+        "reasons": [],
+        "folds_checked": 3,
+        "folds_overlap": true,
+        "independent_test": false,
+        "deployment_ready": false
+      },
+      "previous_optimizer_rmse": 2.2140899535748564,
+      "current_optimizer_rmse": 2.685310873845359,
+      "rmse_reduction_vs_previous_percent": -21.28282635986276,
+      "current_full_baseline_rmse": 1.9137975483216827,
+      "test_fit": 28.247083855876063,
+      "persistence_rmse": 5.794061567821147,
+      "test_samples": 1397,
+      "test_rmse_by_seed": [
+        2.2286623422047795,
+        2.219768641853757,
+        2.1516416775813494,
+        2.685310873845359,
+        2.2361007080487814
+      ],
+      "test_seed_rmse_mean": 2.304296848706805,
+      "test_seed_rmse_std": 0.19286865922273136,
+      "data_policy_counts": {
+        "full_train": 3,
+        "selected": 2
+      }
+    },
+    {
+      "dataset": "exchanger",
+      "evidence_role": "regression",
+      "chosen_seed_by_validation": 31,
+      "training_policy": "selected",
+      "temporal_coverage_bins": 0,
+      "validation_acceptance": {
+        "policy_version": "validation_quality_v1",
+        "partition": "validation",
+        "status": "passed",
+        "reasons": [],
+        "folds_checked": 3,
+        "folds_overlap": true,
+        "independent_test": false,
+        "deployment_ready": false
+      },
+      "previous_optimizer_rmse": 0.4969387934797762,
+      "current_optimizer_rmse": 0.5030831488144323,
+      "rmse_reduction_vs_previous_percent": -1.2364410698610766,
+      "current_full_baseline_rmse": 1.1640811284834713,
+      "test_fit": 49.92948440347247,
+      "persistence_rmse": 1.3991742965502239,
+      "test_samples": 757,
+      "test_rmse_by_seed": [
+        0.5017016803237183,
+        0.49656892612917897,
+        0.49827172275409926,
+        0.6454497312145894,
+        0.5030831488144323
+      ],
+      "test_seed_rmse_mean": 0.5290150418472036,
+      "test_seed_rmse_std": 0.05826391984084696,
+      "data_policy_counts": {
+        "selected": 5
+      }
+    },
+    {
+      "dataset": "distillation_a",
+      "evidence_role": "regression",
+      "chosen_seed_by_validation": 42,
+      "training_policy": "selected",
+      "temporal_coverage_bins": 0,
+      "validation_acceptance": {
+        "policy_version": "validation_quality_v1",
+        "partition": "validation",
+        "status": "insufficient",
+        "reasons": [
+          "NONPOSITIVE_FREE_RUN_FIT"
+        ],
+        "folds_checked": 3,
+        "folds_overlap": true,
+        "independent_test": false,
+        "deployment_ready": false
+      },
+      "previous_optimizer_rmse": 1.9837555279915207,
+      "current_optimizer_rmse": 1.9437086059008741,
+      "rmse_reduction_vs_previous_percent": 2.018742810067557,
+      "current_full_baseline_rmse": 1.9398290131780962,
+      "test_fit": -12.439321172297891,
+      "persistence_rmse": 2.1679818009581395,
+      "test_samples": 896,
+      "test_rmse_by_seed": [
+        1.9437086059008741,
+        1.8401772682402373,
+        1.9817180959194962,
+        1.912531088239757,
+        1.9683270854428523
+      ],
+      "test_seed_rmse_mean": 1.9292924287486435,
+      "test_seed_rmse_std": 0.05040324500133319,
+      "data_policy_counts": {
+        "selected": 5
+      }
+    },
+    {
+      "dataset": "distillation_b",
+      "evidence_role": "regression",
+      "chosen_seed_by_validation": 42,
+      "training_policy": "selected",
+      "temporal_coverage_bins": 3,
+      "validation_acceptance": {
+        "policy_version": "validation_quality_v1",
+        "partition": "validation",
+        "status": "insufficient",
+        "reasons": [
+          "NONPOSITIVE_FREE_RUN_FIT",
+          "NOT_BETTER_THAN_PERSISTENCE"
+        ],
+        "folds_checked": 3,
+        "folds_overlap": true,
+        "independent_test": false,
+        "deployment_ready": false
+      },
+      "previous_optimizer_rmse": 6.313002349998932,
+      "current_optimizer_rmse": 6.143318498793223,
+      "rmse_reduction_vs_previous_percent": 2.6878471097945686,
+      "current_full_baseline_rmse": 3.8714948178868207,
+      "test_fit": -557.8681975935682,
+      "persistence_rmse": 2.501950185301404,
+      "test_samples": 148,
+      "test_rmse_by_seed": [
+        6.143318498793223,
+        4.3707722803504625,
+        3.8423810609378246,
+        4.067993405680863,
+        5.982539278485006
+      ],
+      "test_seed_rmse_mean": 4.881400904849476,
+      "test_seed_rmse_std": 0.9804975593749491,
+      "data_policy_counts": {
+        "selected": 4,
+        "full_train": 1
+      }
+    },
+    {
+      "dataset": "distillation_c",
+      "evidence_role": "regression",
+      "chosen_seed_by_validation": 42,
+      "training_policy": "selected",
+      "temporal_coverage_bins": 3,
+      "validation_acceptance": {
+        "policy_version": "validation_quality_v1",
+        "partition": "validation",
+        "status": "insufficient",
+        "reasons": [
+          "NONPOSITIVE_FREE_RUN_FIT",
+          "NOT_BETTER_THAN_PERSISTENCE"
+        ],
+        "folds_checked": 3,
+        "folds_overlap": true,
+        "independent_test": false,
+        "deployment_ready": false
+      },
+      "previous_optimizer_rmse": 0.4495741329533835,
+      "current_optimizer_rmse": 0.5462593144874083,
+      "rmse_reduction_vs_previous_percent": -21.505948507061923,
+      "current_full_baseline_rmse": 1.1573060620603324,
+      "test_fit": 20.02155427715414,
+      "persistence_rmse": 0.6859202225653782,
+      "test_samples": 290,
+      "test_rmse_by_seed": [
+        0.5462593144874083,
+        0.5942016940217102,
+        0.9432833242312499,
+        0.8507047456930549,
+        0.575840688786618
+      ],
+      "test_seed_rmse_mean": 0.7020579534440082,
+      "test_seed_rmse_std": 0.16255616558732322,
+      "data_policy_counts": {
+        "selected": 4,
+        "full_train": 1
+      }
+    },
+    {
+      "dataset": "distillation_a_new_op007",
+      "evidence_role": "new_operating_run",
+      "chosen_seed_by_validation": 42,
+      "training_policy": "selected",
+      "temporal_coverage_bins": 3,
+      "validation_acceptance": {
+        "policy_version": "validation_quality_v1",
+        "partition": "validation",
+        "status": "passed",
+        "reasons": [],
+        "folds_checked": 3,
+        "folds_overlap": true,
+        "independent_test": false,
+        "deployment_ready": false
+      },
+      "previous_optimizer_rmse": null,
+      "current_optimizer_rmse": 0.9911903350373938,
+      "rmse_reduction_vs_previous_percent": null,
+      "current_full_baseline_rmse": 0.8618078004341889,
+      "test_fit": 34.65963033863332,
+      "persistence_rmse": 1.8779265271136436,
+      "test_samples": 485,
+      "test_rmse_by_seed": [
+        0.9911903350373938,
+        0.9864849913566641,
+        0.8618078004341889,
+        1.0224323671712765,
+        0.9794751391085472
+      ],
+      "test_seed_rmse_mean": 0.9682781266216143,
+      "test_seed_rmse_std": 0.055227609824377674,
+      "data_policy_counts": {
+        "selected": 4,
+        "full_train": 1
+      }
+    }
+  ]
+}

@@ -1,9 +1,9 @@
 <template>
   <div class="page-container arx-view">
     <PageHeader
-      eyebrow="SYSTEM IDENTIFICATION / ARX"
-      title="ARX 系统辨识与模型评价"
-      description="在精选数据版本上求解离散时间 ARX 结构参数，验证 R²、FIT 拟合度与残差独立性"
+      eyebrow="SYSTEM IDENTIFICATION / ARX & FIR"
+      title="ARX / FIR 系统辨识与模型评价"
+      description="辨识过程动态或正则化脉冲响应，用验证集自由仿真误差检查模型质量"
     />
 
     <div class="modeling-layout">
@@ -90,13 +90,20 @@
       <div class="industrial-card">
         <div class="industrial-card-header">
           <div class="industrial-card-title">
-            <el-icon><Cpu /></el-icon> ARX 模型结构与求解器设置
+            <el-icon><Cpu /></el-icon> 模型结构与求解器设置
           </div>
         </div>
 
         <el-form :model="form" class="parameter-form-grid">
-          <el-form-item label="输出阶数 na">
-            <el-input-number v-model="form.na" :min="1" :max="5" />
+          <el-form-item label="模型类型">
+            <el-select v-model="form.model_type" @change="handleModelFamilyChange">
+              <el-option label="ARX" value="ARX" />
+              <el-option label="正则 FIR" value="FIR" />
+              <el-option label="多步模拟 OE（实验）" value="OE" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="输出阶数 na" v-if="form.model_type !== 'FIR'">
+            <el-input-number v-model="form.na" :min="1" :max="form.model_type === 'OE' ? 4 : 100" />
           </el-form-item>
 
           <el-form-item
@@ -104,7 +111,7 @@
             :key="'nb_' + col"
             :label="`输入 ${col} 阶数 nb`"
           >
-            <el-input-number v-model="form.nb[idx]" :min="1" :max="5" />
+            <el-input-number v-model="form.nb[idx]" :min="1" :max="100" />
           </el-form-item>
 
           <el-form-item
@@ -115,13 +122,31 @@
             <el-input-number v-model="form.delays[idx]" :min="0" :max="20" />
           </el-form-item>
 
-          <el-form-item label="求解算法">
-            <el-select v-model="form.estimation_method">
+          <el-form-item label="求解算法" v-if="form.model_type !== 'OE'">
+            <el-select v-model="form.estimation_method" :disabled="form.model_type === 'FIR'">
               <el-option label="最小二乘 (OLS)" value="ols" />
               <el-option label="岭回归 (Ridge)" value="ridge" />
+              <el-option label="鲁棒回归 (Huber)" value="huber" />
             </el-select>
           </el-form-item>
 
+          <el-form-item label="模拟训练" v-if="form.model_type === 'OE'">
+            <span>同时拟合 1、16、64 步及整段模拟，约束模型稳定。每个连续训练片段至少需 16 行且多于参数数；仅支持 0/1 样本权重。</span>
+          </el-form-item>
+
+          <el-form-item label="脉冲响应衰减 β" v-if="form.model_type === 'FIR'">
+            <el-input-number v-model="form.kernel_decay" :min="0.1" :max="0.99" :step="0.05" />
+          </el-form-item>
+          <el-form-item label="预测初始基线">
+            <el-select v-model="form.initialization_policy" :disabled="form.model_type === 'OE'">
+              <el-option label="使用训练基线" value="fixed" />
+              <el-option label="用预测前历史估计持续扰动" value="past_residual" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="历史样本数" v-if="form.initialization_policy === 'past_residual'">
+            <el-input-number v-model="form.initialization_window" :min="8" :max="128" />
+            <span>自由仿真期间冻结补偿量；ARX 须稳定，并假设预测期间扰动持续。</span>
+          </el-form-item>
           <el-form-item label="岭惩罚 α" v-if="form.estimation_method === 'ridge'">
             <el-input-number v-model="form.ridge_alpha" :min="0.001" :max="10" :step="0.1" />
           </el-form-item>
@@ -143,6 +168,7 @@
 
       <!-- Evaluation Metrics -->
       <div class="industrial-card" v-if="fitResult">
+        <InputSupportWarning :support="fitResult.validation?.input_support" />
         <div class="industrial-card-header">
           <div class="industrial-card-title">
             <el-icon><Trophy /></el-icon> 辨识结果与训练 / 验证指标
@@ -231,6 +257,10 @@
           </div>
         </div>
         <ChartContainer :options="plotOptions" height="380px" />
+        <p class="plot-note">
+          连续仿真曲线从全序列起点初始化；验证集 FIT 在验证预测起点单独初始化。
+          带偏移的 FIR 使用该预测起点之前的历史数据估计基线。
+        </p>
 
         <div style="margin-top: 16px; display: flex; justify-content: flex-end">
           <el-button type="warning" icon="RefreshRight" @click="$router.push('/modeling/optimization')">
@@ -246,6 +276,7 @@
 import { ref, reactive, computed, onMounted } from "vue";
 import { Cpu, VideoPlay, Trophy, TrendCharts, RefreshRight } from "@element-plus/icons-vue";
 import PageHeader from "../components/common/PageHeader.vue";
+import InputSupportWarning from "../components/InputSupportWarning.vue";
 import ChartContainer from "../components/ChartContainer.vue";
 import VersionLineagePicker from "../components/versioning/VersionLineagePicker.vue";
 import { fitARXModel } from "../api/modeling";
@@ -349,6 +380,11 @@ const inputCols = computed(() => {
 const form = reactive<ARXFitRequest>({
   dataset_id: "",
   version_id: "",
+  model_type: "ARX",
+  regularization_kernel: "identity",
+  kernel_decay: 0.9,
+  initialization_policy: "fixed",
+  initialization_window: 32,
   na: 2,
   nb: [2],
   delays: [3],
@@ -356,6 +392,22 @@ const form = reactive<ARXFitRequest>({
   ridge_alpha: 0.1,
   evaluate_test: false,
 });
+
+const handleModelFamilyChange = () => {
+  const fir = form.model_type === "FIR";
+  const oe = form.model_type === "OE";
+  form.na = fir ? 0 : 2;
+  form.regularization_kernel = fir ? "tc" : "identity";
+  form.estimation_method = fir || oe ? "ridge" : "ols";
+  form.fit_intercept = true;
+  if (oe) {
+    form.initialization_policy = "fixed";
+    form.ridge_alpha = 0.001;
+    form.simulation_horizons = [1, 16, 64, 0];
+  }
+  form.standardize = true;
+  form.nb = Array(inputCols.value.length).fill(fir ? 16 : 2);
+};
 
 const clearSourceContext = () => {
   versionNodes.value = [];
@@ -369,7 +421,7 @@ const syncFormWithSource = () => {
   form.dataset_id = selectedDataset.value?.id ?? "";
   form.version_id = selectedVersion.value?.id ?? "";
   const count = inputCols.value.length;
-  form.nb = Array(count).fill(2);
+  form.nb = Array(count).fill(form.model_type === "FIR" ? 16 : 2);
   form.delays = Array(count).fill(3);
 };
 
@@ -496,13 +548,13 @@ const num = (value: number | null | undefined) =>
 const plotOptions = computed(() => {
   if (!fitResult.value) return {};
   const data = fitResult.value.plot_data;
-  const xData = data.indices.map((i) => `${i}s`);
+  const xData = data.indices.map(String);
 
   return {
     tooltip: { trigger: "axis" },
-    legend: { data: ["实测输出 y(t)", "一步预测 ŷ(t)", "自由仿真 ŷ_sim(t)"] },
+    legend: { data: ["实测输出 y(t)", "一步预测 ŷ(t)", "全序列连续仿真 ŷ_sim(t)"] },
     grid: { left: "3%", right: "4%", bottom: "10%", containLabel: true },
-    xAxis: { type: "category", data: xData },
+    xAxis: { type: "category", name: "样本索引", data: xData },
     yAxis: { type: "value" },
     series: [
       {
@@ -520,7 +572,7 @@ const plotOptions = computed(() => {
         data: data.y_pred,
       },
       {
-        name: "自由仿真 ŷ_sim(t)",
+        name: "全序列连续仿真 ŷ_sim(t)",
         type: "line",
         color: "#2A9D8F",
         showSymbol: false,

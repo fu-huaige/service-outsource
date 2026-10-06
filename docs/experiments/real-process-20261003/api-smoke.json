@@ -1,0 +1,65 @@
+{
+  "mode": "isolated_api_integration",
+  "results": [
+    {
+      "dataset": "dryer2",
+      "output": "dry_bulb_temperature",
+      "status": "succeeded",
+      "source_sha256": "c665e6ee5f98634f87cc6fd9e11e64fe05766ed9332c5d9a452d7e76a0af72b8",
+      "estimated_delays": {
+        "fuel_flow": 2,
+        "exhaust_fan_speed": 1,
+        "raw_material_flow": 9
+      },
+      "model_id": "5b96ac99-2700-42d3-aba3-897a544a6bed",
+      "source_version_id": "9ae9a47b-229c-4a53-b7e0-feaac5aca271",
+      "training_rows": 140,
+      "intercept": 0.023930589250185506,
+      "validation_fit": 15.53689365520009,
+      "test_fit": -27.567276856273494,
+      "exported_rows": 180,
+      "model_artifact_unchanged": true,
+      "fixed_coefficient_replay_verified": true
+    },
+    {
+      "dataset": "evaporator",
+      "output": "product_dry_matter",
+      "status": "succeeded",
+      "source_sha256": "2c743bd96fafab927cd938a482524f06b0f7b3596ef5f10a9d370c7bf74bca22",
+      "estimated_delays": {
+        "feed_flow": 6,
+        "vapor_flow": 2,
+        "cooling_water_flow": 1
+      },
+      "model_id": "600e7415-31ba-40db-ae01-107f755100b3",
+      "source_version_id": "840df4fc-0e11-4769-bb3c-a3114d3912f0",
+      "training_rows": 140,
+      "intercept": -0.19590922177160466,
+      "validation_fit": -26.681211334813426,
+      "test_fit": -24.059497433854315,
+      "exported_rows": 180,
+      "model_artifact_unchanged": true,
+      "fixed_coefficient_replay_verified": true
+    },
+    {
+      "dataset": "glassfurnace",
+      "output": "temperature_sensor_1",
+      "status": "succeeded",
+      "source_sha256": "dc8af4bd4dd2107b5326e761f04287ee928333962658532d3b226f5c5231a8ad",
+      "estimated_delays": {
+        "heating_input_1": 12,
+        "cooling_input": 2,
+        "heating_input_2": 2
+      },
+      "model_id": "a41edabb-ef57-42a9-878e-306b7a88fe77",
+      "source_version_id": "26410cda-3b63-429a-bcea-24fd5d815069",
+      "training_rows": 146,
+      "intercept": -0.008006987577977707,
+      "validation_fit": 16.750830235770152,
+      "test_fit": -0.018212109010273814,
+      "exported_rows": 180,
+      "model_artifact_unchanged": true,
+      "fixed_coefficient_replay_verified": true
+    }
+  ]
+}

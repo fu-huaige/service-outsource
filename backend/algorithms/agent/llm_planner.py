@@ -16,7 +16,7 @@ the rule-based result, plus a stated reason.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from algorithms.agent.compliance import verify_plan
@@ -56,15 +56,24 @@ PLANNER_SYSTEM_PROMPT = f"""你是流程工业建模数据预处理系统的调�
 6. 若工作流包含 fit_arx（ARX 辨识），必须在其前面安排 estimate_delays（估计时滞）与 apply_lag_compensation（时滞补偿），因为工业时序 ARX 建模必须基于已完成时滞补偿对齐的数据版本。
 7. “报告交付”、report delivery 只表示 generate_report；只有用户明确要求导出/下载数据集或 CSV（包括优选、最优、最优建模数据集）时才允许添加 export_dataset。
 8. 若建模寻优任务明确要求导出数据集，顺序必须是 optimize_pipeline、evaluate_model、export_dataset。
-9. optimize_pipeline 的试验次数使用 max_trials（1 到 10000 的整数），不要使用 n_trials。该工具仅接受 max_trials、timeout_seconds、random_seed、search_space 参数。"""
+9. optimize_pipeline 的试验次数使用 max_trials（1 到 10000 的整数），不要使用 n_trials。该工具接受 max_trials、timeout_seconds、random_seed、search_space、optimization_policy、diagnose_feedback 参数。
+10. 用户明确要求“全折验收”“全折验证”或“严格验证”时，optimization_policy 必须为 validation_guarded；其他合法策略为 established、paired_coverage、disturbance_aware。diagnose_feedback 必须为布尔值。不要自行开启实验策略。"""
 
 NARRATOR_SYSTEM_PROMPT = """你是工业过程辨识专家，负责撰写建模数据优选与辨识报告的结论段落。
+首句交代数据分区用途：Train 拟合参数，Validation 验证模型，Test 固定参数评价。
+Test 是评价区间，不得称作参数训练、拟合或完成辨识的区间。
 
 **硬性规则：你绝对不能写出任何数字。** 一个阿拉伯数字都不许出现在正文里。
-所有数值必须写成占位符 {{run:<运行编号>.<字段路径>}}，由系统从运行数据库解析后填入。
+所有数值必须使用用户消息给出的 run 或 step 占位符，原样保留引用种类、编号和字段路径，由系统从持久化证据解析后填入。
 
 可用的运行编号与字段路径会在用户消息中给出。只能引用给定的路径，不得臆造字段。
-输出中文段落，聚焦工程含义：为什么这样处理、结论对 APC 部署意味着什么、有什么局限。
+输出简短中文段落，依据给出的真实指标解释数据优选、辨识效果与局限。
+只写一到两个短段落，不罗列运行编号。TC 的名称写作 TC 核正则化，含义为随滞后衰减的脉冲响应先验。
+仅在 TC 核启用时解释 kernel_decay；仅在 past_residual 策略启用时解释初始化窗口。
+闭环寻优调整的是数据预处理参数，不是设备操作点或控制设定值。
+输入阶次 nb 的数值不是输入通道名称。不要把模型生成时间当成采集时间或工况区间。
+FIT 非正意味着自由仿真误差达到或超过该区间自身波动，必须明确说明效果不足。
+结构稳定性不代表预测准确；没有现场验证，不能宣称模型具备投运条件或可用于控制器部署。
 不要输出 Markdown 标题，只输出正文段落。"""
 
 
@@ -148,6 +157,15 @@ class LlmPlanner:
             baseline.raw_completion = result.text
             return baseline
 
+        explicit_policy = intent.parameters.get("optimization_policy")
+        if explicit_policy:
+            if not any(step.tool == "optimize_pipeline" for step in candidate):
+                baseline.fallback_reason = "大模型未包含用户明确要求的全折验收寻优。"
+                baseline.provider, baseline.model = result.provider, result.model
+                return baseline
+            candidate = [replace(step, parameters={**step.parameters, "optimization_policy": explicit_policy})
+                if step.tool == "optimize_pipeline" else step for step in candidate]
+
         if not intent.wants("export") and any(
             step.tool == "export_dataset" for step in candidate
         ):
@@ -226,11 +244,14 @@ class LlmNarrator:
         self._provider = provider
         self._max_attempts = max_attempts
 
-    def narrate(self, *, context: str, available_paths: list[str]) -> NarrationOutcome:
-        from algorithms.report.provenance import validate_draft
+    def narrate(self, *, context: str, available_paths: list[str],
+                reference_kinds: dict[str, str] | None = None) -> NarrationOutcome:
+        from algorithms.report.provenance import PLACEHOLDER_PATTERN, validate_draft
 
         outcome = NarrationOutcome()
-        paths = "\n".join(f"- {{{{run:{path}}}}}" for path in available_paths)
+        kinds = reference_kinds or {}
+        allowed = {(kinds.get(path.split(".", 1)[0], "run"), path) for path in available_paths}
+        paths = "\n".join(f"- {{{{{kinds.get(path.split('.', 1)[0], 'run')}:{path}}}}}" for path in available_paths)
         user_message = f"{context}\n\n可引用的占位符：\n{paths}"
 
         for attempt in range(1, self._max_attempts + 1):
@@ -249,21 +270,24 @@ class LlmNarrator:
 
             outcome.provider, outcome.model = result.provider, result.model
             violations = validate_draft(result.text)
-            if not violations:
+            unknown = [match.group(0) for match in PLACEHOLDER_PATTERN.finditer(result.text)
+                if (match.group(1), f"{match.group(2)}.{match.group(3)}") not in allowed]
+            if not violations and not unknown:
                 outcome.text = result.text.strip()
                 outcome.source = "llm"
                 return outcome
 
             outcome.violations = [violation.to_payload() for violation in violations[:10]]
+            outcome.violations.extend({"text": reference, "reason": "UNKNOWN_REPORT_REFERENCE"} for reference in unknown[:10])
             user_message = (
                 f"{context}\n\n可引用的占位符：\n{paths}\n\n"
-                f"上一次输出被拒绝，因为它包含了未溯源的数字："
-                f"{', '.join(violation.text for violation in violations[:5])}。"
-                "请重写，任何数值都必须写成占位符。"
+                f"上一次输出被拒绝，因为它包含未溯源数字或未知引用："
+                f"{', '.join([*(violation.text for violation in violations[:5]), *unknown[:5]])}。"
+                "请重写，任何数值都必须引用清单中确实存在的占位符。"
             )
 
         outcome.fallback_reason = (
-            f"大模型连续 {self._max_attempts} 次输出未溯源数字，已回退到模板化结论。"
+            f"大模型连续 {self._max_attempts} 次输出未溯源数字或未知引用，已回退到模板化结论。"
         )
         return outcome
 
@@ -296,10 +320,16 @@ def _coerce_steps(payload: Any) -> list[PlannedStep]:
             raise TypeError("parameters 必须是对象")
         parameters = {str(key): value for key, value in parameters.items()}
         if tool == "optimize_pipeline":
-            allowed = {"max_trials", "n_trials", "timeout_seconds", "random_seed", "search_space"}
+            allowed = {"max_trials", "n_trials", "timeout_seconds", "random_seed", "search_space",
+                       "optimization_policy", "diagnose_feedback"}
             unexpected = sorted(set(parameters) - allowed)
             if unexpected:
                 raise ValueError(f"optimize_pipeline 收到未映射的计划参数：{', '.join(unexpected)}")
+            if "optimization_policy" in parameters and parameters["optimization_policy"] not in {
+                "established", "paired_coverage", "disturbance_aware", "validation_guarded"}:
+                raise ValueError("optimize_pipeline 收到未知优化策略")
+            if "diagnose_feedback" in parameters and type(parameters["diagnose_feedback"]) is not bool:
+                raise ValueError("diagnose_feedback 必须为布尔值")
             for key in ("max_trials", "n_trials"):
                 if key in parameters:
                     value = parameters[key]

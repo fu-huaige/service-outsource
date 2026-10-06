@@ -1,0 +1,41 @@
+boiler established 42 -0.0989496617860458
+boiler established 20261003 -0.035863914561274336
+boiler established 7 -0.09404329123762953
+boiler established 19 -0.041619249965862075
+boiler established 31 -0.03402678354522957
+boiler disturbance_aware 42 -0.0989496617860458
+boiler disturbance_aware 20261003 -0.035863914561274336
+boiler disturbance_aware 7 -0.09404329123762953
+boiler disturbance_aware 19 -0.041619249965862075
+boiler disturbance_aware 31 -0.03402678354522957
+exchanger established 42 0.026481088290667847
+exchanger established 20261003 0.13477203473089694
+exchanger established 7 -0.2034887039109543
+exchanger established 19 -0.17934460515347017
+exchanger established 31 0.13032508342570473
+exchanger disturbance_aware 42 0.026481088290667847
+exchanger disturbance_aware 20261003 0.13477203473089694
+exchanger disturbance_aware 7 -0.2034887039109543
+exchanger disturbance_aware 19 -0.17934460515347017
+exchanger disturbance_aware 31 0.13032508342570473
+distillation_a established 42 -0.29079291524140055
+distillation_a established 20261003 -0.2473569994335874
+distillation_a established 7 -0.25135692568786583
+distillation_a established 19 -0.2742960777076503
+distillation_a established 31 -0.312481072769437
+distillation_a disturbance_aware 42 -0.29079291524140055
+distillation_a disturbance_aware 20261003 -0.2473569994335874
+distillation_a disturbance_aware 7 -0.25135692568786583
+distillation_a disturbance_aware 19 -0.2742960777076503
+distillation_a disturbance_aware 31 -0.312481072769437
+Traceback (most recent call last):
+  File "/Users/maguayuhui/Documents/竞赛/服外 9.22/service-outsource/backend/scripts/benchmark_arx_disturbance.py", line 263, in <module>
+    {"develop": develop, "evaluate": evaluate}[args.stage](args.out)
+  File "/Users/maguayuhui/Documents/竞赛/服外 9.22/service-outsource/backend/scripts/benchmark_arx_disturbance.py", line 183, in develop
+    row["transfer_pair"] = full_arx_pair(hidden, base)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/maguayuhui/Documents/竞赛/服外 9.22/service-outsource/backend/scripts/benchmark_arx_disturbance.py", line 127, in full_arx_pair
+    saved.payload = saved.payload.model_copy(update={"initialization_policy": "past_residual"})
+    ^^^^^^^^^^^^^
+  File "<string>", line 4, in __setattr__
+dataclasses.FrozenInstanceError: cannot assign to field 'payload'

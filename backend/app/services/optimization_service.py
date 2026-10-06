@@ -23,7 +23,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -31,6 +31,8 @@ from uuid import UUID, uuid4
 
 import numpy as np
 import optuna
+from algorithms.identifiability.delay import prewhitened_cross_correlation, rank_candidates
+from algorithms.identifiability.regressor import ArxStructure, IdentifiabilityError, build_regressor
 from algorithms.pipeline.cache import LineageCache, canonical_json, stage_key
 from algorithms.pipeline.fingerprint import (
     ProfileFingerprint,
@@ -95,9 +97,15 @@ from app.services.segment_service import (
     SegmentSelectionOutcome,
     run_segment_selection,
 )
-from app.services.version_data import VersionDataError, VersionSeries, load_version_series
+from app.services.version_data import (
+    VersionDataError,
+    VersionSeries,
+    attach_model_input_context,
+    load_version_series,
+    model_input_arrays,
+)
 
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "4.4.1"
 # A study is only warm-started from memory entries at least this similar. Beyond it the
 # stored parameters describe a different kind of process and would waste trials.
 WARM_START_MAX_DISTANCE = 0.35
@@ -106,7 +114,7 @@ WARM_START_LIMIT = 3
 THRESHOLD_STEP = 0.02
 OBJECTIVE_SEMANTICS = {
     "name": "composite_identification_score",
-    "version": "v1",
+    "version": "v4",
     "direction": "maximize",
 }
 TERMINAL_REASON_POLICY_VERSION = "optimization_terminal_reason_v2"
@@ -280,16 +288,21 @@ def objective_value(result: ArxCoreResult) -> tuple[float, dict[str, Any]]:
             },
         }
 
-    nrmse = result.metrics.val_rmse or 0.0
-    spread = abs(result.metrics.val_fit or 0.0)
-    normalised_error = nrmse / spread if spread > 0 else nrmse
+    nrmse = result.validation.free_run_rmse
+    spread = result.training_output_scale
+    if not np.isfinite(nrmse) or not np.isfinite(spread) or spread <= 0:
+        return float("-inf"), {"reason": "output_scale_undefined", "objective_semantics": dict(OBJECTIVE_SEMANTICS)}
+    normalised_error = nrmse / spread
     whiteness = result.validation.residual_whiteness_ratio
-    whiteness = 1.0 if whiteness is None or not np.isfinite(whiteness) else whiteness
-    complexity = result.structure.parameter_count / 40.0
+    whiteness = 0.0 if whiteness is None or not np.isfinite(whiteness) else whiteness
+    effective_parameters = result.preprocessing.get("effective_parameters", result.structure.parameter_count)
+    initialization_parameters = result.preprocessing.get("initialization_parameters", 0)
+    complexity = (float(effective_parameters if isinstance(effective_parameters, (int, float)) else result.structure.parameter_count)
+        + float(initialization_parameters if isinstance(initialization_parameters, (int, float)) else 0)) / 40.0
 
     free_run_component = 0.45 * float(np.clip(free_run / 100.0, -1.0, 1.0))
-    normalized_error_component = -0.20 * float(np.clip(normalised_error, 0.0, 3.0))
-    whiteness_component = -0.10 * (1.0 - float(np.clip(whiteness, 0.0, 1.0)))
+    normalized_error_component = -0.20 * float(max(normalised_error, 0.0))
+    whiteness_component = -0.10 * (1.0 - float(np.clip(whiteness, 0.0, 1.0))) if result.structure.na > 0 else 0.0
     complexity_component = -0.10 * float(np.clip(complexity, 0.0, 1.0))
     value = (
         free_run_component
@@ -323,8 +336,44 @@ def objective_value(result: ArxCoreResult) -> tuple[float, dict[str, Any]]:
     return float(value), breakdown
 
 
-def _selection_provenance(outcome: SegmentSelectionOutcome) -> dict[str, Any]:
+@dataclass(frozen=True)
+class FullTrainSelection:
+    """Actual finite regressor rows used by the all-Train companion; no quality gate."""
+
+    selected_sample_indices: list[int]
+    sample_weights: dict[int, float] = field(default_factory=dict)
+
+
+def replay_training_selection(
+    series: VersionSeries, parameters: dict[str, Any], input_columns: list[str],
+    output_column: str, *, train_ratio: float,
+) -> SegmentSelectionOutcome | FullTrainSelection:
+    """Resolve the winning data policy identically for search, persistence and export."""
+    if parameters.get("training_policy", "selected") != "full_train":
+        return run_segment_selection(series, SegmentRequest(version_id=series.version_id,
+            **_selection_params(parameters, input_columns, output_column, train_ratio=train_ratio)))
+    structure = ArxStructure.create(na=int(parameters["na"]), nb=int(parameters["nb"]),
+        nk=_trial_delays(parameters, input_columns), input_columns=input_columns)
+    guard = max(structure.max_history, int(parameters.get("history_guard", 32)))
+    try:
+        regressor = build_regressor(inputs={c: series.values[c] for c in input_columns},
+            output=series.values[output_column], structure=structure,
+            stop=int(series.n_samples * train_ratio) - guard)
+    except IdentifiabilityError as error:
+        raise ModelingDomainError(error.code, error.message, details=error.details) from error
+    return FullTrainSelection([int(i) for i in regressor.time_indices])
+
+
+def _selection_provenance(outcome: SegmentSelectionOutcome | FullTrainSelection) -> dict[str, Any]:
     selected_indices = list(outcome.selected_sample_indices)
+    indices_hash = hashlib.sha256(canonical_json(selected_indices).encode("utf-8")).hexdigest()
+    if isinstance(outcome, FullTrainSelection):
+        return {"training_policy": "full_train", "candidate_count": 0, "gated_count": 0,
+            "selected_segment_count": 0, "selected_sample_count": len(selected_indices),
+            "selected_indices_hash": indices_hash, "coverage_ratio": 1.0,
+            "gating_rejection_counts": {}, "excitation_satisfied": None,
+            "persistent_excitation_order": {}, "required_excitation_order": {},
+            "condition_number": None, "model_count": 1, "criterion": "all_finite_train_rows"}
     excitation = outcome.selection.excitation
     condition_number = excitation.condition_number
     coverage = outcome.selection.coverage_ratio
@@ -333,9 +382,13 @@ def _selection_provenance(outcome: SegmentSelectionOutcome) -> dict[str, Any]:
         "gated_count": outcome.gating.accepted_count,
         "selected_segment_count": len(outcome.selection.selected),
         "selected_sample_count": len(selected_indices),
-        "selected_indices_hash": hashlib.sha256(
-            canonical_json(selected_indices).encode("utf-8")
-        ).hexdigest(),
+        "selected_indices_hash": indices_hash,
+        "training_policy": "selected",
+        "temporal_coverage_bins": outcome.temporal_coverage_bins,
+        "covered_temporal_bins": len({min(outcome.temporal_coverage_bins - 1,
+            int((i - outcome.regressor.time_indices[0]) * outcome.temporal_coverage_bins /
+                max(1, outcome.regressor.time_indices[-1] - outcome.regressor.time_indices[0] + 1)))
+            for i in selected_indices}) if outcome.temporal_coverage_bins else 0,
         "coverage_ratio": float(coverage) if np.isfinite(coverage) else None,
         "gating_rejection_counts": dict(outcome.gating.rejection_counts),
         "excitation_satisfied": excitation.excitation_satisfied,
@@ -344,6 +397,8 @@ def _selection_provenance(outcome: SegmentSelectionOutcome) -> dict[str, Any]:
         "condition_number": (
             float(condition_number) if np.isfinite(condition_number) else None
         ),
+        "model_count": outcome.selection.model_count,
+        "criterion": outcome.selection.criterion,
     }
 
 
@@ -408,6 +463,7 @@ def run_baseline(
                 nb=DEFAULT_BASELINE_CONFIG.selection_nb,
                 nk=DEFAULT_BASELINE_CONFIG.selection_nk,
                 train_ratio=payload.train_ratio,
+                history_guard=payload.history_guard,
             ),
         )
         def fit(*, estimator: str, ridge_alpha: float | None) -> ArxCoreResult:
@@ -426,6 +482,8 @@ def run_baseline(
                     train_ratio=payload.train_ratio,
                     validation_ratio=payload.validation_ratio,
                     training_sample_indices=selection.selected_sample_indices,
+                    sample_weights=selection.sample_weights,
+                    history_guard=payload.history_guard,
                     evaluate_test=False,
                 ),
                 input_columns=input_columns,
@@ -491,28 +549,27 @@ async def _persist_optimized_model(
 
     parameters = dict(outcome.best_params)
     try:
-        selection_params = _selection_params(
-            parameters,
-            input_columns,
-            output_column,
-            train_ratio=payload.train_ratio,
-        )
-        selection = run_segment_selection(
-            series,
-            SegmentRequest(version_id=series.version_id, **selection_params),
-        )
+        selection = replay_training_selection(series, parameters, input_columns,
+            output_column, train_ratio=payload.train_ratio)
         formal_payload = ArxFitRequest(
             version_id=series.version_id,
             input_columns=input_columns,
             output_column=output_column,
             na=int(parameters["na"]),
             nb={column: int(parameters["nb"]) for column in input_columns},
-            delays={column: int(parameters["nk"]) for column in input_columns},
+            delays=_trial_delays(parameters, input_columns),
+            model_type=parameters.get("model_type", "ARX"),
+            regularization_kernel=parameters.get("regularization_kernel", "identity"),
+            kernel_decay=parameters.get("kernel_decay", 0.9),
+            initialization_policy=parameters.get("initialization_policy", "fixed"),
+            initialization_window=parameters.get("initialization_window", 32),
             estimator=parameters["estimator"],
             ridge_alpha=parameters.get("ridge_alpha"),
             train_ratio=payload.train_ratio,
             validation_ratio=payload.validation_ratio,
             training_sample_indices=selection.selected_sample_indices,
+            sample_weights=selection.sample_weights,
+            history_guard=int(parameters.get("history_guard", payload.history_guard)),
             evaluate_test=False,
         )
     except (KeyError, TypeError, ValueError) as error:
@@ -540,16 +597,8 @@ def evaluate_best_trial(
     started = time.perf_counter()
     parameters = dict(outcome.best_params)
     try:
-        selection_params = _selection_params(
-            parameters,
-            input_columns,
-            output_column,
-            train_ratio=payload.train_ratio,
-        )
-        selection = run_segment_selection(
-            series,
-            SegmentRequest(version_id=series.version_id, **selection_params),
-        )
+        selection = replay_training_selection(series, parameters, input_columns,
+            output_column, train_ratio=payload.train_ratio)
         result = fit_arx_core(
             inputs={column: series.values[column] for column in input_columns},
             output=series.values[output_column],
@@ -559,12 +608,19 @@ def evaluate_best_trial(
                 output_column=output_column,
                 na=int(parameters["na"]),
                 nb={column: int(parameters["nb"]) for column in input_columns},
-                delays={column: int(parameters["nk"]) for column in input_columns},
+                delays=_trial_delays(parameters, input_columns),
+                model_type=parameters.get("model_type", "ARX"),
+                regularization_kernel=parameters.get("regularization_kernel", "identity"),
+                kernel_decay=parameters.get("kernel_decay", 0.9),
+                initialization_policy=parameters.get("initialization_policy", "fixed"),
+                initialization_window=parameters.get("initialization_window", 32),
                 estimator=parameters["estimator"],
                 ridge_alpha=parameters.get("ridge_alpha"),
                 train_ratio=payload.train_ratio,
                 validation_ratio=payload.validation_ratio,
                 training_sample_indices=selection.selected_sample_indices,
+                sample_weights=selection.sample_weights,
+                history_guard=int(parameters.get("history_guard", payload.history_guard)),
                 evaluate_test=True,
             ),
             input_columns=input_columns,
@@ -677,9 +733,20 @@ def run_study(
     Left unset it allocates its own, which is what the offline experiment scripts want.
     """
 
-    inputs = {column: series.values[column] for column in input_columns}
+    guarded = payload.optimization_policy == "validation_guarded"
+    structures = _structure_grid({"arx_disturbance": payload.optimization_policy == "disturbance_aware",
+                                  "all_arx_disturbance": guarded})
+    _, delay_high = _bounds_int(payload.search_space.get("nk", (0, 20)))
+    common_history = max([payload.history_guard] + [max(item["na"], item["nb"] + delay_high - 1) for item in structures])
+    payload = payload.model_copy(update={"history_guard": common_history})
+    inputs = model_input_arrays(series, input_columns)
     output = series.values[output_column]
-    fingerprint = build_fingerprint(inputs=inputs, output=output)
+    train_stop = int(series.n_samples * payload.train_ratio) - payload.history_guard
+    if guarded and series.timestamps:
+        if len(series.timestamps) != series.n_samples:
+            raise OptimizationDomainError("INVALID_DATASET_SCHEMA", "时间轴长度与样本数不一致")
+        _require_uniform_train_timestamps(series.timestamps[:train_stop])
+    fingerprint = build_fingerprint(inputs={c: v[:train_stop] for c, v in inputs.items()}, output=output[:train_stop])
     cache = LineageCache()
     trials: list[TrialOutcome] = []
     base_key = stage_key(
@@ -690,185 +757,262 @@ def run_study(
     )
 
     structure_evaluations = 0
+    feedback_scheduled = 0
+    feedback_budget = payload.max_trials // 4 if guarded else 0
+    fold_specs = _rolling_fold_specs(series.n_samples, payload)
+    # Data-dependent candidate generation sees only the earliest fold's Train.
+    delay_payload = payload.model_copy(update={"train_ratio": fold_specs[0][0] / series.n_samples})
+    delay_options = _delay_options(series, delay_payload, input_columns, output_column)
+
+    def schedule_feedback(feedback: dict[str, Any], trial: optuna.Trial) -> None:
+        nonlocal feedback_scheduled
+        if not guarded:
+            if payload.diagnose_feedback and feedback.get("parameters") and trial.number % 3 == 0:
+                study.enqueue_trial(feedback["parameters"], skip_if_exists=True)
+            return
+        status = ("disabled" if not payload.diagnose_feedback else
+                  "no_parameter_action" if not feedback.get("parameters") else
+                  "budget_exhausted" if feedback_scheduled >= feedback_budget else
+                  "reserve_search_budget" if trial.number % 4 != 2 or trial.number >= payload.max_trials-1 else
+                  "scheduled")
+        feedback["scheduling"] = {"policy_version": "reserved_feedback_budget_v1",
+            "status": status, "max_feedback_trials": feedback_budget,
+            "test_partition_used": False}
+        if status == "scheduled":
+            study.enqueue_trial(feedback["parameters"], skip_if_exists=True)
+            feedback_scheduled += 1
 
     def evaluate(trial: optuna.Trial) -> float:
         nonlocal structure_evaluations
         started = time.perf_counter()
         sampled_params = _suggest(trial, payload.search_space)
+        sampled_params["selection_mode"] = trial.suggest_categorical("selection_mode", ["single", "ensemble"])
+        sampled_params["adaptive_windows"] = trial.suggest_categorical("adaptive_windows", [False, True])
+        sampled_params["temporal_coverage_bins"] = (trial.suggest_categorical("temporal_coverage_bins", [0, 3])
+            if payload.optimization_policy in {"paired_coverage", "validation_guarded"} else 0)
+        sampled_params["history_guard"] = payload.history_guard
+        sampled_params["delays"] = {c: trial.suggest_categorical(f"nk_{c}", options) for c, options in delay_options.items()}
         params = dict(sampled_params)
         metrics: dict[str, Any] = {
             "objective_semantics": dict(OBJECTIVE_SEMANTICS),
             "diagnosis_policy_version": DIAGNOSIS_POLICY_VERSION,
-            "diagnosis_codes": [],
-            "diagnosis_evidence": {},
+            "diagnosis_codes": [], "diagnosis_evidence": {},
         }
+        if guarded:
+            metrics["sampling_validation"] = {"partition": "train", "status": "passed" if series.timestamps else "unavailable",
+                                               "automatic_resampling": False}
         cache_hit = False
+        selection_outcome = None
+        last_error: SegmentDomainError | ModelingDomainError | None = None
+        rejections: list[CandidateRejectionEvidence] = []
+        policy_winners: dict[str, tuple[float, ArxCoreResult, dict[str, Any], dict[str, Any],
+            SegmentSelectionOutcome | FullTrainSelection]] = {}
+        feedback_candidate: tuple[float, ArxCoreResult] | None = None
+
+        def reject_quality(candidate_params: dict[str, Any], evidence: list[dict[str, Any]],
+                           acceptance: dict[str, Any]) -> None:
+            acceptance = _validation_acceptance(evidence)
+            rejected = metrics.setdefault("validation_rejections", {"count": 0, "reason_counts": {}, "examples": []})
+            rejected["count"] += 1
+            for reason in acceptance["reasons"]:
+                counts = rejected["reason_counts"]
+                counts[reason] = counts.get(reason, 0) + 1
+            skipped = len(fold_specs)-len(evidence)
+            rejected["skipped_requested_fold_fits"] = rejected.get("skipped_requested_fold_fits", 0)+skipped
+            if len(rejected["examples"]) < 3:
+                rejected["examples"].append({"parameters": candidate_params, "acceptance": acceptance,
+                    "folds": evidence, "requested_folds": len(fold_specs), "unevaluated_folds": skipped})
+
+        def selected_data(source: VersionSeries, ratio: float, val_end: int | None = None) -> SegmentSelectionOutcome:
+            sp = _selection_params(sampled_params, input_columns, output_column, train_ratio=ratio)
+            key = stage_key(parent_key=base_key, tool_name="segment_selection", tool_version=TOOL_VERSION,
+                parameters={**sp, "validation_end": val_end})
+            def compute() -> SegmentSelectionOutcome:
+                return run_segment_selection(source, SegmentRequest(version_id=series.version_id, **sp))
+            nonlocal cache_hit
+            selection, hit = cache.get_or_compute(key, compute)
+            cache_hit = cache_hit or hit
+            return selection
+
         try:
-            selection_params = _selection_params(
-                sampled_params,
-                input_columns,
-                output_column,
-                train_ratio=payload.train_ratio,
-            )
-            key = stage_key(
-                parent_key=base_key,
-                tool_name="segment_selection",
-                tool_version=TOOL_VERSION,
-                parameters=selection_params,
-            )
+            selection_outcome = selected_data(series, payload.train_ratio)
+        except SegmentDomainError as error:
+            # A gate rejection must not prevent evaluating the all-Train companion.
+            metrics["selection_failure"] = {"code": error.code, "details": error.details}
+            last_error = error
 
-            def compute_selection() -> SegmentSelectionOutcome:
-                request = SegmentRequest(version_id=series.version_id, **selection_params)
-                return run_segment_selection(series, request)
-
-            selection_outcome, cache_hit = cache.get_or_compute(key, compute_selection)
-            selected = selection_outcome.selected_sample_indices
-            metrics["selection_provenance"] = _selection_provenance(selection_outcome)
-
-            # Staged search. Gating and selection are the expensive head of the pipeline;
-            # fitting a model on already-chosen rows is cheap. So the sampler explores the
-            # head and every trial sweeps the whole structure grid against the one
-            # selection it just computed, instead of spending a separate selection on each
-            # structure. This is where the real saving is: a flat search recomputes the
-            # head for every structure it tries, and the recomputation is pure waste
-            # because the head does not depend on na, nb or the estimator.
-            result = None
-            best_structure_value = float("-inf")
-            best_breakdown: dict[str, Any] = {}
-            last_error: SegmentDomainError | ModelingDomainError | None = None
-            structure_rejections: list[CandidateRejectionEvidence] = []
-            for structure in _structure_grid(sampled_params):
-                candidate_params = {**sampled_params, **structure}
-                if candidate_params["estimator"] != "ridge":
+        policies = (("full_train", "selected") if payload.optimization_policy in {"paired_coverage", "validation_guarded"}
+            else ("selected",) if selection_outcome is not None else ("full_train",))
+        for policy in policies:
+            if policy == "selected" and selection_outcome is None:
+                continue
+            screened = []
+            for structure in structures:
+                candidate_params = {**sampled_params, **structure, "training_policy": policy}
+                if candidate_params["estimator"] == "ols":
                     candidate_params.pop("ridge_alpha", None)
-                fit_request = ArxFitRequest(
-                    version_id=series.version_id,
-                    input_columns=input_columns,
-                    output_column=output_column,
-                    na=structure["na"],
-                    nb={column: structure["nb"] for column in input_columns},
-                    delays={column: sampled_params["nk"] for column in input_columns},
-                    estimator=structure["estimator"],
-                    ridge_alpha=structure.get("ridge_alpha"),
-                    train_ratio=payload.train_ratio,
-                    validation_ratio=payload.validation_ratio,
-                    training_sample_indices=selected,
-                    evaluate_test=False,
-                )
                 try:
-                    candidate = fit_arx_core(
-                        inputs=inputs,
-                        output=output,
-                        payload=fit_request,
-                        input_columns=input_columns,
-                    )
+                    training = selection_outcome if policy == "selected" else replay_training_selection(
+                        series, candidate_params, input_columns, output_column, train_ratio=payload.train_ratio)
+                    assert training is not None
+                    fit_request = ArxFitRequest(version_id=series.version_id,
+                        input_columns=input_columns, output_column=output_column,
+                        na=structure["na"], nb={c: structure["nb"] for c in input_columns},
+                        delays=_trial_delays(candidate_params, input_columns),
+                        model_type=structure.get("model_type", "ARX"),
+                        regularization_kernel=structure.get("regularization_kernel", "identity"),
+                        kernel_decay=structure.get("kernel_decay", .9),
+                        initialization_policy=structure.get("initialization_policy", "fixed"),
+                        initialization_window=structure.get("initialization_window", 32),
+                        estimator=structure["estimator"], ridge_alpha=structure.get("ridge_alpha"),
+                        train_ratio=payload.train_ratio, validation_ratio=payload.validation_ratio,
+                        training_sample_indices=training.selected_sample_indices,
+                        sample_weights=training.sample_weights, history_guard=payload.history_guard, evaluate_test=False)
+                    candidate = fit_arx_core(inputs=inputs, output=output, payload=fit_request, input_columns=input_columns)
                 except ModelingDomainError as error:
                     last_error = error
                     continue
                 structure_evaluations += 1
-                candidate_value, candidate_breakdown = objective_value(candidate)
-                if not np.isfinite(candidate_value):
-                    rejection = rejection_from_objective(
-                        reason=candidate_breakdown.get("reason"),
-                        structure=candidate_params,
-                        stable=candidate.validation.stable,
-                        max_pole_modulus=candidate.validation.max_pole_modulus,
-                        free_run_fit=candidate.metrics.val_free_run_fit,
-                    )
+                score, breakdown = objective_value(candidate)
+                if not np.isfinite(score):
+                    rejection = rejection_from_objective(reason=breakdown.get("reason"), structure=candidate_params,
+                        stable=candidate.validation.stable, max_pole_modulus=candidate.validation.max_pole_modulus,
+                        free_run_fit=candidate.metrics.val_free_run_fit)
                     if rejection is not None:
-                        structure_rejections.append(rejection)
+                        rejections.append(rejection)
                     continue
-                if candidate_value > best_structure_value:
-                    best_structure_value = candidate_value
-                    best_breakdown = candidate_breakdown
-                    result = candidate
-                    params = candidate_params
-            rejected = rejection_provenance(structure_rejections)
-            if rejected is not None:
-                metrics["rejection_provenance"] = rejected
-            if result is None:
-                diagnosis = diagnose_validation_candidate(
-                    validation_feedback=None,
-                    selection_provenance=metrics.get("selection_provenance"),
-                    objective_components=None,
-                    candidate_rejections=structure_rejections,
-                )
-                metrics.update(diagnosis.to_metrics())
-                if last_error is not None:
-                    raise last_error
-                rejection_codes = {item.code.value for item in structure_rejections}
-                if rejection_codes:
-                    error_code = (
-                        next(iter(rejection_codes))
-                        if len(rejection_codes) == 1
-                        else "ARX_STRUCTURES_REJECTED"
-                    )
-                    raise ModelingDomainError(
-                        error_code, "该配置下所有模型结构均被现有工程硬门控拒绝。"
-                    )
-                raise ModelingDomainError(
-                    "NUMERICAL_INSTABILITY", "该配置下所有模型结构均求解失败。"
-                )
-        except (SegmentDomainError, ModelingDomainError) as error:
-            duration = (time.perf_counter() - started) * 1000.0
-            trials.append(
-                TrialOutcome(
-                    number=trial.number,
-                    state="failed",
-                    value=None,
-                    params=params,
-                    metrics=metrics,
-                    cache_hit=cache_hit,
-                    duration_ms=duration,
-                    error_code=error.code,
-                )
-            )
-            # A failed configuration is a real outcome, not an exception to hide. Optuna
-            # prunes it so the sampler learns to avoid that region.
-            raise optuna.TrialPruned() from error
+                if feedback_candidate is None or score > feedback_candidate[0]:
+                    feedback_candidate = (score, candidate)
+                if guarded:
+                    latest_evidence = [_fold_evidence(candidate, *fold_specs[-1], payload.history_guard, training)]
+                    acceptance = _validation_acceptance(latest_evidence)
+                    if acceptance["status"] != "passed":
+                        reject_quality(candidate_params, latest_evidence, acceptance)
+                        continue
+                screened.append((score, candidate, candidate_params, breakdown, fit_request, training))
+            ranked = sorted(screened, key=lambda item: item[0], reverse=True)
+            # Each data policy gets its own shortlist; good selected candidates cannot
+            # screen every full-data structure out before rolling validation.
+            shortlist = ranked if guarded else ranked[:payload.structure_shortlist]
+            for family in ("ARX", "FIR"):
+                representative = next((item for item in ranked if item[2].get("model_type", "ARX") == family), None)
+                if representative is not None and all(item is not representative for item in shortlist):
+                    shortlist.append(representative)
+            for latest_score, candidate, candidate_params, breakdown, fit_request, training in shortlist:
+                scores, evidence = [], []
+                rejected_early = False
+                for train_end, val_end in fold_specs[:-1]:
+                    prefix = replace(series, timestamps=series.timestamps[:val_end + 1],
+                        values={c: v[:val_end + 1] for c, v in series.values.items()})
+                    ratio = (train_end + .25) / prefix.n_samples
+                    try:
+                        folded_training = selected_data(prefix, ratio, val_end) if policy == "selected" else replay_training_selection(
+                            prefix, candidate_params, input_columns, output_column, train_ratio=ratio)
+                        folded_request = fit_request.model_copy(update={"train_ratio": ratio,
+                            "validation_ratio": (val_end - train_end) / prefix.n_samples,
+                            "training_sample_indices": folded_training.selected_sample_indices,
+                            "sample_weights": folded_training.sample_weights})
+                        folded = fit_arx_core(inputs={c: prefix.values[c] for c in inputs},
+                            output=prefix.values[output_column], payload=folded_request, input_columns=input_columns)
+                        structure_evaluations += 1
+                        score, _ = objective_value(folded)
+                        if not np.isfinite(score):
+                            break
+                    except (SegmentDomainError, ModelingDomainError) as error:
+                        last_error = error
+                        break
+                    scores.append(score)
+                    evidence.append(_fold_evidence(folded, train_end, val_end, payload.history_guard, folded_training))
+                    if guarded:
+                        acceptance = _validation_acceptance(evidence[-1:])
+                        if acceptance["status"] != "passed":
+                            reject_quality(candidate_params,
+                                [*evidence, _fold_evidence(candidate, *fold_specs[-1], payload.history_guard, training)],
+                                acceptance)
+                            rejected_early = True
+                            break
+                if rejected_early:
+                    continue
+                if len(scores) != len(fold_specs) - 1:
+                    continue
+                scores.append(latest_score)
+                evidence.append(_fold_evidence(candidate, *fold_specs[-1], payload.history_guard, training))
+                if guarded:
+                    acceptance = _validation_acceptance(evidence)
+                    if acceptance["status"] != "passed":
+                        reject_quality(candidate_params, evidence, acceptance)
+                        continue
+                penalty = .25 * float(np.std(scores))
+                rolling_score = float(np.mean(scores)) - penalty
+                previous = policy_winners.get(policy)
+                if previous is not None and rolling_score <= previous[0]:
+                    continue
+                breakdown = dict(breakdown)
+                breakdown["objective_components"] = {**breakdown["objective_components"],
+                    "latest_validation_score": latest_score, "rolling_mean_score": float(np.mean(scores)),
+                    "rolling_adjustment_component": float(np.mean(scores)) - latest_score,
+                    "temporal_variability_component": -penalty, "final_score": rolling_score}
+                breakdown["rolling_validation"] = {"policy_version": "expanding_temporal_full_guard_v2" if guarded else "expanding_temporal_shortlist_v1",
+                    "partition": "development", "requested_folds": payload.rolling_folds,
+                    "effective_folds": len(scores), "screening_partition": "all_validation_folds" if guarded else "latest_validation",
+                    "shortlist_size": len(shortlist), "folds_overlap": True, "independent_test": False,
+                    "mean_score": float(np.mean(scores)), "score_std": float(np.std(scores)),
+                    "variability_penalty": penalty, "final_score": rolling_score, "folds": evidence}
+                policy_winners[policy] = (rolling_score, candidate, candidate_params, breakdown, training)
 
-        value, breakdown = best_structure_value, best_breakdown
-        metrics.update(breakdown)
-        metrics["validation_feedback"] = _validation_feedback(result)
-        diagnosis = diagnose_validation_candidate(
-            validation_feedback=metrics["validation_feedback"],
-            selection_provenance=metrics.get("selection_provenance"),
-            objective_components=metrics.get("objective_components"),
-        )
-        metrics.update(diagnosis.to_metrics())
-        duration = (time.perf_counter() - started) * 1000.0
-        if not np.isfinite(value):
-            trials.append(
-                TrialOutcome(
-                    number=trial.number,
-                    state="pruned",
-                    value=None,
-                    params=params,
-                    metrics=metrics,
-                    cache_hit=cache_hit,
-                    duration_ms=duration,
-                    error_code=str(breakdown.get("reason", "not_finite")),
-                )
-            )
+        rejected = rejection_provenance(rejections)
+        if rejected is not None:
+            metrics["rejection_provenance"] = rejected
+        if not policy_winners:
+            if guarded and feedback_candidate is not None and selection_outcome is not None:
+                feedback = _feedback_actions(feedback_candidate[1], selection_outcome,
+                    sampled_params, payload.search_space, advanced=True)
+                feedback["candidate_accepted"] = False
+                metrics["adaptive_feedback"] = feedback
+                schedule_feedback(feedback, trial)
+            metrics.update(diagnose_validation_candidate(validation_feedback=None,
+                selection_provenance=None, objective_components=None,
+                candidate_rejections=rejections).to_metrics())
+            error_code = ("VALIDATION_QUALITY_REJECTED" if guarded and metrics.get("validation_rejections") else
+                rejections[0].code.value if rejections else
+                last_error.code if last_error is not None else "NUMERICAL_INSTABILITY")
+            trials.append(TrialOutcome(number=trial.number, state="failed", value=None, params=params,
+                metrics=metrics, cache_hit=cache_hit, duration_ms=(time.perf_counter() - started) * 1000,
+                error_code=error_code))
             raise optuna.TrialPruned()
 
-        trials.append(
-            TrialOutcome(
-                number=trial.number,
-                state="complete",
-                value=value,
-                params=params,
-                metrics=metrics,
-                cache_hit=cache_hit,
-                duration_ms=duration,
-            )
-        )
+        # Exact score ties prefer full Train. The pairing holds delays, model grid and
+        # fold boundaries fixed; Test contributes neither to ranking nor acceptance.
+        value, result, params, breakdown, training = max(policy_winners.values(), key=lambda item: item[0])
+        metrics.update(breakdown)
+        metrics["selection_provenance"] = _selection_provenance(training)
+        metrics["data_policy_comparison"] = {"policy_version": "paired_train_policy_v1",
+            "search_policy": payload.optimization_policy,
+            "partition": "validation", "selected_policy": params["training_policy"],
+            "same_delays": True, "same_structure_grid": True, "same_fold_boundaries": True,
+            "policies": {policy: {"rolling_score": item[0],
+                "latest_rmse": item[1].validation.free_run_rmse,
+                "training_rows": item[1].training_rows,
+                "parameters": item[2]} for policy, item in policy_winners.items()}}
+        metrics["validation_acceptance"] = _validation_acceptance(breakdown["rolling_validation"]["folds"])
+        metrics["validation_feedback"] = _validation_feedback(result)
+        metrics.update(diagnose_validation_candidate(validation_feedback=metrics["validation_feedback"],
+            selection_provenance=metrics["selection_provenance"],
+            objective_components=metrics.get("objective_components")).to_metrics())
+        feedback: dict[str, Any] = _feedback_actions(result, selection_outcome, sampled_params, payload.search_space, advanced=guarded) if selection_outcome is not None else {
+            "policy_version": "validation_actions_v2", "partition": "validation", "reasons": [], "parameters": {}}
+        metrics["adaptive_feedback"] = feedback
+        schedule_feedback(feedback, trial)
+        trials.append(TrialOutcome(number=trial.number, state="complete", value=value, params=params,
+            metrics=metrics, cache_hit=cache_hit, duration_ms=(time.perf_counter() - started) * 1000))
         return value
 
     study = optuna.create_study(
         direction="maximize",
         sampler=TPESampler(seed=payload.random_seed),
     )
+    if payload.optimization_policy in {"paired_coverage", "validation_guarded"}:
+        study.enqueue_trial({f"nk_{c}": options[len(options) // 2] for c, options in delay_options.items()})
     for candidate in (warm_start or [])[:WARM_START_LIMIT]:
         enqueued = _sanitise_warm_start(candidate)
         if enqueued:
@@ -915,6 +1059,10 @@ def run_study(
         "convergence": convergence.to_payload(),
         "stop_reason": stop_reason.to_payload(),
     }
+    if guarded:
+        statistics["feedback_scheduling"] = {"policy_version": "reserved_feedback_budget_v1",
+            "max_feedback_trials": feedback_budget, "scheduled_proposals": feedback_scheduled,
+            "minimum_search_trials_before_first_proposal": 3, "test_partition_used": False}
     return StudyOutcome(
         study_id=study_id or uuid4(),
         trials=trials,
@@ -1192,6 +1340,7 @@ async def _execute_study(
             input_columns, output_column = series.resolve_columns(
                 input_columns=payload.input_columns, output_column=payload.output_column
             )
+            series = await attach_model_input_context(session, series, artifact_root=artifact_root)
         except VersionDataError as error:
             raise OptimizationDomainError(
                 error.code, error.message, status_code=error.status_code, details=error.details
@@ -1213,7 +1362,9 @@ async def _execute_study(
             evaluation=baseline,
             kind="baseline",
         )
-        if baseline.status != "succeeded":
+        recoverable_baseline_errors = {"NO_DYNAMIC_SEGMENT_FOUND", "BASELINE_VALIDATION_REJECTED",
+            "DESIGN_MATRIX_RANK_DEFICIENT", "INSUFFICIENT_ROWS", "NUMERICAL_INSTABILITY"}
+        if baseline.status != "succeeded" and baseline.error_code not in recoverable_baseline_errors:
             raise OptimizationDomainError(
                 baseline.error_code or "BASELINE_EVALUATION_FAILED",
                 "默认基线流程失败，未开始 Optuna 寻优。",
@@ -1222,8 +1373,8 @@ async def _execute_study(
 
         current_phase = "preparation"
         fingerprint = build_fingerprint(
-            inputs={column: series.values[column] for column in input_columns},
-            output=series.values[output_column],
+            inputs={column: series.values[column][:int(series.n_samples * payload.train_ratio) - payload.history_guard] for column in input_columns},
+            output=series.values[output_column][:int(series.n_samples * payload.train_ratio) - payload.history_guard],
         )
         warm_start, source = (
             await _retrieve_warm_start(session, series=series, fingerprint=fingerprint)
@@ -1249,6 +1400,8 @@ async def _execute_study(
             warm_start_source=source,
             study_id=study_id,
         )
+        outcome.statistics["baseline_status"] = baseline.status
+        outcome.statistics["baseline_error_code"] = baseline.error_code
 
         if outcome.best_number is None:
             current_phase = "study_persistence"
@@ -1680,22 +1833,109 @@ def _suggest(trial: optuna.Trial, overrides: dict[str, Any]) -> dict[str, Any]:
 def _structure_grid(params: dict[str, Any]) -> list[dict[str, Any]]:
     """Model structures swept inside one trial, against a single selection.
 
-    Small and fixed on purpose: these fits are cheap once the rows are chosen, so an
-    exhaustive sweep is both faster and more thorough than asking the sampler to find the
-    orders one trial at a time.
+    Keep 60 low-order candidates, add 18 high-order regularized ARX and 24 TC FIR
+    candidates (12 fixed baseline, 12 with a causal initial output disturbance). The latest Validation screens the grid; rolling folds rank the shortlist.
     """
 
     grid: list[dict[str, Any]] = []
     for na in (1, 2, 3, 4):
         for nb in (1, 2, 3):
             grid.append({"na": na, "nb": nb, "estimator": "ols"})
-            grid.append({"na": na, "nb": nb, "estimator": "ridge", "ridge_alpha": 0.1})
+            for alpha in (0.01, 0.1, 1.0):
+                grid.append({"na": na, "nb": nb, "estimator": "ridge", "ridge_alpha": alpha})
+            grid.append({"na": na, "nb": nb, "estimator": "huber", "ridge_alpha": 0.1})
+    grid.extend({"model_type": "ARX", "na": na, "nb": nb, "estimator": "ridge", "ridge_alpha": alpha}
+                for na, nb in ((4, 4), (8, 4), (8, 8), (12, 4), (12, 8), (12, 12))
+                for alpha in (0.1, 1.0, 10.0))
+    grid.extend({"model_type": "FIR", "na": 0, "nb": nb, "estimator": "ridge",
+                 "regularization_kernel": "tc", "kernel_decay": decay, "ridge_alpha": alpha}
+                for nb in (8, 16, 24) for decay in (0.8, 0.95) for alpha in (0.1, 10.0))
+    grid.extend({**item, "initialization_policy": "past_residual", "initialization_window": 32}
+                for item in list(grid) if item.get("model_type") == "FIR")
+    if params.get("arx_disturbance") and not params.get("all_arx_disturbance"):
+        # Add paired versions of the 18 regularized high-order ARX models. Keep
+        # established search and its RNG unchanged; compensation must earn its
+        # place on the same chronological validation folds.
+        grid.extend({**item, "initialization_policy": "past_residual", "initialization_window": 32}
+                    for item in list(grid) if item.get("model_type") == "ARX")
+    if params.get("all_arx_disturbance"):
+        # Low-order affine ARX also returns toward the source operating level.
+        # Pair every fixed ARX with its causal disturbance version; validation,
+        # rather than a model-order label, decides whether compensation helps.
+        grid.extend({**item, "initialization_policy": "past_residual", "initialization_window": 32}
+                    for item in list(grid) if item.get("model_type", "ARX") == "ARX"
+                    and item.get("initialization_policy", "fixed") == "fixed")
     return grid
+
+
+def _rolling_fold_specs(n: int, payload: OptimizationStartRequest) -> list[tuple[int, int]]:
+    """Expanding Train, fixed-width Validation; every fold ends before held-out Test.
+
+    Earlier validation windows overlap. They are robustness checks, not independent
+    observations. Tiny datasets reduce the number of folds explicitly in evidence.
+    """
+    train_end = int(n * payload.train_ratio)
+    val_end = int(n * (payload.train_ratio + payload.validation_ratio))
+    width = val_end - train_end
+    stride = max(1, width // 2)
+    minimum_train = max(2 * payload.history_guard + 32, 64)
+    folds = [(train_end - i * stride, val_end - i * stride)
+             for i in reversed(range(payload.rolling_folds)) if train_end - i * stride >= minimum_train]
+    return folds or [(train_end, val_end)]
+
+
+def _fold_evidence(result: ArxCoreResult, train_end: int, val_end: int, guard: int,
+                   selection: SegmentSelectionOutcome | FullTrainSelection) -> dict[str, Any]:
+    return {"train_end": train_end, "validation_start": train_end + guard,
+            "validation_stop": val_end - guard, "training_rows": result.training_rows,
+            "validation_samples": result.validation.n_samples,
+            "free_run_fit": result.validation.free_run_fit, "free_run_rmse": result.validation.free_run_rmse,
+            "training_output_scale": result.training_output_scale,
+            "persistence_rmse": result.validation.reference_baselines.get("persistence_rmse"),
+            "skill_vs_persistence": result.validation.reference_baselines.get("skill_vs_persistence"),
+            "input_support": result.validation.input_support,
+            "normalized_error": result.validation.free_run_rmse / result.training_output_scale,
+            "selected_indices_hash": _selection_provenance(selection)["selected_indices_hash"]}
 
 
 def _bounds_int(value: Any) -> tuple[int, int]:
     low, high = value
     return int(low), int(high)
+
+
+def _validation_acceptance(folds: list[dict[str, Any]]) -> dict[str, Any]:
+    """Validation evidence, not an APC deployment certificate or official FIT threshold."""
+    reasons = []
+    fits = [fold.get("free_run_fit") for fold in folds]
+    if any(fit is not None and np.isfinite(fit) and fit <= 0 for fit in fits):
+        reasons.append("NONPOSITIVE_FREE_RUN_FIT")
+    skills = [fold.get("skill_vs_persistence") for fold in folds]
+    if any(skill is not None and np.isfinite(skill) and skill <= 0 for skill in skills):
+        reasons.append("NOT_BETTER_THAN_PERSISTENCE")
+    if any(fold.get("input_support", {}).get("status") == "unsupported" for fold in folds):
+        reasons.append("UNEXCITED_CONTROL_CHANGED")
+    missing = not folds or any(value is None or not np.isfinite(value) for value in [*fits, *skills])
+    if missing:
+        reasons.append("INCOMPLETE_VALIDATION_EVIDENCE")
+    return {"policy_version": "validation_quality_v2", "partition": "validation",
+        "status": "insufficient" if any(r != "INCOMPLETE_VALIDATION_EVIDENCE" for r in reasons) else "inconclusive" if missing else "passed",
+        "reasons": reasons, "folds_checked": len(folds), "folds_overlap": True,
+        "independent_test": False, "deployment_ready": False}
+
+
+def _require_uniform_train_timestamps(timestamps: list[datetime]) -> None:
+    """Guard discrete-time identification using Train metadata only; no resampling."""
+    if len(timestamps) < 3:
+        raise OptimizationDomainError("INSUFFICIENT_ROWS", "训练时间轴不足以验证采样间隔")
+    intervals = np.asarray([(b-a).total_seconds() for a, b in zip(timestamps[:-1], timestamps[1:], strict=True)])
+    positive = intervals[intervals > 0]
+    expected = float(np.median(positive)) if positive.size else 0.
+    bad = np.flatnonzero((intervals <= 0) | (np.abs(intervals-expected) > max(.001, .05*expected)))
+    if bad.size:
+        raise OptimizationDomainError("NONUNIFORM_SAMPLING", "训练数据存在重复时间或采样缺口，请先处理时间轴再辨识模型",
+            details={"partition": "train", "nominal_interval_seconds": expected,
+                     "irregular_interval_count": int(bad.size), "first_irregular_row": int(bad[0]+1),
+                     "automatic_resampling": False})
 
 
 def _bounds_float(value: Any) -> tuple[float, float]:
@@ -1721,7 +1961,87 @@ def _selection_params(
         "max_missing_ratio": params["max_missing_ratio"],
         "min_input_activity_ratio": params["min_input_activity_ratio"],
         "train_ratio": train_ratio,
+        "history_guard": params.get("history_guard", 32),
+        "nk": params.get("delays", params.get("nk", 0)),
+        "selection_mode": params.get("selection_mode", "ensemble"),
+        "adaptive_windows": params.get("adaptive_windows", True),
+        "temporal_coverage_bins": params.get("temporal_coverage_bins", 0),
     }
+
+
+def _delay_options(
+    series: VersionSeries,
+    payload: OptimizationStartRequest,
+    columns: list[str],
+    output_column: str,
+) -> dict[str, list[int]]:
+    """Propose independent channel delays using training samples only."""
+    low, high = _bounds_int(payload.search_space.get("nk", (0, 20)))
+    stop = int(series.n_samples * payload.train_ratio) - payload.history_guard
+    options: dict[str, list[int]] = {}
+    for column in columns:
+        try:
+            correlations, _ = prewhitened_cross_correlation(
+                series.values[column][:stop], series.values[output_column][:stop], max_lag=high,
+            )
+            peaks = rank_candidates(correlations, top_k=2, sample_count=stop)
+            values = {lag for peak in peaks for lag in range(max(low, peak.lag - 2), min(high, peak.lag + 2) + 1)}
+        except (IdentifiabilityError, ValueError, np.linalg.LinAlgError):
+            values = set()
+        options[column] = sorted(values) or list(range(low, high + 1))
+    return options
+
+
+def _trial_delays(parameters: dict[str, Any], columns: list[str]) -> dict[str, int]:
+    delays = parameters.get("delays")
+    return {column: int(delays[column]) if isinstance(delays, dict) else int(parameters["nk"]) for column in columns}
+
+
+def _feedback_actions(
+    result: ArxCoreResult,
+    selection: SegmentSelectionOutcome,
+    parameters: dict[str, Any],
+    search_space: dict[str, Any],
+    *, advanced: bool = False,
+) -> dict[str, Any]:
+    """Validation-only proposals with bounded actions, never using held-out Test."""
+    proposed: dict[str, Any] = {}
+    reasons: list[str] = []
+    if not selection.selection.excitation.excitation_satisfied:
+        low, high = _bounds_int(search_space.get("max_segments", (3, 20)))
+        proposed["max_segments"] = int(np.clip(parameters["max_segments"] + 2, low, high))
+        reasons.append("expand_information_coverage")
+    summary = result.validation
+    columns = list(summary.input_residual_test.get("rejected_channels", []))
+    if columns:
+        low, high = _bounds_int(search_space.get("max_segments", (3, 20)))
+        proposed["max_segments"] = int(np.clip(parameters["max_segments"] + 1, low, high))
+        reasons.append("check_unmodelled_input_dynamics")
+    recommendations: list[dict[str, Any]] = []
+    if advanced:
+        support = summary.input_support
+        if support.get("unsupported_constant_inputs"):
+            recommendations.append({"action": "collect_excited_control_data",
+                "channels": support["unsupported_constant_inputs"],
+                "automatic": False, "reason": "unexcited_control_changed"})
+        if support.get("status") == "extrapolation" or summary.fit_gap > 10:
+            proposed.update({"temporal_coverage_bins": 3, "selection_mode": "ensemble", "adaptive_windows": True})
+            reasons.append("balance_training_coverage")
+        if columns:
+            low, high = _bounds_int(search_space.get("window_size", (30, 200)))
+            proposed["window_size"] = int(np.clip(parameters["window_size"]+20, low, high))
+            reasons.append("expand_dynamic_window")
+        # A bounded proposal at its limit is not a new search action.
+        proposed = {key: value for key, value in proposed.items() if parameters.get(key) != value}
+        base = {k: parameters[k] for k in ("window_size", "max_segments", "max_anomaly_ratio",
+            "max_missing_ratio", "min_input_activity_ratio", "nk", "selection_mode",
+            "adaptive_windows", "temporal_coverage_bins") if k in parameters}
+        return {"policy_version": "validation_actions_v3", "partition": "validation",
+            "test_partition_used": False, "reasons": reasons, "channels": columns,
+            "recommendations": recommendations,
+            "actions": [{"parameter": k, "before": parameters.get(k), "after": v} for k, v in proposed.items()],
+            "parameters": {**base, **{f"nk_{c}": d for c, d in parameters.get("delays", {}).items()}, **proposed} if proposed else {}}
+    return {"policy_version": "validation_actions_v2", "partition": "validation", "reasons": reasons, "channels": columns, "parameters": {**{k: parameters[k] for k in ("window_size", "max_segments", "max_anomaly_ratio", "max_missing_ratio", "min_input_activity_ratio", "nk", "selection_mode", "adaptive_windows", "temporal_coverage_bins") if k in parameters}, **{f"nk_{c}": delay for c, delay in parameters.get("delays", {}).items()}, **proposed} if proposed else {}}
 
 
 def _sanitise_warm_start(candidate: dict[str, Any]) -> dict[str, Any]:

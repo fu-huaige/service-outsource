@@ -1,0 +1,141 @@
+{
+  "status": "passed",
+  "role": "previously_seen_real_boiler_integration_regression",
+  "workflow_status": "SUCCEEDED",
+  "step_count": 13,
+  "cloud_plan": "llm",
+  "cloud_report": "llm",
+  "provider": "deepseek",
+  "model": "deepseek-flash",
+  "report_fallback": null,
+  "bindings": 44,
+  "fully_resolved": true,
+  "chart_keys": [
+    "cleaning",
+    "selection",
+    "delay",
+    "collinearity",
+    "evaluation",
+    "optimization"
+  ],
+  "exported_rows": 3172,
+  "row_by_row_csv_equal": true,
+  "model_id_matches_export": true,
+  "report_markdown": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261004/agent-api/reports/cae178d6-6efb-4512-8f2f-c4c95e030c12.md",
+  "report_html": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261004/agent-api/reports/cae178d6-6efb-4512-8f2f-c4c95e030c12.html",
+  "csv_path": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261004/agent-api/exports/0be42ab4-938a-406a-b8c4-82522d54fd6a.csv",
+  "test": {
+    "one_step": {
+      "mae": 1.4767800513677642,
+      "rmse": 1.8870457963063387,
+      "r2": 0.7454830974461932,
+      "fit": 49.55033175988105,
+      "nrmse": 0.14434312567177016
+    },
+    "free_run": {
+      "mae": 1.4767800513677642,
+      "rmse": 1.8870457963063372,
+      "r2": 0.7454830974461937,
+      "fit": 49.55033175988108,
+      "nrmse": 0.14434312567177002
+    },
+    "n_samples": 1391
+  },
+  "input_support_status": "extrapolation",
+  "feedback_scheduling": {
+    "policy_version": "reserved_feedback_budget_v1",
+    "max_feedback_trials": 1,
+    "scheduled_proposals": 1,
+    "minimum_search_trials_before_first_proposal": 3,
+    "test_partition_used": false
+  },
+  "trace": [
+    {
+      "trial": 0,
+      "window_size": 80,
+      "max_segments": 20,
+      "coverage_bins": 0,
+      "feedback_status": "reserve_search_budget",
+      "feedback_actions": [
+        {
+          "parameter": "temporal_coverage_bins",
+          "before": 0,
+          "after": 3
+        }
+      ]
+    },
+    {
+      "trial": 1,
+      "window_size": 90,
+      "max_segments": 15,
+      "coverage_bins": 0,
+      "feedback_status": "reserve_search_budget",
+      "feedback_actions": [
+        {
+          "parameter": "max_segments",
+          "before": 15,
+          "after": 16
+        },
+        {
+          "parameter": "temporal_coverage_bins",
+          "before": 0,
+          "after": 3
+        },
+        {
+          "parameter": "selection_mode",
+          "before": "single",
+          "after": "ensemble"
+        },
+        {
+          "parameter": "window_size",
+          "before": 90,
+          "after": 110
+        }
+      ]
+    },
+    {
+      "trial": 2,
+      "window_size": 100,
+      "max_segments": 17,
+      "coverage_bins": 3,
+      "feedback_status": "scheduled",
+      "feedback_actions": [
+        {
+          "parameter": "max_segments",
+          "before": 17,
+          "after": 18
+        },
+        {
+          "parameter": "selection_mode",
+          "before": "single",
+          "after": "ensemble"
+        },
+        {
+          "parameter": "window_size",
+          "before": 100,
+          "after": 120
+        }
+      ]
+    },
+    {
+      "trial": 3,
+      "window_size": 120,
+      "max_segments": 18,
+      "coverage_bins": 3,
+      "feedback_status": "budget_exhausted",
+      "feedback_actions": [
+        {
+          "parameter": "max_segments",
+          "before": 18,
+          "after": 19
+        },
+        {
+          "parameter": "window_size",
+          "before": 120,
+          "after": 140
+        }
+      ]
+    }
+  ],
+  "csv_sha256": "6de28935c791ea4207c39afb4d70dff4bae0118e918446f7448a3f36a0aa2d1e"
+}

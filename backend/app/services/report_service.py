@@ -190,7 +190,7 @@ async def build_execution_run_index(
         run = await session.get(ProcessingRun, run_id)
         if run is None or run.status != "succeeded":
             continue
-        if not _matches(run, dataset_id=dataset_id, version_id=version_id):
+        if run.run_type in NON_ANALYSIS_RUN_TYPES or not _matches(run, dataset_id=dataset_id, version_id=None):
             continue
         short = _short_id(run.id)
         records[short] = {
@@ -201,13 +201,35 @@ async def build_execution_run_index(
             "created_at": run.created_at.isoformat() if run.created_at else "",
             **(run.result or {}),
         }
-        by_type.setdefault(run.run_type, short)
+        by_type[run.run_type] = short
+    optimize_key = step_by_tool.get("optimize_pipeline")
+    if optimize_key:
+        raw_study_id = records[optimize_key].get("study_id")
+        if raw_study_id:
+            study = await session.get(OptimizationStudy, UUID(str(raw_study_id)))
+            if (study is None or study.dataset_id != execution.dataset_id
+                    or str(study.version_id) != records[optimize_key].get("source_version_id")):
+                raise ReportDomainError("REPORT_STUDY_SCOPE_MISMATCH", "Agent 寻优记录与当前执行的来源不一致")
+            records[optimize_key]["trial_curve"] = await _study_trial_curve(session, study.id)
     return RunIndex(
         records=records,
         by_type=by_type,
         step_by_tool=step_by_tool,
         execution_id=execution.id,
     )
+
+
+async def _study_trial_curve(session: AsyncSession, study_id: UUID) -> list[dict[str, Any]]:
+    records = list((await session.scalars(select(OptimizationTrialRecord)
+        .where(OptimizationTrialRecord.study_id == study_id)
+        .order_by(OptimizationTrialRecord.trial_number))).all())
+    curve, best = [], None
+    for trial in records:
+        if trial.state == "complete" and trial.value is not None and np.isfinite(trial.value):
+            best = max(best, float(trial.value)) if best is not None else float(trial.value)
+        if best is not None:
+            curve.append({"trial_number": trial.trial_number, "best_value": best, "state": trial.state})
+    return curve
 
 
 def _step_record(step: AgentStepRun) -> dict[str, Any]:
@@ -298,14 +320,12 @@ async def generate_report(
             "finished_at": study.finished_at.isoformat() if study.finished_at else "",
             "optimized_model_id": str(study.optimized_model_id),
             "best_trial_metrics": dict(selection.best_trial.metrics or {}),
+            "trial_curve": await _study_trial_curve(session, study.id),
         }
 
     sections = _compose(index, payload)
-    narration = (
-        NarrationOutcome()
-        if payload.execution_id is not None
-        else _narrate(provider or _resolve_provider(), index=index, sections=sections)
-    )
+    await _add_cleaning_preview(session, index=index, payload=payload, artifact_root=artifact_root)
+    narration = _narrate(provider or _resolve_provider(), index=index, sections=sections)
     if narration.text:
         sections.append(
             ReportSection(
@@ -393,8 +413,36 @@ def _narrate(
     for short, record in index.records.items():
         for path in _leaf_paths(record):
             paths.append(f"{short}.{path}")
+    # Show the values as well as their paths: a list of field names cannot tell a
+    # narrator whether FIT is negative or a model actually passed an independent test.
+    def active_parameter(path: str) -> bool:
+        short, field = path.split(".", 1)
+        parent = field.rsplit(".", 1)[0] + "." if "." in field else ""
+        if field.rsplit(".", 1)[-1] in {"window_size", "max_segments", "max_anomaly_ratio",
+            "max_missing_ratio", "min_input_activity_ratio", "selection_mode",
+            "adaptive_windows", "temporal_coverage_bins"} and resolve_path(
+                index.records[short], parent + "training_policy") == "full_train":
+            return False
+        if field.endswith("initialization_window"):
+            return bool(resolve_path(index.records[short], parent + "initialization_policy") == "past_residual")
+        if field.endswith("kernel_decay"):
+            return bool(resolve_path(index.records[short], parent + "regularization_kernel") == "tc")
+        return True
+
+    relevant = [path for path in paths if active_parameter(path) and not any(token in path for token in
+        ("created_at", "version_id", "processing_run_id", "model_id", "run_type", ".markdown", ".html", ".svg"))
+        and path.split(".", 1)[1] not in {"status", "task.status"}]
+    relevant.sort(key=lambda path: 0 if any(token in path for token in
+        (".test.", ".validation.", ".input_support.", ".best_validation_feedback.", ".reference_baselines.")) else 1)
+    relevant = relevant[:120]
+    evidence = {path: resolve_path(index.records[path.split(".", 1)[0]], path.split(".", 1)[1])
+        for path in relevant}
     context = "已完成的分析环节：\n" + "\n".join(f"- {section.title}" for section in sections)
-    return LlmNarrator(provider).narrate(context=context, available_paths=paths[:60])
+    context += "\n模型流程：Train 拟合参数，Validation 提供验证依据，Test 只回放已冻结参数。"
+    context += "\n已保存证据（仅用于理解；正文数字仍必须引用对应占位符）：\n" + json.dumps(evidence, ensure_ascii=False)
+    context += "\n现有局限：\n" + "\n".join(section.body for section in sections if section.key == "limitations")
+    kinds = {key: "step" if key in index.step_by_tool.values() else "run" for key in index.records}
+    return LlmNarrator(provider).narrate(context=context, available_paths=relevant, reference_kinds=kinds)
 
 
 def _leaf_paths(record: Mapping[str, Any], prefix: str = "", depth: int = 0) -> list[str]:
@@ -407,7 +455,7 @@ def _leaf_paths(record: Mapping[str, Any], prefix: str = "", depth: int = 0) -> 
         path = f"{prefix}{key}"
         if isinstance(value, Mapping):
             paths.extend(_leaf_paths(value, f"{path}.", depth + 1))
-        elif isinstance(value, int | float | bool | str):
+        elif isinstance(value, int | float | bool | str) or isinstance(value, list) and value and all(isinstance(item, str) for item in value):
             paths.append(path)
     return paths
 
@@ -523,6 +571,17 @@ def _compose_execution(index: RunIndex) -> list[ReportSection]:
         ("optimize_pipeline", "optimization", "闭环寻优", _summary_body),
         ("export_dataset", "export", "数据导出", _summary_body),
     ]
+    metrics = {
+        "detect_dynamic_segments": [("selection.selected_rows", "优选训练行", "条"),
+            ("selection.selected_count", "优选窗口", "个"), ("selection.coverage_ratio", "训练覆盖比例", "")],
+        "fit_arx": [("validation.free_run_fit", "初始模型验证自由仿真 FIT", ""),
+            ("validation.free_run_rmse", "初始模型验证自由仿真 RMSE", ""), ("training_rows", "初始训练行", "条")],
+        "evaluate_model": [("test.free_run.fit", "冻结最终模型 Test 自由仿真 FIT", ""),
+            ("test.free_run.rmse", "冻结最终模型 Test 自由仿真 RMSE", ""), ("test.n_samples", "Test 评价样本", "条")],
+        "optimize_pipeline": [("best_value", "最佳滚动验证目标", ""),
+            ("best_validation_feedback.summary.free_run_fit", "优化模型验证自由仿真 FIT", ""),
+            ("best_validation_feedback.summary.free_run_rmse", "优化模型验证自由仿真 RMSE", "")],
+    }
     for tool, section_key, title, body_builder in definitions:
         record_key = index.step_by_tool.get(tool)
         if record_key is None:
@@ -531,10 +590,13 @@ def _compose_execution(index: RunIndex) -> list[ReportSection]:
             ReportSection(
                 key=section_key,
                 title=title,
-                body=body_builder(record_key, index.records[record_key]),
+                body=_body_with_summary(record_key, index.records[record_key],
+                    _step_metric_clauses(record_key, index.records[record_key], metrics[tool]))
+                    if tool in metrics else body_builder(record_key, index.records[record_key]),
             )
         )
-    limitations = _execution_limitations(set(index.step_by_tool))
+    limitations = "\n\n".join(filter(None, [_execution_limitations(set(index.step_by_tool)),
+        _standalone_limitations(index)]))
     if limitations:
         sections.append(
             ReportSection(key="limitations", title="局限与风险提示", body=limitations)
@@ -668,7 +730,7 @@ def _compose_standalone(index: RunIndex, payload: ReportRequest) -> list[ReportS
         (
             modeling,
             "model",
-            "ARX 模型辨识与验证",
+            "模型辨识与验证",
             [
                 ("validation.free_run_fit", "验证集自由仿真 FIT", ""),
                 ("validation.one_step_fit", "一步预测 FIT", ""),
@@ -702,6 +764,11 @@ def _compose_standalone(index: RunIndex, payload: ReportRequest) -> list[ReportS
                 )
             )
     if "study" in index.records:
+        objective_path = (
+            "best_trial_metrics.objective_semantics.name"
+            if resolve_path(index.records["study"], "best_trial_metrics.objective_semantics.name") is not None
+            else "objective"
+        )
         sections.append(
             ReportSection(
                 key="optimization",
@@ -710,7 +777,8 @@ def _compose_standalone(index: RunIndex, payload: ReportRequest) -> list[ReportS
                     "study",
                     index.records["study"],
                     [
-                        ("objective", "寻优目标", ""),
+                        (objective_path, "寻优目标", ""),
+                        ("best_trial_metrics.objective_semantics.version", "目标版本", ""),
                         ("best_value", "Best 目标值", ""),
                         ("best_trial_number", "Best Trial 编号", ""),
                     ],
@@ -755,10 +823,38 @@ def _standalone_limitations(index: RunIndex) -> str:
         limitations.append("D-最优区间优选依赖候选窗口与质量门控结果。")
     if index.latest("preprocessing.delay"):
         limitations.append("时滞估计受采样周期、信号激励与相关结构影响。")
-    if index.latest("modeling.arx"):
-        limitations.append("ARX 模型建立在线性与时不变近似上，外推时应重新验证。")
+    model = index.latest("modeling.arx")
+    if model:
+        limitations.append("模型采用线性与时不变近似，外推时应重新验证。结构稳定性不能替代预测能力验证。")
+        if resolve_path(index.records[model], "parameters.initialization_policy") == "past_residual":
+            limitations.append("历史扰动补偿仅使用预测开始前的观测，自由仿真期间冻结补偿量。它假设扰动在预测期间持续，不能修复动态系数变化，也不能解释为完全没有输出历史的迁移。")
+    evaluation = index.latest("modeling.arx_evaluation")
+    supports = [resolve_path(index.records[model], "validation.input_support") if model else None,
+        resolve_path(index.records[evaluation], "model_health.input_support") if evaluation else None]
+    if "study" in index.records:
+        supports.append(resolve_path(index.records["study"], "best_trial_metrics.validation_feedback.summary.input_support"))
+    statuses = {item.get("status") for item in supports if isinstance(item, Mapping)}
+    if "unsupported" in statuses:
+        limitations.append("存在训练期间未激励、在评价期间变化的控制量，其变化影响缺少辨识依据；应补充该控制量变化的真实运行数据，再重新训练和验证。")
+    if "extrapolation" in statuses:
+        limitations.append("评价输入超出实际训练行的取值范围，当前预测包含外推。输入范围覆盖只是工况诊断，不能证明跨工况动态关系相同。")
+    if "unavailable" in statuses:
+        limitations.append("已保存模型缺少完整输入范围证据，或部分监测输入不可用，当前无法确认输入工况覆盖。")
+    test_fit = resolve_path(index.records[evaluation], "test.free_run.fit") if evaluation else None
+    if isinstance(test_fit, int | float) and test_fit <= 0:
+        limitations.append("Test 自由仿真 FIT 非正，误差已达到或超过该测试段自身波动，当前证据不足以说明有效的自由仿真能力。")
     if "study" in index.records:
         limitations.append("闭环寻优受搜索空间、目标函数和试验预算约束。")
+        if resolve_path(index.records["study"], "best_params.initialization_policy") == "past_residual":
+            limitations.append("所选模型使用预测前历史估计持续扰动，仿真期间冻结补偿量；跨工况效果须在相同历史上下文条件下验证。")
+        acceptance = resolve_path(index.records["study"], "best_trial_metrics.validation_acceptance.status")
+        if acceptance == "insufficient":
+            limitations.append("所选模型未通过全部滚动验证的效果或工况覆盖检查。寻优完成不代表模型效果达标，应补充激励或调整模型后复核。")
+        elif acceptance == "inconclusive":
+            limitations.append("滚动验证的持值预测对照证据不足，当前模型效果尚不能确认。")
+        policy = resolve_path(index.records["study"], "best_params.training_policy")
+        if policy == "full_train":
+            limitations.append("滚动验证选择了全量有效训练行；当前数据未证明优选片段具有更高验证得分，交付数据按该训练策略保留。")
     return "\n\n".join(limitations)
 
 
@@ -782,6 +878,18 @@ def _number_sections(sections: list[ReportSection]) -> list[ReportSection]:
 
 def _build_report_charts(index: RunIndex) -> list[ReportChart]:
     charts: list[ReportChart] = []
+    clean_key = index.step_by_tool.get("clean_data") or index.latest("preprocessing.clean")
+    if clean_key:
+        record = index.records[clean_key]
+        preview = record.get("cleaning_preview")
+        if isinstance(preview, Mapping):
+            svg = _line_chart_svg({"清洗前": preview["before"], "清洗后": preview["after"]},
+                y_label=str(preview["channel"]), x_values=preview["relative_milliseconds"], x_label="相对时间（毫秒）")
+            if svg:
+                charts.append(ReportChart(key="cleaning", title="清洗前后同一通道对比", svg=svg,
+                    source_run_id=str(record.get("run_id") or clean_key),
+                    source_path=f"versions.{preview['before_version_id']}+{preview['after_version_id']}.{preview['channel']}",
+                    description="从不可变版本读取；仅绘制共同、唯一且数值有效的时间点，新增、删除或歧义点不作人为配对。"))
     segment_key = index.latest("preprocessing.segment")
     if segment_key is not None:
         record = index.records[segment_key]
@@ -862,7 +970,9 @@ def _build_report_charts(index: RunIndex) -> list[ReportChart]:
                     "真实输出": series_record.get("y_true"),
                     "自由仿真": series_record.get("free_run_prediction"),
                 },
-                y_label="输出",
+                    y_label="输出",
+                    x_values=series_record.get("sample_indices"),
+                    x_label="来源样本索引" if series_record.get("sample_indices") is not None else None,
             )
             if svg:
                 charts.append(
@@ -875,7 +985,61 @@ def _build_report_charts(index: RunIndex) -> list[ReportChart]:
                         description="两条曲线来自同一次已持久化的 held-out Test 评价。",
                     )
                 )
+    optimization_key = index.step_by_tool.get("optimize_pipeline") or ("study" if "study" in index.records else None)
+    if optimization_key:
+        record = index.records[optimization_key]
+        curve = record.get("trial_curve", [])
+        if curve:
+            svg = _line_chart_svg({"累计最佳验证目标": [point["best_value"] for point in curve]},
+                y_label="滚动验证目标", x_values=[point["trial_number"] for point in curve], x_label="Trial 编号")
+            if svg:
+                charts.append(ReportChart(key="optimization", title="寻优累计最佳验证目标",
+                    svg=svg, source_run_id=str(record.get("study_id") or optimization_key), source_path="trial_curve",
+                    description="仅来自该寻优任务的已持久化 Trial；失败试验不贡献改善，单个有效点不代表收敛。"))
     return charts
+
+
+async def _add_cleaning_preview(
+    session: AsyncSession, *, index: RunIndex, payload: ReportRequest, artifact_root: Path,
+) -> None:
+    key = index.step_by_tool.get("clean_data") or index.latest("preprocessing.clean")
+    if not key or payload.dataset_id is None:
+        return
+    record = index.records[key]
+    before_id = record.get("source_version_id") or resolve_path(record, "parameters.version_id")
+    after_id = record.get("effective_version_id") or record.get("derived_version_id") or record.get("result_version_id")
+    if not before_id or not after_id:
+        return
+    try:
+        before_uuid, after_uuid = UUID(str(before_id)), UUID(str(after_id))
+        before = await load_version_series(session, version_id=before_uuid,
+            dataset_id=payload.dataset_id, artifact_root=artifact_root)
+        after = await load_version_series(session, version_id=after_uuid,
+            dataset_id=payload.dataset_id, artifact_root=artifact_root)
+    except (ValueError, VersionDataError):
+        return
+    channel = before.declared_output
+    if not channel or channel not in after.values or not before.timestamps or not after.timestamps:
+        return
+    # Duplicate timestamp groups are excluded, never paired by occurrence order.
+    def unique_indices(timestamps):
+        indices, repeated = {}, set()
+        for i, stamp in enumerate(timestamps):
+            if stamp in indices:
+                repeated.add(stamp)
+            else:
+                indices[stamp] = i
+        return {stamp: i for stamp, i in indices.items() if stamp not in repeated}
+    left, right = unique_indices(before.timestamps), unique_indices(after.timestamps)
+    common = [stamp for stamp in sorted(left.keys() & right.keys())
+        if np.isfinite(before.values[channel][left[stamp]]) and np.isfinite(after.values[channel][right[stamp]])]
+    if not common:
+        return
+    common = [common[i] for i in np.linspace(0, len(common)-1, min(241, len(common)), dtype=int)]
+    record["cleaning_preview"] = {"before_version_id": str(before_uuid), "after_version_id": str(after_uuid),
+        "channel": channel, "relative_milliseconds": [round((t-common[0]).total_seconds()*1000) for t in common],
+        "before": [float(before.values[channel][left[t]]) for t in common],
+        "after": [float(after.values[channel][right[t]]) for t in common]}
 
 
 def _selection_svg(indices: list[int]) -> str:

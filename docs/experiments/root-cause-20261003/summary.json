@@ -1,0 +1,10 @@
+{
+  "boiler_known_test_rmse_reduction_percent": 11.007867839727714,
+  "distillation_c_fresh_stress_rmse_reduction_percent": 28.57984980256225,
+  "distillation_c_still_worse_than_persistence": true,
+  "default_changed": false,
+  "new_search_policy": "validation_guarded",
+  "successful_source_model_fold_fits": 29894,
+  "distinct_backend_tests_passed": 662,
+  "frontend_related_tests_passed": 7
+}

@@ -1,0 +1,39 @@
+{
+  "data_dir": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261003/guarded-api-20261003",
+  "datasets": [
+    {
+      "dataset": "boiler",
+      "path": "/Users/maguayuhui/Documents/竞赛/服外 9.22/公开工业数据集/泛化验证-20261003/prepared/boiler.csv",
+      "sha256": "397bd391572e8b3670d8f021f93bef7d37a4cf5f356e1f83a1b222228a4ab214",
+      "source_file": "boiler-raw.zip::xinan_uncompleted_data.csv",
+      "source_sha256": "1d71829dab7f57b19a7609909a6fee2c5ef4a58863372b609065d99ada398a20",
+      "rows": 7200,
+      "period_seconds": 60,
+      "inputs": [
+        "desuperheater_valve",
+        "primary_air_flow",
+        "secondary_air_flow",
+        "steam_flow"
+      ],
+      "declared_inputs": [
+        "desuperheater_valve",
+        "primary_air_flow",
+        "secondary_air_flow",
+        "steam_flow"
+      ],
+      "constant_inputs_removed_on_earliest_train": [],
+      "output": "outlet_steam_temperature",
+      "source_class": "factory_measurements",
+      "notes": "Zhejiang chemical plant; raw incomplete release; all 86400 rows retained in 7200 nonoverlapping 60 s means; no anomaly class used; physical units preserved.",
+      "missing_counts": {
+        "desuperheater_valve": 0,
+        "primary_air_flow": 0,
+        "secondary_air_flow": 0,
+        "steam_flow": 0,
+        "outlet_steam_temperature": 0
+      },
+      "synthetic_nominal_timestamps": true,
+      "original_time_column": "source_time"
+    }
+  ]
+}
