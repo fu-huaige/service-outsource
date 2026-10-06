@@ -84,8 +84,9 @@
     <!-- ── Feature Selection ────────────────────────────── -->
     <template v-else-if="confirmationType === 'feature'">
       <div class="ac-body">
-        <p class="ac-desc">Agent 建议移除以下列（VIF / 相关性超标），可取消勾选保留：</p>
-        <div class="ac-feature-list" :data-test="`feature-recommendation-${stepRun.step_id}`">
+        <p v-if="featureItems.length === 0" class="ac-desc">分析未建议剔除输入变量，本次将保留全部输入。</p>
+        <p v-else class="ac-desc">Agent 建议移除以下列（VIF / 相关性超标），可取消勾选保留：</p>
+        <div v-if="featureItems.length > 0" class="ac-feature-list" :data-test="`feature-recommendation-${stepRun.step_id}`">
           <label
             v-for="col in featureItems"
             :key="col.name"

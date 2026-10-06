@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID, uuid4
+from xml.etree import ElementTree
 
 import pytest
 from algorithms.report.provenance import (
@@ -23,6 +24,7 @@ from app.main import create_app
 from app.models import Base
 from app.models.dataset import ProcessingRun
 from app.models.optimization import OptimizationStudy, OptimizationTrialRecord
+from app.schemas.reporting import ReportRequest, ReportSection
 from app.services import report_service
 from app.services.report_service import (
     RunIndex,
@@ -202,6 +204,83 @@ def test_report_uses_recorded_composite_objective_with_legacy_fallback(modern):
     assert rendered.fully_resolved
     assert ("composite_identification_score" in rendered.text) == modern
     assert ("val_free_run_fit" in rendered.text) != modern
+
+
+def _collinearity_chart_and_html(
+    variables: list[str], matrix: list[list[float | None]]
+) -> tuple[str, str, str]:
+    run_id = str(uuid4())
+    index = RunIndex(
+        records={
+            "collinearity_run": {
+                "run_id": run_id,
+                "run_type": "preprocessing.collinearity",
+                "variables": variables,
+                "pearson": matrix,
+            }
+        },
+        by_type={"preprocessing.collinearity": "collinearity_run"},
+        step_by_tool={},
+        execution_id=None,
+    )
+    charts = report_service._build_report_charts(index)
+    assert len(charts) == 1
+    html = report_service._render_html_report(
+        title="测试报告",
+        sections=[ReportSection(key="collinearity", title="共线性诊断", body="正式分析结果。")],
+        charts=charts,
+        index=index,
+        payload=ReportRequest(),
+    )
+    return charts[0].svg, html, run_id
+
+
+class TestPearsonHeatmapLabels:
+    def test_three_long_names_use_the_same_axis_numbers_and_adjacent_key(self) -> None:
+        variables = ["raw_material_flow", "fuel_flow", "exhaust_fan_speed"]
+        matrix = [[1.0, -0.63, None], [-0.63, 1.0, 0.01], [None, 0.01, 1.0]]
+        svg, html, _ = _collinearity_chart_and_html(variables, matrix)
+        root = ElementTree.fromstring(svg)
+        texts = root.findall("{http://www.w3.org/2000/svg}text")
+        assert [item.text for item in texts if item.attrib.get("text-anchor") == "end"] == [
+            "X1", "X2", "X3"
+        ]
+        assert [item.text for item in texts if item.text and item.text.startswith("X")
+                and item.attrib.get("text-anchor") == "middle"] == [
+            "X1", "X2", "X3"
+        ]
+        assert all(name not in svg for name in variables)
+        for number, name in enumerate(variables, start=1):
+            assert f'<span class="matrix-key-code">X{number}</span>' in html
+            assert f'<span class="matrix-key-name">{name}</span>' in html
+        assert html.index("<svg") < html.index('class="matrix-key"') < html.index("<figcaption>")
+        assert '<figure class="pearson-figure">' in html
+
+    def test_many_variables_keep_numbering_coefficients_na_and_source(self) -> None:
+        variables = [f"long_signal_channel_{index}" for index in range(1, 11)]
+        matrix: list[list[float | None]] = [
+            [1.0 if row == column else None for column in range(10)] for row in range(10)
+        ]
+        matrix[0][9] = matrix[9][0] = -0.47
+        svg, html, run_id = _collinearity_chart_and_html(variables, matrix)
+        root = ElementTree.fromstring(svg)
+        texts = root.findall("{http://www.w3.org/2000/svg}text")
+        assert [item.text for item in texts if item.attrib.get("text-anchor") == "end"] == [
+            f"X{index}" for index in range(1, 11)
+        ]
+        assert [item.text for item in texts if item.text and item.text.startswith("X")
+                and item.attrib.get("text-anchor") == "middle"] == [
+            f"X{index}" for index in range(1, 11)
+        ]
+        assert sum(item.text == "-0.47" for item in texts) == 2
+        assert any(item.text == "—" for item in texts)
+        assert '<span class="matrix-key-code">X10</span>' in html
+        assert f'<span class="matrix-key-name">{variables[9]}</span>' in html
+        assert f"来源运行：<code>{run_id}</code>；字段：<code>pearson</code>" in html
+        assert "@page{size:A4" in html
+        assert "section,figure{break-inside:avoid-page}" in html
+        assert ".pearson-figure svg{max-width:560px;max-height:none" in html
+        assert ".matrix-key-name{overflow-wrap:anywhere}" in html
 
 
 class TestNumeralValidation:

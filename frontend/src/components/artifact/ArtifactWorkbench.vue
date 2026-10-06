@@ -98,6 +98,18 @@
         <SegmentationArtifactRenderer :payload="activeArtifact.payload" />
       </template>
 
+      <template v-else-if="activeArtifact.type === 'collinearity'">
+        <CollinearityArtifactRenderer :key="activeArtifact.stepId" :payload="activeArtifact.payload" />
+      </template>
+
+      <template v-else-if="activeArtifact.type === 'feature_selection'">
+        <FeatureSelectionArtifactRenderer
+          :payload="activeArtifact.payload"
+          :source-version-id="activeArtifact.sourceVersionId"
+          :result-version-id="activeArtifact.resultVersionId"
+        />
+      </template>
+
       <template v-else-if="activeArtifact.type === 'model'">
         <ArxModelArtifactRenderer :payload="activeArtifact.payload" />
       </template>
@@ -289,7 +301,9 @@ import MetricStrip from './MetricStrip.vue';
 import AnomalyArtifactRenderer from './AnomalyArtifactRenderer.vue';
 import ArxModelArtifactRenderer from './ArxModelArtifactRenderer.vue';
 import CleaningArtifactRenderer from './CleaningArtifactRenderer.vue';
+import CollinearityArtifactRenderer from './CollinearityArtifactRenderer.vue';
 import ExportDownloadActions from './ExportDownloadActions.vue';
+import FeatureSelectionArtifactRenderer from './FeatureSelectionArtifactRenderer.vue';
 import ProfileArtifactRenderer from './ProfileArtifactRenderer.vue';
 import ReportArtifactRenderer from './ReportArtifactRenderer.vue';
 import SegmentationArtifactRenderer from './SegmentationArtifactRenderer.vue';
@@ -314,9 +328,11 @@ const activeTab = ref<string | null>(null);
 
 interface ArtifactDef {
   stepId: string;
-  type: 'profile' | 'anomaly' | 'model' | 'evaluation' | 'optimization' | 'delay' | 'lag' | 'feature' | 'cleaning' | 'segmentation' | 'report' | 'export' | 'generic';
+  type: 'profile' | 'anomaly' | 'model' | 'evaluation' | 'optimization' | 'delay' | 'lag' | 'feature' | 'feature_selection' | 'collinearity' | 'cleaning' | 'segmentation' | 'report' | 'export' | 'generic';
   label: string;
   payload: Record<string, any>;
+  sourceVersionId?: string | null;
+  resultVersionId?: string | null;
 }
 
 const TOOL_META: Record<string, { type: ArtifactDef['type']; label: string }> = {
@@ -326,8 +342,9 @@ const TOOL_META: Record<string, { type: ArtifactDef['type']; label: string }> = 
   detect_dynamic_segments: { type: 'segmentation', label: '区间优选' },
   estimate_delays:         { type: 'delay',        label: '时滞分析' },
   apply_lag_compensation:  { type: 'lag',          label: '时滞补偿结果' },
+  analyze_collinearity:    { type: 'collinearity', label: '共线性分析' },
   fit_arx:                 { type: 'model',        label: 'ARX 模型' },
-  select_variables:        { type: 'generic',      label: '特征筛选' },
+  select_variables:        { type: 'feature_selection', label: '特征筛选' },
   arx_fit:                 { type: 'model',        label: 'ARX 模型' },
   evaluate_model:          { type: 'evaluation',   label: '模型评价' },
   optimize_pipeline:       { type: 'optimization', label: '寻优结果' },
@@ -385,7 +402,12 @@ async function handleOptimisedExport() {
 
 const availableArtifacts = computed<ArtifactDef[]>(() => {
   return props.execution.step_runs
-    .filter(r => agentStepStatus(r.status) === 'completed' && r.result_payload && Object.keys(r.result_payload).length > 0)
+    .filter(r => {
+      if (agentStepStatus(r.status) !== 'completed') return false;
+      if (r.result_payload && Object.keys(r.result_payload).length > 0) return true;
+      const tool = r.tool || props.execution.plan?.steps?.find(s => s.step_id === r.step_id)?.tool;
+      return tool === 'analyze_collinearity' || tool === 'select_variables';
+    })
     .map(r => {
       const plan = props.execution.plan?.steps?.find(s => s.step_id === r.step_id);
       const tool = r.tool || plan?.tool || r.step_id;
@@ -395,6 +417,8 @@ const availableArtifacts = computed<ArtifactDef[]>(() => {
         type: meta.type,
         label: meta.label,
         payload: r.result_payload ?? {},
+        sourceVersionId: r.source_version_id,
+        resultVersionId: r.result_version_id,
       };
     });
 });

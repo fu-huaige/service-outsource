@@ -247,7 +247,7 @@ describe("ArtifactWorkbench profile_dataset rendering", () => {
   });
 
   it("keeps unknown generic artifacts on the existing JSON renderer", async () => {
-    const wrapper = await mountWorkbench(executionWith("select_variables", {
+    const wrapper = await mountWorkbench(executionWith("unknown_future_tool", {
       summary: "特征筛选完成",
       result: { selected_count: 2 },
     }));
@@ -257,6 +257,122 @@ describe("ArtifactWorkbench profile_dataset rendering", () => {
     expect(wrapper.find('[data-test="cleaning-artifact-renderer"]').exists()).toBe(false);
     expect(wrapper.get(".aw-section__label").text()).toBe("工件详细数据 (Payload Details)");
     expect(wrapper.get(".aw-json").text()).toContain('"selected_count": 2');
+  });
+
+  it("routes the saved collinearity result to switchable heatmaps and a VIF chart", async () => {
+    const wrapper = await mountWorkbench(executionWith("analyze_collinearity", {
+      task: { id: "internal-task-id" },
+      variables: ["fuel_flow", "exhaust_fan_speed", "raw_material_flow"],
+      matrix: [[1, 0.21, null], [0.21, 1, 0.18], [null, 0.18, 1]],
+      spearman_matrix: [[1, 0.31, null], [0.31, 1, 0.11], [null, 0.11, 1]],
+      vif_scores: { fuel_flow: 1.2, exhaust_fan_speed: null, raw_material_flow: 1.4 },
+      condition_number: null,
+      recommendations: [
+        { variable: "fuel_flow", action: "keep", reason: "相关性低" },
+        { variable: "exhaust_fan_speed", action: "review", reason: "VIF 无法计算" },
+        { variable: "raw_material_flow", action: "keep", reason: "相关性低" },
+      ],
+    }));
+
+    expect(wrapper.get(".aw-tab.is-active").text()).toBe("共线性分析");
+    expect(wrapper.get('[data-test="collinearity-artifact-renderer"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain("本次未建议剔除输入变量");
+    expect(wrapper.text()).toContain("N/A");
+    expect(wrapper.text()).toContain("exhaust_fan_speed");
+    expect(wrapper.find(".aw-json").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("internal-task-id");
+
+    const charts = wrapper.findAllComponents(ChartContainerStub);
+    expect(charts).toHaveLength(2);
+    const pearson = charts[0].props("options") as ChartOption;
+    const pearsonSeries = pearson.series as { type: string; data: unknown[] }[];
+    expect(pearsonSeries[0].type).toBe("heatmap");
+    expect(pearsonSeries[0].data).toContainEqual([1, 0, 0.21]);
+    expect(pearsonSeries[0].data).not.toContainEqual([2, 0, 0]);
+    expect(pearsonSeries[1].data).toContainEqual([2, 0]);
+    const vif = charts[1].props("options") as ChartOption;
+    expect((vif.series as { data: unknown[] }[])[0].data).toEqual([1.2, null, 1.4]);
+
+    await wrapper.get('[data-test="correlation-mode-spearman"]').trigger("click");
+    const spearman = charts[0].props("options") as ChartOption;
+    expect((spearman.series as { data: unknown[] }[])[0].data).toContainEqual([1, 0, 0.31]);
+  });
+
+  it("shows accurate empty states for incomplete saved collinearity fields", async () => {
+    const wrapper = await mountWorkbench(executionWith("analyze_collinearity", {
+      task: { id: "internal-task-id" },
+      variables: ["u1", "u2"],
+      recommendations: [],
+    }));
+
+    expect(wrapper.findAllComponents(ChartContainerStub)).toHaveLength(0);
+    expect(wrapper.text()).toContain("无可用数据");
+    expect(wrapper.text()).toContain("当前结果未提供变量建议");
+    expect(wrapper.text()).not.toContain("本次未建议剔除输入变量");
+    expect(wrapper.find(".aw-json").exists()).toBe(false);
+  });
+
+  it("keeps completed collinearity and feature steps visible when historical payloads are empty", async () => {
+    const collinearity = await mountWorkbench(executionWith("analyze_collinearity", {}));
+    expect(collinearity.get(".aw-tab.is-active").text()).toBe("共线性分析");
+    expect(collinearity.get('[data-test="collinearity-artifact-renderer"]').text()).toContain("无可用数据");
+    collinearity.unmount();
+
+    const feature = await mountWorkbench(executionWith("select_variables", {}));
+    expect(feature.get(".aw-tab.is-active").text()).toBe("特征筛选");
+    expect(feature.get('[data-test="feature-selection-empty"]').text()).toContain("未保存完整的变量决策");
+  });
+
+  it("reopens a saved keep-all feature result with the original decision and no new version", async () => {
+    const execution = executionWith("select_variables", {
+      data_changed: false,
+      summary: {
+        dropped_columns: [],
+        kept_input_columns: ["fuel_flow", "exhaust_fan_speed", "raw_material_flow"],
+        reason: "正式共线性分析未建议剔除输入变量，保留全部输入且未创建新数据版本。",
+      },
+    });
+    execution.step_runs[0].source_version_id = "source-version-id";
+    const wrapper = await mountWorkbench(execution);
+
+    expect(wrapper.get('[data-test="feature-selection-counts"]').text()).toMatch(/保留\s*3/);
+    expect(wrapper.get('[data-test="feature-selection-counts"]').text()).toMatch(/剔除\s*0/);
+    expect(wrapper.get('[data-test="feature-selection-version-status"]').text()).toContain("数据未变");
+    expect(wrapper.get('[data-test="feature-selection-version-status"]').text()).toContain("未生成新版本");
+    expect(wrapper.get('[data-test="feature-selection-reason"]').text()).toContain("正式共线性分析未建议剔除输入变量");
+    expect(wrapper.get('[data-test="feature-selection-kept"]').text()).toContain("raw_material_flow");
+    expect(wrapper.find(".aw-json").exists()).toBe(false);
+
+    wrapper.unmount();
+    const reopened = await mountWorkbench(execution);
+    expect(reopened.get('[data-test="feature-selection-counts"]').text()).toMatch(/保留\s*3/);
+    expect(reopened.get('[data-test="feature-selection-version-status"]').text()).toContain("未生成新版本");
+  });
+
+  it("shows actual dropped inputs and saved source/result versions", async () => {
+    const execution = executionWith("select_variables", {
+      source_version_id: "source-version-id",
+      result_version_id: "result-version-id",
+      summary: {
+        dropped_columns: ["u2"],
+        kept_input_columns: ["u1", "u3"],
+        rows_before: 600,
+        rows_after: 600,
+      },
+    });
+    execution.step_runs[0].source_version_id = "source-version-id";
+    execution.step_runs[0].result_version_id = "result-version-id";
+    const wrapper = await mountWorkbench(execution);
+
+    expect(wrapper.get('[data-test="feature-selection-counts"]').text()).toMatch(/保留\s*2/);
+    expect(wrapper.get('[data-test="feature-selection-counts"]').text()).toMatch(/剔除\s*1/);
+    expect(wrapper.get('[data-test="feature-selection-dropped"]').text()).toContain("u2");
+    expect(wrapper.get('[data-test="feature-selection-kept"]').text()).toContain("u1");
+    expect(wrapper.get('[data-test="feature-selection-kept"]').text()).toContain("u3");
+    expect(wrapper.get('[data-test="feature-selection-version-status"]').text()).toContain("已生成新版本");
+    expect(wrapper.get('[data-test="feature-selection-version-status"]').text()).toContain("来源版本");
+    expect(wrapper.get('[data-test="feature-selection-version-status"]').text()).toContain("结果版本");
+    expect(wrapper.find(".aw-json").exists()).toBe(false);
   });
 
   it("routes ARX artifacts to the dedicated business renderer", async () => {

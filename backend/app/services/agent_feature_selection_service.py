@@ -155,10 +155,13 @@ async def approve_and_execute_feature_step(
             result_payload={
                 "operation_name": "feature_selection_noop",
                 "source_version_id": str(execution.current_version_id),
+                "data_changed": False,
                 "summary": {
                     "dropped_columns": [],
                     "kept_input_columns": validation.kept_input_columns,
                     "version_created": False,
+                    "reason": "确认保留全部输入变量，未创建新数据版本。",
+                    "user_confirmed": True,
                 },
                 "feature_selection_validation": validation.model_dump(mode="json"),
             },

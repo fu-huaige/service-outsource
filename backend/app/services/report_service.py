@@ -1234,13 +1234,12 @@ def _line_chart_svg(
 
 
 def _heatmap_svg(variables: list[object], matrix: list[object]) -> str:
-    labels = [str(value) for value in variables]
-    size = len(labels)
+    size = len(variables)
     if size == 0 or size > 16 or len(matrix) != size:
         return ""
     cells: list[str] = []
     cell = min(54, max(30, int(560 / size)))
-    left, top = 130, 70
+    left, top = 52, 52
     for row_index, row in enumerate(matrix):
         if not isinstance(row, list) or len(row) != size:
             return ""
@@ -1267,13 +1266,13 @@ def _heatmap_svg(variables: list[object], matrix: list[object]) -> str:
             )
     width, height = left + size * cell + 20, top + size * cell + 20
     axis = []
-    for index, label in enumerate(labels):
-        escaped = html_lib.escape(label)
+    for index in range(size):
+        axis_label = f"X{index + 1}"
         axis.append(
             f'<text x="{left - 8}" y="{top + index * cell + cell / 2 + 4}" '
-            f'text-anchor="end" font-size="11" fill="#394339">{escaped}</text>'
+            f'text-anchor="end" font-size="11" fill="#394339">{axis_label}</text>'
             f'<text x="{left + index * cell + cell / 2}" y="{top - 10}" '
-            f'text-anchor="middle" font-size="11" fill="#394339">{escaped}</text>'
+            f'text-anchor="middle" font-size="11" fill="#394339">{axis_label}</text>'
         )
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" role="img" '
@@ -1291,6 +1290,37 @@ def _render_html_report(
     index: RunIndex,
     payload: ReportRequest,
 ) -> str:
+    def figure_html(chart: ReportChart) -> str:
+        key_html = ""
+        figure_class = ""
+        if chart.key == "collinearity":
+            figure_class = ' class="pearson-figure"'
+            record = next(
+                (
+                    record
+                    for key, record in index.records.items()
+                    if str(record.get("run_id") or key) == chart.source_run_id
+                ),
+                None,
+            )
+            variables = record.get("variables") if record is not None else None
+            if isinstance(variables, list):
+                key_html = '<div class="matrix-key" aria-label="相关矩阵变量编号对照">' + "".join(
+                    '<div class="matrix-key-item">'
+                    f'<span class="matrix-key-code">X{number}</span>'
+                    f'<span class="matrix-key-name">{html_lib.escape(str(name))}</span>'
+                    '</div>'
+                    for number, name in enumerate(variables, start=1)
+                ) + '</div>'
+        return (
+            f"<figure{figure_class}>"
+            f"<h3>{html_lib.escape(chart.title)}</h3>{chart.svg}{key_html}"
+            f"<figcaption>{html_lib.escape(chart.description)} "
+            f"来源运行：<code>{html_lib.escape(chart.source_run_id)}</code>；"
+            f"字段：<code>{html_lib.escape(chart.source_path)}</code></figcaption>"
+            "</figure>"
+        )
+
     charts_by_key: dict[str, list[ReportChart]] = {}
     for chart in charts:
         charts_by_key.setdefault(chart.key, []).append(chart)
@@ -1306,15 +1336,7 @@ def _render_html_report(
             for paragraph in rendered_body.split("\n\n")
             if paragraph.strip()
         )
-        figures = "".join(
-            "<figure>"
-            f"<h3>{html_lib.escape(chart.title)}</h3>{chart.svg}"
-            f"<figcaption>{html_lib.escape(chart.description)} "
-            f"来源运行：<code>{html_lib.escape(chart.source_run_id)}</code>；"
-            f"字段：<code>{html_lib.escape(chart.source_path)}</code></figcaption>"
-            "</figure>"
-            for chart in charts_by_key.get(section.key, [])
-        )
+        figures = "".join(figure_html(chart) for chart in charts_by_key.get(section.key, []))
         section_html.append(
             f'<section><h2>{html_lib.escape(section.title)}</h2>{paragraphs}{figures}</section>'
         )
@@ -1335,6 +1357,10 @@ def _render_html_report(
         "h3{margin:0 0 8px;font-size:15px}p{margin:8px 0}.meta{color:#647064;font-size:12px}"
         "section,figure{break-inside:avoid-page}figure{margin:18px 0;padding:14px;border:1px solid #dfe4dc;border-radius:8px;background:#fff}"
         "svg{display:block;width:100%;height:auto;max-height:420px}figcaption{margin-top:8px;color:#647064;font-size:11px}"
+        ".pearson-figure{page-break-inside:avoid}.pearson-figure svg{max-width:560px;max-height:none;margin-inline:auto}"
+        ".matrix-key{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px 16px;margin-top:10px;font-size:11px;line-height:1.45}"
+        ".matrix-key-item{display:flex;gap:6px;min-width:0;break-inside:avoid}.matrix-key-code{flex:none;font-weight:700;color:#426340}"
+        ".matrix-key-name{overflow-wrap:anywhere}"
         "code{font-family:'JetBrains Mono',monospace;overflow-wrap:anywhere}"
         "@media print{body{background:#fff}main{max-width:none;margin:0;padding:0;box-shadow:none}h2{break-after:avoid}figure{border-color:#bbb}}"
         "</style></head><body><main>"
