@@ -70,6 +70,85 @@ class AdapterContracts(unittest.TestCase):
                     adapter.analyze(args, api, Path(tmp))
                 api.request.assert_not_called()
 
+    def test_short_ensemble_training_range_stops_before_api_requests(self):
+        source_lines = (EVIDENCE / "source.csv").read_text(encoding="utf-8").splitlines()
+        for source_rows in (111, 115):
+            with self.subTest(source_rows=source_rows), tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "input.csv"
+                path.write_text("\n".join(source_lines[:source_rows + 1]) + "\n", encoding="utf-8")
+                api = Mock()
+                api.request.side_effect = AssertionError("Insufficient data reached the API")
+                with self.assertRaisesRegex(adapter.SkillError, "INSUFFICIENT_ROWS"):
+                    adapter.analyze(example_args(csv=str(path)), api, Path(tmp))
+                api.request.assert_not_called()
+
+    def test_ensemble_training_range_matches_backend_boundary(self):
+        for rows in (110, 114):
+            with self.subTest(rows=rows), self.assertRaisesRegex(adapter.SkillError, "INSUFFICIENT_ROWS"):
+                adapter.selection_training_range(rows, 2, 2, 60)
+        for rows, na, nb, history, stop in (
+            (115, 2, 2, 4, 65),
+            (1999, 2, 2, 4, 1195),
+            (1999, 20, 20, 20, 1179),
+            (1999, 2, 20, 19, 1180),
+        ):
+            with self.subTest(rows=rows, na=na, nb=nb):
+                interval = adapter.selection_training_range(rows, na, nb, 60)
+                self.assertEqual(interval["start_index"], history)
+                self.assertEqual(interval["stop_index_exclusive"], stop)
+                self.assertLessEqual(stop, int(rows * 0.6) - max(na, nb - 1))
+
+    def test_explicit_policies_and_returned_model_parameters_are_recorded(self):
+        evidence_api = EvidenceAPI()
+        model_structure = {
+            "model_type": "ARX", "estimator": "ols", "na": 2,
+            "nb": {"u1": 2, "u2": 2, "u3": 2},
+            "delays": {"u1": 0, "u2": 0, "u3": 0},
+            "fit_intercept": True, "standardize": True, "history_guard": 2,
+        }
+        preprocessing = {"feature_center": [1.0, 2.0], "feature_scale": [3.0, 4.0]}
+
+        def request(name, path, payload=None, **kwargs):
+            data = evidence_api.request(name, path, payload, **kwargs)
+            if name in ("06_baseline", "07_selected_model"):
+                data.update(model_structure=model_structure, intercept=0.125, preprocessing=preprocessing)
+            return data
+
+        api = Mock(wraps=evidence_api)
+        api.request.side_effect = request
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            self.assertEqual(adapter.analyze(example_args(), api, out), "succeeded")
+            calls = {call.args[0]: call.args[2] for call in api.request.call_args_list if len(call.args) > 2}
+            selection = calls["05_selection"]
+            self.assertEqual(selection["train_ratio"], 0.6)
+            self.assertEqual(selection["selection_mode"], "ensemble")
+            self.assertEqual(selection["history_guard"], 4)
+            for key in ("standardize", "quality_weighting", "adaptive_windows"):
+                self.assertIs(selection[key], True)
+            for name in ("06_baseline", "07_selected_model"):
+                model = calls[name]
+                self.assertEqual(model["model_type"], "ARX")
+                self.assertEqual(model["estimator"], "ols")
+                self.assertIs(model["fit_intercept"], True)
+                self.assertIs(model["standardize"], True)
+                self.assertIs(model["evaluate_test"], False)
+                self.assertNotIn("sample_weights", model)
+            manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["selection_parameters"]["train_ratio"], 0.6)
+            self.assertEqual(manifest["selection_parameters"]["window"], 60)
+            self.assertEqual(manifest["selection_parameters"]["budget"], 8)
+            self.assertEqual(manifest["selection_training_range"], {
+                "start_index": 4, "stop_index_exclusive": 1195,
+            })
+            for model in manifest["comparison"]:
+                self.assertEqual(model["model_structure"], model_structure)
+                self.assertEqual(model["intercept"], 0.125)
+                self.assertEqual(model["preprocessing"], preprocessing)
+            report = (out / "report.md").read_text(encoding="utf-8")
+            self.assertIn('"selection_mode": "ensemble"', report)
+            self.assertIn('"intercept": 0.125', report)
+
     def test_report_failure_does_not_leave_success_manifest(self):
         original = Path.write_text
 

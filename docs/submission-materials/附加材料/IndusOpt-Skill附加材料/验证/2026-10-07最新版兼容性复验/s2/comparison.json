@@ -1,0 +1,246 @@
+[
+  {
+    "strategy": "全量训练",
+    "training_rows": 1195,
+    "validation_free_run_fit": 70.48341046527902,
+    "validation_one_step_fit": 96.94280430317338,
+    "stable": true,
+    "model_id": "9c116984-96b2-4f2c-b1d4-2d5a530f91e6",
+    "processing_run_id": "e0abc557-a772-4915-93c7-30e91b30cc15",
+    "model_structure": {
+      "model_type": "ARX",
+      "simulation_horizons": [
+        1,
+        16,
+        64,
+        0
+      ],
+      "simulation_max_nfev": 150,
+      "regularization_kernel": "identity",
+      "kernel_decay": 0.9,
+      "initialization_policy": "fixed",
+      "initialization_window": 32,
+      "input_columns": [
+        "u1",
+        "u2",
+        "u3"
+      ],
+      "output_column": "y",
+      "na": 2,
+      "nb": {
+        "u1": 2,
+        "u2": 2,
+        "u3": 2
+      },
+      "delays": {
+        "u1": 0,
+        "u2": 0,
+        "u3": 0
+      },
+      "estimator": "ols",
+      "fit_intercept": true,
+      "standardize": true,
+      "history_guard": 2,
+      "ridge_alpha": null,
+      "parameter_count": 8
+    },
+    "intercept": 0.0028799127176075824,
+    "preprocessing": {
+      "policy_version": "train_affine_v1",
+      "feature_center": [
+        0.2597117003674623,
+        0.2581872658422154,
+        -0.10005764641728854,
+        -0.10095955225601155,
+        0.04036635056052801,
+        0.039882736531507965,
+        0.0881181893294814,
+        0.0863312433603852
+      ],
+      "feature_scale": [
+        5.154765140647024,
+        5.15457234860967,
+        0.841888782198133,
+        0.842121515641123,
+        0.9088888228512487,
+        0.9095105575397373,
+        0.917077190617794,
+        0.9170821132067719
+      ],
+      "output_center": -0.2610448569982654,
+      "output_scale": 5.154903809632331,
+      "iterations": 1,
+      "effective_parameters": 9.0,
+      "downweighted_rows": 0,
+      "regularization_kernel": "identity",
+      "kernel_decay": 0.9,
+      "training_input_support": {
+        "u1": {
+          "lag_minimum": 0,
+          "lag_maximum": 1,
+          "modelled": true,
+          "samples": 1196,
+          "status": "available",
+          "minimum": -1.38263578269,
+          "maximum": 1.49110281513,
+          "std": 0.8418208542598722,
+          "constant": false
+        },
+        "u2": {
+          "lag_minimum": 0,
+          "lag_maximum": 1,
+          "modelled": true,
+          "samples": 1196,
+          "status": "available",
+          "minimum": -1.46750896757,
+          "maximum": 1.44831617257,
+          "std": 0.9094857162674689,
+          "constant": false
+        },
+        "u3": {
+          "lag_minimum": 0,
+          "lag_maximum": 1,
+          "modelled": true,
+          "samples": 1196,
+          "status": "available",
+          "minimum": -1.37738376291,
+          "maximum": 1.44020756445,
+          "std": 0.917216358332823,
+          "constant": false
+        }
+      },
+      "input_support_provenance": "positive_weight_train_regressor_inputs",
+      "free_run_series_status": "succeeded",
+      "initialization_policy": "fixed",
+      "initialization_window": 32,
+      "initialization_parameters": 0,
+      "input_support_sources": {
+        "u1": "d3c0e68e-f4ab-4ac3-837a-d61128421d28",
+        "u2": "d3c0e68e-f4ab-4ac3-837a-d61128421d28",
+        "u3": "d3c0e68e-f4ab-4ac3-837a-d61128421d28"
+      }
+    }
+  },
+  {
+    "strategy": "D-最优选段训练",
+    "training_rows": 930,
+    "validation_free_run_fit": 72.35605512434111,
+    "validation_one_step_fit": 96.96080897137236,
+    "stable": true,
+    "model_id": "80ada642-69b1-4e4a-8202-4423c6bddc30",
+    "processing_run_id": "86c70c51-7dd4-49b7-844d-e611c288a60b",
+    "model_structure": {
+      "model_type": "ARX",
+      "simulation_horizons": [
+        1,
+        16,
+        64,
+        0
+      ],
+      "simulation_max_nfev": 150,
+      "regularization_kernel": "identity",
+      "kernel_decay": 0.9,
+      "initialization_policy": "fixed",
+      "initialization_window": 32,
+      "input_columns": [
+        "u1",
+        "u2",
+        "u3"
+      ],
+      "output_column": "y",
+      "na": 2,
+      "nb": {
+        "u1": 2,
+        "u2": 2,
+        "u3": 2
+      },
+      "delays": {
+        "u1": 0,
+        "u2": 0,
+        "u3": 0
+      },
+      "estimator": "ols",
+      "fit_intercept": true,
+      "standardize": true,
+      "history_guard": 2,
+      "ridge_alpha": null,
+      "parameter_count": 8
+    },
+    "intercept": 0.00169503744294176,
+    "preprocessing": {
+      "policy_version": "train_affine_v1",
+      "feature_center": [
+        0.024192543078509456,
+        0.05588163718213531,
+        -0.05507954459904089,
+        -0.05646341253377638,
+        0.0969738454520569,
+        0.09634800616646849,
+        0.08259551828123014,
+        0.08229317344324993
+      ],
+      "feature_scale": [
+        5.490774690031855,
+        5.488899520531643,
+        0.8982086850336025,
+        0.8989350365629709,
+        0.9430820737317134,
+        0.9442589235337137,
+        0.9519416749195044,
+        0.9540837511440813
+      ],
+      "output_center": 0.003837033930200302,
+      "output_scale": 5.491425799854718,
+      "iterations": 1,
+      "effective_parameters": 9.0,
+      "downweighted_rows": 0,
+      "regularization_kernel": "identity",
+      "kernel_decay": 0.9,
+      "training_input_support": {
+        "u1": {
+          "lag_minimum": 0,
+          "lag_maximum": 1,
+          "modelled": true,
+          "samples": 936,
+          "status": "available",
+          "minimum": -1.38263578269,
+          "maximum": 1.49110281513,
+          "std": 0.8971076964456395,
+          "constant": false
+        },
+        "u2": {
+          "lag_minimum": 0,
+          "lag_maximum": 1,
+          "modelled": true,
+          "samples": 936,
+          "status": "available",
+          "minimum": -1.46750896757,
+          "maximum": 1.44831617257,
+          "std": 0.9444014660330845,
+          "constant": false
+        },
+        "u3": {
+          "lag_minimum": 0,
+          "lag_maximum": 1,
+          "modelled": true,
+          "samples": 936,
+          "status": "available",
+          "minimum": -1.37738376291,
+          "maximum": 1.44020756445,
+          "std": 0.9526203463525182,
+          "constant": false
+        }
+      },
+      "input_support_provenance": "positive_weight_train_regressor_inputs",
+      "free_run_series_status": "succeeded",
+      "initialization_policy": "fixed",
+      "initialization_window": 32,
+      "initialization_parameters": 0,
+      "input_support_sources": {
+        "u1": "d3c0e68e-f4ab-4ac3-837a-d61128421d28",
+        "u2": "d3c0e68e-f4ab-4ac3-837a-d61128421d28",
+        "u3": "d3c0e68e-f4ab-4ac3-837a-d61128421d28"
+      }
+    }
+  }
+]

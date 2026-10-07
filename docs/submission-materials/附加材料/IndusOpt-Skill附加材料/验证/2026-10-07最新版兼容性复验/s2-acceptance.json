@@ -1,0 +1,250 @@
+{
+  "status": "passed",
+  "verified_at_utc": "2026-10-07T14:05:16.161744+00:00",
+  "verified_at_local": "2026-10-07T22:05:16.161744+08:00",
+  "api_base_url": "http://127.0.0.1:18000/api/v1",
+  "execution_count": 1,
+  "exit_code": 0,
+  "health": {
+    "status": "ok",
+    "service": "indusopt-backend"
+  },
+  "schema_checks": {
+    "source": "User reported online schema checks after rebuilding backend",
+    "segment_missing": [],
+    "arx_missing": [],
+    "repeated_in_this_run": false
+  },
+  "requested_backend_commit": "5d2a3de68e24863f91b9785bbef89f8727a5de11",
+  "runtime_backend_commit": null,
+  "runtime_commit_note": "User rebuilt backend from latest local source; S2 contract accepted. Runtime API has no embedded commit marker; no new runtime source hash comparison was performed.",
+  "artifact_root_container": "/app/data",
+  "artifact_root_host": "E:\\服外\\A14\\backend\\data",
+  "skill_git_head": "72eccc2cf1a20b2330435a0ad6a785773e2437a8",
+  "skill_state": "Git HEAD plus current uncommitted compatibility changes",
+  "skill_file_sha256": {
+    "indusopt-data-selection/scripts/indusopt_skill.py": "f1191929f2e4bd852918f751db4ce4fbc5ed1ecc90147b5adc1b9eb6f551c093",
+    "indusopt-data-selection/references/runtime.md": "2678d3fa07ee78c3f245a92defd78b958d19cb0cfa6d566d71ae8d34b275d64a",
+    "使用说明.md": "7c62a39cb2300009e54702b5d29f85c39ae19cc525532c2f40868f324fbc25c3",
+    "验证/test_adapter.py": "99bd466a773a035020cdbd900140a41d9a13d191de30df25bd15b42a719aea9b"
+  },
+  "dataset_id": "30add828-a04d-4813-8321-07ab4df898a5",
+  "source_version_id": "eb05b611-c8d2-41ff-8b9d-4443c9ef0632",
+  "model_version_id": "d3c0e68e-f4ab-4ac3-837a-d61128421d28",
+  "lag_compensation": {
+    "lag_map": {
+      "u1": 1,
+      "u2": 1,
+      "u3": 1
+    },
+    "alignment": "u_aligned(t)=u_source(t-nk); y(t) and timestamps remain on the output time axis",
+    "rows_before": 2000,
+    "rows_after": 1999,
+    "removed_boundary_rows": 1,
+    "effective_time_range": {
+      "start": "2026-01-01T00:00:01+00:00",
+      "end": "2026-01-01T00:33:19+00:00"
+    },
+    "recommendation_source": "manual",
+    "evidence_summary": {}
+  },
+  "collinearity": {
+    "status": "succeeded",
+    "condition_number": 1.1569392129272775,
+    "vif_scores": {
+      "u1": 1.0210934946691106,
+      "u2": 1.0104968954676108,
+      "u3": 1.0123317217570809
+    }
+  },
+  "selection_request": {
+    "dataset_id": "30add828-a04d-4813-8321-07ab4df898a5",
+    "version_id": "d3c0e68e-f4ab-4ac3-837a-d61128421d28",
+    "input_columns": [
+      "u1",
+      "u2",
+      "u3"
+    ],
+    "output_column": "y",
+    "window_size": 60,
+    "max_segments": 8,
+    "na": 2,
+    "nb": 2,
+    "nk": 0,
+    "train_ratio": 0.6,
+    "selection_mode": "ensemble",
+    "standardize": true,
+    "quality_weighting": true,
+    "adaptive_windows": true,
+    "temporal_coverage_bins": 0,
+    "history_guard": 4
+  },
+  "selection_result": {
+    "candidate_count": 574,
+    "gated_count": 570,
+    "selected_count": 8,
+    "selected_rows": 930,
+    "coverage_ratio": 0.7808564231738035,
+    "baseline_log_det": 44.562764665147114,
+    "selected_log_det": 43.4598961207433,
+    "information_retention": 0.9928887036483188,
+    "evaluated_candidates": 1970,
+    "naive_candidate_evaluations": 4532,
+    "lazy_speedup": 2.300507614213198,
+    "stopped_reason": "budget_reached",
+    "budget_advisory": null,
+    "condition_number": 1371.939039704202,
+    "excitation_satisfied": true,
+    "persistent_excitation_order": {
+      "u1": 6,
+      "u2": 6,
+      "u3": 6
+    },
+    "required_excitation_order": {
+      "u1": 4,
+      "u2": 4,
+      "u3": 4
+    },
+    "rejection_counts": {
+      "steady_state_segment": 4
+    },
+    "noise_sigma": 0.04511900256771131,
+    "model_count": 3,
+    "criterion": "mean_dimension_normalized_logdet",
+    "retention_definition": "regularized_logdet_gain_ratio"
+  },
+  "selection_training_range": {
+    "start_index": 4,
+    "stop_index_exclusive": 1195
+  },
+  "training_candidate_rows": 1191,
+  "selected_rows": 930,
+  "selected_index_min": 4,
+  "selected_index_max": 1124,
+  "model_parameters": {
+    "model_type": "ARX",
+    "na": 2,
+    "nb": {
+      "u1": 2,
+      "u2": 2,
+      "u3": 2
+    },
+    "delays": {
+      "u1": 0,
+      "u2": 0,
+      "u3": 0
+    },
+    "train_ratio": 0.6,
+    "validation_ratio": 0.2,
+    "evaluate_test": false,
+    "estimator": "ols",
+    "fit_intercept": true,
+    "standardize": true,
+    "initialization_policy": "fixed",
+    "history_guard": 2,
+    "require_stable": true
+  },
+  "model_structure": {
+    "model_type": "ARX",
+    "simulation_horizons": [
+      1,
+      16,
+      64,
+      0
+    ],
+    "simulation_max_nfev": 150,
+    "regularization_kernel": "identity",
+    "kernel_decay": 0.9,
+    "initialization_policy": "fixed",
+    "initialization_window": 32,
+    "input_columns": [
+      "u1",
+      "u2",
+      "u3"
+    ],
+    "output_column": "y",
+    "na": 2,
+    "nb": {
+      "u1": 2,
+      "u2": 2,
+      "u3": 2
+    },
+    "delays": {
+      "u1": 0,
+      "u2": 0,
+      "u3": 0
+    },
+    "estimator": "ols",
+    "fit_intercept": true,
+    "standardize": true,
+    "history_guard": 2,
+    "ridge_alpha": null,
+    "parameter_count": 8
+  },
+  "model_metrics": {
+    "baseline": {
+      "model_id": "9c116984-96b2-4f2c-b1d4-2d5a530f91e6",
+      "training_rows": 1195,
+      "validation": {
+        "one_step_fit": 96.94280430317338,
+        "free_run_fit": 70.48341046527902,
+        "free_run_rmse": 1.1124669266831029,
+        "stable": true,
+        "n_samples": 396,
+        "simulation_status": "succeeded"
+      }
+    },
+    "selected": {
+      "model_id": "80ada642-69b1-4e4a-8202-4423c6bddc30",
+      "training_rows": 930,
+      "validation": {
+        "one_step_fit": 96.96080897137236,
+        "free_run_fit": 72.35605512434111,
+        "free_run_rmse": 1.041887795371683,
+        "stable": true,
+        "n_samples": 396,
+        "simulation_status": "succeeded"
+      }
+    }
+  },
+  "validation_range": {
+    "start": 1201,
+    "stop_exclusive": 1597
+  },
+  "checks": {
+    "all_logged_API_responses_successful": true,
+    "all_tasks_succeeded": true,
+    "no_error_or_failure_files": true,
+    "confirmed_lag_request": true,
+    "lag_alignment_exact": true,
+    "explicit_selection_policy_accepted": true,
+    "indices_complete_unique": true,
+    "indices_equal_complete_segment_union": true,
+    "selection_range_matches_source_semantics": true,
+    "indices_all_inside_training_range": true,
+    "only_training_subset_changed": true,
+    "same_effective_model_structure": true,
+    "equal_OLS_conditions": true,
+    "same_preprocessing_policy": true,
+    "test_metrics_not_evaluated": true,
+    "validation_finite_and_successful": true,
+    "same_validation_partition": true,
+    "export_line_by_line_matches": true,
+    "export_provenance": true,
+    "manifest_request_parameters_exact": true,
+    "manifest_response_parameters_exact": true,
+    "report_parameters_match": true,
+    "input_and_delivery_hashes_exact": true,
+    "success_manifest_published_last": true,
+    "protected_DOCX_unchanged": true,
+    "SHA256SUMS_unchanged": true,
+    "Skill_compatibility_files_unchanged_during_S2": true
+  },
+  "new_A_issues": [],
+  "main_chain_compatible": true,
+  "can_enter_final_release_preparation": true,
+  "evidence_directory": "s2/",
+  "stdout_stderr_file": "s2.log",
+  "http_note": "All recorded API calls returned success envelopes; adapter reported no HTTPError. Successful HTTP numeric status was not captured by current adapter.",
+  "historical_metrics_note": "Current guarded original-axis ensemble selection and train-affine ARX policy differ from the historical backend. Actual values retained; exact causal decomposition was not tested."
+}

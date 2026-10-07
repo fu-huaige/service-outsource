@@ -57,11 +57,11 @@ python3 "$SKILL_DIR/scripts/indusopt_skill.py" --base-url http://127.0.0.1:18143
   benchmark --samples 2000 --seed 20260913 --out ./benchmark
 ```
 
-`analyze` 默认 na=2、各输入 nb=2、window=60、budget=8；可明确修改 `--na`、`--nb`、`--window`、`--budget`。这些是可复现起点，不保证最优；`--delays` 没有默认值。默认 OLS 且要求模型稳定，不隐式改用正则化。
+`analyze` 默认 na=2、各输入 nb=2、window=60、budget=8；可明确修改 `--na`、`--nb`、`--window`、`--budget`。这些是可复现起点，不保证最优；`--delays` 没有默认值。客户端显式采用 ensemble 选段、标准化、质量加权、自适应窗口及训练比例 0.6；window 是自适应窗口的基准长度，budget 是最大窗口数，不是固定行数。两组模型均显式采用 ARX、OLS、标准化、截距和固定预测初始化，要求模型稳定，不隐式改用正则化。
 
 完整结果中含原始输入和连续建模数据。用户数据的运行目录可能含业务信息，只有示例合成数据结果适合直接作为公开竞赛附件。
 
-请求前校验 `na/nb` 为 1–20、窗口至少 5、预算 1–100，并检查补偿后至少 100 行、训练区间能够容纳窗口。服务端仍执行完整业务校验。报告及其他必要文件写入后，才以临时文件替换方式发布成功 manifest。
+请求前校验 `na/nb` 为 1–20、窗口至少 5、预算 1–100，并按 `N=原始行数-max(lag_map)` 预估补偿后长度。N 至少为 100，且必须满足下述 ensemble 历史与训练边界；可以确定不足时，在任何 API 请求前停止。下载实际补偿版本后再次核对长度。该预检只判断确定的长度不足，不保证质量门控、有限值回归行数或 OLS 秩检验一定通过；服务端仍执行完整业务校验。报告及其他必要文件写入后，才以临时文件替换方式发布成功 manifest。
 
 ## 已核对接口
 
@@ -86,8 +86,18 @@ python3 "$SKILL_DIR/scripts/indusopt_skill.py" --base-url http://127.0.0.1:18143
 
 ## 模型切分细节
 
-当前模型服务取原时间轴 `train_end=floor(N*0.6)`，在 Train 尾部额外保留 guard，`guard=max(na,nb-1)`（补偿后 nk=0）。选段服务的 train_ratio 作用在 `N-guard` 个回归行上，因此客户端使用 `(floor(N*0.6)-2*guard)/(N-guard)`，使候选窗口不进入验证边界。模型训练行数必须等于完整的 selected_indices 数量，否则停止导出。
+以下契约根据主项目提交 `5d2a3de` 的 SegmentRequest、segment_service、regressor 与 selection 源码核对。2026-10-07 用户按该提交重新构建 Docker backend，health/live、Schema 检查及 S2 完整在线链通过；见 [最新验收](../../验证/2026-10-07最新版兼容性复验/verification.json)。接口自身未返回部署 commit，未将本地 HEAD 冒充接口返回的版本。
 
-选段响应最多给出 4,000 个下标。实际 `selection.selected_rows` 与返回长度不一致时停止；不默默只训练前 4,000 行。
+N 为补偿后连续版本的原始时间轴行数。模型取 `train_end=floor(N*0.6)`，模型 guard 为 `g=max(na,nb-1)`（补偿后 nk=0），训练下标小于 `train_end-g`。选段同样直接在原始 N 行时间轴上使用 `train_ratio=0.6`，不再换算为回归矩阵行比例。
+
+当前 ensemble 使用用户结构以及辅助结构 `(na,nb)=(1,1)`、`(4,3)`，因此共同历史长度为 `H=max(na,nb-1,4)`。客户端显式传 `history_guard=H`，选段服务得到 `train_stop=floor(N*0.6)-H`；候选回归行下标处于 `[H, train_stop)`。当前服务严格要求 `train_stop > H+window_size`，相等也会拒绝。默认 na=nb=2、window=60 时，补偿后 N=114 不足，N=115 才通过长度条件；原始数据还需加上最大补偿时滞所裁掉的行数。自适应短窗口不会放宽这个服务门槛。
+
+H 至少为模型 guard，所以选段候选范围不会进入验证或测试区间。模型仍使用完整连续时间轴与选中下标，实际训练行数必须等于完整 selected_indices 数量，否则停止导出。质量加权用于选段，两组 ARX 均等权训练，不单独给优选模型传选段权重。
+
+当前响应返回完整 `selected_indices`；4,000 点限制用于图表时间与序列投影，不用于裁截训练下标。实际 `selection.selected_rows` 与返回下标长度不一致、为空或重复时仍停止，不根据图表投影推断训练样本。
+
+manifest 的 `selection_parameters` 保留 window/budget 字段，同时记录显式选择策略、训练比例、阶次和 guard；`selection_training_range` 记录候选范围的起点与不含端点的终点。`model_parameters` 记录 ARX 请求，`comparison` 保留后端返回的 model_structure、实际 intercept 和 preprocessing，报告区分请求参数与有效返回值。未返回的字段为 null，不从请求推造结果。当前调用接口没有可靠的后端部署版本或 commit，不将文档核对版本或本地 Git HEAD 填作运行版本。
+
+本包 2026-09-13 与 2026-09-18 的 S2/S6、指标和在线记录继续作为历史证据保留。2026-10-07 最新 S2 验收选中 930 行，全量/优选验证自由仿真 FIT 分别为 70.4834% / 72.3561%；不要求与历史数值一致。本轮未重跑 S6、未确认停止或在线长度边界。ARX 仍为当前 Skill 正式模型，主系统新增的 OE 尚未接入。
 
 此 Skill 不支持远程服务导出、认证配置、自动清洗/删列、自动时滞估计、任意自定义流水线或长任务轮询。需要这些能力时使用项目主体，不伪造完成结果。

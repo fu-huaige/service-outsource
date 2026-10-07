@@ -18,6 +18,9 @@ from urllib.parse import urlencode, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
+TRAIN_RATIO = 0.6
+
+
 class SkillError(Exception):
     pass
 
@@ -174,6 +177,19 @@ def validate_csv(path, time_column, inputs, output):
     return count
 
 
+def selection_training_range(n_rows, na, nb, window):
+    """Match the backend's nk=0 ensemble, including (1, 1) and (4, 3)."""
+    history = max(na, nb - 1, 4)
+    train_stop = int(n_rows * TRAIN_RATIO) - history
+    if n_rows < 100 or train_stop <= history + window:
+        raise SkillError(
+            "INSUFFICIENT_ROWS：补偿后样本或 ensemble 训练区间不足；"
+            f"样本={n_rows}，历史/guard={history}，可用回归行上限={train_stop - history}，"
+            f"要求严格大于窗口={window}。请核对时滞、阶次与窗口。"
+        )
+    return {"start_index": history, "stop_index_exclusive": train_stop}
+
+
 def analyze(args, api, out):
     for name, value, lower, upper in (
         ("na", args.na, 1, 20),
@@ -189,10 +205,8 @@ def analyze(args, api, out):
         raise SkillError("每个输入需一个 0–1000 的显式时滞，顺序与 inputs 一致。")
     csv_path = Path(args.csv).resolve()
     n_rows = validate_csv(csv_path, args.time_column, inputs, args.output_column)
-    guard = max(args.na, args.nb - 1)
     aligned_rows = n_rows - max(delays)
-    if aligned_rows < 100 or int(aligned_rows * 0.6) - 2 * guard < args.window:
-        raise SkillError("INSUFFICIENT_ROWS：补偿后样本或训练区间不足，请核对时滞、阶次与窗口。")
+    selection_training_range(aligned_rows, args.na, args.nb, args.window)
     source_sha = digest(csv_path)
     api.request("00_health", "/health/live")
     boundary = "IndusOptSkill" + uuid.uuid4().hex
@@ -289,35 +303,42 @@ def analyze(args, api, out):
     model_rows = validate_csv(
         out / "model-source.csv", args.time_column, inputs, args.output_column
     )
-    # Model service excludes guard rows next to the Train boundary. Align selection to it.
-    guard = max(args.na, args.nb - 1)
-    selection_train_ratio = (int(model_rows * 0.6) - 2 * guard) / (model_rows - guard)
-    if selection_train_ratio <= 0:
-        raise SkillError("训练区间不足以保留 ARX 边界保护行。")
+    selection_range = selection_training_range(model_rows, args.na, args.nb, args.window)
+    selection_parameters = {
+        "window_size": args.window,
+        "max_segments": args.budget,
+        "na": args.na,
+        "nb": args.nb,
+        "nk": 0,
+        "train_ratio": TRAIN_RATIO,
+        "selection_mode": "ensemble",
+        "standardize": True,
+        "quality_weighting": True,
+        "adaptive_windows": True,
+        "temporal_coverage_bins": 0,
+        "history_guard": selection_range["start_index"],
+    }
     if len(inputs) >= 2:
         api.request("04_collinearity", "/preprocessing/collinearity", common)
     segment = api.request(
         "05_selection",
         "/preprocessing/segment",
-        {
-            **common,
-            "window_size": args.window,
-            "max_segments": args.budget,
-            "na": args.na,
-            "nb": args.nb,
-            "nk": 0,
-            "train_ratio": selection_train_ratio,
-        },
+        {**common, **selection_parameters},
     )
     indices = validate_selection(segment)
     structure = {
+        "model_type": "ARX",
         "na": args.na,
         "nb": dict.fromkeys(inputs, args.nb),
         "delays": dict.fromkeys(inputs, 0),
-        "train_ratio": 0.6,
+        "train_ratio": TRAIN_RATIO,
         "validation_ratio": 0.2,
         "evaluate_test": False,
         "estimator": "ols",
+        "fit_intercept": True,
+        "standardize": True,
+        "initialization_policy": "fixed",
+        "history_guard": max(args.na, args.nb - 1),
         "require_stable": True,
     }
     # Same model structure, same chronological split; only the training-row subset changes.
@@ -383,6 +404,9 @@ def analyze(args, api, out):
                 "stable": validation.get("stable"),
                 "model_id": model["model_id"],
                 "processing_run_id": model["processing_run_id"],
+                "model_structure": model.get("model_structure"),
+                "intercept": model.get("intercept"),
+                "preprocessing": model.get("preprocessing"),
             }
         )
     save(out / "comparison.json", comparison)
@@ -399,7 +423,10 @@ def analyze(args, api, out):
             "source_rows": n_rows,
             "selected_sample_indices": indices,
             "selection_task_id": segment["task"]["id"],
-            "selection_parameters": {"window": args.window, "budget": args.budget},
+            "selection_parameters": {
+                "window": args.window, "budget": args.budget, **selection_parameters,
+            },
+            "selection_training_range": selection_range,
             "model_parameters": structure,
             "comparison": comparison,
             "created_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -430,6 +457,25 @@ def analyze(args, api, out):
         )
     lines += [
         "",
+        "## 执行参数",
+        "",
+        "选段请求与候选范围（stop_index_exclusive 不含端点；窗口为自适应基准长度）：",
+        "```json",
+        json.dumps({"selection_parameters": success_manifest["selection_parameters"],
+                    "selection_training_range": selection_range}, ensure_ascii=False, indent=2),
+        "```",
+        "ARX 请求参数：",
+        "```json",
+        json.dumps(structure, ensure_ascii=False, indent=2),
+        "```",
+        "后端返回的有效模型结构与实际截距（未返回的字段保留 null，不根据请求补造）：",
+        "```json",
+        json.dumps([{key: row[key] for key in ("strategy", "model_structure", "intercept")}
+                    for row in comparison], ensure_ascii=False, indent=2),
+        "```",
+        "模型 preprocessing 原始结果保存在 comparison.json 与 manifest.json 的 comparison 中。",
+        "本流程接口未提供可靠的后端部署版本或 commit，未推断运行实例版本。",
+        "",
         "## 诊断依据",
         "",
         "```json",
@@ -442,6 +488,7 @@ def analyze(args, api, out):
         "## 使用边界",
         "",
         "本次按用户明确参数执行时滞补偿，随后以 nk=0 建模，避免重复补偿；未执行清洗、变量删除或 Optuna 闭环寻优。给定时滞不是本次恢复的真值。",
+        "质量加权参与数据选段；两组 ARX 均采用等权 OLS，不将选段权重只用于优选模型。",
         "selected.csv 为交付子集，非连续片段不能当作连续时间序列拼接训练；复现实验请使用 model-source.csv 与 manifest.json 内的原始行下标。",
         "稳定或高 FIT 不等于可直接投入生产。低分、不利结果与预算提示均保留；真实应用还需工艺先验和外部验证。",
         "本报告由确定性脚本生成，未调用语言模型生成指标。",

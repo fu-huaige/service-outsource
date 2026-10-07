@@ -15,18 +15,20 @@ ProcessPilot / IndusOpt 项目的竞赛附加材料与演示版 Skill：调用�
 
 客户端仅使用 Python 3.11+ 标准库。自然语言触发由宿主智能体负责，独立触发准确率尚未评测。
 
+ARX 是当前 Skill 的正式对照模型；主系统新增的 OE 能力尚未接入本 Skill。
+
 ## 后端依赖与验证版本
 
 **IndusOpt 主系统及后端目前不公开，也不随本仓库分发。** 本仓库公开的是 Skill 客户端、文档、已获授权的合成示例及验证材料；仅下载本仓库**不能独立运行在线诊断、时滞补偿、D-最优数据优选或 ARX 建模**。已获主系统使用授权的团队成员可在自己的 `<项目根目录>/backend` 中按[运行约定](indusopt-data-selection/references/runtime.md)部署。其他使用者可以阅读源码及示例，并执行不启动后端的本地验证。
 
 - 原始 macOS 演示对应后端提交：`5bcc51c1469e6451d4a1980c71d37663498ce172`。
 - 原始证据：`示例与实测/` 与 `验证/环境与验收.json`；保留历史记录，不改写成新版验收。
-- 本次修订及 Windows 复验情况：见 [发布验收说明](验证/发布验收说明.md)。
+- 最新验收：2026-10-07 在用户重建的 backend `5d2a3de68e24863f91b9785bbef89f8727a5de11` 上，S2 完整在线链通过；见 [最新证据](验证/2026-10-07最新版兼容性复验/verification.json) 与 [发布验收说明](验证/发布验收说明.md)。9 月的 S2/S6/未确认停止记录继续作为历史证据保留。
 
 ## 安装与运行
 
 1. 将 `indusopt-data-selection/` 复制到宿主智能体的技能目录，不覆盖已有个人修改。
-2. 按 [运行约定](indusopt-data-selection/references/runtime.md) 启动独立演示后端。
+2. 使用已有且获授权的 IndusOpt backend；独立演示环境的启动方式见 [运行约定](indusopt-data-selection/references/runtime.md)。
 3. 使用 Python 命令验证固定流程，或向宿主智能体提出：
 
 > 使用 $indusopt-data-selection 分析这份工业 CSV，先核对变量和时滞，完成诊断、数据优选和模型对照，输出可复核的结果。
@@ -56,7 +58,7 @@ python indusopt-data-selection/scripts/indusopt_skill.py --base-url http://127.0
 python -B 验证/test_adapter.py
 ```
 
-此命令检查客户端约束与历史证据，不启动后端。Windows 不支持符号链接时仅跳过相应测试，其余路径保护仍检查。完整在线复验命令见发布验收说明。
+此命令检查客户端约束与历史证据，不启动后端。Windows 不支持符号链接时仅跳过相应测试，其余路径保护仍检查。最新在线验收结果及历史复验脚本的适用范围见发布验收说明。
 
 ## 开源许可证
 
@@ -69,4 +71,4 @@ python -B 验证/test_adapter.py
 - 仅上传已审阅的合成示例，不上传本机数据库、密钥、缓存或业务数据。
 - 修改文件后重新生成并检查 `SHA256SUMS.txt`。
 
-本包不自动执行 Git 提交、推送或部署。正式 DOCX 保留为原始竞赛材料；后续修订及运行状态以 README 和发布验收说明为准。
+本包不自动执行 Git 提交、推送或部署。正式 DOCX 保留当前格式修改版本，其正文数据属于 9 月原始竞赛材料；最新修订及运行状态以 README、附加材料说明.md 和发布验收说明为准。

@@ -29,7 +29,7 @@ def main():
               for p in package_files()}
     checksums = ROOT / "SHA256SUMS.txt"
     if args.update:
-        checksums.write_text("".join(f"{digest}  {name}\n" for name, digest in actual.items()), encoding="utf-8")
+        checksums.write_text("".join(f"{digest}  {name}\n" for name, digest in actual.items()), encoding="utf-8", newline="\n")
     expected = {}
     for line in checksums.read_text(encoding="utf-8").splitlines():
         digest, name = line.split("  ", 1)
