@@ -157,6 +157,43 @@ const reportExecution = (): CopilotExecutionSnapshot => {
   return execution;
 };
 
+describe("ArtifactWorkbench align_and_resample rendering", () => {
+  it("shows the actual evidence gap instead of charting an anomaly-only historical result", async () => {
+    const execution = executionWith("align_and_resample", {
+      summary: "检出疑似异常点 7 个",
+      result: { anomaly_count: 7, anomaly_ratio: 7 / 867 },
+    });
+    const wrapper = await mountWorkbench(execution);
+
+    expect(wrapper.get(".aw-tab").text()).toBe("时间对齐与重采样");
+    expect(wrapper.get('[data-test="alignment-artifact-renderer"]').text()).toContain("未记录时间对齐与重采样统计");
+    expect(wrapper.find(".aw-json").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("检出疑似异常点 7 个");
+    expect(wrapper.findComponent(ChartContainerStub).exists()).toBe(false);
+
+    wrapper.unmount();
+    const reopened = await mountWorkbench(execution);
+    expect(reopened.get('[data-test="alignment-artifact-renderer"]').text()).toContain("无法确认是否执行了重采样");
+  });
+
+  it("does not change the anomaly artifact mapping", async () => {
+    const wrapper = await mountWorkbench(executionWith("detect_anomalies", {
+      result: { anomaly_count: 7, anomaly_ratio: 7 / 867 },
+    }));
+
+    expect(wrapper.get('[data-test="anomaly-artifact-renderer"]').text()).toContain("7");
+    expect(wrapper.find('[data-test="alignment-artifact-renderer"]').exists()).toBe(false);
+  });
+
+  it("keeps a completed alignment tab available when its historical payload is empty", async () => {
+    const wrapper = await mountWorkbench(executionWith("align_and_resample", {}));
+
+    expect(wrapper.get(".aw-tab").text()).toBe("时间对齐与重采样");
+    expect(wrapper.get('[data-test="alignment-artifact-renderer"]').text()).toContain("未提供");
+    expect(wrapper.find(".aw-json").exists()).toBe(false);
+  });
+});
+
 describe("ArtifactWorkbench profile_dataset rendering", () => {
   it("renders the persisted profile envelope as summary, cards, chart, details, and collapsed raw data", async () => {
     const wrapper = await mountWorkbench(executionWith("profile_dataset", {

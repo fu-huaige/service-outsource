@@ -19,7 +19,6 @@
             </svg>
           </div>
           <span class="landing-logo__name">IndusOpt</span>
-          <span class="landing-logo__tag font-mono">A14</span>
         </div>
         <nav class="landing-nav">
           <button type="button" class="landing-nav__item" @click="scrollToSection('features')">功能</button>
@@ -350,7 +349,7 @@
               <path d="M2 12l10 5 10-5"/>
             </svg>
           </div>
-          <span class="landing-footer__wordmark"><span class="font-mono">IndusOpt</span> 工模智优 <span class="font-mono">A14</span></span>
+          <span class="landing-footer__wordmark"><span class="font-mono">IndusOpt</span> 工模智优</span>
         </div>
         <div class="landing-footer__text">Industrial AI Agent Workspace · 面向流程工业系统辨识</div>
       </div>
@@ -619,16 +618,6 @@ const bestBenchmarkRow = benchmarkRows.find((row) => row.highlight);
   font-weight: 700;
   color: #20231F;
   letter-spacing: -0.02em;
-}
-
-.landing-logo__tag {
-  font-size: 10px;
-  font-weight: 600;
-  color: #52735A;
-  background: #EDF4E9;
-  border: 1px solid #D6E5D1;
-  padding: 1px 7px;
-  border-radius: var(--radius-full);
 }
 
 .landing-nav {

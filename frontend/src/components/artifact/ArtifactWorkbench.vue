@@ -89,6 +89,17 @@
         <AnomalyArtifactRenderer :payload="activeArtifact.payload" />
       </template>
 
+      <template v-else-if="activeArtifact.type === 'alignment'">
+        <section class="aw-section" data-test="alignment-artifact-renderer">
+          <div class="aw-section__label">时间对齐与重采样</div>
+          <p class="aw-lag-note">当前步骤结果未记录时间对齐与重采样统计，无法确认是否执行了重采样。</p>
+          <div class="aw-kv-list">
+            <div class="aw-kv"><span class="aw-kv__key">样本量与采样间隔</span><span class="aw-kv__val">未提供</span></div>
+            <div class="aw-kv"><span class="aw-kv__key">时间戳变化</span><span class="aw-kv__val">未提供</span></div>
+          </div>
+        </section>
+      </template>
+
       <!-- Cleaning Artifact -->
       <template v-else-if="activeArtifact.type === 'cleaning'">
         <CleaningArtifactRenderer :payload="activeArtifact.payload" />
@@ -328,7 +339,7 @@ const activeTab = ref<string | null>(null);
 
 interface ArtifactDef {
   stepId: string;
-  type: 'profile' | 'anomaly' | 'model' | 'evaluation' | 'optimization' | 'delay' | 'lag' | 'feature' | 'feature_selection' | 'collinearity' | 'cleaning' | 'segmentation' | 'report' | 'export' | 'generic';
+  type: 'profile' | 'anomaly' | 'alignment' | 'model' | 'evaluation' | 'optimization' | 'delay' | 'lag' | 'feature' | 'feature_selection' | 'collinearity' | 'cleaning' | 'segmentation' | 'report' | 'export' | 'generic';
   label: string;
   payload: Record<string, any>;
   sourceVersionId?: string | null;
@@ -338,6 +349,7 @@ interface ArtifactDef {
 const TOOL_META: Record<string, { type: ArtifactDef['type']; label: string }> = {
   profile_dataset:         { type: 'profile',      label: '数据画像' },
   detect_anomalies:        { type: 'anomaly',      label: '异常检测' },
+  align_and_resample:      { type: 'alignment',    label: '时间对齐与重采样' },
   clean_data:              { type: 'cleaning',     label: '数据清洗' },
   detect_dynamic_segments: { type: 'segmentation', label: '区间优选' },
   estimate_delays:         { type: 'delay',        label: '时滞分析' },
@@ -406,7 +418,7 @@ const availableArtifacts = computed<ArtifactDef[]>(() => {
       if (agentStepStatus(r.status) !== 'completed') return false;
       if (r.result_payload && Object.keys(r.result_payload).length > 0) return true;
       const tool = r.tool || props.execution.plan?.steps?.find(s => s.step_id === r.step_id)?.tool;
-      return tool === 'analyze_collinearity' || tool === 'select_variables';
+      return tool === 'analyze_collinearity' || tool === 'select_variables' || tool === 'align_and_resample';
     })
     .map(r => {
       const plan = props.execution.plan?.steps?.find(s => s.step_id === r.step_id);
