@@ -1,0 +1,9 @@
+{
+  "success": true,
+  "data": {
+    "status": "ok",
+    "service": "indusopt-backend"
+  },
+  "error": null,
+  "request_id": "1b2351d9-964c-480e-89bd-31ca5d7b8656"
+}

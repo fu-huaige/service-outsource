@@ -13,6 +13,10 @@ ProcessPilot / IndusOpt 项目的竞赛附加材料与演示版 Skill：调用�
 | 优选 CSV、连续建模源、下标和来源清单 | 远程产物下载、异步任务轮询 |
 | 确定性 Markdown 报告 | 自动图文 HTML 报告、大模型生成指标 |
 
+数据优选效果对照同时参考样本量、验证 FIT/RMSE、稳定性、训练输入支持与验证残差诊断。诊断来自 backend 正式 ARX 响应；已有风险、缺失字段和不可比条件均保留，不因 FIT 改善而无条件宣称数据优选有效。
+
+Input Support 采样点数采用 backend 的支持度诊断口径，不等同于 ARX 最终有效训练行数。
+
 客户端仅使用 Python 3.11+ 标准库。自然语言触发由宿主智能体负责，独立触发准确率尚未评测。
 
 ARX 是当前 Skill 的正式对照模型；主系统新增的 OE 能力尚未接入本 Skill。
@@ -24,6 +28,8 @@ ARX 是当前 Skill 的正式对照模型；主系统新增的 OE 能力尚未�
 - 原始 macOS 演示对应后端提交：`5bcc51c1469e6451d4a1980c71d37663498ce172`。
 - 原始证据：`示例与实测/` 与 `验证/环境与验收.json`；保留历史记录，不改写成新版验收。
 - 最新验收：2026-10-07 在用户重建的 backend `5d2a3de68e24863f91b9785bbef89f8727a5de11` 上，S2 完整在线链通过；见 [最新证据](验证/2026-10-07最新版兼容性复验/verification.json) 与 [发布验收说明](验证/发布验收说明.md)。9 月的 S2/S6/未确认停止记录继续作为历史证据保留。
+- 同日诊断增强 S2 单次在线复验也通过，见 [诊断增强证据](验证/2026-10-07诊断增强复验/verification.json)：输入支持范围保持，但已有验证外推与残差关联风险仍保留，综合结论为人工复核。
+- 在线验收继续复用用户以 `5d2a3de68e24863f91b9785bbef89f8727a5de11` 构建的 Docker backend；API 未返回部署 commit。只读核对时主项目 HEAD 为 `8fd4f37a59974cbeefc58ecbcab1d58cb25f5849`，相关 Input Support / Residual Diagnostics 实现与上述运行来源一致；此源码比较不表示 `8fd4f37` 已在线验收。
 
 ## 安装与运行
 
@@ -49,6 +55,7 @@ python indusopt-data-selection/scripts/indusopt_skill.py --base-url http://127.0
 - `selected.csv`：D-最优选中样本；不能把断续片段直接拼成连续序列训练。
 - `model-source.csv`：完整连续建模源，配合 manifest 中的行下标复现。
 - `manifest.json`：完整成功标记，最后写入；含版本、模型、样本下标及 SHA-256。
+- `diagnostics-comparison.json`：两组真实输入支持、激励不足及残差诊断；summary 明确标为 Skill 整理的描述性结论。成功 manifest 表示交付完成，不代表诊断无风险。
 - `source.csv`：上传数据副本。真实业务运行目录可能含敏感数据，不应直接公开。
 - `failure.json` / `pending-confirmation.json`：失败或待确认状态，不是成功交付。
 

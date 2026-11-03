@@ -1,0 +1,245 @@
+{
+  "status": "passed",
+  "verified_at_utc": "2026-10-07T15:06:06.343271+00:00",
+  "verified_at_local": "2026-10-07T23:06:06.343271+08:00",
+  "scope": "One S2 full chain; diagnostics consumption and guarded conclusion only",
+  "api_base_url": "http://127.0.0.1:18000/api/v1",
+  "execution_count": 1,
+  "exit_code": 0,
+  "stderr_empty": true,
+  "backend_compatibility_baseline_commit": "5d2a3de68e24863f91b9785bbef89f8727a5de11",
+  "backend_local_head": "8fd4f37a59974cbeefc58ecbcab1d58cb25f5849",
+  "backend_diagnostic_sources_unchanged_from_baseline": true,
+  "runtime_backend_commit": null,
+  "runtime_version_note": "Existing Docker reused. User reported backend rebuilt from 5d2a3de. Runtime API has no commit marker; current local diagnostic source is unchanged from that commit.",
+  "skill_git_head": "0d4e5e6e46af07901eab1683b295020344138568",
+  "skill_state": "Git HEAD plus uncommitted diagnostic enhancement; no new commit",
+  "skill_script_sha256_at_execution": "6e622c89f81a81ca66a3a115477ba8ca6ac811d1c76ef3118ee180ffc4fc4d9b",
+  "diagnostic_test_sha256": "372cbc25ecbede5f84ce1932e79f73f2493aba4815b4b055dcab8949967c0173",
+  "directed_tests": {
+    "adapter": {
+      "total": 17,
+      "passed": 16,
+      "skipped": 1,
+      "reason": "Windows symlink privilege unavailable"
+    },
+    "diagnostics": {
+      "total": 9,
+      "passed": 9,
+      "skipped": 0
+    },
+    "fail_first": {
+      "total": 9,
+      "errors": 9,
+      "reason": "Diagnostic deliverable absent before enhancement"
+    }
+  },
+  "python_syntax": "passed",
+  "git_diff_check_before_online": "passed",
+  "dataset_id": "30add828-a04d-4813-8321-07ab4df898a5",
+  "source_version_id": "eb05b611-c8d2-41ff-8b9d-4443c9ef0632",
+  "model_version_id": "f38d9388-f7dc-4cee-9a6f-2c92bdc7c6b9",
+  "selection_parameters": {
+    "window": 60,
+    "budget": 8,
+    "window_size": 60,
+    "max_segments": 8,
+    "na": 2,
+    "nb": 2,
+    "nk": 0,
+    "train_ratio": 0.6,
+    "selection_mode": "ensemble",
+    "standardize": true,
+    "quality_weighting": true,
+    "adaptive_windows": true,
+    "temporal_coverage_bins": 0,
+    "history_guard": 4
+  },
+  "model_parameters": {
+    "model_type": "ARX",
+    "na": 2,
+    "nb": {
+      "u1": 2,
+      "u2": 2,
+      "u3": 2
+    },
+    "delays": {
+      "u1": 0,
+      "u2": 0,
+      "u3": 0
+    },
+    "train_ratio": 0.6,
+    "validation_ratio": 0.2,
+    "evaluate_test": false,
+    "estimator": "ols",
+    "fit_intercept": true,
+    "standardize": true,
+    "initialization_policy": "fixed",
+    "history_guard": 2,
+    "require_stable": true
+  },
+  "model_metrics": [
+    {
+      "strategy": "全量训练",
+      "training_rows": 1195,
+      "validation_one_step_fit": 96.94280430317338,
+      "validation_free_run_fit": 70.48341046527902,
+      "validation_free_run_rmse": 1.1124669266831029,
+      "stable": true
+    },
+    {
+      "strategy": "D-最优选段训练",
+      "training_rows": 930,
+      "validation_one_step_fit": 96.96080897137236,
+      "validation_free_run_fit": 72.35605512434111,
+      "validation_free_run_rmse": 1.041887795371683,
+      "stable": true
+    }
+  ],
+  "full_training_input_support": {
+    "u1": {
+      "lag_minimum": 0,
+      "lag_maximum": 1,
+      "modelled": true,
+      "samples": 1196,
+      "status": "available",
+      "minimum": -1.38263578269,
+      "maximum": 1.49110281513,
+      "std": 0.8418208542598722,
+      "constant": false
+    },
+    "u2": {
+      "lag_minimum": 0,
+      "lag_maximum": 1,
+      "modelled": true,
+      "samples": 1196,
+      "status": "available",
+      "minimum": -1.46750896757,
+      "maximum": 1.44831617257,
+      "std": 0.9094857162674689,
+      "constant": false
+    },
+    "u3": {
+      "lag_minimum": 0,
+      "lag_maximum": 1,
+      "modelled": true,
+      "samples": 1196,
+      "status": "available",
+      "minimum": -1.37738376291,
+      "maximum": 1.44020756445,
+      "std": 0.917216358332823,
+      "constant": false
+    }
+  },
+  "selected_training_input_support": {
+    "u1": {
+      "lag_minimum": 0,
+      "lag_maximum": 1,
+      "modelled": true,
+      "samples": 936,
+      "status": "available",
+      "minimum": -1.38263578269,
+      "maximum": 1.49110281513,
+      "std": 0.8971076964456395,
+      "constant": false
+    },
+    "u2": {
+      "lag_minimum": 0,
+      "lag_maximum": 1,
+      "modelled": true,
+      "samples": 936,
+      "status": "available",
+      "minimum": -1.46750896757,
+      "maximum": 1.44831617257,
+      "std": 0.9444014660330845,
+      "constant": false
+    },
+    "u3": {
+      "lag_minimum": 0,
+      "lag_maximum": 1,
+      "modelled": true,
+      "samples": 936,
+      "status": "available",
+      "minimum": -1.37738376291,
+      "maximum": 1.44020756445,
+      "std": 0.9526203463525182,
+      "constant": false
+    }
+  },
+  "diagnostic_summary": {
+    "generated_by": "skill",
+    "assessment": "manual_review",
+    "samples": {
+      "full": 1195,
+      "selected": 930,
+      "reduced": true
+    },
+    "validation_metrics": {
+      "validation_one_step_fit": {
+        "full": 96.94280430317338,
+        "selected": 96.96080897137236
+      },
+      "validation_free_run_fit": {
+        "full": 70.48341046527902,
+        "selected": 72.35605512434111
+      },
+      "validation_free_run_rmse": {
+        "full": 1.1124669266831029,
+        "selected": 1.041887795371683
+      }
+    },
+    "both_models_stable": true,
+    "same_validation_interval": true,
+    "same_residual_test_policy": true,
+    "input_support_status": {
+      "full": "extrapolation",
+      "selected": "extrapolation"
+    },
+    "new_input_support_warning_channels": {
+      "unsupported_constant_inputs": [],
+      "extrapolated_inputs": [],
+      "unavailable_inputs": []
+    },
+    "new_excitation_shortfall_channels": [],
+    "new_residual_rejected_channels": [],
+    "descriptive_changes": [
+      "验证残差白度比例：0.85 → 0.85（描述性数值，无新增通过阈值）。"
+    ],
+    "review_reasons": [
+      "优选数据的输入支持存在 backend 风险：extrapolation；不能仅凭 FIT 判断数据优选有效。",
+      "backend 残差与输入关联检验仍拒绝通道 u2；相关结构仍存在，不能仅根据 FIT 判断数据优选有效，也不能据此认定因果或确定缺失动态。"
+    ],
+    "missing_or_incomparable_evidence": [],
+    "conclusion": "验证指标保持或改善。优选数据的输入支持存在 backend 风险：extrapolation；不能仅凭 FIT 判断数据优选有效。 backend 残差与输入关联检验仍拒绝通道 u2；相关结构仍存在，不能仅根据 FIT 判断数据优选有效，也不能据此认定因果或确定缺失动态。建议人工复核后再作为最终建模数据。"
+  },
+  "checks": {
+    "main_chain_succeeded": true,
+    "both_diagnostic_scopes_present": true,
+    "full_raw_training_support": true,
+    "full_raw_training_residuals": true,
+    "full_raw_validation_diagnostics": true,
+    "full_diagnostics_comparison_matches_manifest": true,
+    "selected_raw_training_support": true,
+    "selected_raw_training_residuals": true,
+    "selected_raw_validation_diagnostics": true,
+    "selected_diagnostics_comparison_matches_manifest": true,
+    "summary_source_identified": true,
+    "guarded_real_warning_conclusion": true,
+    "report_diagnostics_present": true,
+    "same_model_conditions_only_training_rows_change": true,
+    "diagnostic_comparison_same_interval_and_policy": true,
+    "indices_complete_and_train_only": true,
+    "export_line_by_line": true,
+    "deliverable_hashes": true,
+    "success_manifest_last": true
+  },
+  "new_compatibility_issues": [],
+  "backend_warnings_retained": true,
+  "workflow_succeeded": true,
+  "unconditional_data_sufficiency_accepted": false,
+  "backend_modified": false,
+  "docker_rebuilt": false,
+  "online_cases_other_than_S2_run": false,
+  "evidence_directory": "s2/",
+  "necessary_data_note": "Three CSV deliverables retained because manifest hashes and export traceability reference them; no extra example generation or benchmark."
+}

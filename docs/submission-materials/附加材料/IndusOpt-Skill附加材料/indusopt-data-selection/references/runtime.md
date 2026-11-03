@@ -101,3 +101,23 @@ manifest 的 `selection_parameters` 保留 window/budget 字段，同时记录�
 本包 2026-09-13 与 2026-09-18 的 S2/S6、指标和在线记录继续作为历史证据保留。2026-10-07 最新 S2 验收选中 930 行，全量/优选验证自由仿真 FIT 分别为 70.4834% / 72.3561%；不要求与历史数值一致。本轮未重跑 S6、未确认停止或在线长度边界。ARX 仍为当前 Skill 正式模型，主系统新增的 OE 尚未接入。
 
 此 Skill 不支持远程服务导出、认证配置、自动清洗/删列、自动时滞估计、任意自定义流水线或长任务轮询。需要这些能力时使用项目主体，不伪造完成结果。
+
+## 输入支持与残差诊断
+
+正式 POST /modeling/arx/fit 的两组响应采用同一 ArxFitData schema。本轮在线 S2 复用用户以 `5d2a3de68e24863f91b9785bbef89f8727a5de11` 构建的 Docker backend，API 未返回部署 commit。只读核对时主项目 HEAD 为 `8fd4f37a59974cbeefc58ecbcab1d58cb25f5849`，相关诊断实现相对 `5d2a3de` 未变化；这是源码比较，不是 `8fd4f37` 的在线验收。以下路径直接消费真实响应，不新增算法或业务请求：
+
+Input Support 采样点数采用 backend 的支持度诊断口径，不等同于 ARX 最终有效训练行数。
+
+| 响应路径 | 实际计算层与含义 |
+|---|---|
+| preprocessing.training_input_support | 正权重训练行及其输入历史；按输入返回 min/max（字段 minimum/maximum）、std、samples、constant、status、lag 范围 |
+| validation.input_support | 同一验证输入区间相对各自训练支持范围的覆盖；含 start/stop、status、外推/常量不支持/不可用通道及 outside_train_range_fraction |
+| validation.excitation_shortfall | 实际来自训练行；只返回不足通道的 actual/required。空字典不等于返回完整 PE 阶次；这是提示，不是阻断门禁 |
+| residual_diagnostics | 训练集一步预测残差的 acf_values 与 confidence_interval；不等于验证集白度通过结论 |
+| validation.residual_whiteness_ratio | 验证集一步预测残差白度比例，仅描述性证据 |
+| validation.input_residual_correlations / input_residual_test | 验证集一步预测残差与历史输入的相关序列及 Holm/Bartlett 检验；保留 method/status/alpha/rejected_channels 和完整 tests，不重算显著性 |
+| validation.simulation_status / simulation_error_code | 验证自由仿真状态；free_run_rmse 是该仿真的误差指标 |
+
+当前响应没有 Ljung–Box 结果或白度 pass/fail。输入支持状态 within_observed_input_ranges 只表示处于已观察输入范围；extrapolation、unsupported、unavailable 均按 backend 语义展示。范围相同不能证明全部信息保留，未拒绝相关检验不能证明独立性，白度比例变化不新增统计门槛。
+
+manifest 的 full_model_diagnostics / selected_model_diagnostics 和 diagnostics-comparison.json 保留两组原始结构；diagnostic_summary.generated_by=skill 标记描述性摘要来源。对照验证区间、样本数及检验 method/alpha，不把不可比数据写成无新增风险；缺少可选字段保留 null，摘要降级。即使 FIT 改善，没有新增警告也不抹去已有输入外推、激励不足或残差关联风险。assessment=manual_review/insufficient_evidence 不阻断已有交付链；manifest.status=succeeded 仅表示执行与导出核验完成。

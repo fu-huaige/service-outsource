@@ -1,0 +1,111 @@
+{
+  "success": true,
+  "data": {
+    "source_version_id": "f38d9388-f7dc-4cee-9a6f-2c92bdc7c6b9",
+    "processing_run_id": "aac27c54-8f18-4044-a133-0d85394f57cf",
+    "task": {
+      "id": "5e68e77d-98f6-4530-857a-cd6dd01b2f1f",
+      "status": "succeeded",
+      "progress": {
+        "current": 1,
+        "total": 1,
+        "percent": 100.0,
+        "stage": "analyze_collinearity",
+        "message": "相关性、VIF 与条件数诊断已完成。"
+      },
+      "created_at": "2026-10-07T15:04:34.517891Z",
+      "started_at": "2026-10-07T15:04:34.517891Z",
+      "finished_at": "2026-10-07T15:04:34.517891Z",
+      "error": null
+    },
+    "variables": [
+      "u1",
+      "u2",
+      "u3"
+    ],
+    "matrix": [
+      [
+        0.9999999999999999,
+        -0.09894960072990916,
+        0.10763713505897746
+      ],
+      [
+        -0.09894960072990916,
+        1.0,
+        -0.03493885870244443
+      ],
+      [
+        0.10763713505897746,
+        -0.03493885870244443,
+        0.9999999999999999
+      ]
+    ],
+    "vif_scores": {
+      "u1": 1.0210934946691106,
+      "u2": 1.0104968954676108,
+      "u3": 1.0123317217570809
+    },
+    "condition_number": 1.1569392129272775,
+    "recommendations": [
+      {
+        "variable": "u1",
+        "action": "keep",
+        "reason": "相关性与 VIF 均在阈值内。",
+        "related_variables": []
+      },
+      {
+        "variable": "u2",
+        "action": "keep",
+        "reason": "相关性与 VIF 均在阈值内。",
+        "related_variables": []
+      },
+      {
+        "variable": "u3",
+        "action": "keep",
+        "reason": "相关性与 VIF 均在阈值内。",
+        "related_variables": []
+      }
+    ],
+    "dataset_id": "30add828-a04d-4813-8321-07ab4df898a5",
+    "spearman_matrix": [
+      [
+        1.0,
+        -0.10280309839649042,
+        0.09393964321556451
+      ],
+      [
+        -0.10280309839649042,
+        1.0,
+        -0.018322399515012956
+      ],
+      [
+        0.09393964321556451,
+        -0.018322399515012956,
+        1.0
+      ]
+    ],
+    "correlated_groups": [],
+    "input_diagnostics": [
+      {
+        "column": "u1",
+        "status": "analyzable",
+        "reason": "数值方差充足，可参与相关性、VIF 与条件数诊断。",
+        "variance": 0.7309452039762554
+      },
+      {
+        "column": "u2",
+        "status": "analyzable",
+        "reason": "数值方差充足，可参与相关性、VIF 与条件数诊断。",
+        "variance": 0.8377257596393104
+      },
+      {
+        "column": "u3",
+        "status": "analyzable",
+        "reason": "数值方差充足，可参与相关性、VIF 与条件数诊断。",
+        "variance": 0.8192680944366739
+      }
+    ]
+  },
+  "error": null,
+  "request_id": "0fc7b4d0-91ff-4984-9e90-78a4a711e263"
+}

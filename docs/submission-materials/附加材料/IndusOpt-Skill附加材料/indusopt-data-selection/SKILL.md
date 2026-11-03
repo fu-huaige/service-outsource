@@ -46,3 +46,5 @@ python3 "$SKILL_DIR/scripts/indusopt_skill.py" --base-url http://127.0.0.1:18000
 优先交付 `report.md`、`selected.csv`、`manifest.json`；说明 `model-source.csv` 是补偿后的连续建模源数据，原始上传副本是 `source.csv`。报告指标绑定 `06_baseline.json`、`07_selected_model.json` 和模型/运行 ID，不能使用历史宣传数字替换本次计算。
 
 解读自由仿真 FIT、一步预测 FIT、稳定性、质量门控拒绝理由与预算提示。没有通用的“可投产”分数阈值；低分、不利结果与 `null` 都要保留。只有 `manifest.json` 状态为 `succeeded` 且验证产物齐全，才称本次完整流程通过。`waiting_confirmation` 和 `failure.json` 不能表述为成功。
+
+数据优选效果还要对照 diagnostics-comparison.json：训练输入范围、验证 input_support、训练 excitation_shortfall、训练一步残差 ACF，以及验证一步残差白度/输入关联检验。采用 backend 原始状态和拒绝通道，不新增工业覆盖率或统计显著性阈值，不把 ACF/白度数值当作 backend 的 pass/fail。两组评价区间或检验条件不可比、字段未返回时明确降级；已有外推或残差关联风险仍需人工复核，不能只凭 FIT 改善宣称优选有效。manifest 的执行成功与 diagnostic_summary.assessment 分开解读。

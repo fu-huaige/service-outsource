@@ -190,6 +190,184 @@ def selection_training_range(n_rows, na, nb, window):
     return {"start_index": history, "stop_index_exclusive": train_stop}
 
 
+def model_diagnostics(model):
+    """Copy exposed backend evidence; absent fields remain null, never a pass."""
+    preprocessing = model.get("preprocessing") or {}
+    validation = model.get("validation") or {}
+    return {
+        "model_id": model.get("model_id"),
+        "processing_run_id": model.get("processing_run_id"),
+        "training_input_support": preprocessing.get("training_input_support"),
+        "input_support_provenance": preprocessing.get("input_support_provenance"),
+        "residual_diagnostics": model.get("residual_diagnostics"),
+        "validation": {
+            key: validation.get(key) for key in (
+                "partition", "n_samples", "input_support", "excitation_shortfall",
+                "residual_whiteness_ratio", "input_residual_correlations",
+                "input_residual_test", "simulation_status", "simulation_error_code",
+            )
+        },
+    }
+
+
+def diagnostic_summary(comparison, full, selected):
+    """Describe backend judgments and numeric changes without new acceptance gates."""
+    missing = []
+    for name, diagnostics in (("full", full), ("selected", selected)):
+        validation = diagnostics["validation"]
+        support = validation["input_support"] or {}
+        test = validation["input_residual_test"] or {}
+        if not diagnostics["training_input_support"]:
+            missing.append(f"{name}.preprocessing.training_input_support")
+        if not diagnostics["residual_diagnostics"]:
+            missing.append(f"{name}.residual_diagnostics")
+        for key in ("excitation_shortfall", "residual_whiteness_ratio", "input_residual_correlations", "simulation_status"):
+            if validation[key] is None:
+                missing.append(f"{name}.validation.{key}")
+        if support.get("status") not in (
+            "within_observed_input_ranges", "extrapolation", "unsupported", "unavailable",
+        ):
+            missing.append(f"{name}.validation.input_support.status")
+        if test.get("status") != "evaluated" or not isinstance(test.get("rejected_channels"), list):
+            missing.append(f"{name}.validation.input_residual_test (not evaluated)")
+
+    full_validation, selected_validation = full["validation"], selected["validation"]
+    full_support = full_validation["input_support"] or {}
+    selected_support = selected_validation["input_support"] or {}
+    full_test = full_validation["input_residual_test"] or {}
+    selected_test = selected_validation["input_residual_test"] or {}
+    full_interval = (full_validation["partition"], full_validation["n_samples"], full_support.get("start"), full_support.get("stop"))
+    selected_interval = (selected_validation["partition"], selected_validation["n_samples"], selected_support.get("start"), selected_support.get("stop"))
+    same_interval = all(value is not None for value in (*full_interval, *selected_interval)) and full_interval == selected_interval
+    same_test_policy = all(full_test.get(key) is not None and full_test.get(key) == selected_test.get(key) for key in ("method", "alpha"))
+    if not same_interval:
+        missing.append("matching validation interval")
+    if not same_test_policy:
+        missing.append("matching residual-input test method/alpha")
+
+    changes, review = [], []
+    metrics_nonworse = True
+    metric_values = {}
+    for key, label, larger_better in (
+        ("validation_one_step_fit", "验证一步预测 FIT", True),
+        ("validation_free_run_fit", "验证自由仿真 FIT", True),
+        ("validation_free_run_rmse", "验证自由仿真 RMSE", False),
+    ):
+        left, right = comparison[0][key], comparison[1][key]
+        metric_values[key] = {"full": left, "selected": right}
+        if not all(type(value) in (int, float) and math.isfinite(value) for value in (left, right)):
+            missing.append(key)
+            metrics_nonworse = False
+        elif (right < left if larger_better else right > left):
+            metrics_nonworse = False
+            review.append(f"{label}向不利方向变化（描述性对照，未做显著性判断）。")
+
+    rows_reduced = comparison[1]["training_rows"] < comparison[0]["training_rows"]
+    stable = comparison[0]["stable"] is True and comparison[1]["stable"] is True
+    if comparison[1]["stable"] is False:
+        review.append("优选模型的 backend 稳定性判断为 false。")
+    elif not stable:
+        missing.append("both model stability judgments")
+    status = selected_support.get("status")
+    if status in ("extrapolation", "unsupported", "unavailable"):
+        review.append(f"优选数据的输入支持存在 backend 风险：{status}；不能仅凭 FIT 判断数据优选有效。")
+    if selected_validation["excitation_shortfall"]:
+        review.append("backend 报告优选训练输入的持续激励阶次不足；这是诊断提示，不新增阻断门禁。")
+    if selected_validation["simulation_status"] not in (None, "succeeded"):
+        review.append("优选模型的验证仿真未成功。")
+    rejected = selected_test.get("rejected_channels") or []
+    if rejected:
+        review.append("backend 残差与输入关联检验仍拒绝通道 " + ", ".join(rejected) + "；相关结构仍存在，不能仅根据 FIT 判断数据优选有效，也不能据此认定因果或确定缺失动态。")
+    left, right = full_validation["residual_whiteness_ratio"], selected_validation["residual_whiteness_ratio"]
+    if same_interval and all(type(value) in (int, float) and math.isfinite(value) for value in (left, right)):
+        changes.append(f"验证残差白度比例：{left} → {right}（描述性数值，无新增通过阈值）。")
+        if right < left:
+            review.append("验证残差白度比例下降（描述性变化，不是新增统计失败门槛）。")
+    if not rows_reduced:
+        review.append("本次未减少实际训练样本，不能声称以更少数据保持性能。")
+
+    if review:
+        assessment = "manual_review"
+        conclusion = "验证指标" + ("保持或改善。" if metrics_nonworse and same_interval else "需结合原始数值复核。") + " ".join(review) + "建议人工复核后再作为最终建模数据。"
+    elif missing:
+        assessment = "insufficient_evidence"
+        conclusion = "诊断证据未返回、未形成正式判断或评价条件不可比，不能仅凭 FIT 宣称输入信息保持或残差未恶化；需人工复核。"
+    else:
+        assessment = "no_new_backend_warnings"
+        conclusion = "本次减少训练样本，模型稳定，验证指标保持或改善；backend 未报告优选输入支持或残差输入检验风险。白度与 ACF 仅作描述性对照，不能证明全部工业信息保留或模型可投产。"
+    if missing and assessment == "manual_review":
+        conclusion += "同时有部分诊断证据缺失或不可比。"
+    return {
+        "generated_by": "skill",
+        "assessment": assessment,
+        "samples": {"full": comparison[0]["training_rows"], "selected": comparison[1]["training_rows"], "reduced": rows_reduced},
+        "validation_metrics": metric_values,
+        "both_models_stable": stable,
+        "same_validation_interval": same_interval,
+        "same_residual_test_policy": same_test_policy,
+        "input_support_status": {"full": full_support.get("status"), "selected": status},
+        "new_input_support_warning_channels": {
+            key: sorted(set(selected_support.get(key) or []) - set(full_support.get(key) or []))
+            if same_interval and isinstance(full_support.get(key), list) and isinstance(selected_support.get(key), list) else None
+            for key in ("unsupported_constant_inputs", "extrapolated_inputs", "unavailable_inputs")
+        },
+        "new_excitation_shortfall_channels": sorted(set(selected_validation["excitation_shortfall"]) - set(full_validation["excitation_shortfall"]))
+        if isinstance(full_validation["excitation_shortfall"], dict) and isinstance(selected_validation["excitation_shortfall"], dict) else None,
+        "new_residual_rejected_channels": sorted(set(rejected) - set(full_test.get("rejected_channels") or [])) if same_interval and same_test_policy else None,
+        "descriptive_changes": changes,
+        "review_reasons": review,
+        "missing_or_incomparable_evidence": missing,
+        "conclusion": conclusion,
+    }
+
+
+def diagnostics_report(full, selected, summary):
+    def cell(value):
+        if value is None:
+            return "未返回"
+        if type(value) is float:
+            return f"{value:.4f}" if math.isfinite(value) else "不可用"
+        return json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)
+
+    full_support, selected_support = full["training_input_support"] or {}, selected["training_input_support"] or {}
+    lines = [
+        "", "## 数据充分性与残差诊断", "", "### 输入激励 / Input Support", "",
+        "以下训练支持范围来自 preprocessing.training_input_support，仅使用正权重训练回归行实际用到的输入及其历史。samples 是去重后的输入时间点数，不等于模型训练行数。", "",
+        "| 输入 | 全量训练范围 [min,max] | 优选训练范围 [min,max] | 全量 std / samples / status / constant | 优选 std / samples / status / constant |",
+        "|---|---|---|---|---|",
+    ]
+    for column in sorted(set(full_support) | set(selected_support)):
+        left, right = full_support.get(column) or {}, selected_support.get(column) or {}
+        ranges = [f"[{cell(item.get('minimum'))}, {cell(item.get('maximum'))}]" for item in (left, right)]
+        details = [" / ".join(cell(item.get(key)) for key in ("std", "samples", "status", "constant")) for item in (left, right)]
+        lines.append(f"| {column} | {ranges[0]} | {ranges[1]} | {details[0]} | {details[1]} |")
+    for label, diagnostics in (("全量训练", full), ("优选训练", selected)):
+        validation = diagnostics["validation"]
+        lines += ["", f"**{label}：验证区间输入支持（validation.input_support）**", "```json", json.dumps(validation["input_support"], ensure_ascii=False, indent=2), "```", f"训练输入激励不足项（validation.excitation_shortfall，实际计算层为训练行）：{cell(validation['excitation_shortfall'])}。"]
+    lines += [
+        "", "对比：上述范围、覆盖比例和状态均采用 backend 原值，不设置覆盖率阈值。空 excitation_shortfall 只表示未报告不足，ARX API 未返回完整 PE 阶次；不能从选段的全局激励结果补造两组模型的阶次。", "",
+        "### 残差诊断", "",
+        "顶层 residual_diagnostics 是训练集一步预测残差 ACF；优选训练行可能不连续，不能当作连续验证段白噪声检验。validation 中的白度、相关序列及 Holm/Bartlett 检验属于验证集一步预测残差，free_run_rmse 属于验证自由仿真。当前正式 API 未返回 Ljung–Box 结果或白度 pass/fail。", "",
+        "| 诊断 | 全量模型 | 优选模型 |", "|---|---|---|",
+        f"| 训练残差 ACF 置信带 | {cell((full['residual_diagnostics'] or {}).get('confidence_interval'))} | {cell((selected['residual_diagnostics'] or {}).get('confidence_interval'))} |",
+    ]
+    for key, label in (("residual_whiteness_ratio", "验证残差白度比例（描述性）"), ("simulation_status", "验证仿真状态")):
+        lines.append(f"| {label} | {cell(full['validation'][key])} | {cell(selected['validation'][key])} |")
+    for key in ("method", "status", "alpha", "rejected_channels"):
+        lines.append(f"| 验证残差输入检验 {key} | {cell((full['validation']['input_residual_test'] or {}).get(key))} | {cell((selected['validation']['input_residual_test'] or {}).get(key))} |")
+    lines += [
+        "", "对比：" + " ".join(summary["descriptive_changes"]),
+        "新增被拒绝通道：" + cell(summary["new_residual_rejected_channels"]) + "。无新增警告不代表已有警告消失；检验不显著也不能证明独立性或白噪声。", "",
+        "完整训练 ACF、验证输入残差相关序列、各滞后的检验统计量及支持结构保存在 diagnostics-comparison.json 和 manifest.json，不删减为单一布尔值。", "",
+        "### 综合结论", "",
+        "以下 summary 由 Skill 整理 backend 真实证据生成，不是 backend 新增的统计检验、硬门禁或评分。",
+        summary["conclusion"],
+        "缺失或不可比证据：" + cell(summary["missing_or_incomparable_evidence"]) + "。",
+        "manifest.status=succeeded 只表示执行与交付完成，与诊断 assessment 分开；不表示数据无风险或可投产。", "",
+    ]
+    return lines
+
+
 def analyze(args, api, out):
     for name, value, lower, upper in (
         ("na", args.na, 1, 20),
@@ -401,6 +579,7 @@ def analyze(args, api, out):
                 "training_rows": model["training_rows"],
                 "validation_free_run_fit": validation.get("free_run_fit"),
                 "validation_one_step_fit": validation.get("one_step_fit"),
+                "validation_free_run_rmse": validation.get("free_run_rmse"),
                 "stable": validation.get("stable"),
                 "model_id": model["model_id"],
                 "processing_run_id": model["processing_run_id"],
@@ -410,6 +589,15 @@ def analyze(args, api, out):
             }
         )
     save(out / "comparison.json", comparison)
+    full_diagnostics = model_diagnostics(baseline)
+    selected_diagnostics = model_diagnostics(selected)
+    summary = diagnostic_summary(comparison, full_diagnostics, selected_diagnostics)
+    diagnostic_comparison = {
+        "full_model_diagnostics": full_diagnostics,
+        "selected_model_diagnostics": selected_diagnostics,
+        "diagnostic_summary": summary,
+    }
+    save(out / "diagnostics-comparison.json", diagnostic_comparison)
     success_manifest = {
             "status": "succeeded",
             "data_kind": args.data_kind,
@@ -429,6 +617,7 @@ def analyze(args, api, out):
             "selection_training_range": selection_range,
             "model_parameters": structure,
             "comparison": comparison,
+            **diagnostic_comparison,
             "created_at_utc": datetime.now(timezone.utc).isoformat(),
         }
     lines = [
@@ -440,8 +629,8 @@ def analyze(args, api, out):
         "本次比较采用固定 ARX 结构与显式时滞，训练、验证、测试按时间划分为 60%、20%、20%；未查看测试段指标。",
         "选段只在训练区间进行，模型在原始连续时间轴上取训练行，不拼接片段重新辨识。",
         "",
-        "| 策略 | 实际训练行数 | 验证自由仿真 FIT | 验证一步预测 FIT | 稳定 |",
-        "|---|---:|---:|---:|---|",
+        "| 策略 | 实际训练行数 | 验证自由仿真 FIT | 验证一步预测 FIT | 验证自由仿真 RMSE | 稳定 |",
+        "|---|---:|---:|---:|---:|---|",
     ]
 
     def fmt(v):
@@ -453,8 +642,9 @@ def analyze(args, api, out):
 
     for row in comparison:
         lines.append(
-            f"| {row['strategy']} | {row['training_rows']} | {fmt(row['validation_free_run_fit'])} | {fmt(row['validation_one_step_fit'])} | {row['stable']} |"
+            f"| {row['strategy']} | {row['training_rows']} | {fmt(row['validation_free_run_fit'])} | {fmt(row['validation_one_step_fit'])} | {fmt(row['validation_free_run_rmse'])} | {row['stable']} |"
         )
+    lines += diagnostics_report(full_diagnostics, selected_diagnostics, summary)
     lines += [
         "",
         "## 执行参数",
