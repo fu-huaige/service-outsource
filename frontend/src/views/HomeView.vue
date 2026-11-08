@@ -149,9 +149,9 @@ const suggestedWorkflows = [
   },
   {
     tag: 'OPTIMIZATION',
-    title: '闭环工况参数寻优',
-    desc: '基于已辨识 ARX 模型启动 Optuna 贝叶斯搜索，优化操作目标值。',
-    prompt: '在当前模型基础上配置 Optuna 闭环寻优任务，探索全局最优操作参数。',
+    title: '闭环建模参数寻优',
+    desc: '以验证集辨识指标反馈数据优选与模型参数，保留最优可复核结果。',
+    prompt: '配置 Optuna 闭环寻优任务，迭代数据优选和建模参数，使用验证集选择模型，最后评价冻结模型并生成报告。',
   },
 ];
 

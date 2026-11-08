@@ -82,7 +82,7 @@ def create_app() -> FastAPI:
         title="IndusOpt API",
         version=settings.app_version,
         description=(
-            "IndusOpt 工模智优 API。阶段 1 冻结字段级接口契约；算法与持久化路由均以可替换骨架提供。"
+            "IndusOpt 工模智优 API：工业时序数据管理、动态优选、系统辨识、闭环优化、Agent 执行及可追溯报告与数据交付。"
         ),
         openapi_version="3.1.0",
         lifespan=lifespan,

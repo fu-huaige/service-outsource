@@ -51,6 +51,8 @@ backend/indusopt.db
 backend.zip
 frontend.zip
 /.lark-slides/
+/.runtime/
+/.presentation-build/
 /软著申请材料/
 /docs/5.28服务外包答辩ppt.pptx
 /数智农业-挑战杯.pptx

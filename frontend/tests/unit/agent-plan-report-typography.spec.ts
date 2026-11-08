@@ -52,8 +52,8 @@ describe("Agent business typography", () => {
     const labels = wrapper.findAll(".plan-step__tool");
 
     expect(labels.map(label => label.text())).toEqual([
-      "detect_dynamic_segments",
-      "fit_arx",
+      "动态区间优选",
+      "系统辨识",
       "Optuna 闭环寻优 (Optimize)",
       "模型测试集评价 (Evaluate)",
       "报告交付",
@@ -82,8 +82,8 @@ describe("Agent business typography", () => {
     expect(reportLabel.classes()).not.toContain("font-mono");
 
     const businessSteps = [
-      ["step-segment", "detect_dynamic_segments", "detect_dynamic_segments"],
-      ["step-fit", "fit_arx", "fit_arx"],
+      ["step-segment", "detect_dynamic_segments", "动态区间优选"],
+      ["step-fit", "fit_arx", "系统辨识"],
       ["step-optimize", "optimize_pipeline", "Optuna 寻优 (Optimize)"],
       ["step-evaluate", "evaluate_model", "模型评价 (Evaluate)"],
     ] as const;

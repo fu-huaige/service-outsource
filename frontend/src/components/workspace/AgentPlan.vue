@@ -98,6 +98,17 @@ const displaySteps = computed(() => props.steps.map(step => ({
 const completedCount = computed(() => displaySteps.value.filter(s => s.status === 'completed').length);
 
 const TOOL_NAMES: Record<string, string> = {
+  profile_dataset: '数据画像',
+  detect_anomalies: '异常检测',
+  clean_data: '数据清洗',
+  detect_dynamic_segments: '动态区间优选',
+  estimate_delays: '时滞估计',
+  apply_lag_compensation: '时滞补偿',
+  analyze_collinearity: '共线性分析',
+  select_variables: '变量筛选',
+  fit_arx: '系统辨识',
+  export_dataset: '数据导出',
+
   clean: '数据清洗 (Clean)',
   segment: '工况区间优选 (Segment)',
   delay_analyze: '纯时滞估计 (Delay)',

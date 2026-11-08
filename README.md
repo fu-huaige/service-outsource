@@ -1,15 +1,33 @@
 # IndusOpt 工模智优 — 基于 Agent 的流程工业建模数据智能优选与闭环寻优系统
 
-版本：`v1.0.0-full-pipeline`
+版本：2026-10-07 整合演示版（既有算法与独立实验记录保留）
 赛题：2026「数字马力杯」第十三届浙江省大学生服务外包创新应用大赛 **A14**（和利时）
 
 面向流程工业建模工程师的本地化 Web 系统：通过自然语言驱动受约束的算法工作流，
 对多变量时序数据完成规整、清洗、**质量约束 D-最优数据优选**、时滞补偿、共线性处理、
-ARX 辨识与闭环寻优，交付可复现的数据版本、模型、指标与**全数值可溯源**的报告。
+ARX / FIR 辨识与闭环寻优（OE 为实验入口），交付可复现的数据版本、模型、指标与**全数值可溯源**的报告。
+
+## 一条命令运行整合平台
+
+现有开发依赖安装后（`backend/.venv`、前端 npm 依赖、PostgreSQL 16、Redis），在仓库根目录运行：
+
+```bash
+python3 scripts/run_platform.py
+```
+
+打开 <http://127.0.0.1:5173>。脚本创建独立本地 PostgreSQL（55432）和 Redis（56379），执行 Alembic、构建前端并启动 API（18000）。数据库和产物保存在忽略目录 `.runtime/platform`，Ctrl-C 停服务但保留数据。API 自动读取 `backend/.env` 的既有 LLM 配置，前端不接收密钥。端口可通过 `--api-port`、`--web-port`、`--db-port`、`--redis-port` 调整；已有构建可加 `--skip-build`。
+
+容器入口已整合前端反向代理、后端迁移与 Worker 依赖：
+
+```bash
+docker compose --env-file backend/.env up --build -d
+```
+
+浏览器入口为 <http://localhost:8080>。这里仍需可用的 Docker daemon，当前仅完成配置检查。
 
 ## 交付状态
 
-阶段 0–11 全部开发完成。完整闭环已在 237 个后端自动化测试下贯通（其中 2 项为端到端用例验收）：
+本次已在正式 PostgreSQL + Alembic 迁移环境贯通真实锅炉 Agent 全流程：13 步成功，DeepSeek 规划与报告均无回退；54 个报告数值全部解析，生成 6 幅图并导出 3,172 行优选数据。本次相关验证为 70 项后端、18 项前端通过，类型检查与生产构建通过。详情见 [整合验收记录](docs/integration-20261007.md)。
 
 ```text
 工业 CSV 上传
@@ -60,8 +78,9 @@ export INDUSOPT_LLM_MODEL=qwen2.5:7b
 
 因此模型不可用、输出畸形、甚至刻意越权，最坏结果都只是"回退 + 说明"，而不是错误的产物。
 
-**尚未完成**：公开数据集外部验证、Docker Compose 实机启动验证
-（本开发环境无 Docker 守护进程，详见 `PHASE_STATUS.md`）。
+**真实数据验证**：已完成锅炉、winding、官方双水箱与连续蒸馏等实验。双水箱独立记录的模型对照优于最初估计器；蒸馏跨工况迁移仍失败，不能宣称普遍泛化成功。见 [多步 OE 与泛化验证](docs/experiments/multihorizon-20261004/report.md)。
+
+**部署验证**：本地 PostgreSQL、独立 Redis、前端与 API 已实际启动并完成重启恢复；Compose 配置检查通过，容器镜像构建与启动尚未实机验证（本机 Docker daemon 不可用）。
 
 ### 长任务后台化
 

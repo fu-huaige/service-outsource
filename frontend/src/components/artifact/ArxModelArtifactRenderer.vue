@@ -541,6 +541,7 @@ const rawPayload = computed(() => {
 }
 
 .arx-flow strong {
+  max-width: 100%;
   overflow: hidden;
   color: var(--text-primary);
   font-size: 11px;
