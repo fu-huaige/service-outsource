@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, ClassVar, Literal, Self
 from uuid import UUID
 
@@ -159,3 +160,92 @@ class PLSBoundArtifactMetadata(PLSArtifactMetadata):
         ):
             raise ValueError("PLS artifact and experiment source mismatch")
         return self
+
+
+EvaluationPartition = Literal["validation", "test"]
+EvaluationStatus = Literal["running", "succeeded", "failed"]
+FiniteFloat = Annotated[float, Field(allow_inf_nan=False)]
+
+
+class PLSEvaluationRequest(Schema):
+    model_id: UUID
+    partition: EvaluationPartition
+    training_run_id: UUID | None = None
+    dataset_id: UUID | None = None
+    dataset_version_id: UUID | None = None
+    dataset_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
+
+
+class PLSRegressionMetrics(Schema):
+    r2: FiniteFloat | None
+    rmse: FiniteFloat | None
+    mae: FiniteFloat | None
+    nrmse: FiniteFloat | None
+
+
+class PLSPredictionSummary(Schema):
+    sample_count: PositiveInt
+    prediction_min: FiniteFloat
+    prediction_max: FiniteFloat
+    prediction_mean: FiniteFloat
+    residual_min: FiniteFloat
+    residual_max: FiniteFloat
+    residual_mean: FiniteFloat
+
+
+class PLSEvaluationResult(Schema):
+    evaluation_run_id: UUID
+    model_id: UUID
+    training_run_id: UUID
+    dataset_id: UUID
+    dataset_version_id: UUID
+    dataset_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    experiment_spec_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    partition: EvaluationPartition
+    evaluation_rows: RowSet
+    sample_count: PositiveInt
+    metrics: PLSRegressionMetrics
+    prediction_summary: PLSPredictionSummary
+    evaluation_status: Literal["succeeded"] = "succeeded"
+    implementation_version: Literal["pls-evaluation-1"] = "pls-evaluation-1"
+
+    @model_validator(mode="after")
+    def consistent_counts(self) -> Self:
+        if self.sample_count != self.evaluation_rows.count or (
+            self.sample_count != self.prediction_summary.sample_count
+        ):
+            raise ValueError("Evaluation row counts do not agree")
+        if self.evaluation_run_id in (self.model_id, self.training_run_id):
+            raise ValueError("Evaluation requires its own run identity")
+        return self
+
+
+class PLSEvaluationHistoryQuery(Schema):
+    model_id: UUID
+    partition: EvaluationPartition | None = None
+    status: EvaluationStatus | None = None
+    offset: Annotated[StrictInt, Field(ge=0)] = 0
+    limit: Annotated[StrictInt, Field(ge=1, le=100)] = 20
+
+
+class PLSEvaluationHistoryEntry(Schema):
+    evaluation_run_id: UUID
+    model_id: UUID
+    training_run_id: UUID | None = None
+    partition: EvaluationPartition
+    evaluation_status: EvaluationStatus
+    created_at: datetime
+    finished_at: datetime | None = None
+    evaluation_rows: RowSet | None = None
+    sample_count: Annotated[StrictInt, Field(ge=0)] = 0
+    metrics: PLSRegressionMetrics | None = None
+    prediction_summary: PLSPredictionSummary | None = None
+    failure_stage: str | None = None
+    error_message: str | None = None
+
+
+class PLSEvaluationHistory(Schema):
+    items: tuple[PLSEvaluationHistoryEntry, ...]
+    total: Annotated[StrictInt, Field(ge=0)]
+    offset: Annotated[StrictInt, Field(ge=0)]
+    limit: Annotated[StrictInt, Field(ge=1, le=100)]
