@@ -2,13 +2,14 @@ from typing import Annotated, Any, TypeVar
 from uuid import UUID
 
 from algorithms.agent.llm import LlmUnavailableError
-from fastapi import APIRouter, Depends, File, Form, Path, Query, Request, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, Path, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import get_settings
-from app.core.db import database_is_ready, get_session, redis_is_ready
+from app.core.db import database_is_ready, get_session, get_session_factory, redis_is_ready
 from app.core.errors import AppError
 from app.schemas.benchmark import BenchmarkData, BenchmarkRequest
 from app.schemas.common import ErrorEnvelope, SuccessEnvelope
@@ -53,6 +54,20 @@ from app.schemas.optimization import (
     OptimizationStartData,
     OptimizationStartRequest,
     OptimizationStatusData,
+)
+from app.schemas.pls import (
+    EvaluationPartition,
+    EvaluationStatus,
+    ModelDetailsData,
+    ModelSourceSummary,
+    PLSEvaluationAPIHistory,
+    PLSEvaluationRequest,
+    PLSEvaluationResult,
+    PLSFitRequest,
+    PLSFitResponse,
+    PLSModelBasics,
+    PLSPredictRequest,
+    PLSPredictResponse,
 )
 from app.schemas.preprocessing import (
     CleanData,
@@ -153,11 +168,28 @@ from app.services.llm_runtime_config_service import (
     test_agent_llm_connection,
     update_agent_llm_config,
 )
+from app.services.model_artifact_service import (
+    LoadedModelInstance,
+    ModelArtifactError,
+    load_model_instance,
+)
+from app.services.model_registry import get_model
 from app.services.modeling_service import ModelingDomainError, fit_arx_on_version
 from app.services.optimization_service import (
     OptimizationDomainError,
     get_optimization_status,
     start_optimization_study,
+)
+from app.services.pls_evaluation_service import (
+    PLSEvaluationError,
+    evaluate_saved_pls_model,
+    list_pls_evaluations,
+)
+from app.services.pls_modeling_service import SavedPLSModel
+from app.services.pls_training_service import (
+    PLSTrainingError,
+    SessionFactory,
+    fit_pls_with_manifest,
 )
 from app.services.preprocessing_analysis_service import (
     AnalysisDomainError,
@@ -1651,3 +1683,290 @@ async def run_benchmark_route(
             details=error.details,
         ) from error
     return success(request, data)
+
+
+# PLS endpoints reuse the existing router, envelopes and domain services.
+def _pls_http_error(error: Exception, *, operation: str) -> AppError:
+    details = {}
+    root = error
+    seen = set()
+    while root.__cause__ is not None and id(root) not in seen:
+        seen.add(id(root))
+        root = root.__cause__
+    if isinstance(error, (PLSTrainingError, PLSEvaluationError)):
+        details = {"model_id": str(error.model_id), "stage": error.stage, "outcome": error.outcome}
+        key = "training_run_id" if isinstance(error, PLSTrainingError) else "evaluation_run_id"
+        details[key] = str(getattr(error, key))
+        if error.outcome != "failed":
+            return AppError(
+                "PLS_OPERATION_UNCONFIRMED",
+                "操作结果需要核对，请使用原运行 ID 查询。",
+                status_code=503,
+                details=details,
+            )
+    # Preserve typed artifact distinctions rather than treating corruption as absence.
+    candidate = error if isinstance(error, ModelArtifactError) else error.__cause__
+    if isinstance(candidate, ModelArtifactError):
+        code = candidate.code
+        http = (
+            404
+            if code in ("PAYLOAD_MISSING", "TRAINING_RUN_MISSING")
+            else (
+                409
+                if code
+                in (
+                    "MANIFEST_NOT_PUBLISHED",
+                    "TRAINING_RUN_NOT_SUCCEEDED",
+                    "TRAINING_RUN_ID_MISMATCH",
+                    "MODEL_ID_MISMATCH",
+                    "DATASET_VERSION_MISMATCH",
+                    "MANIFEST_CONFLICT",
+                )
+                else 422
+            )
+        )
+        return AppError(code, "模型清单或训练来源校验失败。", status_code=http, details=details)
+    if isinstance(error, ModelingDomainError):
+        return AppError(error.code, error.message, status_code=error.status_code, details=details)
+    if isinstance(error, VersionDataError):
+        return AppError(error.code, error.message, status_code=error.status_code, details=details)
+    text = str(root) if isinstance(root, ValueError) else ""
+    if "Model payload is missing" in text or "MODEL_ARTIFACT_NOT_FOUND" in text:
+        return AppError("MODEL_NOT_FOUND", "指定模型不存在。", status_code=404, details=details)
+    if "partition was not declared" in text:
+        return AppError(
+            "PLS_EVALUATION_SCOPE_NOT_ALLOWED",
+            "训练契约未声明该评价分区。",
+            status_code=409,
+            details=details,
+        )
+    if "assertion mismatch" in text:
+        return AppError(
+            "PLS_SOURCE_MISMATCH", "评价来源与原模型不一致。", status_code=409, details=details
+        )
+    if isinstance(error, (PLSTrainingError, PLSEvaluationError)):
+        client_error = isinstance(root, ValueError)
+        return AppError(
+            "PLS_OPERATION_REJECTED" if client_error else "PLS_OPERATION_FAILED",
+            "PLS 操作未完成，请根据运行 ID 核对记录。",
+            status_code=400 if client_error else 500,
+            details=details,
+        )
+    if isinstance(error, ValueError):
+        return AppError(
+            "PLS_INPUT_INVALID" if operation in ("predict", "fit") else "MODEL_ARTIFACT_INVALID",
+            "输入不符合模型要求。" if operation in ("predict", "fit") else "模型数据无法通过校验。",
+            status_code=400 if operation in ("predict", "fit") else 422,
+            details=details,
+        )
+    return AppError("PLS_OPERATION_FAILED", "PLS 操作失败。", status_code=500, details=details)
+
+
+async def _api_load_model(session: AsyncSession, model_id: UUID) -> LoadedModelInstance:
+    try:
+        return await load_model_instance(
+            session, model_id=model_id, artifact_root=get_settings().artifact_root
+        )
+    except (ValueError, ModelingDomainError, VersionDataError) as error:
+        raise _pls_http_error(error, operation="load") from error
+
+
+def _model_details(instance: LoadedModelInstance) -> ModelDetailsData:
+    manifest = instance.manifest
+    definition = get_model(instance.model_type_id)
+    if isinstance(instance.payload, SavedPLSModel):
+        metadata = instance.payload.metadata
+        spec = metadata.provenance.experiment_spec
+        dataset_id, version_id = spec.dataset_id, spec.dataset_version_id
+        names, target = metadata.feature_names, metadata.target_name
+        additional = {
+            "artifact_version": metadata.artifact_version,
+            "parameters": metadata.parameters,
+            "requested_n_components": metadata.requested_n_components,
+            "effective_n_components": metadata.effective_n_components,
+            "training_rows": metadata.training_rows,
+        }
+    else:
+        saved = instance.payload
+        dataset_id, version_id = saved.dataset_id, saved.source_version_id
+        names, target = tuple(saved.payload.input_columns), saved.payload.output_column
+        additional = {}
+    return ModelDetailsData(
+        model_id=instance.model_id,
+        model_type=instance.model_type_id,
+        training_run_id=instance.training_run_id,
+        source=ModelSourceSummary(
+            dataset_id=dataset_id,
+            dataset_version_id=version_id,
+            dataset_sha256=manifest.experiment_spec.dataset_version_sha256 if manifest else None,
+            experiment_spec_hash=manifest.experiment_spec_hash if manifest else None,
+        ),
+        feature_names=names,
+        target_name=target,
+        implementation_id=manifest.implementation_id if manifest else None,
+        implementation_version=manifest.implementation_version if manifest else None,
+        execution_scope=definition.execution_scope,
+        manifest_version=manifest.manifest_version if manifest else None,
+        training_status="succeeded" if instance.training_run_id else "unknown",
+        provenance_status="incomplete" if instance.missing_provenance else "verified",
+        missing_provenance=instance.missing_provenance,
+        **additional,
+    )
+
+
+async def _parse_pls_predict(body: Annotated[Any, Body()]) -> PLSPredictRequest:
+    # Local validation avoids reflecting non-JSON NaN/Inf in the global error envelope.
+    try:
+        return PLSPredictRequest.model_validate(body)
+    except ValidationError as error:
+        issues = [
+            {"loc": list(e["loc"]), "type": e["type"], "msg": e["msg"]} for e in error.errors()
+        ]
+        raise AppError(
+            "REQUEST_VALIDATION_FAILED",
+            "预测请求参数校验失败。",
+            status_code=422,
+            details={"issues": issues},
+        ) from error
+
+
+@router.post(
+    "/modeling/pls/fit",
+    tags=["Modeling"],
+    response_model=SuccessEnvelope[PLSFitResponse],
+    responses=ERROR_RESPONSES,
+)
+async def fit_pls_api(
+    request: Request,
+    payload: PLSFitRequest,
+    factory: Annotated[SessionFactory, Depends(get_session_factory)],
+):
+    try:
+        outcome = await fit_pls_with_manifest(
+            factory,
+            spec=payload.experiment_spec,
+            parameters=payload.parameters,
+            artifact_root=get_settings().artifact_root,
+        )
+    except (ValueError, VersionDataError) as error:
+        raise _pls_http_error(error, operation="fit") from error
+    failed = outcome.manifest_status == "failed"
+    spec = payload.experiment_spec
+    return success(
+        request,
+        PLSFitResponse(
+            model_id=outcome.model_id,
+            training_run_id=outcome.training_run_id,
+            training_status=outcome.training_status,
+            manifest_status=outcome.manifest_status,
+            model_info=PLSModelBasics(
+                dataset_id=spec.dataset_id,
+                dataset_version_id=spec.dataset_version_id,
+                feature_names=spec.input_columns,
+                target_name=spec.target_column,
+                parameters=payload.parameters,
+            ),
+            manifest_retryable=failed,
+            retry_model_id=outcome.model_id if failed else None,
+            retry_action="publish_existing_model_manifest" if failed else None,
+            error_code=outcome.error_code,
+            error_message="训练已成功，清单发布失败；请使用原 model_id 重试清单发布，勿重新训练。"
+            if failed
+            else None,
+        ),
+    )
+
+
+@router.get(
+    "/models/{model_id}",
+    tags=["Modeling"],
+    response_model=SuccessEnvelope[ModelDetailsData],
+    responses=ERROR_RESPONSES,
+)
+async def model_details_api(
+    request: Request, model_id: UUID, session: Annotated[AsyncSession, Depends(get_session)]
+):
+    instance = await _api_load_model(session, model_id)
+    return success(request, _model_details(instance))
+
+
+@router.post(
+    "/modeling/pls/predict",
+    tags=["Modeling"],
+    response_model=SuccessEnvelope[PLSPredictResponse],
+    responses=ERROR_RESPONSES,
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {"application/json": {"schema": PLSPredictRequest.model_json_schema()}},
+        }
+    },
+)
+async def predict_pls_api(
+    request: Request,
+    payload: Annotated[PLSPredictRequest, Depends(_parse_pls_predict)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    instance = await _api_load_model(session, payload.model_id)
+    if instance.model_type_id != "pls" or not isinstance(instance.payload, SavedPLSModel):
+        raise AppError("MODEL_TYPE_MISMATCH", "固定 PLS 预测仅接受 PLS 模型。", status_code=409)
+    try:
+        predicted = await run_in_threadpool(
+            instance.payload.predict, payload.X, feature_names=payload.feature_names
+        )
+    except ValueError as error:
+        raise _pls_http_error(error, operation="predict") from error
+    return success(
+        request,
+        PLSPredictResponse(
+            model_id=instance.model_id,
+            predictions=tuple(predicted.tolist()),
+            sample_count=len(predicted),
+        ),
+    )
+
+
+@router.post(
+    "/modeling/pls/evaluate",
+    tags=["Modeling"],
+    response_model=SuccessEnvelope[PLSEvaluationResult],
+    responses=ERROR_RESPONSES,
+)
+async def evaluate_pls_api(
+    request: Request,
+    payload: PLSEvaluationRequest,
+    factory: Annotated[SessionFactory, Depends(get_session_factory)],
+):
+    try:
+        result = await evaluate_saved_pls_model(
+            factory, request=payload, artifact_root=get_settings().artifact_root
+        )
+    except (ValueError, VersionDataError) as error:
+        raise _pls_http_error(error, operation="evaluate") from error
+    return success(request, result)
+
+
+@router.get(
+    "/modeling/pls/evaluations",
+    tags=["Modeling"],
+    response_model=SuccessEnvelope[PLSEvaluationAPIHistory],
+    responses=ERROR_RESPONSES,
+)
+async def pls_evaluation_history_api(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    model_id: UUID,
+    partition: Annotated[EvaluationPartition | None, Query()] = None,
+    evaluation_status: Annotated[EvaluationStatus | None, Query(alias="status")] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+):
+    result = await list_pls_evaluations(
+        session,
+        model_id=model_id,
+        partition=partition,
+        status=evaluation_status,
+        limit=limit,
+        offset=offset,
+    )
+    return success(request, PLSEvaluationAPIHistory.model_validate(result.model_dump()))

@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Annotated, ClassVar, Literal, Self
 from uuid import UUID
 
-from pydantic import ConfigDict, Field, StrictBool, StrictInt, model_validator
+from pydantic import ConfigDict, Field, StrictBool, StrictFloat, StrictInt, model_validator
 
 from app.schemas.common import Schema
 from app.schemas.experiment_spec import ExperimentSpec, RowSet
@@ -249,3 +249,97 @@ class PLSEvaluationHistory(Schema):
     total: Annotated[StrictInt, Field(ge=0)]
     offset: Annotated[StrictInt, Field(ge=0)]
     limit: Annotated[StrictInt, Field(ge=1, le=100)]
+
+
+class PLSFitRequest(Schema):
+    experiment_spec: ExperimentSpec
+    parameters: PLSParameters = Field(default_factory=PLSParameters)
+
+
+class PLSModelBasics(Schema):
+    model_type: Literal["pls"] = "pls"
+    dataset_id: UUID
+    dataset_version_id: UUID
+    feature_names: tuple[str, ...]
+    target_name: str
+    parameters: PLSParameters
+
+
+class PLSFitResponse(Schema):
+    model_id: UUID
+    training_run_id: UUID
+    training_status: Literal["succeeded"]
+    manifest_status: Literal["published", "failed"]
+    model_info: PLSModelBasics
+    manifest_retryable: bool = False
+    retry_model_id: UUID | None = None
+    retry_action: Literal["publish_existing_model_manifest"] | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+class ModelSourceSummary(Schema):
+    dataset_id: UUID | None
+    dataset_version_id: UUID
+    dataset_sha256: str | None
+    experiment_spec_hash: str | None
+
+
+class ModelDetailsData(Schema):
+    model_id: UUID
+    model_type: Literal["arx", "fir", "oe", "pls"]
+    training_run_id: UUID | None
+    source: ModelSourceSummary
+    feature_names: tuple[str, ...]
+    target_name: str
+    implementation_id: str | None
+    implementation_version: str | None
+    execution_scope: Literal["legacy_api", "core_only", "api"]
+    manifest_version: int | None = None
+    artifact_version: int | None = None
+    status: Literal["loaded"] = "loaded"
+    training_status: Literal["succeeded", "unknown"]
+    provenance_status: Literal["verified", "incomplete"]
+    missing_provenance: tuple[str, ...] = ()
+    parameters: PLSParameters | None = None
+    requested_n_components: int | None = None
+    effective_n_components: int | None = None
+    training_rows: int | None = None
+
+
+PredictionNumber = Annotated[StrictFloat, Field(allow_inf_nan=False)]
+
+
+class PLSPredictRequest(Schema):
+    model_id: UUID
+    feature_names: tuple[Annotated[str, Field(min_length=1, max_length=255)], ...] = Field(
+        min_length=1, max_length=256
+    )
+    X: tuple[Annotated[tuple[PredictionNumber, ...], Field(min_length=1, max_length=256)], ...] = (
+        Field(min_length=1, max_length=1000)
+    )
+
+    @model_validator(mode="after")
+    def validate_batch(self) -> Self:
+        if (
+            len(set(self.feature_names)) != len(self.feature_names)
+            or any(not name.strip() for name in self.feature_names)
+            or any(len(row) != len(self.feature_names) for row in self.X)
+            or len(self.X) * len(self.feature_names) > 100_000
+        ):
+            raise ValueError("Expected aligned unique features and at most 100000 numeric cells")
+        return self
+
+
+class PLSPredictResponse(Schema):
+    model_id: UUID
+    predictions: tuple[FiniteFloat, ...] = Field(min_length=1, max_length=1000)
+    sample_count: PositiveInt
+
+
+class PLSEvaluationAPIHistoryEntry(PLSEvaluationHistoryEntry):
+    evaluation_status: EvaluationStatus = Field(serialization_alias="status")
+
+
+class PLSEvaluationAPIHistory(PLSEvaluationHistory):
+    items: tuple[PLSEvaluationAPIHistoryEntry, ...]

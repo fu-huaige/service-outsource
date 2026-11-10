@@ -44,12 +44,13 @@ _MODELS = MappingProxyType(
             family="linear_latent_regression",
             supported_tasks=("supervised_regression",),
             maturity="experimental",
-            execution_scope="core_only",
+            execution_scope="api",
             implementation_id="app.services.pls_modeling_service.fit_pls_core",
             implementation_version="pls-core-1",
             parameter_schema_id="app.schemas.pls.PLSParameters",
             capabilities=ModelCapabilities(
                 supervised_regression=True,
+                independent_run_api=True,
                 latent_transform=True,
                 selected_rows=False,
                 soft_weights=False,
@@ -59,7 +60,7 @@ _MODELS = MappingProxyType(
             constraints=(
                 "Static single target: X[r] -> y[r], horizon=1, no history or guard",
                 "Only n_components and scale are configurable; training arrays only",
-                "Standalone artifacts and version-bound ProcessingRun; no business API or manifest",
+                "PLS business API, version-bound ProcessingRun and unified Manifest",
                 "Dependency readiness is checked by the caller environment",
             ),
             dependencies=("numpy>=1.26,<3", "scipy>=1.13,<2", "scikit-learn==1.7.2"),

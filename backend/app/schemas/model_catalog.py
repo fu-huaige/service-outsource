@@ -37,7 +37,7 @@ class ModelTypeDefinition(Schema):
     supported_tasks: tuple[str, ...] = ("dynamic_system_identification",)
     availability: Literal["available", "planned"] = "available"
     maturity: Literal["established", "experimental"] = "established"
-    execution_scope: Literal["legacy_api", "core_only"] = "legacy_api"
+    execution_scope: Literal["legacy_api", "core_only", "api"] = "legacy_api"
     implementation_id: str
     implementation_version: str = "stage1a-contract-1"
     parameter_schema_id: str = "app.schemas.modeling.ArxFitRequest"

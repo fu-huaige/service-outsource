@@ -130,7 +130,7 @@ def test_pls_uses_separate_schema_and_has_no_dynamic_executor(monkeypatch):
     assert set(parameter_json_schema("pls")["properties"]) == {"n_components", "scale"}
     pls = get_model("pls")
     assert pls.family == "linear_latent_regression"
-    assert pls.execution_scope == "core_only"
+    assert pls.execution_scope == "api"
     assert pls.maturity == "experimental"
     assert pls.implementation_id == "app.services.pls_modeling_service.fit_pls_core"
     assert pls.capabilities.single_target
@@ -139,7 +139,7 @@ def test_pls_uses_separate_schema_and_has_no_dynamic_executor(monkeypatch):
     assert not pls.capabilities.multi_output
     assert not pls.capabilities.free_run
     assert not pls.capabilities.one_step_equation
-    assert not pls.capabilities.independent_run_api
+    assert pls.capabilities.independent_run_api
     assert not pls.capabilities.selected_rows
     assert not pls.capabilities.soft_weights
     with pytest.raises(ValidationError):
