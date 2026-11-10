@@ -59,7 +59,7 @@ _MODELS = MappingProxyType(
             constraints=(
                 "Static single target: X[r] -> y[r], horizon=1, no history or guard",
                 "Only n_components and scale are configurable; training arrays only",
-                "Standalone core and artifacts; no business API or ProcessingRun",
+                "Standalone artifacts and version-bound ProcessingRun; no business API or manifest",
                 "Dependency readiness is checked by the caller environment",
             ),
             dependencies=("numpy>=1.26,<3", "scipy>=1.13,<2", "scikit-learn==1.7.2"),

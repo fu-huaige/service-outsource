@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import ConfigDict, Field, StrictBool, StrictInt, model_validator
 
 from app.schemas.common import Schema
+from app.schemas.experiment_spec import ExperimentSpec, RowSet
 
 PositiveInt = Annotated[StrictInt, Field(gt=0)]
 ArrayName = Literal[
@@ -122,4 +123,39 @@ class PLSArtifactMetadata(PLSTrainingMetadata):
             or {a.name: a.shape for a in self.arrays} != expected
         ):
             raise ValueError("Array descriptors do not match model dimensions")
+        return self
+
+
+class PLSArtifactProvenance(Schema):
+    """A source claim; database evidence is verified by the training service."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    training_run_id: UUID
+    experiment_spec: ExperimentSpec
+    experiment_spec_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    effective_training_rows: RowSet
+
+
+class PLSBoundArtifactMetadata(PLSArtifactMetadata):
+    """Standalone PLS v2, separate from the unified model manifest."""
+
+    artifact_format: Literal["indusopt_pls_json_npz_v2"] = "indusopt_pls_json_npz_v2"
+    artifact_version: Annotated[StrictInt, Field(ge=2, le=2)] = 2
+    provenance: PLSArtifactProvenance
+
+    @model_validator(mode="after")
+    def consistent_source(self) -> Self:
+        source = self.provenance
+        spec = source.experiment_spec
+        if self.model_id == source.training_run_id:
+            raise ValueError("model_id and training_run_id must be different")
+        if (
+            self.feature_names != spec.input_columns
+            or self.target_name != spec.target_column
+            or self.training_rows != source.effective_training_rows.count
+            or spec.feature_spec.history_window != self.history_window
+            or spec.feature_spec.prediction_horizon != self.prediction_horizon
+            or spec.split.history_guard != self.history_guard
+        ):
+            raise ValueError("PLS artifact and experiment source mismatch")
         return self

@@ -15,7 +15,18 @@ from uuid import UUID, uuid4
 
 import numpy as np
 
-from app.schemas.pls import PLSArrayDescription, PLSArtifactMetadata
+from app.schemas.pls import (
+    PLSArrayDescription,
+    PLSArtifactMetadata,
+    PLSArtifactProvenance,
+    PLSBoundArtifactMetadata,
+    PLSTrainingMetadata,
+)
+from app.services.experiment_spec_service import (
+    effective_ranges,
+    spec_hash,
+    validate_partition_coverage,
+)
 from app.services.pls_modeling_service import ARRAY_NAMES, SavedPLSModel
 
 MAX_JSON_BYTES = 1_048_576
@@ -119,6 +130,7 @@ def save_pls_artifact(
     *,
     artifact_root: Path,
     model_id: UUID | str | None = None,
+    provenance: PLSArtifactProvenance | None = None,
 ) -> PLSArtifactMetadata:
     """Publish JSON last, exclusively; never overwrite another model's files."""
     identity = uuid4() if model_id is None else _model_id(model_id)
@@ -137,9 +149,20 @@ def save_pls_artifact(
         raw = npz_temp.read_bytes()
         if len(raw) > MAX_NPZ_BYTES:
             raise ValueError("NPZ exceeds size limit")
-        metadata = PLSArtifactMetadata.model_validate(
+        metadata_type = PLSArtifactMetadata if provenance is None else PLSBoundArtifactMetadata
+        source_fields = (
+            {}
+            if provenance is None
+            else {"provenance": PLSArtifactProvenance.model_validate(provenance.model_dump())}
+        )
+        # Never copy an old artifact's identity/source when saving a loaded model.
+        training_fields = {
+            name: getattr(model.metadata, name) for name in PLSTrainingMetadata.model_fields
+        }
+        metadata = metadata_type.model_validate(
             {
-                **model.metadata.model_dump(),
+                **training_fields,
+                **source_fields,
                 "model_id": identity,
                 "npz_filename": final_npz.name,
                 "npz_sha256": hashlib.sha256(raw).hexdigest(),
@@ -150,6 +173,7 @@ def save_pls_artifact(
                 ),
             }
         )
+        _validate_provenance(metadata)
         _validate_zip(raw, metadata)
         document = metadata.model_dump_json(indent=2).encode("utf-8")
         if len(document) > MAX_JSON_BYTES:
@@ -169,13 +193,25 @@ def save_pls_artifact(
             path.unlink(missing_ok=True)
 
 
-def load_pls_artifact(*, model_id: UUID | str, artifact_root: Path) -> SavedPLSModel:
+def read_pls_artifact(
+    *,
+    model_id: UUID | str,
+    artifact_root: Path,
+) -> tuple[SavedPLSModel, str]:
+    """Return the validated model and digest of the exact JSON bytes read."""
     identity = _model_id(model_id)
     directory = _directory(artifact_root)
     raw_json = _read_file(directory, f"{identity}.json", MAX_JSON_BYTES)
     try:
         document = json.loads(raw_json, object_pairs_hook=_reject_duplicate_keys)
-        metadata = PLSArtifactMetadata.model_validate(document)
+        if not isinstance(document, dict):
+            raise ValueError("PLS metadata must be a JSON object")
+        version = document.get("artifact_version", 1)
+        if type(version) is not int or version not in (1, 2):
+            raise ValueError("Unsupported PLS artifact version")
+        metadata_type = PLSArtifactMetadata if version == 1 else PLSBoundArtifactMetadata
+        metadata = metadata_type.model_validate(document)
+        _validate_provenance(metadata)
         if metadata.model_id != identity:
             raise ValueError("Artifact model_id mismatch")
         raw_npz = _read_file(directory, metadata.npz_filename, MAX_NPZ_BYTES)
@@ -186,6 +222,34 @@ def load_pls_artifact(*, model_id: UUID | str, artifact_root: Path) -> SavedPLSM
         _validate_zip(raw_npz, metadata)
         with np.load(io.BytesIO(raw_npz), allow_pickle=False) as archive:
             arrays = {name: archive[name] for name in ARRAY_NAMES}
-        return SavedPLSModel(metadata=metadata, **arrays)
+        return SavedPLSModel(metadata=metadata, **arrays), hashlib.sha256(raw_json).hexdigest()
     except (ValueError, TypeError, KeyError, EOFError, zipfile.BadZipFile, UnicodeError) as error:
         raise ValueError(f"Invalid PLS artifact: {error}") from error
+
+
+def _validate_provenance(metadata: PLSArtifactMetadata) -> None:
+    if not isinstance(metadata, PLSBoundArtifactMetadata):
+        return
+    source = metadata.provenance
+    spec = source.experiment_spec
+    if spec_hash(spec) != source.experiment_spec_hash:
+        raise ValueError("Experiment Spec SHA256 mismatch")
+    validate_partition_coverage(spec)
+    expected = tuple(effective_ranges(spec, "train"))
+    if (
+        spec.task_type != "supervised_regression"
+        or spec.application not in ("regression", "soft_sensor")
+        or spec.evaluation.prediction_modes != ("prediction",)
+        or spec.feature_spec.kind != "tabular"
+        or spec.feature_spec.target_lags
+        or any(lags != (0,) for lags in spec.feature_spec.input_lags.values())
+        or spec.feature_spec.initialization_policy != "fixed"
+        or spec.training_selection.mode != "full_train"
+        or source.effective_training_rows.index_file is not None
+        or source.effective_training_rows.ranges != expected
+    ):
+        raise ValueError("PLS source rows or feature semantics mismatch")
+
+
+def load_pls_artifact(*, model_id: UUID | str, artifact_root: Path) -> SavedPLSModel:
+    return read_pls_artifact(model_id=model_id, artifact_root=artifact_root)[0]

@@ -59,3 +59,20 @@ def test_training_metadata_rejects_inconsistent_dimensions():
             parameters=PLSParameters(n_components=1),
             n_iter=(1,),
         )
+
+
+def test_bound_artifact_requires_complete_source_and_version_separation():
+    from uuid import uuid4
+
+    from app.schemas.pls import PLSArtifactProvenance, PLSBoundArtifactMetadata
+
+    with pytest.raises(ValidationError):
+        PLSArtifactProvenance(training_run_id=uuid4())
+    with pytest.raises(ValidationError):
+        PLSBoundArtifactMetadata.model_validate({"artifact_version": 2})
+    # The old contract remains v1 and cannot accept new provenance silently.
+    from app.schemas.pls import PLSArtifactMetadata
+
+    assert PLSArtifactMetadata.model_fields["artifact_version"].default == 1
+    assert "provenance" not in PLSArtifactMetadata.model_fields
+    assert PLSBoundArtifactMetadata.model_fields["artifact_version"].default == 2

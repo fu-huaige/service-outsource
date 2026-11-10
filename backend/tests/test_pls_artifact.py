@@ -319,3 +319,86 @@ def test_declared_effective_components_cannot_have_zero_latent_state(artifact):
     replace_npz(artifact, buffer.getvalue())
     with pytest.raises(ValueError, match="component"):
         load(artifact)
+
+
+def provenance_for_artifact(model):
+    from app.schemas.experiment_spec import ExperimentSpec, RowSet
+    from app.schemas.pls import PLSArtifactProvenance
+    from app.services.experiment_spec_service import spec_hash
+
+    n = model.metadata.training_rows
+    spec = ExperimentSpec.model_validate(
+        {
+            "task_type": "supervised_regression",
+            "application": "regression",
+            "dataset_id": uuid4(),
+            "dataset_version_id": uuid4(),
+            "dataset_version_sha256": "1" * 64,
+            "row_count": n + 20,
+            "input_columns": list(model.metadata.feature_names),
+            "target_column": model.metadata.target_name,
+            "time_axis": {"column": "timestamp"},
+            "continuous_runs": [{"start": 0, "stop": n + 20}],
+            "feature_spec": {"kind": "tabular"},
+            "split": {
+                "train": [{"start": 0, "stop": n}],
+                "validation": [{"start": n, "stop": n + 10}],
+                "test": [{"start": n + 10, "stop": n + 20}],
+            },
+            "evaluation": {"prediction_modes": ["prediction"]},
+        }
+    )
+    return PLSArtifactProvenance(
+        training_run_id=uuid4(),
+        experiment_spec=spec,
+        experiment_spec_hash=spec_hash(spec),
+        effective_training_rows=RowSet(ranges=spec.split.train),
+    )
+
+
+def test_v2_provenance_round_trip_and_default_v1_remain_separate(artifact):
+    root, model, _, directory, *_ = artifact
+    source = provenance_for_artifact(model)
+    metadata = artifacts.save_pls_artifact(model, artifact_root=root, provenance=source)
+    loaded, digest = artifacts.read_pls_artifact(model_id=metadata.model_id, artifact_root=root)
+    assert metadata.artifact_version == 2
+    assert loaded.metadata.provenance == source
+    assert loaded.metadata.provenance.experiment_spec.dataset_version_sha256 == "1" * 64
+    assert (
+        digest == hashlib.sha256((directory / f"{metadata.model_id}.json").read_bytes()).hexdigest()
+    )
+    # A new unbound export must never inherit the old training run silently.
+    unbound = artifacts.save_pls_artifact(loaded, artifact_root=root)
+    assert unbound.artifact_version == 1
+    assert "provenance" not in unbound.model_dump()
+
+
+@pytest.mark.parametrize(
+    "change", ["missing", "run", "hash", "order", "rows", "format", "same_id", "version"]
+)
+def test_v2_source_corruption_is_rejected(artifact, change):
+    root, model, _, _, *_ = artifact
+    metadata = artifacts.save_pls_artifact(
+        model, artifact_root=root, provenance=provenance_for_artifact(model)
+    )
+    bound = (root, model, metadata, *artifact[3:])
+    document = read_document(bound)
+    if change == "missing":
+        document.pop("provenance")
+    elif change == "run":
+        document["provenance"]["training_run_id"] = "not-a-uuid"
+    elif change == "hash":
+        document["provenance"]["experiment_spec_hash"] = "0" * 64
+    elif change == "order":
+        document["provenance"]["experiment_spec"]["input_columns"].reverse()
+    elif change == "rows":
+        document["provenance"]["effective_training_rows"]["ranges"][0]["start"] = 1
+    elif change == "format":
+        document["artifact_format"] = "indusopt_pls_json_npz_v1"
+    elif change == "same_id":
+        document["provenance"]["training_run_id"] = str(metadata.model_id)
+    elif change == "version":
+        document["artifact_version"] = 99
+    write_document(bound, document)
+    with pytest.raises(ValueError):
+        load(bound)
