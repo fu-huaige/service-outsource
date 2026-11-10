@@ -6,6 +6,7 @@ from types import MappingProxyType
 
 from app.schemas.model_catalog import ModelCapabilities, ModelTypeDefinition
 from app.schemas.modeling import ArxFitRequest
+from app.schemas.pls import PLSParameters
 
 _MODELS = MappingProxyType(
     {
@@ -37,6 +38,32 @@ _MODELS = MappingProxyType(
                 "continuous selected intervals with original histories",
             ),
         ),
+        "pls": ModelTypeDefinition(
+            model_type_id="pls",
+            display_name="PLS Regression",
+            family="linear_latent_regression",
+            supported_tasks=("supervised_regression",),
+            maturity="experimental",
+            execution_scope="core_only",
+            implementation_id="app.services.pls_modeling_service.fit_pls_core",
+            implementation_version="pls-core-1",
+            parameter_schema_id="app.schemas.pls.PLSParameters",
+            capabilities=ModelCapabilities(
+                supervised_regression=True,
+                latent_transform=True,
+                selected_rows=False,
+                soft_weights=False,
+                free_run=False,
+                one_step_equation=False,
+            ),
+            constraints=(
+                "Static single target: X[r] -> y[r], horizon=1, no history or guard",
+                "Only n_components and scale are configurable; training arrays only",
+                "Standalone core and artifacts; no business API or ProcessingRun",
+                "Dependency readiness is checked by the caller environment",
+            ),
+            dependencies=("numpy>=1.26,<3", "scipy>=1.13,<2", "scikit-learn==1.7.2"),
+        ),
     }
 )
 
@@ -55,8 +82,12 @@ def get_model(model_type_id: str) -> ModelTypeDefinition:
     return model
 
 
-def validate_parameters(model_type_id: str, parameters: dict[str, object]) -> ArxFitRequest:
+def validate_parameters(
+    model_type_id: str, parameters: dict[str, object]
+) -> ArxFitRequest | PLSParameters:
     model = get_model(model_type_id)
+    if model.model_type_id == "pls":
+        return PLSParameters.model_validate(parameters)
     family = model.model_type_id.upper()
     if parameters.get("model_type", family) != family:
         raise ValueError("model_type_id conflicts with model_type")
@@ -64,5 +95,7 @@ def validate_parameters(model_type_id: str, parameters: dict[str, object]) -> Ar
 
 
 def parameter_json_schema(model_type_id: str) -> dict[str, object]:
-    get_model(model_type_id)
+    model = get_model(model_type_id)
+    if model.model_type_id == "pls":
+        return PLSParameters.model_json_schema()
     return ArxFitRequest.model_json_schema()

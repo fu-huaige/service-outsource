@@ -10,11 +10,15 @@ from pydantic import ConfigDict, Field
 from app.schemas.common import Schema
 from app.schemas.experiment_spec import ExperimentSpec, RowSet
 
-ModelTypeId = Literal["arx", "fir", "oe"]
+ModelTypeId = Literal["arx", "fir", "oe", "pls"]
 
 
 class ModelCapabilities(Schema):
     model_config = ConfigDict(extra="forbid", frozen=True)
+    single_target: bool = True
+    prediction: bool = True
+    supervised_regression: bool = False
+    latent_transform: bool = False
     multi_input: bool = True
     multi_output: bool = False
     selected_rows: bool = True
@@ -29,10 +33,11 @@ class ModelTypeDefinition(Schema):
     model_config = ConfigDict(extra="forbid", frozen=True)
     model_type_id: ModelTypeId
     display_name: str
-    family: Literal["linear_dynamic"] = "linear_dynamic"
+    family: Literal["linear_dynamic", "linear_latent_regression"] = "linear_dynamic"
     supported_tasks: tuple[str, ...] = ("dynamic_system_identification",)
     availability: Literal["available", "planned"] = "available"
     maturity: Literal["established", "experimental"] = "established"
+    execution_scope: Literal["legacy_api", "core_only"] = "legacy_api"
     implementation_id: str
     implementation_version: str = "stage1a-contract-1"
     parameter_schema_id: str = "app.schemas.modeling.ArxFitRequest"
@@ -47,7 +52,7 @@ class ModelArtifactManifest(Schema):
     """A sidecar contract; this module never writes or changes model payloads."""
 
     manifest_version: Literal[1] = 1
-    model_type_id: ModelTypeId
+    model_type_id: Literal["arx", "fir", "oe"]
     model_id: UUID
     training_run_id: UUID
     implementation_id: str

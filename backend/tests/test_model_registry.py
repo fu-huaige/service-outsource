@@ -26,13 +26,18 @@ def parameters(**changes):
 
 
 def test_only_real_models_are_available():
-    assert [m.model_type_id for m in list_models()] == ["arx", "fir", "oe"]
+    assert [m.model_type_id for m in list_models()] == ["arx", "fir", "oe", "pls"]
     assert all(m.availability == "available" for m in list_models())
-    assert list_models(task_type="supervised_regression") == ()
+    assert [m.model_type_id for m in list_models(task_type="supervised_regression")] == ["pls"]
+    assert [m.model_type_id for m in list_models(task_type="dynamic_system_identification")] == [
+        "arx",
+        "fir",
+        "oe",
+    ]
     with pytest.raises(ValueError):
-        get_model("pls")
+        get_model("svr")
     with pytest.raises(ValidationError):
-        ModelTypeDefinition(model_type_id="pls", display_name="PLS", implementation_id="missing")
+        ModelTypeDefinition(model_type_id="svr", display_name="SVR", implementation_id="missing")
 
 
 def test_oe_capabilities_match_formal_service():
@@ -111,3 +116,61 @@ def test_planned_model_cannot_be_resolved_for_execution(monkeypatch):
     )
     with pytest.raises(ValueError, match="not executable"):
         get_model("arx")
+
+
+def test_pls_uses_separate_schema_and_has_no_dynamic_executor(monkeypatch):
+    from app.schemas.pls import PLSParameters
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("PLS must not use the dynamic model parameter path")
+
+    monkeypatch.setattr(ArxFitRequest, "model_validate", forbidden)
+    monkeypatch.setattr(ArxFitRequest, "model_json_schema", forbidden)
+    assert isinstance(validate_parameters("pls", {"n_components": 3}), PLSParameters)
+    assert set(parameter_json_schema("pls")["properties"]) == {"n_components", "scale"}
+    pls = get_model("pls")
+    assert pls.family == "linear_latent_regression"
+    assert pls.execution_scope == "core_only"
+    assert pls.maturity == "experimental"
+    assert pls.implementation_id == "app.services.pls_modeling_service.fit_pls_core"
+    assert pls.capabilities.single_target
+    assert pls.capabilities.supervised_regression
+    assert pls.capabilities.prediction and pls.capabilities.latent_transform
+    assert not pls.capabilities.multi_output
+    assert not pls.capabilities.free_run
+    assert not pls.capabilities.one_step_equation
+    assert not pls.capabilities.independent_run_api
+    assert not pls.capabilities.selected_rows
+    assert not pls.capabilities.soft_weights
+    with pytest.raises(ValidationError):
+        validate_parameters("pls", {"model_type": "ARX"})
+
+
+def test_catalogue_cannot_be_changed_through_external_references():
+    from app.services import model_registry
+
+    pls = get_model("pls")
+    with pytest.raises(TypeError):
+        model_registry._MODELS["pls"] = get_model("arx")
+    with pytest.raises(ValidationError):
+        pls.capabilities.free_run = True
+    with pytest.raises(ValidationError):
+        pls.constraints += ("mutated",)
+    document = pls.model_dump()
+    document["capabilities"]["free_run"] = True
+    assert not get_model("pls").capabilities.free_run
+    schema = parameter_json_schema("pls")
+    schema["properties"].clear()
+    assert parameter_json_schema("pls")["properties"]
+
+
+def test_dynamic_manifest_does_not_claim_pls_support():
+    from app.schemas.model_catalog import ModelArtifactManifest
+
+    assert set(
+        ModelArtifactManifest.model_json_schema()["properties"]["model_type_id"]["enum"]
+    ) == {
+        "arx",
+        "fir",
+        "oe",
+    }
