@@ -1,11 +1,13 @@
-"""Read-only manifests and legacy dynamic payload loading. Never fits or writes."""
+"""Manifest construction/publication and static model loading. Never fits."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import math
+import os
 import stat
+import tempfile
 from dataclasses import dataclass
 from itertools import zip_longest
 from pathlib import Path
@@ -16,7 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dataset import ProcessingRun
 from app.schemas.experiment_spec import ExperimentSpec, RowRange, RowSet
-from app.schemas.model_catalog import ModelArtifactManifest
+from app.schemas.model_catalog import ModelArtifactManifest, PLSModelArtifactManifest
+from app.schemas.pls import PLSBoundArtifactMetadata
 from app.services.experiment_spec_service import (
     bind_experiment_spec,
     contained_path,
@@ -25,6 +28,7 @@ from app.services.experiment_spec_service import (
 )
 from app.services.model_registry import get_model
 from app.services.modeling_service import SavedArxModel, load_saved_arx_model
+from app.services.pls_modeling_service import SavedPLSModel
 
 
 @dataclass(frozen=True)
@@ -34,7 +38,7 @@ class LoadedModelInstance:
     training_run_id: UUID | None
     origin: str
     manifest: ModelArtifactManifest | None
-    payload: SavedArxModel
+    payload: SavedArxModel | SavedPLSModel
     missing_provenance: tuple[str, ...] = ()
 
 
@@ -273,12 +277,26 @@ async def load_model_instance(
     path = _checked_model_file(artifact_root, f"models/{model_id}.manifest.json", optional=True)
     manifest = None
     if path is not None:
-        manifest = ModelArtifactManifest.model_validate(
-            json.loads(path.read_text(encoding="utf-8"))
-        )
-        if manifest.model_id != model_id or manifest.payload_uri != f"models/{model_id}.json":
+        manifest = _read_manifest(path)
+        if manifest.model_id != model_id:
+            raise ModelArtifactError("MODEL_ID_MISMATCH", "Manifest model_id mismatch")
+        if manifest.model_type_id == "pls":
+            return await _load_pls_instance(
+                session,
+                model_id=model_id,
+                manifest=manifest,
+                root=artifact_root,
+            )
+        if manifest.payload_uri != f"models/{model_id}.json":
             raise ValueError("Manifest identity or payload URI mismatch")
         get_model(manifest.model_type_id)
+    else:
+        pls = _checked_model_file(artifact_root, f"models/pls/{model_id}.json", optional=True)
+        if pls is not None:
+            raise ModelArtifactError(
+                "MANIFEST_NOT_PUBLISHED",
+                "PLS Manifest has not been published; v1 is supported by its independent loader only",
+            )
     document, payload_digest = _read_payload(artifact_root, model_id)
     if manifest is not None:
         if payload_digest != manifest.payload_sha256:
@@ -323,4 +341,211 @@ async def load_model_instance(
         manifest=manifest,
         payload=saved,
         missing_provenance=tuple(missing),
+    )
+
+
+class ModelArtifactError(ValueError):
+    """Stable distinctions for publication and unified PLS loading failures."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
+def _read_manifest(path: Path) -> ModelArtifactManifest:
+    try:
+        document = json.loads(path.read_bytes())
+    except (ValueError, UnicodeError) as error:
+        raise ModelArtifactError("MANIFEST_INVALID", "Manifest JSON is damaged") from error
+    if not isinstance(document, dict):
+        raise ModelArtifactError("MANIFEST_INVALID", "Manifest must be an object")
+    version = document.get("manifest_version", 1)
+    if type(version) is not int or version != 1:
+        raise ModelArtifactError("MANIFEST_VERSION_UNSUPPORTED", "Unsupported Manifest version")
+    kind = document.get("model_type_id")
+    if kind not in ("arx", "fir", "oe", "pls"):
+        raise ModelArtifactError("MODEL_TYPE_UNSUPPORTED", "Unsupported Manifest model type")
+    model = PLSModelArtifactManifest if kind == "pls" else ModelArtifactManifest
+    try:
+        return model.model_validate(document)
+    except ValueError as error:
+        raise ModelArtifactError(
+            "MANIFEST_INVALID", "Manifest schema or payload format is invalid"
+        ) from error
+
+
+async def _verified_pls(
+    session: AsyncSession, model_id: UUID, root: Path
+) -> tuple[SavedPLSModel, str]:
+    from app.services.pls_artifact_service import read_pls_artifact
+    from app.services.pls_training_service import load_persisted_pls_model
+
+    path = _checked_model_file(root, f"models/pls/{model_id}.json", optional=True)
+    if path is None:
+        raise ModelArtifactError("PAYLOAD_MISSING", "PLS JSON payload is missing")
+    try:
+        preliminary, digest = read_pls_artifact(model_id=model_id, artifact_root=root)
+    except ValueError as error:
+        npz = _checked_model_file(root, f"models/pls/{model_id}.npz", optional=True)
+        code = "PLS_PAYLOAD_INVALID"
+        if npz is None:
+            code = "PLS_NPZ_MISSING"
+        elif "NPZ" in str(error) or "NPY" in str(error):
+            code = "PLS_NPZ_INVALID"
+        raise ModelArtifactError(code, str(error)) from error
+    if not isinstance(preliminary.metadata, PLSBoundArtifactMetadata):
+        raise ModelArtifactError("PLS_PROVENANCE_REQUIRED", "PLS Manifest requires a v2 payload")
+    source = preliminary.metadata.provenance
+    with session.no_autoflush:
+        run = await session.get(ProcessingRun, source.training_run_id, populate_existing=True)
+        if run is None:
+            raise ModelArtifactError("TRAINING_RUN_MISSING", "PLS training record is missing")
+        if run.status != "succeeded":
+            raise ModelArtifactError(
+                "TRAINING_RUN_NOT_SUCCEEDED", "PLS training record is not succeeded"
+            )
+        if run.run_type != "modeling.pls":
+            raise ModelArtifactError("TRAINING_RUN_TYPE_MISMATCH", "PLS training run_type mismatch")
+        if run.result.get("model_id") != str(model_id):
+            raise ModelArtifactError("MODEL_ID_MISMATCH", "PLS training record model_id mismatch")
+        if (run.dataset_id, run.source_version_id) != (
+            source.experiment_spec.dataset_id,
+            source.experiment_spec.dataset_version_id,
+        ):
+            raise ModelArtifactError(
+                "DATASET_VERSION_MISMATCH", "PLS training dataset/version mismatch"
+            )
+        # The existing service owns all detailed result, Spec, SHA and duplicate-run checks.
+        try:
+            saved = await load_persisted_pls_model(session, model_id=model_id, artifact_root=root)
+        except ValueError as error:
+            raise ModelArtifactError("PLS_SOURCE_INVALID", str(error)) from error
+        if (
+            saved.metadata != preliminary.metadata
+            or run.result.get("artifact", {}).get("json_sha256") != digest
+        ):
+            raise ModelArtifactError("PAYLOAD_SHA_MISMATCH", "PLS JSON changed during validation")
+    return saved, digest
+
+
+def _pls_manifest(saved: SavedPLSModel, digest: str) -> PLSModelArtifactManifest:
+    metadata = saved.metadata
+    if not isinstance(metadata, PLSBoundArtifactMetadata):
+        raise ModelArtifactError("PLS_PROVENANCE_REQUIRED", "PLS v2 provenance is required")
+    source = metadata.provenance
+    return PLSModelArtifactManifest(
+        model_id=metadata.model_id,
+        training_run_id=source.training_run_id,
+        implementation_id=metadata.implementation_id,
+        implementation_version=metadata.implementation_version,
+        experiment_spec=source.experiment_spec,
+        experiment_spec_hash=source.experiment_spec_hash,
+        effective_training_rows=source.effective_training_rows,
+        payload_uri=f"models/pls/{metadata.model_id}.json",
+        payload_sha256=digest,
+    )
+
+
+async def build_pls_manifest(
+    session: AsyncSession,
+    *,
+    model_id: UUID,
+    artifact_root: Path,
+) -> PLSModelArtifactManifest:
+    saved, digest = await _verified_pls(session, model_id, artifact_root)
+    return _pls_manifest(saved, digest)
+
+
+def _existing_manifest(root: Path, expected: ModelArtifactManifest) -> bool:
+    path = _checked_model_file(root, f"models/{expected.model_id}.manifest.json", optional=True)
+    if path is None:
+        return False
+    actual = _read_manifest(path)
+    if actual.model_dump(mode="json") != expected.model_dump(mode="json"):
+        raise ModelArtifactError(
+            "MANIFEST_CONFLICT", "Manifest publication conflict; existing file retained"
+        )
+    return True
+
+
+async def publish_pls_manifest(
+    session: AsyncSession,
+    *,
+    model_id: UUID,
+    artifact_root: Path,
+) -> PLSModelArtifactManifest:
+    """Publish only a verified, already succeeded model; no database writes."""
+    manifest = await build_pls_manifest(session, model_id=model_id, artifact_root=artifact_root)
+    if _existing_manifest(artifact_root, manifest):
+        return manifest
+    root = artifact_root.resolve()
+    directory = root / "models"
+    if (
+        directory.is_symlink()
+        or not directory.is_dir()
+        or not directory.resolve().is_relative_to(root)
+    ):
+        raise ModelArtifactError("MANIFEST_PATH_INVALID", "Unsafe Manifest publication directory")
+    target = directory / f"{manifest.model_id}.manifest.json"
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=directory, suffix=".manifest.tmp", delete=False
+        ) as stream:
+            temporary = Path(stream.name)
+            stream.write(manifest.model_dump_json(indent=2).encode("utf-8"))
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            os.link(temporary, target)
+        except FileExistsError:
+            if not _existing_manifest(artifact_root, manifest):
+                raise ModelArtifactError(
+                    "MANIFEST_CONFLICT", "Manifest publication conflict"
+                ) from None
+        return manifest
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+async def _load_pls_instance(
+    session: AsyncSession,
+    *,
+    model_id: UUID,
+    manifest: ModelArtifactManifest,
+    root: Path,
+) -> LoadedModelInstance:
+    get_model("pls")
+    if manifest.payload_uri != f"models/pls/{model_id}.json":
+        raise ModelArtifactError("PAYLOAD_URI_MISMATCH", "PLS Manifest payload URI mismatch")
+    path = _checked_model_file(root, manifest.payload_uri, optional=True)
+    if path is None:
+        raise ModelArtifactError("PAYLOAD_MISSING", "PLS JSON payload is missing")
+    if hashlib.sha256(path.read_bytes()).hexdigest() != manifest.payload_sha256:
+        raise ModelArtifactError("PAYLOAD_SHA_MISMATCH", "PLS JSON SHA256 mismatch")
+    if spec_hash(manifest.experiment_spec) != manifest.experiment_spec_hash:
+        raise ModelArtifactError(
+            "EXPERIMENT_SPEC_MISMATCH", "Manifest Experiment Spec SHA256 mismatch"
+        )
+    saved, digest = await _verified_pls(session, model_id, root)
+    expected = _pls_manifest(saved, digest)
+    for field, code in (
+        ("training_run_id", "TRAINING_RUN_ID_MISMATCH"),
+        ("implementation_id", "IMPLEMENTATION_MISMATCH"),
+        ("implementation_version", "IMPLEMENTATION_MISMATCH"),
+        ("experiment_spec", "EXPERIMENT_SPEC_MISMATCH"),
+        ("experiment_spec_hash", "EXPERIMENT_SPEC_MISMATCH"),
+        ("effective_training_rows", "TRAINING_ROWS_MISMATCH"),
+        ("payload_sha256", "PAYLOAD_SHA_MISMATCH"),
+    ):
+        if getattr(manifest, field) != getattr(expected, field):
+            raise ModelArtifactError(code, f"PLS Manifest {field} mismatch")
+    return LoadedModelInstance(
+        model_id=model_id,
+        model_type_id="pls",
+        training_run_id=expected.training_run_id,
+        origin="native_manifest",
+        manifest=manifest,
+        payload=saved,
     )

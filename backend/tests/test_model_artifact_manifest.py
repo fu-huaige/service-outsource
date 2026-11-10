@@ -446,3 +446,18 @@ def test_qa_real_sqlite_filters_training_identity(saved):
             await engine.dispose()
 
     asyncio.run(exercise())
+
+
+def test_manifest_structure_version_is_not_payload_version(saved):
+    from app.schemas.model_catalog import PLSModelArtifactManifest
+    from pydantic import ValidationError
+
+    document = manifest(saved).model_dump(mode="json")
+    assert document["manifest_version"] == 1
+    document.update(model_type_id="pls", payload_format="indusopt_pls_json_npz_v2")
+    assert PLSModelArtifactManifest.model_validate(document).manifest_version == 1
+    with pytest.raises(ValidationError):
+        ModelArtifactManifest.model_validate(document)
+    document["payload_format"] = "legacy_dynamic_json"
+    with pytest.raises(ValidationError):
+        PLSModelArtifactManifest.model_validate(document)

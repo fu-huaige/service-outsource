@@ -602,6 +602,10 @@ async def test_v1_cannot_be_mistaken_for_a_persisted_training_record(data):
         parameters=PLSParameters(),
     )
     metadata = training.save_pls_artifact(model, artifact_root=data["root"])
+    from app.services.pls_artifact_service import load_pls_artifact
+
+    independent = load_pls_artifact(model_id=metadata.model_id, artifact_root=data["root"])
+    np.testing.assert_array_equal(independent.predict(data["x"]), model.predict(data["x"]))
     async with data["factory"]() as session:
         with pytest.raises(ValueError, match="v2"):
             await training.load_persisted_pls_model(
@@ -677,3 +681,252 @@ async def test_missing_held_out_targets_are_not_dropped_or_used_for_fit(data):
     assert result["candidate_rows"]["validation"]["ranges"] == [{"start": 24, "stop": 32}]
     assert result["candidate_rows"]["test"]["ranges"] == [{"start": 32, "stop": 40}]
     assert "evaluated_rows" not in result
+
+
+async def test_unified_manifest_publish_load_and_retry_never_fit(data, monkeypatch):
+    from app.services import model_artifact_service as artifacts
+    from app.services import modeling_service
+    from sklearn.cross_decomposition import PLSRegression
+
+    model = await fit(data)
+    identity = model.metadata.model_id
+    before = (await runs(data))[0].result
+    directory = data["root"] / "models" / "pls"
+    files = {p.name: p.read_bytes() for p in directory.iterdir()}
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Manifest/load must not fit or prepare training matrices")
+
+    for name in ("fit_pls_core", "fit_pls_on_version", "_prepare_training"):
+        monkeypatch.setattr(training, name, forbidden)
+    monkeypatch.setattr(PLSRegression, "fit", forbidden)
+    from app.services import pls_modeling_service
+
+    monkeypatch.setattr(pls_modeling_service, "fit_pls_core", forbidden)
+    for name in ("fit_arx_core", "fit_arx_on_version", "estimate_parameters", "fit_multihorizon"):
+        monkeypatch.setattr(modeling_service, name, forbidden)
+    monkeypatch.setattr(modeling_service, "load_saved_arx_model", forbidden)
+    async with data["factory"]() as session:
+        manifest = await artifacts.publish_pls_manifest(
+            session, model_id=identity, artifact_root=data["root"]
+        )
+        repeated = await artifacts.publish_pls_manifest(
+            session, model_id=identity, artifact_root=data["root"]
+        )
+        loaded = await artifacts.load_model_instance(
+            session, model_id=identity, artifact_root=data["root"]
+        )
+    assert manifest == repeated == loaded.manifest
+    assert manifest.manifest_version == 1
+    assert manifest.payload_format == "indusopt_pls_json_npz_v2"
+    assert manifest.payload_uri == f"models/pls/{identity}.json"
+    assert loaded.model_id == identity
+    assert loaded.training_run_id == model.metadata.provenance.training_run_id
+    np.testing.assert_array_equal(
+        loaded.payload.predict(data["x"][:, ::-1]), model.predict(data["x"][:, ::-1])
+    )
+    assert files == {p.name: p.read_bytes() for p in directory.iterdir()}
+    assert before == (await runs(data))[0].result
+
+
+async def test_missing_pls_manifest_never_calls_dynamic_legacy(data, monkeypatch):
+    from app.services import model_artifact_service as artifacts
+
+    model = await fit(data)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("PLS must not fall through to dynamic legacy")
+
+    monkeypatch.setattr(artifacts, "load_saved_arx_model", forbidden)
+    async with data["factory"]() as session:
+        with pytest.raises(artifacts.ModelArtifactError) as caught:
+            await artifacts.load_model_instance(
+                session, model_id=model.metadata.model_id, artifact_root=data["root"]
+            )
+    assert caught.value.code == "MANIFEST_NOT_PUBLISHED"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "model_id",
+        "training_run_id",
+        "payload_sha256",
+        "experiment_spec_hash",
+        "implementation_version",
+        "payload_uri",
+        "spec",
+        "rows",
+        "version",
+        "format",
+        "json",
+    ],
+)
+async def test_pls_manifest_mismatch_fails_closed(data, change):
+    from app.services import model_artifact_service as artifacts
+
+    model = await fit(data)
+    identity = model.metadata.model_id
+    async with data["factory"]() as session:
+        await artifacts.publish_pls_manifest(session, model_id=identity, artifact_root=data["root"])
+    path = data["root"] / "models" / f"{identity}.manifest.json"
+    document = json.loads(path.read_text())
+    if change in ("model_id", "training_run_id"):
+        document[change] = str(uuid4())
+    elif change in ("payload_sha256", "experiment_spec_hash"):
+        document[change] = "0" * 64
+    elif change == "implementation_version":
+        document[change] = "other"
+    elif change == "payload_uri":
+        document[change] = "../outside.json"
+    elif change == "spec":
+        document["experiment_spec"]["dataset_version_id"] = str(uuid4())
+    elif change == "rows":
+        document["effective_training_rows"]["ranges"][0]["start"] = 1
+    elif change == "version":
+        document["manifest_version"] = 2
+    elif change == "format":
+        document["payload_format"] = "unknown"
+    path.write_text("{" if change == "json" else json.dumps(document), encoding="utf-8")
+    async with data["factory"]() as session:
+        with pytest.raises(ValueError):
+            await artifacts.load_model_instance(
+                session, model_id=identity, artifact_root=data["root"]
+            )
+        with pytest.raises(ValueError):
+            await artifacts.publish_pls_manifest(
+                session, model_id=identity, artifact_root=data["root"]
+            )
+
+
+@pytest.mark.parametrize("status", ["running", "failed", "missing"])
+async def test_manifest_requires_successful_real_run(data, status):
+    from app.services import model_artifact_service as artifacts
+
+    model = await fit(data)
+    async with data["factory"]() as session:
+        run = await session.get(ProcessingRun, model.metadata.provenance.training_run_id)
+        if status == "missing":
+            await session.delete(run)
+        else:
+            run.status = status
+        await session.commit()
+    async with data["factory"]() as session:
+        with pytest.raises(artifacts.ModelArtifactError) as caught:
+            await artifacts.publish_pls_manifest(
+                session, model_id=model.metadata.model_id, artifact_root=data["root"]
+            )
+    assert caught.value.code == (
+        "TRAINING_RUN_MISSING" if status == "missing" else "TRAINING_RUN_NOT_SUCCEEDED"
+    )
+
+
+async def test_manifest_wrapper_failure_preserves_success_and_retry(data, monkeypatch):
+    from app.services import model_artifact_service as artifacts
+
+    original = artifacts.publish_pls_manifest
+
+    async def fail(*args, **kwargs):
+        raise OSError("Injected publication failure")
+
+    monkeypatch.setattr(artifacts, "publish_pls_manifest", fail)
+    result = await training.fit_pls_with_manifest(
+        data["factory"], spec=data["spec"], artifact_root=data["root"], parameters=PLSParameters()
+    )
+    assert result.training_status == "succeeded" and result.manifest_status == "failed"
+    assert result.error_code
+    run = (await runs(data))[0]
+    before = run.result
+    assert run.status == "succeeded" and run.id == result.training_run_id
+    monkeypatch.setattr(artifacts, "publish_pls_manifest", original)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Retry must not fit")
+
+    monkeypatch.setattr(training, "fit_pls_on_version", forbidden)
+    retried = await training.retry_pls_manifest(
+        data["factory"], model_id=result.model_id, artifact_root=data["root"]
+    )
+    assert retried.manifest_status == "published"
+    assert retried.training_run_id == result.training_run_id
+    assert before == (await runs(data))[0].result
+
+
+async def test_atomic_manifest_failure_and_conflict_leave_files_untouched(data, monkeypatch):
+    from app.services import model_artifact_service as artifacts
+
+    model = await fit(data)
+    identity = model.metadata.model_id
+    original = artifacts.os.link
+
+    def fail(*args, **kwargs):
+        raise OSError("Injected atomic publication failure")
+
+    monkeypatch.setattr(artifacts.os, "link", fail)
+    async with data["factory"]() as session:
+        with pytest.raises(OSError):
+            await artifacts.publish_pls_manifest(
+                session, model_id=identity, artifact_root=data["root"]
+            )
+    path = data["root"] / "models" / f"{identity}.manifest.json"
+    assert not path.exists() and not list(path.parent.glob("*.manifest.tmp"))
+    assert (await runs(data))[0].status == "succeeded"
+    monkeypatch.setattr(artifacts.os, "link", original)
+    async with data["factory"]() as session:
+        await artifacts.publish_pls_manifest(session, model_id=identity, artifact_root=data["root"])
+    document = json.loads(path.read_text())
+    document["implementation_version"] = "conflict"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    before = path.read_bytes()
+    async with data["factory"]() as session:
+        with pytest.raises(artifacts.ModelArtifactError, match="conflict"):
+            await artifacts.publish_pls_manifest(
+                session, model_id=identity, artifact_root=data["root"]
+            )
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("kind", ["json_missing", "json_sha", "npz_missing", "npz_sha"])
+async def test_unified_payload_damage_is_distinguished(data, kind):
+    from app.services import model_artifact_service as artifacts
+
+    model = await fit(data)
+    identity = model.metadata.model_id
+    async with data["factory"]() as session:
+        await artifacts.publish_pls_manifest(session, model_id=identity, artifact_root=data["root"])
+    suffix = ".json" if kind.startswith("json") else ".npz"
+    path = data["root"] / "models" / "pls" / f"{identity}{suffix}"
+    if kind.endswith("missing"):
+        path.unlink()
+    else:
+        raw = path.read_bytes()
+        path.write_bytes(raw[:-1] + bytes([raw[-1] ^ 1]))
+    async with data["factory"]() as session:
+        with pytest.raises(artifacts.ModelArtifactError) as caught:
+            await artifacts.load_model_instance(
+                session, model_id=identity, artifact_root=data["root"]
+            )
+    assert (
+        caught.value.code
+        == {
+            "json_missing": "PAYLOAD_MISSING",
+            "json_sha": "PAYLOAD_SHA_MISMATCH",
+            "npz_missing": "PLS_NPZ_MISSING",
+            "npz_sha": "PLS_NPZ_INVALID",
+        }[kind]
+    )
+
+
+async def test_wrapper_reports_post_training_verification_failure(data, monkeypatch):
+    async def fail(*args, **kwargs):
+        raise ValueError("Injected source revalidation failure")
+
+    monkeypatch.setattr(training, "retry_pls_manifest", fail)
+    result = await training.fit_pls_with_manifest(
+        data["factory"], spec=data["spec"], artifact_root=data["root"], parameters=PLSParameters()
+    )
+    assert result.manifest_status == "failed" and result.error_code
+    assert result.training_status == "succeeded"
+    run = (await runs(data))[0]
+    assert run.status == "succeeded" and run.id == result.training_run_id
+    assert run.result["model_id"] == str(result.model_id)

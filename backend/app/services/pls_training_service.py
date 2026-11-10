@@ -434,3 +434,87 @@ async def fit_pls_on_version(
             stage=stage,
             outcome=outcome,
         ) from error
+
+
+@dataclass(frozen=True)
+class PLSManifestPublicationResult:
+    model_id: UUID
+    training_run_id: UUID
+    training_status: str
+    manifest_status: str
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+async def retry_pls_manifest(
+    session_factory: SessionFactory,
+    *,
+    model_id: UUID,
+    artifact_root: Path,
+) -> PLSManifestPublicationResult:
+    """Publish an existing successful model; never enter the training state machine."""
+    from app.services.model_artifact_service import ModelArtifactError, publish_pls_manifest
+
+    async with session_factory() as session:
+        model = await load_persisted_pls_model(
+            session, model_id=model_id, artifact_root=artifact_root
+        )
+        run_id = model.metadata.provenance.training_run_id
+        try:
+            await publish_pls_manifest(session, model_id=model_id, artifact_root=artifact_root)
+        except Exception as error:
+            return PLSManifestPublicationResult(
+                model_id=model_id,
+                training_run_id=run_id,
+                training_status="succeeded",
+                manifest_status="failed",
+                error_code=error.code
+                if isinstance(error, ModelArtifactError)
+                else "MANIFEST_PUBLICATION_FAILED",
+                error_message=str(error)
+                if isinstance(error, ModelArtifactError)
+                else type(error).__name__,
+            )
+    return PLSManifestPublicationResult(
+        model_id=model_id,
+        training_run_id=run_id,
+        training_status="succeeded",
+        manifest_status="published",
+    )
+
+
+async def fit_pls_with_manifest(
+    session_factory: SessionFactory,
+    *,
+    spec: ExperimentSpec,
+    artifact_root: Path,
+    parameters: PLSParameters | None = None,
+) -> PLSManifestPublicationResult:
+    """The original fit commits succeeded before any Manifest publication attempt."""
+    model = await fit_pls_on_version(
+        session_factory,
+        spec=spec,
+        artifact_root=artifact_root,
+        parameters=parameters,
+    )
+    try:
+        return await retry_pls_manifest(
+            session_factory,
+            model_id=model.metadata.model_id,
+            artifact_root=artifact_root,
+        )
+    except Exception as error:
+        from app.services.model_artifact_service import ModelArtifactError
+
+        return PLSManifestPublicationResult(
+            model_id=model.metadata.model_id,
+            training_run_id=model.metadata.provenance.training_run_id,
+            training_status="succeeded",
+            manifest_status="failed",
+            error_code=error.code
+            if isinstance(error, ModelArtifactError)
+            else "MANIFEST_PUBLICATION_FAILED",
+            error_message=str(error)
+            if isinstance(error, ModelArtifactError)
+            else type(error).__name__,
+        )

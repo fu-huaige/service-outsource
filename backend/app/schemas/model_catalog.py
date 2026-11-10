@@ -63,3 +63,10 @@ class ModelArtifactManifest(Schema):
     payload_format: Literal["legacy_dynamic_json"] = "legacy_dynamic_json"
     payload_uri: str
     payload_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class PLSModelArtifactManifest(ModelArtifactManifest):
+    """Same manifest structure v1; the standalone PLS payload has its own v2."""
+
+    model_type_id: Literal["pls"] = "pls"
+    payload_format: Literal["indusopt_pls_json_npz_v2"] = "indusopt_pls_json_npz_v2"
