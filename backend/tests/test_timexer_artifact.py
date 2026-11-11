@@ -224,6 +224,27 @@ def test_artifact_size_limit(saved, monkeypatch, file, limit):
         _load(saved)
 
 
+def test_platform_digests_are_checked_before_runtime(saved, monkeypatch):
+    root, model_id, json_path, _ = saved
+    digest = hashlib.sha256(json_path.read_bytes()).hexdigest()
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Trust checks must precede TimeXer restoration")
+
+    monkeypatch.setattr(artifacts, "_runtime_for", unexpected)
+    with pytest.raises(ValueError, match="JSON SHA256"):
+        artifacts.read_timexer_artifact(
+            model_id=model_id, artifact_root=root, expected_json_sha256="0" * 64
+        )
+    with pytest.raises(ValueError, match="NPZ size or SHA256"):
+        artifacts.read_timexer_artifact(
+            model_id=model_id,
+            artifact_root=root,
+            expected_json_sha256=digest,
+            expected_npz=(1, "0" * 64),
+        )
+
+
 def test_duplicate_publication_preserves_existing_files(saved, trained):
     before = tuple(path.read_bytes() for path in saved[2:])
     with pytest.raises(ValueError, match="already exists"):

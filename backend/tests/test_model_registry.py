@@ -26,12 +26,21 @@ def parameters(**changes):
 
 
 def test_only_real_models_are_available():
-    assert [m.model_type_id for m in list_models()] == ["arx", "fir", "oe", "pls", "xgboost", "tcn"]
+    assert [m.model_type_id for m in list_models()] == [
+        "arx",
+        "fir",
+        "oe",
+        "pls",
+        "xgboost",
+        "tcn",
+        "timexer",
+    ]
     assert all(m.availability == "available" for m in list_models())
     assert [m.model_type_id for m in list_models(task_type="supervised_regression")] == [
         "pls",
         "xgboost",
         "tcn",
+        "timexer",
     ]
     assert [m.model_type_id for m in list_models(task_type="dynamic_system_identification")] == [
         "arx",
@@ -67,6 +76,19 @@ def test_tcn_registry_uses_standalone_parameters():
     assert parameter_json_schema("tcn") == TCNParameters.model_json_schema()
     with pytest.raises(ValidationError):
         validate_parameters("tcn", {"window_length": 28})
+
+
+def test_timexer_registry_uses_standalone_parameters():
+    from app.schemas.timexer import TimeXerParameters
+
+    definition = get_model("timexer")
+    assert definition.execution_scope == "api" and definition.device == "cpu"
+    assert definition.family == "time_series_transformer"
+    assert definition.capabilities.single_target and not definition.capabilities.free_run
+    assert validate_parameters("timexer", {"prediction_length": 3}) == TimeXerParameters(
+        prediction_length=3
+    )
+    assert parameter_json_schema("timexer") == TimeXerParameters.model_json_schema()
 
 
 def test_oe_capabilities_match_formal_service():

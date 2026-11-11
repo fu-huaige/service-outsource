@@ -89,8 +89,8 @@ def _complete(document, schema) -> bool:
     return isinstance(document, dict) and set(document) == set(schema.model_fields)
 
 
-def _read_metadata(path: Path) -> TimeXerArtifactMetadata:
-    document = json.loads(_read(path, MAX_JSON_BYTES), object_pairs_hook=_unique_keys)
+def _read_metadata(raw: bytes) -> TimeXerArtifactMetadata:
+    document = json.loads(raw, object_pairs_hook=_unique_keys)
     if not _complete(document, TimeXerArtifactMetadata):
         raise ValueError("Incomplete or unexpected TimeXer metadata")
     arrays = document["arrays"]
@@ -212,13 +212,28 @@ def save_timexer_artifact(fitted: TimeXerModel, *, artifact_root: Path) -> TimeX
     return metadata
 
 
-def load_timexer_artifact(*, model_id: UUID | str, artifact_root: Path) -> TimeXerModel:
+def read_timexer_artifact(
+    *,
+    model_id: UUID | str,
+    artifact_root: Path,
+    expected_json_sha256: str | None = None,
+    expected_npz: tuple[int, str] | None = None,
+) -> tuple[TimeXerModel, TimeXerArtifactMetadata, str]:
     identity = UUID(str(model_id))
     try:
         directory = _directory(artifact_root)
-        metadata = _read_metadata(directory / f"{identity}.json")
+        raw_json = _read(directory / f"{identity}.json", MAX_JSON_BYTES)
+        json_sha256 = hashlib.sha256(raw_json).hexdigest()
+        if expected_json_sha256 is not None and json_sha256 != expected_json_sha256:
+            raise ValueError("TimeXer JSON SHA256 differs from the platform evidence")
+        metadata = _read_metadata(raw_json)
         if metadata.model_id != identity:
             raise ValueError("TimeXer artifact model_id mismatch")
+        if expected_npz is not None and expected_npz != (
+            metadata.npz_size_bytes,
+            metadata.npz_sha256,
+        ):
+            raise ValueError("TimeXer NPZ size or SHA256 differs from the platform evidence")
         raw = _read(directory / metadata.npz_filename, MAX_NPZ_BYTES)
         if (
             len(raw) != metadata.npz_size_bytes
@@ -247,4 +262,8 @@ def load_timexer_artifact(*, model_id: UUID | str, artifact_root: Path) -> TimeX
     training = TimeXerTrainingMetadata.model_validate(
         {name: getattr(metadata, name) for name in TimeXerTrainingMetadata.model_fields}
     )
-    return TimeXerModel(model=model, metadata=training)
+    return TimeXerModel(model=model, metadata=training), metadata, json_sha256
+
+
+def load_timexer_artifact(*, model_id: UUID | str, artifact_root: Path) -> TimeXerModel:
+    return read_timexer_artifact(model_id=model_id, artifact_root=artifact_root)[0]

@@ -10,6 +10,7 @@ from pydantic import ConfigDict, Field, StrictBool, StrictFloat, StrictInt, mode
 
 from app.schemas.common import Schema
 from app.schemas.experiment_spec import ExperimentSpec, RowSet
+from app.schemas.timexer import TimeXerParameters
 
 PositiveInt = Annotated[StrictInt, Field(gt=0)]
 ArrayName = Literal[
@@ -287,7 +288,7 @@ class ModelSourceSummary(Schema):
 
 class ModelDetailsData(Schema):
     model_id: UUID
-    model_type: Literal["arx", "fir", "oe", "pls", "xgboost", "tcn"]
+    model_type: Literal["arx", "fir", "oe", "pls", "xgboost", "tcn", "timexer"]
     training_run_id: UUID | None
     source: ModelSourceSummary
     feature_names: tuple[str, ...]
@@ -301,7 +302,7 @@ class ModelDetailsData(Schema):
     training_status: Literal["succeeded", "unknown"]
     provenance_status: Literal["verified", "incomplete"]
     missing_provenance: tuple[str, ...] = ()
-    parameters: PLSParameters | None = None
+    parameters: PLSParameters | TimeXerParameters | None = None
     requested_n_components: int | None = None
     effective_n_components: int | None = None
     training_rows: int | None = None

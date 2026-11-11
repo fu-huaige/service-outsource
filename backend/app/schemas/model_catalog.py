@@ -9,8 +9,9 @@ from pydantic import ConfigDict, Field
 
 from app.schemas.common import Schema
 from app.schemas.experiment_spec import ExperimentSpec, RowSet
+from app.schemas.timexer_platform import TimeXerForecastSpec
 
-ModelTypeId = Literal["arx", "fir", "oe", "pls", "xgboost", "tcn"]
+ModelTypeId = Literal["arx", "fir", "oe", "pls", "xgboost", "tcn", "timexer"]
 
 
 class ModelCapabilities(Schema):
@@ -34,7 +35,11 @@ class ModelTypeDefinition(Schema):
     model_type_id: ModelTypeId
     display_name: str
     family: Literal[
-        "linear_dynamic", "linear_latent_regression", "tree_ensemble", "temporal_convolution"
+        "linear_dynamic",
+        "linear_latent_regression",
+        "tree_ensemble",
+        "temporal_convolution",
+        "time_series_transformer",
     ] = "linear_dynamic"
     supported_tasks: tuple[str, ...] = ("dynamic_system_identification",)
     availability: Literal["available", "planned"] = "available"
@@ -87,3 +92,16 @@ class TCNModelArtifactManifest(ModelArtifactManifest):
     model_type_id: Literal["tcn"] = "tcn"
     payload_format: Literal["indusopt_tcn_json_npz_v1"] = "indusopt_tcn_json_npz_v1"
     training_samples: int = Field(ge=2)
+
+
+class TimeXerModelArtifactManifest(ModelArtifactManifest):
+    """Platform sidecar for the standalone TimeXer JSON/NPZ payload."""
+
+    model_type_id: Literal["timexer"] = "timexer"
+    payload_format: Literal["indusopt_timexer_json_npz_v1"] = "indusopt_timexer_json_npz_v1"
+    forecast_spec: TimeXerForecastSpec
+    target_name: str
+    exogenous_names: tuple[str, ...]
+    training_samples: int = Field(ge=1)
+    torch_version: str
+    numpy_version: str

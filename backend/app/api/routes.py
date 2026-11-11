@@ -112,6 +112,15 @@ from app.schemas.tcn_platform import (
     TCNPredictResponse,
     TCNPublicationData,
 )
+from app.schemas.timexer_platform import MAX_PREDICT_BYTES as TIMEXER_MAX_PREDICT_BYTES
+from app.schemas.timexer_platform import (
+    TimeXerFitRequest,
+    TimeXerFitResponse,
+    TimeXerManifestRetryRequest,
+    TimeXerPredictRequest,
+    TimeXerPredictResponse,
+    TimeXerPublicationData,
+)
 from app.schemas.xgboost_platform import (
     XGBoostFitRequest,
     XGBoostFitResponse,
@@ -233,6 +242,13 @@ from app.services.tcn_platform_adapter import (
     TCNTrainingError,
     fit_tcn_on_version,
     retry_tcn_manifest,
+)
+from app.services.timexer_modeling_service import TimeXerModel
+from app.services.timexer_platform_adapter import (
+    TimeXerTrainingError,
+    fit_timexer_on_version,
+    predict_saved_timexer,
+    retry_timexer_manifest,
 )
 from app.services.version_data import VersionDataError
 from app.services.versioned_preprocessing_service import (
@@ -1823,6 +1839,19 @@ def _model_details(instance: LoadedModelInstance) -> ModelDetailsData:
             "effective_n_components": metadata.effective_n_components,
             "training_rows": metadata.training_rows,
         }
+    elif isinstance(instance.payload, TimeXerModel):
+        if manifest is None:
+            raise AppError("MANIFEST_NOT_PUBLISHED", "模型清单尚未发布。", status_code=409)
+        metadata_timexer = instance.payload.metadata
+        spec = manifest.experiment_spec
+        dataset_id, version_id = spec.dataset_id, spec.dataset_version_id
+        names = metadata_timexer.exogenous_feature_names
+        target = metadata_timexer.target_name
+        additional = {
+            "artifact_version": 1,
+            "training_rows": metadata_timexer.training_samples,
+            "parameters": metadata_timexer.parameters,
+        }
     elif isinstance(instance.payload, TCNModel):
         if manifest is None:
             raise AppError("MANIFEST_NOT_PUBLISHED", "模型清单尚未发布。", status_code=409)
@@ -2277,4 +2306,137 @@ async def retry_tcn_manifest_api(
         )
     except (ValueError, VersionDataError, OSError, SQLAlchemyError) as error:
         raise _tcn_http_error(error) from error
+    return success(request, outcome)
+
+
+def _timexer_http_error(error: Exception) -> AppError:
+    if isinstance(error, TimeXerTrainingError):
+        details = {
+            "model_id": str(error.model_id),
+            "training_run_id": str(error.training_run_id),
+            "stage": error.stage,
+            "outcome": error.outcome,
+        }
+        if error.outcome == "unconfirmed":
+            return AppError(
+                "TIMEXER_OPERATION_UNCONFIRMED",
+                "请使用原训练运行 ID 核对结果。",
+                status_code=503,
+                details=details,
+            )
+        return AppError(
+            "TIMEXER_TRAINING_FAILED",
+            "TimeXer 训练失败。",
+            status_code=422 if isinstance(error.__cause__, ValueError) else 500,
+            details=details,
+        )
+    if isinstance(error, ModelArtifactError):
+        return _pls_http_error(error, operation="load")
+    if isinstance(error, (OSError, SQLAlchemyError)):
+        return AppError("TIMEXER_SERVICE_UNAVAILABLE", "TimeXer 服务暂不可用。", status_code=503)
+    return AppError("TIMEXER_INPUT_INVALID", "输入不符合 TimeXer 模型要求。", status_code=422)
+
+
+@router.post(
+    "/modeling/timexer/fit",
+    tags=["Modeling"],
+    response_model=SuccessEnvelope[TimeXerFitResponse],
+    responses=ERROR_RESPONSES,
+)
+async def fit_timexer_api(
+    request: Request,
+    payload: TimeXerFitRequest,
+    factory: Annotated[SessionFactory, Depends(get_session_factory)],
+):
+    try:
+        outcome = await fit_timexer_on_version(
+            factory,
+            spec=payload.experiment_spec,
+            parameters=payload.parameters,
+            forecast_spec=payload.forecast_spec,
+            artifact_root=get_settings().artifact_root,
+        )
+    except (ValueError, VersionDataError, OSError, SQLAlchemyError) as error:
+        raise _timexer_http_error(error) from error
+    return success(request, outcome)
+
+
+async def _parse_timexer_predict(request: Request) -> TimeXerPredictRequest:
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > TIMEXER_MAX_PREDICT_BYTES:
+            raise AppError(
+                "TIMEXER_PREDICT_BODY_TOO_LARGE", "TimeXer 预测请求体过大。", status_code=413
+            )
+        body.extend(chunk)
+    try:
+        return TimeXerPredictRequest.model_validate(json.loads(body))
+    except (ValueError, RecursionError) as error:
+        raise AppError(
+            "REQUEST_VALIDATION_FAILED", "TimeXer 预测请求参数校验失败。", status_code=422
+        ) from error
+
+
+@router.post(
+    "/modeling/timexer/predict",
+    tags=["Modeling"],
+    response_model=SuccessEnvelope[TimeXerPredictResponse],
+    responses=ERROR_RESPONSES,
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {"application/json": {"schema": TimeXerPredictRequest.model_json_schema()}},
+        }
+    },
+)
+async def predict_timexer_api(
+    request: Request,
+    payload: Annotated[TimeXerPredictRequest, Depends(_parse_timexer_predict)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    instance = await _api_load_model(session, payload.model_id, expected_model_type="timexer")
+    if not isinstance(instance.payload, TimeXerModel):
+        raise AppError("MODEL_TYPE_MISMATCH", "固定预测需要 TimeXer 模型。", status_code=409)
+    try:
+        predicted = await run_in_threadpool(
+            predict_saved_timexer,
+            instance.payload,
+            payload.X_target,
+            payload.X_exogenous,
+            target_name=payload.target_name,
+            exogenous_names=payload.exogenous_names,
+        )
+    except ValueError as error:
+        raise _timexer_http_error(error) from error
+    return success(
+        request,
+        TimeXerPredictResponse(
+            model_id=instance.model_id,
+            predictions=tuple(tuple(row) for row in predicted.tolist()),
+            sample_count=len(predicted),
+        ),
+    )
+
+
+@router.post(
+    "/modeling/timexer/{model_id}/manifest/retry",
+    tags=["Modeling"],
+    response_model=SuccessEnvelope[TimeXerPublicationData],
+    responses=ERROR_RESPONSES,
+)
+async def retry_timexer_manifest_api(
+    request: Request,
+    model_id: UUID,
+    payload: TimeXerManifestRetryRequest,
+    factory: Annotated[SessionFactory, Depends(get_session_factory)],
+):
+    try:
+        outcome = await retry_timexer_manifest(
+            factory,
+            model_id=model_id,
+            training_run_id=payload.training_run_id,
+            artifact_root=get_settings().artifact_root,
+        )
+    except (ValueError, VersionDataError, OSError, SQLAlchemyError) as error:
+        raise _timexer_http_error(error) from error
     return success(request, outcome)

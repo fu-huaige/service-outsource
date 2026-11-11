@@ -22,6 +22,7 @@ from app.schemas.model_catalog import (
     ModelArtifactManifest,
     PLSModelArtifactManifest,
     TCNModelArtifactManifest,
+    TimeXerModelArtifactManifest,
     XGBoostModelArtifactManifest,
 )
 from app.schemas.pls import PLSBoundArtifactMetadata
@@ -35,6 +36,7 @@ from app.services.model_registry import get_model
 from app.services.modeling_service import SavedArxModel, load_saved_arx_model
 from app.services.pls_modeling_service import SavedPLSModel
 from app.services.tcn_modeling_service import TCNModel
+from app.services.timexer_modeling_service import TimeXerModel
 from app.services.xgboost_artifact_service import SavedXGBoostModel
 
 
@@ -45,7 +47,7 @@ class LoadedModelInstance:
     training_run_id: UUID | None
     origin: str
     manifest: ModelArtifactManifest | None
-    payload: SavedArxModel | SavedPLSModel | SavedXGBoostModel | TCNModel
+    payload: SavedArxModel | SavedPLSModel | SavedXGBoostModel | TCNModel | TimeXerModel
     missing_provenance: tuple[str, ...] = ()
 
 
@@ -284,6 +286,7 @@ async def load_model_instance(
 ) -> LoadedModelInstance:
     path = _checked_model_file(artifact_root, f"models/{model_id}.manifest.json", optional=True)
     from app.services.tcn_platform_adapter import find_tcn_run, verify_tcn_model
+    from app.services.timexer_platform_adapter import find_timexer_run, verify_timexer_model
     from app.services.xgboost_platform_adapter import find_xgboost_run, verify_xgboost_model
 
     manifest = _read_manifest(path) if path is not None else None
@@ -291,6 +294,22 @@ async def load_model_instance(
         raise ModelArtifactError("MODEL_ID_MISMATCH", "Manifest model_id mismatch")
     if manifest is not None and expected_model_type not in (None, manifest.model_type_id):
         raise ModelArtifactError("MODEL_TYPE_MISMATCH", "Unexpected model type")
+    if isinstance(manifest, TimeXerModelArtifactManifest):
+        _, saved_timexer = await verify_timexer_model(
+            session,
+            model_id=model_id,
+            training_run_id=manifest.training_run_id,
+            artifact_root=artifact_root,
+            manifest=manifest,
+        )
+        return LoadedModelInstance(
+            model_id=model_id,
+            model_type_id="timexer",
+            training_run_id=manifest.training_run_id,
+            origin="native_manifest",
+            manifest=manifest,
+            payload=saved_timexer,
+        )
     if isinstance(manifest, TCNModelArtifactManifest):
         _, saved_tcn = await verify_tcn_model(
             session,
@@ -323,6 +342,17 @@ async def load_model_instance(
             manifest=manifest,
             payload=saved_xgboost,
         )
+    timexer_run = await find_timexer_run(session, model_id)
+    if timexer_run is not None:
+        if manifest is not None or expected_model_type not in (None, "timexer"):
+            raise ModelArtifactError("MODEL_TYPE_MISMATCH", "Unexpected TimeXer training identity")
+        if timexer_run.status != "succeeded":
+            raise ModelArtifactError(
+                "TRAINING_RUN_NOT_SUCCEEDED", "TimeXer training did not succeed"
+            )
+        raise ModelArtifactError(
+            "MANIFEST_NOT_PUBLISHED", "TimeXer Manifest has not been published"
+        )
     tcn_run = await find_tcn_run(session, model_id)
     if tcn_run is not None:
         if manifest is not None or expected_model_type not in (None, "tcn"):
@@ -333,7 +363,7 @@ async def load_model_instance(
 
     xgboost_run = await find_xgboost_run(session, model_id)
     if xgboost_run is not None:
-        if manifest is not None or expected_model_type == "tcn":
+        if manifest is not None or expected_model_type in ("tcn", "timexer"):
             raise ModelArtifactError(
                 "MODEL_TYPE_MISMATCH", "Manifest conflicts with the training model type"
             )
@@ -345,6 +375,8 @@ async def load_model_instance(
             "MANIFEST_NOT_PUBLISHED", "XGBoost Manifest has not been published"
         )
 
+    if manifest is None and expected_model_type == "timexer":
+        raise ModelArtifactError("TRAINING_RUN_MISSING", "TimeXer training record is missing")
     if manifest is None and expected_model_type == "tcn":
         raise ModelArtifactError("TRAINING_RUN_MISSING", "TCN training record is missing")
     if manifest is None and expected_model_type == "xgboost":
@@ -437,6 +469,8 @@ def _read_manifest(path: Path) -> ModelArtifactManifest:
         model: type[ModelArtifactManifest] = XGBoostModelArtifactManifest
     elif kind == "tcn":
         model = TCNModelArtifactManifest
+    elif kind == "timexer":
+        model = TimeXerModelArtifactManifest
     elif kind == "pls":
         model = PLSModelArtifactManifest
     elif kind in ("arx", "fir", "oe"):
