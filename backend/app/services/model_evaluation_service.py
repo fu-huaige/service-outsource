@@ -1,4 +1,4 @@
-"""Evaluate saved static models on their original held-out data."""
+"""Evaluate saved models on their original held-out data."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from platform import python_version
 from uuid import UUID, uuid4
 
 import numpy as np
@@ -15,12 +16,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dataset import DatasetVersion, ProcessingRun
 from app.schemas.experiment_spec import ExperimentSpec, RowSet
-from app.schemas.model_catalog import PLSModelArtifactManifest, XGBoostModelArtifactManifest
+from app.schemas.model_catalog import (
+    PLSModelArtifactManifest,
+    TCNModelArtifactManifest,
+    XGBoostModelArtifactManifest,
+)
 from app.schemas.model_evaluation import (
     EvaluationModelType,
     ModelEvaluationRequest,
     ModelEvaluationResult,
     RegressionMetrics,
+    TCNModelEvaluationResult,
 )
 from app.schemas.pls import PLSBoundArtifactMetadata
 from app.services.dataset_version_io import artifact_matches_sha256
@@ -28,12 +34,14 @@ from app.services.experiment_spec_service import iter_rows, spec_hash
 from app.services.model_artifact_service import load_model_instance
 from app.services.model_data_adapter import (
     BoundSource,
-    PreparedBatch,
     ResolvedRows,
     build_table_samples,
 )
 from app.services.modeling_service import _scores
 from app.services.pls_modeling_service import SavedPLSModel
+from app.services.sequence_data_adapter import build_tcn_samples
+from app.services.tcn_modeling_service import TCNModel
+from app.services.tcn_platform_adapter import _evidence as serialize_tcn_evidence
 from app.services.version_data import FloatArray, load_version_series
 from app.services.xgboost_artifact_service import SavedXGBoostModel
 
@@ -53,7 +61,7 @@ class ModelEvaluationError(ValueError):
 
 @dataclass(frozen=True)
 class _EvaluationSource:
-    model: SavedPLSModel | SavedXGBoostModel
+    model: SavedPLSModel | SavedXGBoostModel | TCNModel
     model_type_id: EvaluationModelType
     training_run_id: UUID
     spec: ExperimentSpec
@@ -78,8 +86,14 @@ async def _load_source(session: AsyncSession, model_id: UUID, root: Path) -> _Ev
             and isinstance(manifest, XGBoostModelArtifactManifest)
         ):
             model_type = "xgboost"
+        elif (
+            instance.model_type_id == "tcn"
+            and isinstance(model, TCNModel)
+            and isinstance(manifest, TCNModelArtifactManifest)
+        ):
+            model_type = "tcn"
         else:
-            raise ValueError("Evaluation requires a verified PLS or XGBoost Manifest")
+            raise ValueError("Evaluation requires a verified PLS, XGBoost or TCN Manifest")
 
         spec = manifest.experiment_spec
         if (
@@ -107,7 +121,12 @@ async def _load_source(session: AsyncSession, model_id: UUID, root: Path) -> _Ev
         ):
             raise ValueError("Evaluation requires the original succeeded training Run and source")
         rows = RowSet.model_validate(run.result.get("effective_training_rows"))
-        if rows != manifest.effective_training_rows or rows.count != model.metadata.training_rows:
+        training_count = (
+            model.metadata.training_samples
+            if isinstance(model, TCNModel)
+            else model.metadata.training_rows
+        )
+        if rows != manifest.effective_training_rows or rows.count != training_count:
             raise ValueError("Actual training rows differ from the verified model")
     return _EvaluationSource(
         model=model,
@@ -337,32 +356,65 @@ async def evaluate_saved_model(
             await _check_version_digest(session, context.source, artifact_root)
 
         stage = "build_samples"
-        batch: PreparedBatch = build_table_samples(
-            series,
-            spec=context.spec,
-            source=context.source,
-            partition=request.partition,
-            requested_rows=requested,
-        )
-        actual_rows = batch.evidence.anchor_rows
+        metadata = context.model.metadata
+        sequence_details = {}
+        result_type: type[ModelEvaluationResult] = ModelEvaluationResult
+        if isinstance(context.model, TCNModel):
+            tcn_metadata = context.model.metadata
+            sequence = build_tcn_samples(
+                series,
+                spec=context.spec,
+                source=context.source,
+                partition=request.partition,
+                requested_rows=requested,
+                parameters=tcn_metadata.parameters,
+            )
+            x, y = sequence.x, sequence.y
+            feature_names, target_name = sequence.feature_names, sequence.target_name
+            actual_rows = sequence.evidence.anchor_rows
+            expected_shape = (actual_rows.count, tcn_metadata.window_length, len(feature_names))
+            sequence_details = {
+                "window_length": tcn_metadata.window_length,
+                "sequence_evidence": serialize_tcn_evidence(sequence.evidence),
+                "model_implementation_version": tcn_metadata.implementation_version,
+                "dependency_versions": {
+                    "python": python_version(),
+                    "numpy": np.__version__,
+                    # Artifact restoration checks the installed PyTorch build.
+                    "torch": tcn_metadata.torch_version,
+                },
+            }
+            result_type = TCNModelEvaluationResult
+        else:
+            batch = build_table_samples(
+                series,
+                spec=context.spec,
+                source=context.source,
+                partition=request.partition,
+                requested_rows=requested,
+            )
+            x, y = batch.inputs.x, batch.y
+            feature_names, target_name = batch.inputs.feature_names, batch.target_name
+            actual_rows = batch.evidence.anchor_rows
+            expected_shape = (actual_rows.count, len(feature_names))
+
         _assert_disjoint(context.training_rows, actual_rows, requested, artifact_root)
         evidence = {**evidence, "actual_rows": actual_rows.model_dump(mode="json")}
-        if batch.inputs.feature_names != context.model.metadata.feature_names:
+        if feature_names != metadata.feature_names:
             raise ValueError("Evaluation feature order differs from the saved model")
         if (
-            batch.inputs.x.shape != (actual_rows.count, len(batch.inputs.feature_names))
-            or batch.y.shape != (actual_rows.count,)
-            or batch.target_name != context.model.metadata.target_name
+            x.shape != expected_shape
+            or y.shape != (actual_rows.count,)
+            or target_name != metadata.target_name
         ):
             raise ValueError("Evaluation samples differ from their row or target evidence")
+        evidence.update(sequence_details)
 
         stage = "predict"
-        predicted = await asyncio.to_thread(
-            context.model.predict, batch.inputs.x, feature_names=batch.inputs.feature_names
-        )
+        predicted = await asyncio.to_thread(context.model.predict, x, feature_names=feature_names)
         stage = "metrics"
-        metrics = calculate_regression_metrics(batch.y, predicted)
-        expected = ModelEvaluationResult(
+        metrics = calculate_regression_metrics(y, predicted)
+        expected = result_type(
             evaluation_run_id=run_id,
             model_id=request.model_id,
             model_type_id=context.model_type_id,
@@ -375,6 +427,7 @@ async def evaluate_saved_model(
             actual_rows=actual_rows,
             sample_count=actual_rows.count,
             metrics=metrics,
+            **sequence_details,
         )
         stage = "save_result"
         async with session_factory() as session:

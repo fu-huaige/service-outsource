@@ -9,7 +9,7 @@ from app.schemas.common import Schema
 from app.schemas.experiment_spec import Digest, RowSet
 
 EvaluationPartition = Literal["validation", "test"]
-EvaluationModelType = Literal["pls", "xgboost"]
+EvaluationModelType = Literal["pls", "xgboost", "tcn"]
 NonnegativeMetric = Annotated[StrictFloat, Field(ge=0, allow_inf_nan=False)]
 R2Metric = Annotated[StrictFloat, Field(le=1, allow_inf_nan=False)]
 
@@ -50,3 +50,11 @@ class ModelEvaluationResult(Schema):
         if self.evaluation_run_id in (self.model_id, self.training_run_id):
             raise ValueError("Evaluation requires an independent run identity")
         return self
+
+
+class TCNModelEvaluationResult(ModelEvaluationResult):
+    model_type_id: Literal["tcn"]
+    window_length: Annotated[StrictInt, Field(gt=0)]
+    sequence_evidence: dict[str, object]
+    model_implementation_version: Literal["tcn-core-1"]
+    dependency_versions: dict[str, str]

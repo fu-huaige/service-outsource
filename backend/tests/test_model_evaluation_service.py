@@ -7,11 +7,16 @@ from uuid import uuid4
 import numpy as np
 import pytest
 from app.models.dataset import ProcessingRun
-from app.schemas.experiment_spec import RowRange, RowSet
+from app.schemas.experiment_spec import ExperimentSpec, RowRange, RowSet
 from app.schemas.model_evaluation import ModelEvaluationRequest, RegressionMetrics
 from app.schemas.xgboost import XGBoostParameters
 from app.services import model_evaluation_service as evaluation
-from app.services import pls_training_service, xgboost_platform_adapter
+from app.services import (
+    pls_training_service,
+    tcn_modeling_service,
+    tcn_platform_adapter,
+    xgboost_platform_adapter,
+)
 from app.services.model_data_adapter import ResolvedRows
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -19,8 +24,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from test_pls_evaluation_service import prepare
 from test_pls_training_service import data as data
 from test_pls_training_service import runs
+from test_tcn_platform import data as tcn_platform_data
+from test_tcn_platform import fit as fit_tcn
+from test_tcn_platform import no_training
 
 pytestmark = pytest.mark.asyncio
+tcn_data = tcn_platform_data
 
 
 def forbid_fit(monkeypatch):
@@ -255,6 +264,233 @@ async def test_invalid_evaluation_input_is_rejected(data, monkeypatch, fault, st
     assert (await evaluation_runs(data))[0].status == "failed"
 
 
+def tcn_spec(data, *, partition=None, index_rows=None):
+    document = data["spec"].model_dump()
+    document["split"].update(
+        train=[{"start": 0, "stop": 33}],
+        validation=[{"start": 33, "stop": 36}, {"start": 36, "stop": 69}],
+        test=[{"start": 69, "stop": 102}],
+    )
+    document["evaluation"]["scopes"] = ("validation", "test")
+    if index_rows is not None:
+        raw = "".join(f"{row}\n" for row in index_rows).encode()
+        path = data["root"] / "tcn-evaluation-rows.txt"
+        path.write_bytes(raw)
+        document["evaluation"]["sample_indices"] = {
+            partition: {
+                "index_file": {
+                    "uri": path.name,
+                    "sha256": hashlib.sha256(raw).hexdigest(),
+                    "count": len(index_rows),
+                },
+            },
+        }
+    return ExperimentSpec.model_validate(document)
+
+
+def forbid_tcn_training(monkeypatch):
+    forbid_fit(monkeypatch)
+    monkeypatch.setattr(tcn_platform_adapter, "fit_tcn_on_version", no_training)
+    monkeypatch.setattr(tcn_platform_adapter, "fit_tcn_core", no_training)
+    monkeypatch.setattr(tcn_platform_adapter, "retry_tcn_manifest", no_training)
+    monkeypatch.setattr(tcn_modeling_service, "fit_tcn_core", no_training)
+    monkeypatch.setattr(tcn_modeling_service.torch_runtime().optim.Adam, "step", no_training)
+
+
+async def test_tcn_evaluates_saved_model_with_verified_windows(tcn_data, monkeypatch):
+    data = tcn_data
+    fit = await fit_tcn(data, tcn_spec(data, partition="validation", index_rows=(65, 68)))
+    assert fit.manifest_status == "published"
+    (training,) = await runs(data)
+    before = snapshot_files(data["root"])
+    forbid_tcn_training(monkeypatch)
+    load = evaluation.load_model_instance
+    predict = tcn_modeling_service.TCNModel.predict
+    loaded_models, calls = [], []
+
+    async def check_loading(*args, **kwargs):
+        (running,) = [run for run in await evaluation_runs(data) if run.status == "running"]
+        assert running.parameters["model_id"] == str(fit.model_id)
+        instance = await load(*args, **kwargs)
+        loaded_models.append(instance.payload)
+        return instance
+
+    def record(model, x, *, feature_names):
+        assert model is loaded_models[-1]
+        predicted = predict(model, x, feature_names=feature_names)
+        calls.append((x.copy(), feature_names, predicted.copy(), model.metadata))
+        return predicted
+
+    monkeypatch.setattr(evaluation, "load_model_instance", check_loading)
+    monkeypatch.setattr(tcn_modeling_service.TCNModel, "predict", record)
+
+    validation = await evaluate(data, fit.model_id)
+    test = await evaluate(data, fit.model_id, "test")
+    assert validation.evaluation_run_id != test.evaluation_run_id
+    assert len(calls) == 2
+    for result, anchors, call in zip(
+        (validation, test), ([65, 68], [98, 99, 100, 101]), calls, strict=True
+    ):
+        x, names, predicted, metadata = call
+        length = metadata.window_length
+        assert result.model_type_id == "tcn" and result.training_run_id == training.id
+        assert result.dataset_version_id == data["spec"].dataset_version_id != data["latest"]
+        assert result.window_length == length == 29
+        assert result.sample_count == len(anchors) and predicted.shape == (len(anchors),)
+        assert names == ("b", "a")
+        np.testing.assert_array_equal(x, [data["x"][r - length : r, ::-1] for r in anchors])
+        actual = data["y"][anchors].astype(np.float64)
+        residual = actual - predicted
+        rmse = np.sqrt(np.mean(residual**2))
+        p5, p95 = np.percentile(actual, [5, 95])
+        assert result.metrics.rmse == pytest.approx(rmse)
+        assert result.metrics.mae == pytest.approx(np.mean(np.abs(residual)))
+        assert result.metrics.r2 == pytest.approx(
+            1 - np.sum(residual**2) / np.sum((actual - actual.mean()) ** 2)
+        )
+        assert result.metrics.nrmse == pytest.approx(rmse / (p95 - p5))
+        evidence = result.sequence_evidence
+        assert evidence["partition"] == result.partition
+        assert evidence["anchor_rows"] == result.actual_rows.model_dump(mode="json")
+        assert evidence["sample_count"] == result.sample_count
+        assert evidence["history_lengths"] == [["features", length]]
+        assert evidence["history_offsets"] == [-length, 0] and evidence["target_offsets"] == [0]
+        assert evidence["continuous_runs"] == [{"start": 36, "stop": 102}]
+        assert evidence["feature_names"] == ["b", "a"] and evidence["target_name"] == "quality"
+        assert evidence["source"] == {
+            "dataset_id": str(result.dataset_id),
+            "dataset_version_id": str(result.dataset_version_id),
+            "dataset_sha256": result.dataset_sha256,
+            "experiment_spec_hash": result.experiment_spec_hash,
+        }
+        assert result.model_implementation_version == metadata.implementation_version
+        assert result.dependency_versions["torch"] == metadata.torch_version
+
+    assert validation.actual_rows.index_file is not None
+    assert test.actual_rows.ranges == (RowRange(start=98, stop=102),)
+    persisted = {run.id: run for run in await runs(data)}
+    for result in (validation, test):
+        saved = persisted[result.evaluation_run_id]
+        assert saved.run_type == evaluation.RUN_TYPE and saved.status == "succeeded"
+        assert saved.result["evaluation"] == result.model_dump(mode="json")
+        assert saved.parameters["sequence_evidence"] == result.sequence_evidence
+    old = persisted[training.id]
+    assert old.parameters == training.parameters and old.result == training.result
+    assert old.status == training.status and old.finished_at == training.finished_at
+    assert snapshot_files(data["root"]) == before
+
+
+@pytest.mark.parametrize(
+    ("fault", "partition", "rows", "message"),
+    [
+        ("partition", "test", (70,), "outside the effective partition"),
+        ("continuous_run", "validation", (64,), "outside the effective partition"),
+        ("history", "validation", None, "No complete sequence windows"),
+    ],
+)
+async def test_tcn_rejects_incomplete_or_cross_boundary_windows(
+    tcn_data, monkeypatch, fault, partition, rows, message
+):
+    # r=70 crosses the partition inside one run. r=64 crosses runs within Validation.
+    spec = (
+        tcn_data["spec"]
+        if fault == "history"
+        else tcn_spec(tcn_data, partition=partition, index_rows=rows)
+    )
+    fit = await fit_tcn(tcn_data, spec)
+    forbid_tcn_training(monkeypatch)
+    monkeypatch.setattr(tcn_modeling_service.TCNModel, "predict", no_training)
+    with pytest.raises(evaluation.ModelEvaluationError) as error:
+        await evaluate(tcn_data, fit.model_id, partition)
+    assert error.value.stage == "build_samples" and message in str(error.value.__cause__)
+    assert (await evaluation_runs(tcn_data))[0].status == "failed"
+
+
+async def test_tcn_rejects_overlap_with_actual_training_anchors(tcn_data, monkeypatch):
+    fit = await fit_tcn(tcn_data, tcn_spec(tcn_data))
+    forbid_tcn_training(monkeypatch)
+    load = evaluation._load_source
+
+    async def conflicting_training_rows(*args, **kwargs):
+        source = await load(*args, **kwargs)
+        # Inject a conflict after verification to exercise the independent overlap check.
+        return replace(source, training_rows=RowSet(ranges=(RowRange(start=65, stop=69),)))
+
+    monkeypatch.setattr(evaluation, "_load_source", conflicting_training_rows)
+    monkeypatch.setattr(tcn_modeling_service.TCNModel, "predict", no_training)
+    with pytest.raises(evaluation.ModelEvaluationError) as error:
+        await evaluate(tcn_data, fit.model_id)
+    assert error.value.stage == "build_samples" and "overlaps actual Train" in str(
+        error.value.__cause__
+    )
+    assert (await evaluation_runs(tcn_data))[0].status == "failed"
+
+
+async def test_tcn_rejects_invalid_evaluation_arrays(tcn_data, monkeypatch):
+    fit = await fit_tcn(tcn_data, tcn_spec(tcn_data))
+    forbid_tcn_training(monkeypatch)
+    build = evaluation.build_tcn_samples
+
+    def wrong_features(*args, **kwargs):
+        samples = build(*args, **kwargs)
+        return replace(samples, evidence=replace(samples.evidence, feature_names=("a", "b")))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(evaluation, "build_tcn_samples", wrong_features)
+        patch.setattr(tcn_modeling_service.TCNModel, "predict", no_training)
+        with pytest.raises(evaluation.ModelEvaluationError) as error:
+            await evaluate(tcn_data, fit.model_id)
+        assert error.value.stage == "build_samples"
+        assert "feature order" in str(error.value.__cause__)
+
+    def wrong_feature_count(*args, **kwargs):
+        samples = build(*args, **kwargs)
+        return replace(samples, x=samples.x[:, :, :1])
+
+    with monkeypatch.context() as patch:
+        patch.setattr(evaluation, "build_tcn_samples", wrong_feature_count)
+        patch.setattr(tcn_modeling_service.TCNModel, "predict", no_training)
+        with pytest.raises(evaluation.ModelEvaluationError) as error:
+            await evaluate(tcn_data, fit.model_id)
+        assert error.value.stage == "build_samples"
+        assert "row or target evidence" in str(error.value.__cause__)
+
+    read = evaluation.load_version_series
+    for invalid in (np.nan, np.inf):
+        with monkeypatch.context() as patch:
+
+            async def nonfinite_history(*args, _invalid=invalid, **kwargs):
+                series = await read(*args, **kwargs)
+                values = series.values["a"].copy()
+                values[36] = _invalid
+                return replace(series, values={**series.values, "a": values})
+
+            patch.setattr(evaluation, "load_version_series", nonfinite_history)
+            patch.setattr(tcn_modeling_service.TCNModel, "predict", no_training)
+            with pytest.raises(evaluation.ModelEvaluationError) as error:
+                await evaluate(tcn_data, fit.model_id)
+            assert error.value.stage == "build_samples" and "finite" in str(error.value.__cause__)
+
+    for bad_prediction in (
+        np.empty(0),
+        np.ones(3),
+        np.ones((4, 1)),
+        np.full(4, np.nan),
+        np.full(4, np.inf),
+    ):
+        monkeypatch.setattr(
+            tcn_modeling_service.TCNModel,
+            "predict",
+            lambda *args, _prediction=bad_prediction, **kwargs: _prediction,
+        )
+        with pytest.raises(evaluation.ModelEvaluationError) as error:
+            await evaluate(tcn_data, fit.model_id)
+        assert error.value.stage == "metrics" and "aligned, nonempty, finite" in str(
+            error.value.__cause__
+        )
+    assert all(run.status == "failed" for run in await evaluation_runs(tcn_data))
+
+
 @pytest.mark.parametrize(
     ("applied", "database_unavailable"), [(True, False), (False, False), (False, True)]
 )
@@ -262,6 +498,21 @@ async def test_final_commit_reconciles_in_an_independent_session(
     data, applied, database_unavailable
 ):
     instance = await prepare(data)
+    await assert_final_commit_reconciliation(data, instance.model_id, applied, database_unavailable)
+
+
+@pytest.mark.parametrize(
+    ("applied", "database_unavailable"), [(True, False), (False, False), (False, True)]
+)
+async def test_tcn_final_commit_reconciles_in_an_independent_session(
+    tcn_data, monkeypatch, applied, database_unavailable
+):
+    fit = await fit_tcn(tcn_data, tcn_spec(tcn_data))
+    forbid_tcn_training(monkeypatch)
+    await assert_final_commit_reconciliation(tcn_data, fit.model_id, applied, database_unavailable)
+
+
+async def assert_final_commit_reconciliation(data, model_id, applied, database_unavailable):
     final_commit_failed = False
 
     class InterruptedCommit(AsyncSession):
@@ -289,13 +540,13 @@ async def test_final_commit_reconciles_in_an_independent_session(
         return session_factory()
 
     if applied:
-        result = await evaluate(data, instance.model_id, factory=factory)
+        result = await evaluate(data, model_id, factory=factory)
         (run,) = await evaluation_runs(data)
         assert run.id == result.evaluation_run_id and run.status == "succeeded"
         assert run.result["evaluation"] == result.model_dump(mode="json")
     else:
         with pytest.raises(evaluation.ModelEvaluationError) as error:
-            await evaluate(data, instance.model_id, factory=factory)
+            await evaluate(data, model_id, factory=factory)
         (run,) = await evaluation_runs(data)
         assert run.id == error.value.evaluation_run_id and error.value.stage == "final_commit"
         assert error.value.outcome == ("unconfirmed" if database_unavailable else "failed")
