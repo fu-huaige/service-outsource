@@ -6,10 +6,11 @@ from uuid import UUID
 from pydantic import Field, StrictFloat, StrictInt, model_validator
 
 from app.schemas.common import Schema
-from app.schemas.experiment_spec import Digest, RowSet
+from app.schemas.experiment_spec import Digest, RowRange, RowSet, validate_ranges
+from app.schemas.timexer_platform import TimeXerForecastSpec
 
 EvaluationPartition = Literal["validation", "test"]
-EvaluationModelType = Literal["pls", "xgboost", "tcn"]
+EvaluationModelType = Literal["pls", "xgboost", "tcn", "timexer"]
 NonnegativeMetric = Annotated[StrictFloat, Field(ge=0, allow_inf_nan=False)]
 R2Metric = Annotated[StrictFloat, Field(le=1, allow_inf_nan=False)]
 
@@ -58,3 +59,49 @@ class TCNModelEvaluationResult(ModelEvaluationResult):
     sequence_evidence: dict[str, object]
     model_implementation_version: Literal["tcn-core-1"]
     dependency_versions: dict[str, str]
+
+
+MetricName = Literal["r2", "rmse", "mae", "nrmse"]
+HorizonStep = Annotated[StrictInt, Field(gt=0)]
+
+
+class TargetRowSet(Schema):
+    """Inline coverage derived from verified anchors, including sparse index files."""
+
+    ranges: tuple[RowRange, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def check_ranges(self) -> Self:
+        validate_ranges(self.ranges)
+        return self
+
+
+class HorizonMetrics(RegressionMetrics):
+    horizon_step: HorizonStep
+
+
+class MetricAggregation(Schema):
+    method: Literal["macro_average"] = "macro_average"
+    valid_horizon_counts: dict[MetricName, Annotated[StrictInt, Field(ge=0)]]
+    undefined_horizons: dict[MetricName, tuple[HorizonStep, ...]]
+
+
+class TimeXerModelEvaluationResult(ModelEvaluationResult):
+    model_type_id: Literal["timexer"]
+    forecast_spec: TimeXerForecastSpec
+    target_rows: TargetRowSet
+    target_rows_by_horizon: tuple[TargetRowSet, ...]
+    sequence_evidence: dict[str, object]
+    horizon_metrics: tuple[HorizonMetrics, ...]
+    metric_aggregation: MetricAggregation
+    model_implementation_version: str
+    dependency_versions: dict[str, str]
+
+    @model_validator(mode="after")
+    def check_horizons(self) -> Self:
+        horizon = self.forecast_spec.prediction_length
+        if len(self.target_rows_by_horizon) != horizon or tuple(
+            item.horizon_step for item in self.horizon_metrics
+        ) != tuple(range(1, horizon + 1)):
+            raise ValueError("TimeXer evaluation must record each forecast horizon in order")
+        return self

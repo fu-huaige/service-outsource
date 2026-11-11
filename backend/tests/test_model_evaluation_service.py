@@ -15,6 +15,8 @@ from app.services import (
     pls_training_service,
     tcn_modeling_service,
     tcn_platform_adapter,
+    timexer_modeling_service,
+    timexer_platform_adapter,
     xgboost_platform_adapter,
 )
 from app.services.model_data_adapter import ResolvedRows
@@ -27,6 +29,9 @@ from test_pls_training_service import runs
 from test_tcn_platform import data as tcn_platform_data
 from test_tcn_platform import fit as fit_tcn
 from test_tcn_platform import no_training
+from test_timexer_platform import fit as fit_timexer
+from test_timexer_platform import forbid_training as forbid_timexer_optimizer
+from test_timexer_platform import forecast as timexer_forecast
 
 pytestmark = pytest.mark.asyncio
 tcn_data = tcn_platform_data
@@ -551,6 +556,286 @@ async def assert_final_commit_reconciliation(data, model_id, applied, database_u
         assert run.id == error.value.evaluation_run_id and error.value.stage == "final_commit"
         assert error.value.outcome == ("unconfirmed" if database_unavailable else "failed")
         assert run.status == ("running" if database_unavailable else "failed")
+
+
+def forbid_timexer_training(monkeypatch):
+    forbid_fit(monkeypatch)
+    forbid_timexer_optimizer(monkeypatch)
+    monkeypatch.setattr(timexer_platform_adapter, "fit_timexer_on_version", no_training)
+    monkeypatch.setattr(timexer_modeling_service, "fit_timexer_core", no_training)
+
+
+def rows_in(ranges):
+    return {row for span in ranges for row in range(span.start, span.stop)}
+
+
+@pytest.mark.parametrize("horizon", [1, 3])
+async def test_timexer_fixed_evaluation_scores_each_horizon(tcn_data, monkeypatch, horizon):
+    raw = b"81\n83\n"
+    path = tcn_data["root"] / "timexer-evaluation-rows.txt"
+    path.write_bytes(raw)
+    document = tcn_data["spec"].model_dump()
+    document["evaluation"].update(
+        scopes=["validation", "test"],
+        sample_indices={
+            "validation": {
+                "index_file": {
+                    "uri": path.name,
+                    "sha256": hashlib.sha256(raw).hexdigest(),
+                    "count": 2,
+                },
+            },
+        },
+    )
+    fit = await fit_timexer(tcn_data, horizon=horizon, spec=ExperimentSpec.model_validate(document))
+    assert fit.manifest_status == "published"
+    (training,) = await runs(tcn_data)
+    before = snapshot_files(tcn_data["root"])
+    forbid_timexer_training(monkeypatch)
+    load = evaluation.load_model_instance
+    predict = evaluation.predict_saved_timexer
+    restored, predictions = [], []
+
+    async def record_load(*args, **kwargs):
+        instance = await load(*args, **kwargs)
+        restored.append(instance.payload)
+        return instance
+
+    def record_prediction(model, target, exogenous, **kwargs):
+        assert model is restored[-1]
+        predicted = predict(model, target, exogenous, **kwargs)
+        predictions.append((target, exogenous, predicted, kwargs))
+        return predicted
+
+    monkeypatch.setattr(evaluation, "load_model_instance", record_load)
+    monkeypatch.setattr(evaluation, "predict_saved_timexer", record_prediction)
+    validation = await evaluate(tcn_data, fit.model_id)
+    test = await evaluate(tcn_data, fit.model_id, "test")
+    assert validation.evaluation_run_id != test.evaluation_run_id
+    assert len(predictions) == 2
+    test_anchors = list(range(97, 103 - horizon))
+    for result, anchors, prediction in zip(
+        (validation, test), ([81, 83], test_anchors), predictions, strict=True
+    ):
+        target, exogenous, predicted, names = prediction
+        assert result.model_type_id == "timexer" and result.training_run_id == training.id
+        assert (
+            result.dataset_version_id == tcn_data["spec"].dataset_version_id != tcn_data["latest"]
+        )
+        assert result.forecast_spec == timexer_forecast(horizon)
+        assert result.sample_count == len(anchors) and predicted.shape == (len(anchors), horizon)
+        assert target.shape == (len(anchors), 8, 1)
+        assert exogenous.shape == (len(anchors), 11, 2)
+        assert names == {"target_name": "quality", "exogenous_names": ("b", "a")}
+        np.testing.assert_array_equal(target[:, :, 0], [tcn_data["y"][r - 8 : r] for r in anchors])
+        np.testing.assert_array_equal(exogenous, [tcn_data["x"][r - 11 : r, ::-1] for r in anchors])
+        targets = set()
+        for offset, step in enumerate(result.horizon_metrics):
+            target_rows = [r + offset for r in anchors]
+            targets.update(target_rows)
+            assert rows_in(result.target_rows_by_horizon[offset].ranges) == set(target_rows)
+            actual = tcn_data["y"][target_rows].astype(np.float64)
+            residual = actual - predicted[:, offset]
+            rmse = np.sqrt(np.mean(residual**2))
+            p5, p95 = np.percentile(actual, [5, 95])
+            assert step.horizon_step == offset + 1
+            assert step.rmse == pytest.approx(rmse)
+            assert step.mae == pytest.approx(np.mean(np.abs(residual)))
+            assert step.r2 == pytest.approx(
+                1 - np.sum(residual**2) / np.sum((actual - actual.mean()) ** 2)
+            )
+            assert step.nrmse == pytest.approx(rmse / (p95 - p5))
+        assert rows_in(result.target_rows.ranges) == targets
+        assert result.sequence_evidence["target_offsets"] == list(range(horizon))
+        assert result.sequence_evidence["anchor_rows"] == result.actual_rows.model_dump(mode="json")
+        assert result.metric_aggregation.method == "macro_average"
+        for name, value in result.metrics.model_dump().items():
+            scores = [getattr(step, name) for step in result.horizon_metrics]
+            assert result.metric_aggregation.valid_horizon_counts[name] == horizon
+            assert result.metric_aggregation.undefined_horizons[name] == ()
+            assert value == (scores[0] if horizon == 1 else pytest.approx(np.mean(scores)))
+
+    assert validation.actual_rows.index_file is not None
+    assert rows_in(test.actual_rows.ranges) == set(test_anchors)
+    persisted = {run.id: run for run in await runs(tcn_data)}
+    for result in (validation, test):
+        run = persisted[result.evaluation_run_id]
+        assert run.run_type == evaluation.RUN_TYPE and run.status == "succeeded"
+        assert run.result["evaluation"] == result.model_dump(mode="json")
+        assert run.parameters["forecast_spec"] == result.forecast_spec.model_dump(mode="json")
+    original = persisted[training.id]
+    assert original.result == training.result and original.parameters == training.parameters
+    assert original.status == training.status and original.finished_at == training.finished_at
+    assert snapshot_files(tcn_data["root"]) == before
+
+
+async def test_timexer_macro_averaging_uses_only_defined_horizons():
+    actual = np.array([[3.0, 10.0, 0.0], [3.0, 20.0, 2.0], [3.0, 30.0, 4.0]])
+    predicted = actual + [1.0, 2.0, 6.0]
+    metrics, steps, aggregation = evaluation._score_timexer(actual, predicted)
+    assert steps[0].r2 is None and steps[0].nrmse is None
+    assert metrics.r2 == pytest.approx((steps[1].r2 + steps[2].r2) / 2)
+    assert metrics.nrmse == pytest.approx((steps[1].nrmse + steps[2].nrmse) / 2)
+    assert metrics.rmse == pytest.approx(3.0)
+    assert metrics.mae == pytest.approx(3.0)
+    assert metrics.rmse != pytest.approx(np.sqrt(np.mean((actual - predicted) ** 2)))
+    assert aggregation.valid_horizon_counts == {"r2": 2, "rmse": 3, "mae": 3, "nrmse": 2}
+    assert aggregation.undefined_horizons == {"r2": (1,), "rmse": (), "mae": (), "nrmse": (1,)}
+    constant = np.ones((3, 3))
+    metrics, _, aggregation = evaluation._score_timexer(constant, constant)
+    assert metrics.r2 is None and metrics.nrmse is None
+    assert aggregation.valid_horizon_counts["r2"] == aggregation.valid_horizon_counts["nrmse"] == 0
+    assert (
+        aggregation.undefined_horizons["r2"] == aggregation.undefined_horizons["nrmse"] == (1, 2, 3)
+    )
+
+
+@pytest.mark.parametrize("train_stop", [81, 82])
+async def test_timexer_rejects_train_target_overlap_even_with_disjoint_anchors(
+    tcn_data, monkeypatch, train_stop
+):
+    fit = await fit_timexer(tcn_data)
+    forbid_timexer_training(monkeypatch)
+    (training,) = await runs(tcn_data)
+    load = evaluation.load_model_instance
+    async with tcn_data["factory"]() as session:
+        instance = await load(session, model_id=fit.model_id, artifact_root=tcn_data["root"])
+        rows = RowSet(
+            ranges=(RowRange(start=11, stop=31), RowRange(start=train_stop - 21, stop=train_stop))
+        )
+        document = rows.model_dump(mode="json")
+        run = await session.get(ProcessingRun, training.id)
+        run.result = {
+            **run.result,
+            "effective_training_rows": document,
+            "sequence_evidence": {**run.result["sequence_evidence"], "anchor_rows": document},
+        }
+        await session.commit()
+    eval_anchors = set(range(81, 84))
+    train_anchors = rows_in(rows.ranges)
+    assert bool(train_anchors & eval_anchors) == (train_stop == 82)
+    assert {r + h for r in train_anchors for h in range(3)} & {
+        r + h for r in eval_anchors for h in range(3)
+    }
+
+    async def conflicting_loader_evidence(*args, **kwargs):
+        # Inject after loader verification to exercise the independent label-overlap guard.
+        return replace(
+            instance,
+            manifest=instance.manifest.model_copy(update={"effective_training_rows": rows}),
+        )
+
+    monkeypatch.setattr(evaluation, "load_model_instance", conflicting_loader_evidence)
+    monkeypatch.setattr(evaluation, "predict_saved_timexer", no_training)
+    with pytest.raises(evaluation.ModelEvaluationError) as error:
+        await evaluate(tcn_data, fit.model_id)
+    assert error.value.stage == "build_samples"
+    assert "overlaps actual Train target rows" in str(error.value.__cause__)
+    assert (await evaluation_runs(tcn_data))[0].status == "failed"
+
+
+@pytest.mark.parametrize(
+    ("partition", "anchor"),
+    [
+        pytest.param("test", 72, id="history-partition"),
+        pytest.param("validation", 44, id="history-run"),
+        pytest.param("validation", 68, id="future-partition"),
+        pytest.param("validation", 35, id="future-run"),
+        pytest.param("test", 101, id="future-incomplete"),
+        pytest.param("validation", None, id="no-complete-window"),
+    ],
+)
+async def test_timexer_rejects_invalid_windows(tcn_data, monkeypatch, partition, anchor):
+    if anchor is None:
+        document = tcn_data["spec"].model_dump()
+        document["split"]["validation"] = [{"start": 70, "stop": 81}]
+        message = "No complete sequence windows"
+    else:
+        document = tcn_spec(tcn_data, partition=partition, index_rows=(anchor,)).model_dump()
+        document["split"]["train"] = [{"start": 0, "stop": 14}]
+        document["split"]["validation"] = [{"start": 14, "stop": 36}, {"start": 36, "stop": 69}]
+        message = "outside the effective partition"
+    fit = await fit_timexer(tcn_data, spec=ExperimentSpec.model_validate(document))
+    forbid_timexer_training(monkeypatch)
+    monkeypatch.setattr(evaluation, "predict_saved_timexer", no_training)
+    with pytest.raises(evaluation.ModelEvaluationError) as error:
+        await evaluate(tcn_data, fit.model_id, partition)
+    assert error.value.stage == "build_samples" and message in str(error.value.__cause__)
+    assert (await evaluation_runs(tcn_data))[0].status == "failed"
+
+
+async def test_timexer_rejects_csv_sha_mismatch_after_read(tcn_data, monkeypatch):
+    fit = await fit_timexer(tcn_data)
+    forbid_timexer_training(monkeypatch)
+    read = evaluation.load_version_series
+
+    async def tamper_after_read(*args, **kwargs):
+        series = await read(*args, **kwargs)
+        (tcn_data["root"] / "source.csv").write_bytes(b"changed after reading")
+        return series
+
+    monkeypatch.setattr(evaluation, "load_version_series", tamper_after_read)
+    monkeypatch.setattr(evaluation, "predict_saved_timexer", no_training)
+    with pytest.raises(evaluation.ModelEvaluationError) as error:
+        await evaluate(tcn_data, fit.model_id)
+    assert error.value.stage == "read_data" and "SHA256" in str(error.value.__cause__)
+    (failed,) = await evaluation_runs(tcn_data)
+    assert failed.result["evaluation"]["forecast_spec"] == timexer_forecast().model_dump(
+        mode="json"
+    )
+
+
+async def test_timexer_rejects_missing_training_target_evidence(tcn_data, monkeypatch):
+    fit = await fit_timexer(tcn_data)
+    forbid_timexer_training(monkeypatch)
+    async with tcn_data["factory"]() as session:
+        run = await session.get(ProcessingRun, fit.training_run_id)
+        evidence = dict(run.result["sequence_evidence"])
+        del evidence["target_offsets"]
+        run.result = {**run.result, "sequence_evidence": evidence}
+        await session.commit()
+    monkeypatch.setattr(evaluation, "predict_saved_timexer", no_training)
+    with pytest.raises(evaluation.ModelEvaluationError) as error:
+        await evaluate(tcn_data, fit.model_id)
+    assert error.value.stage == "load_model" and error.value.outcome == "failed"
+
+
+@pytest.mark.parametrize(
+    ("applied", "database_unavailable"), [(True, False), (False, False), (False, True)]
+)
+async def test_timexer_final_commit_reconciles(
+    tcn_data, monkeypatch, applied, database_unavailable
+):
+    fit = await fit_timexer(tcn_data)
+    forbid_timexer_training(monkeypatch)
+    await assert_final_commit_reconciliation(tcn_data, fit.model_id, applied, database_unavailable)
+
+
+async def test_timexer_rejects_invalid_prediction_matrices(monkeypatch):
+    def unexpected(*args):
+        pytest.fail("Invalid predictions must be rejected before scoring")
+
+    monkeypatch.setattr(evaluation, "_scores", unexpected)
+    actual = np.ones((4, 3))
+    for predicted in (
+        np.ones(12),
+        np.empty((0, 3)),
+        np.ones((3, 3)),
+        np.ones((4, 2)),
+        np.full((4, 3), np.nan),
+        np.full((4, 3), np.inf),
+    ):
+        with pytest.raises(ValueError, match=r"aligned, nonempty, finite"):
+            evaluation._score_timexer(actual, predicted)
+
+
+async def test_timexer_coverage_keeps_adjacent_continuous_runs_separate():
+    runs = (RowRange(start=0, stop=10), RowRange(start=10, stop=20))
+    anchors = RowSet(ranges=(RowRange(start=5, stop=8), RowRange(start=10, stop=12)))
+    assert evaluation._target_ranges(anchors, None, runs, 0, 2) == (
+        RowRange(start=5, stop=10),
+        RowRange(start=10, stop=14),
+    )
 
 
 async def test_duplicate_run_id_does_not_update_the_existing_evaluation(data, monkeypatch):

@@ -9,26 +9,34 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from platform import python_version
+from statistics import mean
 from uuid import UUID, uuid4
 
 import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dataset import DatasetVersion, ProcessingRun
-from app.schemas.experiment_spec import ExperimentSpec, RowSet
+from app.schemas.experiment_spec import ExperimentSpec, RowRange, RowSet
 from app.schemas.model_catalog import (
     PLSModelArtifactManifest,
     TCNModelArtifactManifest,
+    TimeXerModelArtifactManifest,
     XGBoostModelArtifactManifest,
 )
 from app.schemas.model_evaluation import (
     EvaluationModelType,
+    HorizonMetrics,
+    MetricAggregation,
     ModelEvaluationRequest,
     ModelEvaluationResult,
     RegressionMetrics,
+    TargetRowSet,
     TCNModelEvaluationResult,
+    TimeXerModelEvaluationResult,
 )
 from app.schemas.pls import PLSBoundArtifactMetadata
+from app.schemas.timexer import TimeXerParameters
+from app.schemas.timexer_platform import TimeXerForecastSpec
 from app.services.dataset_version_io import artifact_matches_sha256
 from app.services.experiment_spec_service import iter_rows, spec_hash
 from app.services.model_artifact_service import load_model_instance
@@ -39,9 +47,16 @@ from app.services.model_data_adapter import (
 )
 from app.services.modeling_service import _scores
 from app.services.pls_modeling_service import SavedPLSModel
-from app.services.sequence_data_adapter import build_tcn_samples
+from app.services.sequence_data_adapter import (
+    TimeXerSamples,
+    build_tcn_samples,
+    build_timexer_samples,
+)
 from app.services.tcn_modeling_service import TCNModel
 from app.services.tcn_platform_adapter import _evidence as serialize_tcn_evidence
+from app.services.timexer_modeling_service import TimeXerModel
+from app.services.timexer_platform_adapter import _evidence as serialize_timexer_evidence
+from app.services.timexer_platform_adapter import predict_saved_timexer
 from app.services.version_data import FloatArray, load_version_series
 from app.services.xgboost_artifact_service import SavedXGBoostModel
 
@@ -60,13 +75,20 @@ class ModelEvaluationError(ValueError):
 
 
 @dataclass(frozen=True)
+class _TimeXerSource:
+    forecast: TimeXerForecastSpec
+    training_targets: tuple[RowRange, ...]
+
+
+@dataclass(frozen=True)
 class _EvaluationSource:
-    model: SavedPLSModel | SavedXGBoostModel | TCNModel
+    model: SavedPLSModel | SavedXGBoostModel | TCNModel | TimeXerModel
     model_type_id: EvaluationModelType
     training_run_id: UUID
     spec: ExperimentSpec
     source: BoundSource
     training_rows: RowSet
+    timexer: _TimeXerSource | None = None
 
 
 async def _load_source(session: AsyncSession, model_id: UUID, root: Path) -> _EvaluationSource:
@@ -92,10 +114,21 @@ async def _load_source(session: AsyncSession, model_id: UUID, root: Path) -> _Ev
             and isinstance(manifest, TCNModelArtifactManifest)
         ):
             model_type = "tcn"
+        elif (
+            instance.model_type_id == "timexer"
+            and isinstance(model, TimeXerModel)
+            and isinstance(manifest, TimeXerModelArtifactManifest)
+        ):
+            model_type = "timexer"
         else:
-            raise ValueError("Evaluation requires a verified PLS, XGBoost or TCN Manifest")
+            raise ValueError("Evaluation requires a verified PLS, XGBoost, TCN or TimeXer Manifest")
 
         spec = manifest.experiment_spec
+        feature_names = (
+            model.metadata.exogenous_feature_names
+            if isinstance(model, TimeXerModel)
+            else model.metadata.feature_names
+        )
         if (
             instance.model_id != model_id
             or manifest.model_id != model_id
@@ -103,7 +136,7 @@ async def _load_source(session: AsyncSession, model_id: UUID, root: Path) -> _Ev
             or instance.training_run_id != manifest.training_run_id
             or instance.missing_provenance
             or manifest.experiment_spec_hash != spec_hash(spec)
-            or model.metadata.feature_names != spec.input_columns
+            or feature_names != spec.input_columns
             or model.metadata.target_name != spec.target_column
         ):
             raise ValueError("Saved model identity, feature order or training Spec mismatch")
@@ -123,11 +156,14 @@ async def _load_source(session: AsyncSession, model_id: UUID, root: Path) -> _Ev
         rows = RowSet.model_validate(run.result.get("effective_training_rows"))
         training_count = (
             model.metadata.training_samples
-            if isinstance(model, TCNModel)
+            if isinstance(model, (TCNModel, TimeXerModel))
             else model.metadata.training_rows
         )
         if rows != manifest.effective_training_rows or rows.count != training_count:
             raise ValueError("Actual training rows differ from the verified model")
+        timexer = None
+        if isinstance(model, TimeXerModel) and isinstance(manifest, TimeXerModelArtifactManifest):
+            timexer = _load_timexer_training_source(run, model, manifest, rows, root)
     return _EvaluationSource(
         model=model,
         model_type_id=model_type,
@@ -140,6 +176,7 @@ async def _load_source(session: AsyncSession, model_id: UUID, root: Path) -> _Ev
             manifest.experiment_spec_hash,
         ),
         training_rows=rows,
+        timexer=timexer,
     )
 
 
@@ -186,16 +223,156 @@ def _assert_disjoint(
         if requested is None or requested.evidence != actual_rows or requested.indices is None:
             raise ValueError("Actual evaluation index is missing its verified selection")
         actual_indices = requested.indices
-    training = _intervals(training_rows, training_indices)
-    evaluation = _intervals(actual_rows, actual_indices)
+    _assert_no_overlap(
+        _intervals(training_rows, training_indices),
+        _intervals(actual_rows, actual_indices),
+        "Evaluation overlaps actual Train rows",
+    )
+
+
+def _assert_no_overlap(
+    training: Iterator[tuple[int, int]],
+    evaluation: Iterator[tuple[int, int]],
+    message: str,
+) -> None:
     left, right = next(training, None), next(evaluation, None)
     while left is not None and right is not None:
         if max(left[0], right[0]) < min(left[1], right[1]):
-            raise ValueError("Evaluation overlaps actual Train rows")
+            raise ValueError(message)
         if left[1] <= right[1]:
             left = next(training, None)
         else:
             right = next(evaluation, None)
+
+
+def _target_ranges(
+    anchors: RowSet,
+    indices: tuple[int, ...] | None,
+    continuous_runs: tuple[RowRange, ...],
+    first_offset: int,
+    last_offset: int,
+) -> tuple[RowRange, ...]:
+    if anchors.index_file is not None and indices is None:
+        raise ValueError("TimeXer target coverage requires the verified anchor index")
+    runs = iter(continuous_runs)
+    run = next(runs, None)
+    coverage: list[tuple[int, int]] = []
+    for start, stop in _intervals(anchors, indices):
+        while run is not None and start >= run.stop:
+            run = next(runs, None)
+        if run is None or start < run.start or stop + last_offset > run.stop:
+            raise ValueError("TimeXer target rows cross their continuous run")
+        first, end = start + first_offset, stop + last_offset
+        # Join coverage only inside the same run, even when two runs touch.
+        if coverage and coverage[-1][0] >= run.start and first <= coverage[-1][1]:
+            coverage[-1] = (coverage[-1][0], end)
+        else:
+            coverage.append((first, end))
+    return tuple(RowRange(start=start, stop=stop) for start, stop in coverage)
+
+
+def _load_timexer_training_source(
+    run: ProcessingRun,
+    model: TimeXerModel,
+    manifest: TimeXerModelArtifactManifest,
+    anchors: RowSet,
+    root: Path,
+) -> _TimeXerSource:
+    forecast = TimeXerForecastSpec.model_validate(run.parameters["forecast_spec"])
+    params = TimeXerParameters.model_validate(run.parameters["timexer_parameters"])
+    forecast.validate_parameters(params)
+    metadata = model.metadata
+    if (
+        forecast != manifest.forecast_spec
+        or forecast != TimeXerForecastSpec.model_validate(run.result["forecast_spec"])
+        or params != metadata.parameters
+        or forecast.target_window_length != metadata.target_window_length
+        or forecast.exogenous_window_length != metadata.exogenous_window_length
+        or forecast.prediction_length != metadata.prediction_length
+        or manifest.target_name != metadata.target_name
+        or manifest.exogenous_names != metadata.exogenous_feature_names
+    ):
+        raise ValueError("TimeXer training forecast differs from the verified model")
+
+    # The loader has re-derived the complete evidence. Use its persisted anchor and label offsets.
+    evidence = run.result["sequence_evidence"]
+    offsets = evidence["target_offsets"]
+    if (
+        evidence["partition"] != "train"
+        or RowSet.model_validate(evidence["anchor_rows"]) != anchors
+        or evidence["sample_count"] != anchors.count
+        or evidence["prediction_horizon"] != forecast.prediction_length
+        or offsets != list(range(forecast.prediction_length))
+    ):
+        raise ValueError("TimeXer training target evidence differs from the verified anchors")
+    runs = tuple(RowRange.model_validate(row_range) for row_range in evidence["continuous_runs"])
+    indices = tuple(iter_rows(anchors, root)) if anchors.index_file else None
+    targets = _target_ranges(anchors, indices, runs, offsets[0], offsets[-1])
+    return _TimeXerSource(forecast, targets)
+
+
+def _timexer_evaluation_evidence(
+    context: _EvaluationSource,
+    samples: TimeXerSamples,
+    requested: ResolvedRows | None,
+    partition: str,
+    model: TimeXerModel,
+) -> dict:
+    source = context.timexer
+    if source is None:
+        raise ValueError("TimeXer evaluation requires verified training target evidence")
+    forecast, metadata = source.forecast, model.metadata
+    evidence = samples.evidence
+    n, horizon = evidence.sample_count, forecast.prediction_length
+    if (
+        evidence.source != context.source
+        or evidence.partition != partition
+        or evidence.history_lengths
+        != (
+            ("target", forecast.target_window_length),
+            ("exogenous", forecast.exogenous_window_length),
+        )
+        or evidence.prediction_horizon != horizon
+        or samples.target_name != metadata.target_name
+        or samples.exogenous_feature_names != metadata.exogenous_feature_names
+        or samples.x_target.shape != (n, forecast.target_window_length, 1)
+        or samples.x_exogenous.shape
+        != (n, forecast.exogenous_window_length, len(metadata.exogenous_feature_names))
+        or samples.y.shape != (n, horizon)
+    ):
+        raise ValueError("TimeXer evaluation samples differ from their forecast or source evidence")
+
+    anchors = evidence.anchor_rows
+    indices = None
+    if anchors.index_file:
+        if requested is None or requested.evidence != anchors or requested.indices is None:
+            raise ValueError("Actual evaluation index is missing its verified selection")
+        indices = requested.indices
+    runs = evidence.continuous_runs
+    offsets = evidence.target_offsets
+    targets = _target_ranges(anchors, indices, runs, offsets[0], offsets[-1])
+    _assert_no_overlap(
+        ((row.start, row.stop) for row in source.training_targets),
+        ((row.start, row.stop) for row in targets),
+        "TimeXer evaluation overlaps actual Train target rows",
+    )
+    return {
+        "forecast_spec": forecast.model_dump(mode="json"),
+        "target_rows": TargetRowSet(ranges=targets).model_dump(mode="json"),
+        "target_rows_by_horizon": [
+            TargetRowSet(ranges=_target_ranges(anchors, indices, runs, offset, offset)).model_dump(
+                mode="json"
+            )
+            for offset in offsets
+        ],
+        "sequence_evidence": serialize_timexer_evidence(evidence),
+        "model_implementation_version": metadata.implementation_version,
+        "dependency_versions": {
+            "python": python_version(),
+            "numpy": np.__version__,
+            "torch": metadata.torch_version,
+        },
+    }
 
 
 def calculate_regression_metrics(actual: FloatArray, predicted: FloatArray) -> RegressionMetrics:
@@ -221,6 +398,44 @@ def calculate_regression_metrics(actual: FloatArray, predicted: FloatArray) -> R
         scores = _scores(actual, predicted)
     return RegressionMetrics.model_validate(
         {key: scores[key] for key in ("r2", "rmse", "mae", "nrmse")}
+    )
+
+
+def _score_timexer(
+    actual: FloatArray, predicted: FloatArray
+) -> tuple[RegressionMetrics, tuple[HorizonMetrics, ...], MetricAggregation]:
+    if (
+        not isinstance(predicted, np.ndarray)
+        or actual.ndim != 2
+        or not actual.size
+        or actual.shape != predicted.shape
+        or actual.dtype.kind not in "iuf"
+        or predicted.dtype.kind not in "iuf"
+        or not np.isfinite(actual).all()
+        or not np.isfinite(predicted).all()
+    ):
+        raise ValueError("TimeXer metrics require aligned, nonempty, finite [N,H] arrays")
+
+    per_step = tuple(
+        HorizonMetrics(
+            horizon_step=step,
+            **calculate_regression_metrics(actual_column, predicted_column).model_dump(),
+        )
+        for step, (actual_column, predicted_column) in enumerate(
+            zip(actual.T, predicted.T, strict=True), start=1
+        )
+    )
+    aggregate, valid_counts, undefined = {}, {}, {}
+    for name in ("r2", "rmse", "mae", "nrmse"):
+        values = [getattr(step, name) for step in per_step]
+        valid = [value for value in values if value is not None]
+        aggregate[name] = mean(valid) if valid else None
+        valid_counts[name] = len(valid)
+        undefined[name] = tuple(step for step, value in enumerate(values, start=1) if value is None)
+    return (
+        RegressionMetrics.model_validate(aggregate),
+        per_step,
+        MetricAggregation(valid_horizon_counts=valid_counts, undefined_horizons=undefined),
     )
 
 
@@ -343,6 +558,8 @@ async def evaluate_saved_model(
             if run_id == context.training_run_id:
                 raise ValueError("Evaluation run identity collides with the training Run")
             evidence = _verified_parameters(context)
+            if context.timexer is not None:
+                evidence["forecast_spec"] = context.timexer.forecast.model_dump(mode="json")
             stage = "resolve_rows"
             requested = _resolve_requested_rows(context.spec, request.partition, artifact_root)
             stage = "read_data"
@@ -359,61 +576,93 @@ async def evaluate_saved_model(
         metadata = context.model.metadata
         sequence_details = {}
         result_type: type[ModelEvaluationResult] = ModelEvaluationResult
-        if isinstance(context.model, TCNModel):
-            tcn_metadata = context.model.metadata
-            sequence = build_tcn_samples(
+        if isinstance(context.model, TimeXerModel):
+            model = context.model
+            timexer_samples = build_timexer_samples(
                 series,
                 spec=context.spec,
                 source=context.source,
                 partition=request.partition,
                 requested_rows=requested,
-                parameters=tcn_metadata.parameters,
+                parameters=model.metadata.parameters,
             )
-            x, y = sequence.x, sequence.y
-            feature_names, target_name = sequence.feature_names, sequence.target_name
-            actual_rows = sequence.evidence.anchor_rows
-            expected_shape = (actual_rows.count, tcn_metadata.window_length, len(feature_names))
-            sequence_details = {
-                "window_length": tcn_metadata.window_length,
-                "sequence_evidence": serialize_tcn_evidence(sequence.evidence),
-                "model_implementation_version": tcn_metadata.implementation_version,
-                "dependency_versions": {
-                    "python": python_version(),
-                    "numpy": np.__version__,
-                    # Artifact restoration checks the installed PyTorch build.
-                    "torch": tcn_metadata.torch_version,
-                },
-            }
-            result_type = TCNModelEvaluationResult
+            actual_rows = timexer_samples.evidence.anchor_rows
+            y = timexer_samples.y
+            sequence_details = _timexer_evaluation_evidence(
+                context, timexer_samples, requested, request.partition, model
+            )
+            result_type = TimeXerModelEvaluationResult
         else:
-            batch = build_table_samples(
-                series,
-                spec=context.spec,
-                source=context.source,
-                partition=request.partition,
-                requested_rows=requested,
-            )
-            x, y = batch.inputs.x, batch.y
-            feature_names, target_name = batch.inputs.feature_names, batch.target_name
-            actual_rows = batch.evidence.anchor_rows
-            expected_shape = (actual_rows.count, len(feature_names))
+            if isinstance(context.model, TCNModel):
+                tcn_metadata = context.model.metadata
+                sequence = build_tcn_samples(
+                    series,
+                    spec=context.spec,
+                    source=context.source,
+                    partition=request.partition,
+                    requested_rows=requested,
+                    parameters=tcn_metadata.parameters,
+                )
+                x, y = sequence.x, sequence.y
+                feature_names, target_name = sequence.feature_names, sequence.target_name
+                actual_rows = sequence.evidence.anchor_rows
+                expected_shape = (actual_rows.count, tcn_metadata.window_length, len(feature_names))
+                sequence_details = {
+                    "window_length": tcn_metadata.window_length,
+                    "sequence_evidence": serialize_tcn_evidence(sequence.evidence),
+                    "model_implementation_version": tcn_metadata.implementation_version,
+                    "dependency_versions": {
+                        "python": python_version(),
+                        "numpy": np.__version__,
+                        # Artifact restoration checks the installed PyTorch build.
+                        "torch": tcn_metadata.torch_version,
+                    },
+                }
+                result_type = TCNModelEvaluationResult
+            else:
+                batch = build_table_samples(
+                    series,
+                    spec=context.spec,
+                    source=context.source,
+                    partition=request.partition,
+                    requested_rows=requested,
+                )
+                x, y = batch.inputs.x, batch.y
+                feature_names, target_name = batch.inputs.feature_names, batch.target_name
+                actual_rows = batch.evidence.anchor_rows
+                expected_shape = (actual_rows.count, len(feature_names))
 
-        _assert_disjoint(context.training_rows, actual_rows, requested, artifact_root)
-        evidence = {**evidence, "actual_rows": actual_rows.model_dump(mode="json")}
-        if feature_names != metadata.feature_names:
-            raise ValueError("Evaluation feature order differs from the saved model")
-        if (
-            x.shape != expected_shape
-            or y.shape != (actual_rows.count,)
-            or target_name != metadata.target_name
-        ):
-            raise ValueError("Evaluation samples differ from their row or target evidence")
-        evidence.update(sequence_details)
+            _assert_disjoint(context.training_rows, actual_rows, requested, artifact_root)
+            evidence["actual_rows"] = actual_rows.model_dump(mode="json")
+            if feature_names != metadata.feature_names:
+                raise ValueError("Evaluation feature order differs from the saved model")
+            if (
+                x.shape != expected_shape
+                or y.shape != (actual_rows.count,)
+                or target_name != metadata.target_name
+            ):
+                raise ValueError("Evaluation samples differ from their row or target evidence")
+        evidence.update(actual_rows=actual_rows.model_dump(mode="json"), **sequence_details)
 
         stage = "predict"
-        predicted = await asyncio.to_thread(context.model.predict, x, feature_names=feature_names)
-        stage = "metrics"
-        metrics = calculate_regression_metrics(y, predicted)
+        if isinstance(context.model, TimeXerModel):
+            predicted = await asyncio.to_thread(
+                predict_saved_timexer,
+                context.model,
+                timexer_samples.x_target,
+                timexer_samples.x_exogenous,
+                target_name=timexer_samples.target_name,
+                exogenous_names=timexer_samples.exogenous_feature_names,
+            )
+            stage = "metrics"
+            metrics, horizon_metrics, aggregation = _score_timexer(y, predicted)
+            sequence_details.update(horizon_metrics=horizon_metrics, metric_aggregation=aggregation)
+        else:
+            predicted = await asyncio.to_thread(
+                context.model.predict, x, feature_names=feature_names
+            )
+            stage = "metrics"
+            metrics = calculate_regression_metrics(y, predicted)
         expected = result_type(
             evaluation_run_id=run_id,
             model_id=request.model_id,
