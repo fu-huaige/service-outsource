@@ -48,6 +48,13 @@ from app.schemas.datasets import (
     DelaySourceVersionsData,
 )
 from app.schemas.diagnostics import GeneralizationDiagnosticsData
+from app.schemas.model_evaluation import (
+    ModelEvaluationDetail,
+    ModelEvaluationHistory,
+    ModelEvaluationHistoryQuery,
+    ModelEvaluationRequest,
+    ModelEvaluationSuccess,
+)
 from app.schemas.modeling import (
     ArxFitData,
     ArxFitRequest,
@@ -200,6 +207,12 @@ from app.services.model_artifact_service import (
     LoadedModelInstance,
     ModelArtifactError,
     load_model_instance,
+)
+from app.services.model_evaluation_service import (
+    ModelEvaluationError,
+    evaluate_saved_model,
+    get_model_evaluation,
+    list_model_evaluations,
 )
 from app.services.model_registry import get_model
 from app.services.modeling_service import ModelingDomainError, fit_arx_on_version
@@ -2055,6 +2068,107 @@ async def pls_evaluation_history_api(
         offset=offset,
     )
     return success(request, PLSEvaluationAPIHistory.model_validate(result.model_dump()))
+
+
+def _model_evaluation_http_error(error: ModelEvaluationError) -> AppError | None:
+    details = {
+        "model_id": str(error.model_id),
+        "evaluation_run_id": str(error.evaluation_run_id),
+        "stage": error.stage,
+        "outcome": error.outcome,
+    }
+    if error.outcome == "unconfirmed":
+        return AppError(
+            "MODEL_EVALUATION_UNCONFIRMED",
+            "评价结果需要核对，请使用原评价运行 ID 查询。",
+            status_code=503,
+            details=details,
+        )
+    cause = error.__cause__
+    if isinstance(cause, (ModelArtifactError, VersionDataError, ModelingDomainError)) or (
+        error.stage == "load_model" and isinstance(cause, ValueError)
+    ):
+        mapped = _pls_http_error(cause, operation="load")
+        mapped.details.update(details)
+        return mapped
+    if isinstance(cause, ValueError):
+        if error.stage == "read_data":
+            return AppError(
+                "DATASET_VERSION_MISMATCH",
+                "评价数据版本无法通过校验。",
+                status_code=409,
+                details=details,
+            )
+        if error.stage == "resolve_rows" and str(cause) == (
+            "Evaluation partition was not declared in the training Spec"
+        ):
+            return AppError(
+                "MODEL_EVALUATION_SCOPE_NOT_ALLOWED",
+                "训练契约未声明该评价分区。",
+                status_code=409,
+                details=details,
+            )
+        return AppError(
+            "MODEL_EVALUATION_REJECTED",
+            "评价数据或模型预测无法通过校验。",
+            status_code=422,
+            details=details,
+        )
+    return None
+
+
+@router.post(
+    "/modeling/evaluate",
+    tags=["Modeling"],
+    response_model=SuccessEnvelope[ModelEvaluationSuccess],
+    responses={**ERROR_RESPONSES, 409: {"model": ErrorEnvelope}, 503: {"model": ErrorEnvelope}},
+)
+async def evaluate_model_api(
+    request: Request,
+    payload: ModelEvaluationRequest,
+    factory: Annotated[SessionFactory, Depends(get_session_factory)],
+):
+    try:
+        result = await evaluate_saved_model(
+            factory, request=payload, artifact_root=get_settings().artifact_root
+        )
+    except ModelEvaluationError as error:
+        mapped = _model_evaluation_http_error(error)
+        if mapped is None:
+            raise
+        raise mapped from error
+    return success(request, result)
+
+
+@router.get(
+    "/modeling/evaluations",
+    tags=["Modeling"],
+    response_model=SuccessEnvelope[ModelEvaluationHistory],
+    responses=ERROR_RESPONSES,
+)
+async def model_evaluation_history_api(
+    request: Request,
+    query: Annotated[ModelEvaluationHistoryQuery, Query()],
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    return success(request, await list_model_evaluations(session, query))
+
+
+@router.get(
+    "/modeling/evaluations/{evaluation_run_id}",
+    tags=["Modeling"],
+    response_model=SuccessEnvelope[ModelEvaluationDetail],
+    responses=ERROR_RESPONSES,
+)
+async def model_evaluation_detail_api(
+    request: Request,
+    evaluation_run_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    result = await get_model_evaluation(session, evaluation_run_id)
+    if result is None:
+        raise AppError("MODEL_EVALUATION_NOT_FOUND", "指定评价记录不存在。", status_code=404)
+    return success(request, result)
 
 
 def _xgboost_http_error(error: Exception) -> AppError:

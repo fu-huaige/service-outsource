@@ -1,15 +1,17 @@
 """Service-layer contracts for fixed, version-bound model evaluation."""
 
+from datetime import datetime
 from typing import Annotated, Literal, Self
 from uuid import UUID
 
-from pydantic import Field, StrictFloat, StrictInt, model_validator
+from pydantic import ConfigDict, Field, StrictFloat, StrictInt, model_validator
 
 from app.schemas.common import Schema
 from app.schemas.experiment_spec import Digest, RowRange, RowSet, validate_ranges
 from app.schemas.timexer_platform import TimeXerForecastSpec
 
 EvaluationPartition = Literal["validation", "test"]
+EvaluationStatus = Literal["running", "succeeded", "failed"]
 EvaluationModelType = Literal["pls", "xgboost", "tcn", "timexer"]
 NonnegativeMetric = Annotated[StrictFloat, Field(ge=0, allow_inf_nan=False)]
 R2Metric = Annotated[StrictFloat, Field(le=1, allow_inf_nan=False)]
@@ -105,3 +107,72 @@ class TimeXerModelEvaluationResult(ModelEvaluationResult):
         ) != tuple(range(1, horizon + 1)):
             raise ValueError("TimeXer evaluation must record each forecast horizon in order")
         return self
+
+
+ModelEvaluationSuccess = (
+    TCNModelEvaluationResult | TimeXerModelEvaluationResult | ModelEvaluationResult
+)
+EvaluationOffset = Annotated[int, Field(ge=0, le=2**63 - 1)]
+EvaluationLimit = Annotated[int, Field(ge=1, le=100)]
+
+
+class ModelEvaluationHistoryQuery(Schema):
+    model_id: UUID | None = None
+    partition: EvaluationPartition | None = None
+    status: EvaluationStatus | None = None
+    offset: EvaluationOffset = 0
+    limit: EvaluationLimit = 20
+
+
+class ModelEvaluationSummary(Schema):
+    evaluation_run_id: UUID
+    model_id: UUID
+    training_run_id: UUID | None
+    model_type_id: EvaluationModelType | None
+    partition: EvaluationPartition
+    status: EvaluationStatus
+    sample_count: Annotated[StrictInt, Field(gt=0)] | None
+    created_at: datetime
+    metrics: RegressionMetrics | None
+
+
+class ModelEvaluationHistory(Schema):
+    total: Annotated[int, Field(ge=0)]
+    offset: EvaluationOffset
+    limit: EvaluationLimit
+    items: list[ModelEvaluationSummary]
+
+
+class ModelEvaluationParameters(ModelEvaluationRequest):
+    # Persisted metadata may gain internal fields. Keep the HTTP projection explicit.
+    model_config = ConfigDict(extra="ignore")
+
+    prediction_mode: Literal["prediction"]
+    training_run_id: UUID | None = None
+    model_type_id: EvaluationModelType | None = None
+    dataset_id: UUID | None = None
+    dataset_version_id: UUID | None = None
+    dataset_sha256: Digest | None = None
+    experiment_spec_hash: Digest | None = None
+    actual_rows: RowSet | None = None
+    window_length: Annotated[StrictInt, Field(gt=0)] | None = None
+    forecast_spec: TimeXerForecastSpec | None = None
+    target_rows: TargetRowSet | None = None
+    target_rows_by_horizon: tuple[TargetRowSet, ...] | None = None
+    sequence_evidence: dict[str, object] | None = None
+    model_implementation_version: str | None = None
+    dependency_versions: dict[str, str] | None = None
+
+
+class ModelEvaluationFailure(Schema):
+    model_config = ConfigDict(extra="ignore")
+
+    evaluation_status: Literal["failed"]
+    failure_stage: str
+    implementation_version: str
+
+
+class ModelEvaluationDetail(ModelEvaluationSummary):
+    finished_at: datetime | None
+    parameters: ModelEvaluationParameters
+    result: ModelEvaluationSuccess | ModelEvaluationFailure | None

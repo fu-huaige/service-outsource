@@ -13,6 +13,7 @@ from statistics import mean
 from uuid import UUID, uuid4
 
 import numpy as np
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dataset import DatasetVersion, ProcessingRun
@@ -27,8 +28,13 @@ from app.schemas.model_evaluation import (
     EvaluationModelType,
     HorizonMetrics,
     MetricAggregation,
+    ModelEvaluationDetail,
+    ModelEvaluationHistory,
+    ModelEvaluationHistoryQuery,
+    ModelEvaluationParameters,
     ModelEvaluationRequest,
     ModelEvaluationResult,
+    ModelEvaluationSummary,
     RegressionMetrics,
     TargetRowSet,
     TCNModelEvaluationResult,
@@ -711,3 +717,88 @@ async def evaluate_saved_model(
         raise ModelEvaluationError(
             evaluation_run_id=run_id, model_id=request.model_id, stage=stage, outcome=outcome
         ) from error
+
+
+async def list_model_evaluations(
+    session: AsyncSession, query: ModelEvaluationHistoryQuery
+) -> ModelEvaluationHistory:
+    model_id = ProcessingRun.result["model_id"].as_string()
+    partition = ProcessingRun.parameters["partition"].as_string()
+    evaluation = ProcessingRun.result["evaluation"]
+    conditions = [ProcessingRun.run_type == RUN_TYPE]
+    if query.model_id is not None:
+        conditions.append(model_id == str(query.model_id))
+    if query.partition is not None:
+        conditions.append(partition == query.partition)
+    if query.status is not None:
+        conditions.append(ProcessingRun.status == query.status)
+
+    with session.no_autoflush:
+        total = await session.scalar(
+            select(func.count()).select_from(ProcessingRun).where(*conditions)
+        )
+        rows = (
+            (
+                await session.execute(
+                    select(
+                        ProcessingRun.id.label("evaluation_run_id"),
+                        model_id.label("model_id"),
+                        ProcessingRun.parameters["training_run_id"]
+                        .as_string()
+                        .label("training_run_id"),
+                        ProcessingRun.parameters["model_type_id"]
+                        .as_string()
+                        .label("model_type_id"),
+                        partition.label("partition"),
+                        ProcessingRun.status.label("status"),
+                        evaluation["sample_count"].as_integer().label("sample_count"),
+                        ProcessingRun.created_at.label("created_at"),
+                        evaluation["metrics"].as_json().label("metrics"),
+                    )
+                    .where(*conditions)
+                    .order_by(ProcessingRun.created_at.desc(), ProcessingRun.id.desc())
+                    .offset(query.offset)
+                    .limit(query.limit)
+                )
+            )
+            .mappings()
+            .all()
+        )
+    return ModelEvaluationHistory(
+        total=total or 0,
+        offset=query.offset,
+        limit=query.limit,
+        items=[ModelEvaluationSummary.model_validate(row) for row in rows],
+    )
+
+
+async def get_model_evaluation(
+    session: AsyncSession, evaluation_run_id: UUID
+) -> ModelEvaluationDetail | None:
+    with session.no_autoflush:
+        run = await session.scalar(
+            select(ProcessingRun).where(
+                ProcessingRun.id == evaluation_run_id, ProcessingRun.run_type == RUN_TYPE
+            )
+        )
+    if run is None:
+        return None
+    parameters = ModelEvaluationParameters.model_validate(run.parameters)
+    result = run.result.get("evaluation")
+    summary = result or {}
+    return ModelEvaluationDetail.model_validate(
+        {
+            "evaluation_run_id": run.id,
+            "model_id": parameters.model_id,
+            "training_run_id": parameters.training_run_id,
+            "model_type_id": parameters.model_type_id,
+            "partition": parameters.partition,
+            "status": run.status,
+            "sample_count": summary.get("sample_count"),
+            "created_at": run.created_at,
+            "finished_at": run.finished_at,
+            "metrics": summary.get("metrics"),
+            "parameters": parameters,
+            "result": result,
+        }
+    )
