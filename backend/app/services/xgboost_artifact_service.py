@@ -209,11 +209,16 @@ def read_xgboost_artifact(
     *,
     model_id: UUID | str,
     artifact_root: Path,
+    expected_json_sha256: str | None = None,
+    expected_ubj: tuple[int, str] | None = None,
 ) -> tuple[SavedXGBoostModel, str]:
     """Return a validated standalone claim and the digest of the exact metadata bytes."""
     identity = _uuid(model_id)
     directory = _directory(artifact_root)
     raw_json = _read_file(directory, f"{identity}.json", MAX_JSON_BYTES)
+    json_sha256 = hashlib.sha256(raw_json).hexdigest()
+    if expected_json_sha256 is not None and json_sha256 != expected_json_sha256:
+        raise ValueError("JSON SHA256 differs from the platform evidence")
     try:
         document = json.loads(raw_json, object_pairs_hook=_unique_keys)
         if not isinstance(document, dict) or set(document) != set(
@@ -223,6 +228,11 @@ def read_xgboost_artifact(
         metadata = XGBoostArtifactMetadata.model_validate(document)
         if metadata.model_id != identity:
             raise ValueError("Artifact model identity mismatch")
+        if expected_ubj is not None and expected_ubj != (
+            metadata.ubj_size_bytes,
+            metadata.ubj_sha256,
+        ):
+            raise ValueError("UBJSON size or SHA256 differs from the platform evidence")
         raw = _read_file(directory, metadata.ubj_filename, MAX_UBJ_BYTES)
         if len(raw) != metadata.ubj_size_bytes:
             raise ValueError("UBJSON size mismatch")
@@ -240,7 +250,7 @@ def read_xgboost_artifact(
         _verify_native(booster, metadata)
     except (UnicodeError, TypeError, KeyError) as error:
         raise ValueError("Invalid XGBoost artifact metadata") from error
-    return SavedXGBoostModel(metadata, booster), hashlib.sha256(raw_json).hexdigest()
+    return SavedXGBoostModel(metadata, booster), json_sha256
 
 
 def load_xgboost_artifact(*, model_id: UUID | str, artifact_root: Path) -> SavedXGBoostModel:

@@ -7,6 +7,8 @@ from types import MappingProxyType
 from app.schemas.model_catalog import ModelCapabilities, ModelTypeDefinition
 from app.schemas.modeling import ArxFitRequest
 from app.schemas.pls import PLSParameters
+from app.schemas.tcn import TCNParameters
+from app.schemas.xgboost import XGBoostParameters
 
 _MODELS = MappingProxyType(
     {
@@ -65,6 +67,48 @@ _MODELS = MappingProxyType(
             ),
             dependencies=("numpy>=1.26,<3", "scipy>=1.13,<2", "scikit-learn==1.7.2"),
         ),
+        "xgboost": ModelTypeDefinition(
+            model_type_id="xgboost",
+            display_name="XGBoost Regression",
+            family="tree_ensemble",
+            supported_tasks=("supervised_regression",),
+            maturity="experimental",
+            execution_scope="api",
+            implementation_id="app.services.xgboost_modeling_service.fit_xgboost_core",
+            implementation_version="xgboost-core-1",
+            parameter_schema_id="app.schemas.xgboost.XGBoostParameters",
+            capabilities=ModelCapabilities(
+                supervised_regression=True,
+                independent_run_api=True,
+                selected_rows=False,
+                soft_weights=False,
+                free_run=False,
+                one_step_equation=False,
+            ),
+            constraints=("Static single target, horizon=1, full Train",),
+            dependencies=("numpy>=1.26,<3", "scipy>=1.13,<2", "xgboost==3.1.3"),
+        ),
+        "tcn": ModelTypeDefinition(
+            model_type_id="tcn",
+            display_name="Temporal Convolutional Network",
+            family="temporal_convolution",
+            supported_tasks=("supervised_regression",),
+            maturity="experimental",
+            execution_scope="api",
+            implementation_id="app.services.tcn_modeling_service.fit_tcn_core",
+            implementation_version="tcn-core-1",
+            parameter_schema_id="app.schemas.tcn.TCNParameters",
+            capabilities=ModelCapabilities(
+                supervised_regression=True,
+                independent_run_api=True,
+                selected_rows=False,
+                soft_weights=False,
+                free_run=False,
+                one_step_equation=False,
+            ),
+            constraints=("Uniform sampling, fixed history, single target, horizon=1, full Train",),
+            dependencies=("numpy>=1.26,<3", "torch==2.9.1"),
+        ),
     }
 )
 
@@ -85,10 +129,14 @@ def get_model(model_type_id: str) -> ModelTypeDefinition:
 
 def validate_parameters(
     model_type_id: str, parameters: dict[str, object]
-) -> ArxFitRequest | PLSParameters:
+) -> ArxFitRequest | PLSParameters | XGBoostParameters | TCNParameters:
     model = get_model(model_type_id)
     if model.model_type_id == "pls":
         return PLSParameters.model_validate(parameters)
+    if model.model_type_id == "xgboost":
+        return XGBoostParameters.model_validate(parameters)
+    if model.model_type_id == "tcn":
+        return TCNParameters.model_validate(parameters)
     family = model.model_type_id.upper()
     if parameters.get("model_type", family) != family:
         raise ValueError("model_type_id conflicts with model_type")
@@ -99,4 +147,8 @@ def parameter_json_schema(model_type_id: str) -> dict[str, object]:
     model = get_model(model_type_id)
     if model.model_type_id == "pls":
         return PLSParameters.model_json_schema()
+    if model.model_type_id == "xgboost":
+        return XGBoostParameters.model_json_schema()
+    if model.model_type_id == "tcn":
+        return TCNParameters.model_json_schema()
     return ArxFitRequest.model_json_schema()

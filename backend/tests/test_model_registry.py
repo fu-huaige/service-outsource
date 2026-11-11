@@ -26,9 +26,13 @@ def parameters(**changes):
 
 
 def test_only_real_models_are_available():
-    assert [m.model_type_id for m in list_models()] == ["arx", "fir", "oe", "pls"]
+    assert [m.model_type_id for m in list_models()] == ["arx", "fir", "oe", "pls", "xgboost", "tcn"]
     assert all(m.availability == "available" for m in list_models())
-    assert [m.model_type_id for m in list_models(task_type="supervised_regression")] == ["pls"]
+    assert [m.model_type_id for m in list_models(task_type="supervised_regression")] == [
+        "pls",
+        "xgboost",
+        "tcn",
+    ]
     assert [m.model_type_id for m in list_models(task_type="dynamic_system_identification")] == [
         "arx",
         "fir",
@@ -38,6 +42,31 @@ def test_only_real_models_are_available():
         get_model("svr")
     with pytest.raises(ValidationError):
         ModelTypeDefinition(model_type_id="svr", display_name="SVR", implementation_id="missing")
+
+
+def test_xgboost_registry_uses_standalone_parameters():
+    from app.schemas.xgboost import XGBoostParameters
+
+    definition = get_model("xgboost")
+    assert definition.execution_scope == "api" and definition.family == "tree_ensemble"
+    assert definition.capabilities.supervised_regression and not definition.capabilities.free_run
+    assert validate_parameters("xgboost", {"max_depth": 2}) == XGBoostParameters(max_depth=2)
+    assert parameter_json_schema("xgboost") == XGBoostParameters.model_json_schema()
+    with pytest.raises(ValidationError):
+        validate_parameters("xgboost", {"na": 2})
+
+
+def test_tcn_registry_uses_standalone_parameters():
+    from app.schemas.tcn import TCNParameters
+
+    definition = get_model("tcn")
+    assert definition.execution_scope == "api" and definition.device == "cpu"
+    assert definition.family == "temporal_convolution"
+    assert definition.capabilities.single_target and not definition.capabilities.free_run
+    assert validate_parameters("tcn", {"window_length": 29}) == TCNParameters(window_length=29)
+    assert parameter_json_schema("tcn") == TCNParameters.model_json_schema()
+    with pytest.raises(ValidationError):
+        validate_parameters("tcn", {"window_length": 28})
 
 
 def test_oe_capabilities_match_formal_service():

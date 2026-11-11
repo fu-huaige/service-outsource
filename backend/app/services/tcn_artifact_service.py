@@ -180,14 +180,21 @@ def save_tcn_artifact(fitted: TCNModel, *, artifact_root: Path) -> TCNArtifactMe
     return metadata
 
 
-def load_tcn_artifact(*, model_id: UUID | str, artifact_root: Path) -> TCNModel:
+def read_tcn_artifact(
+    *,
+    model_id: UUID | str,
+    artifact_root: Path,
+    expected_json_sha256: str | None = None,
+    expected_npz: tuple[int, str] | None = None,
+) -> tuple[TCNModel, TCNArtifactMetadata, str]:
     identity = UUID(str(model_id))
     try:
         directory = _directory(artifact_root)
-        document = json.loads(
-            _read(directory / f"{identity}.json", MAX_JSON_BYTES),
-            object_pairs_hook=_unique_keys,
-        )
+        raw_json = _read(directory / f"{identity}.json", MAX_JSON_BYTES)
+        json_sha256 = hashlib.sha256(raw_json).hexdigest()
+        if expected_json_sha256 is not None and json_sha256 != expected_json_sha256:
+            raise ValueError("TCN JSON SHA256 differs from the platform evidence")
+        document = json.loads(raw_json, object_pairs_hook=_unique_keys)
         if not isinstance(document, dict) or set(document) != set(TCNArtifactMetadata.model_fields):
             raise ValueError("Incomplete or unexpected TCN metadata")
         parameters = document["parameters"]
@@ -205,6 +212,11 @@ def load_tcn_artifact(*, model_id: UUID | str, artifact_root: Path) -> TCNModel:
         metadata = TCNArtifactMetadata.model_validate(document)
         if metadata.model_id != identity:
             raise ValueError("TCN artifact model_id mismatch")
+        if expected_npz is not None and expected_npz != (
+            metadata.npz_size_bytes,
+            metadata.npz_sha256,
+        ):
+            raise ValueError("TCN NPZ size or SHA256 differs from the platform evidence")
         raw = _read(directory / metadata.npz_filename, MAX_NPZ_BYTES)
         if (
             len(raw) != metadata.npz_size_bytes
@@ -232,4 +244,8 @@ def load_tcn_artifact(*, model_id: UUID | str, artifact_root: Path) -> TCNModel:
     training = TCNTrainingMetadata.model_validate(
         {name: getattr(metadata, name) for name in TCNTrainingMetadata.model_fields}
     )
-    return TCNModel(model, training)
+    return TCNModel(model, training), metadata, json_sha256
+
+
+def load_tcn_artifact(*, model_id: UUID | str, artifact_root: Path) -> TCNModel:
+    return read_tcn_artifact(model_id=model_id, artifact_root=artifact_root)[0]

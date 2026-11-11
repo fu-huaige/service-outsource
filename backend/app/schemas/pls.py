@@ -287,7 +287,7 @@ class ModelSourceSummary(Schema):
 
 class ModelDetailsData(Schema):
     model_id: UUID
-    model_type: Literal["arx", "fir", "oe", "pls"]
+    model_type: Literal["arx", "fir", "oe", "pls", "xgboost", "tcn"]
     training_run_id: UUID | None
     source: ModelSourceSummary
     feature_names: tuple[str, ...]

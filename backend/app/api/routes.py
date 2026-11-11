@@ -1,3 +1,4 @@
+import json
 from typing import Annotated, Any, TypeVar
 from uuid import UUID
 
@@ -5,6 +6,7 @@ from algorithms.agent.llm import LlmUnavailableError
 from fastapi import APIRouter, Body, Depends, File, Form, Path, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -101,6 +103,23 @@ from app.schemas.system import (
     SystemInfoData,
 )
 from app.schemas.tasks import CancelTaskData
+from app.schemas.tcn_platform import (
+    MAX_PREDICT_BYTES,
+    TCNFitRequest,
+    TCNFitResponse,
+    TCNManifestRetryRequest,
+    TCNPredictRequest,
+    TCNPredictResponse,
+    TCNPublicationData,
+)
+from app.schemas.xgboost_platform import (
+    XGBoostFitRequest,
+    XGBoostFitResponse,
+    XGBoostManifestRetryRequest,
+    XGBoostPredictRequest,
+    XGBoostPredictResponse,
+    XGBoostPublicationData,
+)
 from app.services.agent_arx_modeling_service import (
     ArxStructureError,
     approve_and_execute_arx_step,
@@ -209,11 +228,23 @@ from app.services.report_service import (
 )
 from app.services.segment_service import SegmentDomainError, select_dynamic_segments
 from app.services.simulation_service import generate_simulation as generate_simulation_service
+from app.services.tcn_modeling_service import TCNModel
+from app.services.tcn_platform_adapter import (
+    TCNTrainingError,
+    fit_tcn_on_version,
+    retry_tcn_manifest,
+)
 from app.services.version_data import VersionDataError
 from app.services.versioned_preprocessing_service import (
     VersionedPreprocessingError,
     apply_feature_selection,
     apply_lag_compensation,
+)
+from app.services.xgboost_artifact_service import SavedXGBoostModel
+from app.services.xgboost_platform_adapter import (
+    XGBoostTrainingError,
+    fit_xgboost_on_version,
+    retry_xgboost_manifest,
 )
 
 router = APIRouter()
@@ -1719,6 +1750,7 @@ def _pls_http_error(error: Exception, *, operation: str) -> AppError:
                     "TRAINING_RUN_NOT_SUCCEEDED",
                     "TRAINING_RUN_ID_MISMATCH",
                     "MODEL_ID_MISMATCH",
+                    "MODEL_TYPE_MISMATCH",
                     "DATASET_VERSION_MISMATCH",
                     "MANIFEST_CONFLICT",
                 )
@@ -1762,10 +1794,15 @@ def _pls_http_error(error: Exception, *, operation: str) -> AppError:
     return AppError("PLS_OPERATION_FAILED", "PLS 操作失败。", status_code=500, details=details)
 
 
-async def _api_load_model(session: AsyncSession, model_id: UUID) -> LoadedModelInstance:
+async def _api_load_model(
+    session: AsyncSession, model_id: UUID, *, expected_model_type: str | None = None
+) -> LoadedModelInstance:
     try:
         return await load_model_instance(
-            session, model_id=model_id, artifact_root=get_settings().artifact_root
+            session,
+            model_id=model_id,
+            artifact_root=get_settings().artifact_root,
+            expected_model_type=expected_model_type,
         )
     except (ValueError, ModelingDomainError, VersionDataError) as error:
         raise _pls_http_error(error, operation="load") from error
@@ -1785,6 +1822,25 @@ def _model_details(instance: LoadedModelInstance) -> ModelDetailsData:
             "requested_n_components": metadata.requested_n_components,
             "effective_n_components": metadata.effective_n_components,
             "training_rows": metadata.training_rows,
+        }
+    elif isinstance(instance.payload, TCNModel):
+        if manifest is None:
+            raise AppError("MANIFEST_NOT_PUBLISHED", "模型清单尚未发布。", status_code=409)
+        metadata_tcn = instance.payload.metadata
+        spec = manifest.experiment_spec
+        dataset_id, version_id = spec.dataset_id, spec.dataset_version_id
+        names, target = metadata_tcn.feature_names, metadata_tcn.target_name
+        additional = {"artifact_version": 1, "training_rows": metadata_tcn.training_samples}
+    elif isinstance(instance.payload, SavedXGBoostModel):
+        if manifest is None:
+            raise AppError("MANIFEST_NOT_PUBLISHED", "模型清单尚未发布。", status_code=409)
+        metadata_xgboost = instance.payload.metadata
+        spec = manifest.experiment_spec
+        dataset_id, version_id = spec.dataset_id, spec.dataset_version_id
+        names, target = metadata_xgboost.feature_names, metadata_xgboost.target_name
+        additional = {
+            "artifact_version": metadata_xgboost.artifact_version,
+            "training_rows": metadata_xgboost.training_rows,
         }
     else:
         saved = instance.payload
@@ -1970,3 +2026,255 @@ async def pls_evaluation_history_api(
         offset=offset,
     )
     return success(request, PLSEvaluationAPIHistory.model_validate(result.model_dump()))
+
+
+def _xgboost_http_error(error: Exception) -> AppError:
+    if isinstance(error, XGBoostTrainingError):
+        details = {
+            "model_id": str(error.model_id),
+            "training_run_id": str(error.training_run_id),
+            "stage": error.stage,
+            "outcome": error.outcome,
+        }
+        if error.outcome == "unconfirmed":
+            return AppError(
+                "XGBOOST_OPERATION_UNCONFIRMED",
+                "请使用原训练运行 ID 核对结果。",
+                status_code=503,
+                details=details,
+            )
+        return AppError(
+            "XGBOOST_TRAINING_FAILED",
+            "XGBoost 训练失败。",
+            status_code=422 if isinstance(error.__cause__, ValueError) else 500,
+            details=details,
+        )
+    if isinstance(error, ModelArtifactError):
+        return _pls_http_error(error, operation="load")
+    if isinstance(error, (OSError, SQLAlchemyError)):
+        return AppError("XGBOOST_SERVICE_UNAVAILABLE", "XGBoost 服务暂不可用。", status_code=503)
+    return AppError("XGBOOST_INPUT_INVALID", "输入不符合 XGBoost 模型要求。", status_code=422)
+
+
+@router.post(
+    "/modeling/xgboost/fit",
+    tags=["Modeling"],
+    response_model=SuccessEnvelope[XGBoostFitResponse],
+    responses=ERROR_RESPONSES,
+)
+async def fit_xgboost_api(
+    request: Request,
+    payload: XGBoostFitRequest,
+    factory: Annotated[SessionFactory, Depends(get_session_factory)],
+):
+    try:
+        outcome = await fit_xgboost_on_version(
+            factory,
+            spec=payload.experiment_spec,
+            parameters=payload.parameters,
+            artifact_root=get_settings().artifact_root,
+        )
+    except (ValueError, VersionDataError, OSError, SQLAlchemyError) as error:
+        raise _xgboost_http_error(error) from error
+    return success(request, outcome)
+
+
+async def _parse_xgboost_predict(body: Annotated[Any, Body()]) -> XGBoostPredictRequest:
+    try:
+        return XGBoostPredictRequest.model_validate(body)
+    except ValidationError as error:
+        issues = [
+            {"loc": list(item["loc"]), "type": item["type"], "msg": item["msg"]}
+            for item in error.errors()
+        ]
+        raise AppError(
+            "REQUEST_VALIDATION_FAILED",
+            "预测请求参数校验失败。",
+            status_code=422,
+            details={"issues": issues},
+        ) from error
+
+
+@router.post(
+    "/modeling/xgboost/predict",
+    tags=["Modeling"],
+    response_model=SuccessEnvelope[XGBoostPredictResponse],
+    responses=ERROR_RESPONSES,
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {"application/json": {"schema": XGBoostPredictRequest.model_json_schema()}},
+        }
+    },
+)
+async def predict_xgboost_api(
+    request: Request,
+    payload: Annotated[XGBoostPredictRequest, Depends(_parse_xgboost_predict)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    instance = await _api_load_model(session, payload.model_id, expected_model_type="xgboost")
+    if not isinstance(instance.payload, SavedXGBoostModel):
+        raise AppError("MODEL_TYPE_MISMATCH", "固定预测需要 XGBoost 模型。", status_code=409)
+    try:
+        predicted = await run_in_threadpool(
+            instance.payload.predict, payload.X, feature_names=payload.feature_names
+        )
+    except ValueError as error:
+        raise _xgboost_http_error(error) from error
+    return success(
+        request,
+        XGBoostPredictResponse(
+            model_id=instance.model_id,
+            predictions=tuple(predicted.tolist()),
+            sample_count=len(predicted),
+        ),
+    )
+
+
+@router.post(
+    "/modeling/xgboost/{model_id}/manifest/retry",
+    tags=["Modeling"],
+    response_model=SuccessEnvelope[XGBoostPublicationData],
+    responses=ERROR_RESPONSES,
+)
+async def retry_xgboost_manifest_api(
+    request: Request,
+    model_id: UUID,
+    payload: XGBoostManifestRetryRequest,
+    factory: Annotated[SessionFactory, Depends(get_session_factory)],
+):
+    try:
+        outcome = await retry_xgboost_manifest(
+            factory,
+            model_id=model_id,
+            training_run_id=payload.training_run_id,
+            artifact_root=get_settings().artifact_root,
+        )
+    except (ValueError, VersionDataError, OSError, SQLAlchemyError) as error:
+        raise _xgboost_http_error(error) from error
+    return success(request, outcome)
+
+
+def _tcn_http_error(error: Exception) -> AppError:
+    if isinstance(error, TCNTrainingError):
+        details = {
+            "model_id": str(error.model_id),
+            "training_run_id": str(error.training_run_id),
+            "stage": error.stage,
+            "outcome": error.outcome,
+        }
+        if error.outcome == "unconfirmed":
+            return AppError(
+                "TCN_OPERATION_UNCONFIRMED",
+                "请使用原训练运行 ID 核对结果。",
+                status_code=503,
+                details=details,
+            )
+        return AppError(
+            "TCN_TRAINING_FAILED",
+            "TCN 训练失败。",
+            status_code=422 if isinstance(error.__cause__, ValueError) else 500,
+            details=details,
+        )
+    if isinstance(error, ModelArtifactError):
+        return _pls_http_error(error, operation="load")
+    if isinstance(error, (OSError, SQLAlchemyError)):
+        return AppError("TCN_SERVICE_UNAVAILABLE", "TCN 服务暂不可用。", status_code=503)
+    return AppError("TCN_INPUT_INVALID", "输入不符合 TCN 模型要求。", status_code=422)
+
+
+@router.post(
+    "/modeling/tcn/fit",
+    tags=["Modeling"],
+    response_model=SuccessEnvelope[TCNFitResponse],
+    responses=ERROR_RESPONSES,
+)
+async def fit_tcn_api(
+    request: Request,
+    payload: TCNFitRequest,
+    factory: Annotated[SessionFactory, Depends(get_session_factory)],
+):
+    try:
+        outcome = await fit_tcn_on_version(
+            factory,
+            spec=payload.experiment_spec,
+            parameters=payload.parameters,
+            artifact_root=get_settings().artifact_root,
+        )
+    except (ValueError, VersionDataError, OSError, SQLAlchemyError) as error:
+        raise _tcn_http_error(error) from error
+    return success(request, outcome)
+
+
+async def _parse_tcn_predict(request: Request) -> TCNPredictRequest:
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > MAX_PREDICT_BYTES:
+            raise AppError("TCN_PREDICT_BODY_TOO_LARGE", "TCN 预测请求体过大。", status_code=413)
+        body.extend(chunk)
+    try:
+        return TCNPredictRequest.model_validate(json.loads(body))
+    except (ValueError, RecursionError) as error:
+        raise AppError(
+            "REQUEST_VALIDATION_FAILED", "TCN 预测请求参数校验失败。", status_code=422
+        ) from error
+
+
+@router.post(
+    "/modeling/tcn/predict",
+    tags=["Modeling"],
+    response_model=SuccessEnvelope[TCNPredictResponse],
+    responses=ERROR_RESPONSES,
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {"application/json": {"schema": TCNPredictRequest.model_json_schema()}},
+        }
+    },
+)
+async def predict_tcn_api(
+    request: Request,
+    payload: Annotated[TCNPredictRequest, Depends(_parse_tcn_predict)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    instance = await _api_load_model(session, payload.model_id, expected_model_type="tcn")
+    if not isinstance(instance.payload, TCNModel):
+        raise AppError("MODEL_TYPE_MISMATCH", "固定预测需要 TCN 模型。", status_code=409)
+    try:
+        predicted = await run_in_threadpool(
+            instance.payload.predict, payload.X, feature_names=payload.feature_names
+        )
+    except ValueError as error:
+        raise _tcn_http_error(error) from error
+    return success(
+        request,
+        TCNPredictResponse(
+            model_id=instance.model_id,
+            predictions=tuple(predicted.tolist()),
+            sample_count=len(predicted),
+        ),
+    )
+
+
+@router.post(
+    "/modeling/tcn/{model_id}/manifest/retry",
+    tags=["Modeling"],
+    response_model=SuccessEnvelope[TCNPublicationData],
+    responses=ERROR_RESPONSES,
+)
+async def retry_tcn_manifest_api(
+    request: Request,
+    model_id: UUID,
+    payload: TCNManifestRetryRequest,
+    factory: Annotated[SessionFactory, Depends(get_session_factory)],
+):
+    try:
+        outcome = await retry_tcn_manifest(
+            factory,
+            model_id=model_id,
+            training_run_id=payload.training_run_id,
+            artifact_root=get_settings().artifact_root,
+        )
+    except (ValueError, VersionDataError, OSError, SQLAlchemyError) as error:
+        raise _tcn_http_error(error) from error
+    return success(request, outcome)

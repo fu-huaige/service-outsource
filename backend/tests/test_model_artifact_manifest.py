@@ -448,6 +448,23 @@ def test_qa_real_sqlite_filters_training_identity(saved):
     asyncio.run(exercise())
 
 
+def test_xgboost_manifest_schema_does_not_widen_legacy_manifest(saved):
+    from app.schemas.model_catalog import ModelArtifactManifest, XGBoostModelArtifactManifest
+    from app.services.model_artifact_service import _read_manifest
+
+    document = manifest(saved).model_dump(mode="json")
+    document.update(
+        model_type_id="xgboost",
+        payload_format="indusopt_xgboost_json_ubj_v1",
+        payload_uri=f"models/xgboost/{saved.model_id}.json",
+    )
+    path = saved.root / "models" / f"{saved.model_id}.manifest.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    assert isinstance(_read_manifest(path), XGBoostModelArtifactManifest)
+    with pytest.raises(ValueError):
+        ModelArtifactManifest.model_validate(document)
+
+
 def test_manifest_structure_version_is_not_payload_version(saved):
     from app.schemas.model_catalog import PLSModelArtifactManifest
     from pydantic import ValidationError

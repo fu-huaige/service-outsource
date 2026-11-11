@@ -18,7 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dataset import ProcessingRun
 from app.schemas.experiment_spec import ExperimentSpec, RowRange, RowSet
-from app.schemas.model_catalog import ModelArtifactManifest, PLSModelArtifactManifest
+from app.schemas.model_catalog import (
+    ModelArtifactManifest,
+    PLSModelArtifactManifest,
+    TCNModelArtifactManifest,
+    XGBoostModelArtifactManifest,
+)
 from app.schemas.pls import PLSBoundArtifactMetadata
 from app.services.experiment_spec_service import (
     bind_experiment_spec,
@@ -29,6 +34,8 @@ from app.services.experiment_spec_service import (
 from app.services.model_registry import get_model
 from app.services.modeling_service import SavedArxModel, load_saved_arx_model
 from app.services.pls_modeling_service import SavedPLSModel
+from app.services.tcn_modeling_service import TCNModel
+from app.services.xgboost_artifact_service import SavedXGBoostModel
 
 
 @dataclass(frozen=True)
@@ -38,7 +45,7 @@ class LoadedModelInstance:
     training_run_id: UUID | None
     origin: str
     manifest: ModelArtifactManifest | None
-    payload: SavedArxModel | SavedPLSModel
+    payload: SavedArxModel | SavedPLSModel | SavedXGBoostModel | TCNModel
     missing_provenance: tuple[str, ...] = ()
 
 
@@ -273,13 +280,76 @@ async def load_model_instance(
     *,
     model_id: UUID,
     artifact_root: Path,
+    expected_model_type: str | None = None,
 ) -> LoadedModelInstance:
     path = _checked_model_file(artifact_root, f"models/{model_id}.manifest.json", optional=True)
-    manifest = None
-    if path is not None:
-        manifest = _read_manifest(path)
-        if manifest.model_id != model_id:
-            raise ModelArtifactError("MODEL_ID_MISMATCH", "Manifest model_id mismatch")
+    from app.services.tcn_platform_adapter import find_tcn_run, verify_tcn_model
+    from app.services.xgboost_platform_adapter import find_xgboost_run, verify_xgboost_model
+
+    manifest = _read_manifest(path) if path is not None else None
+    if manifest is not None and manifest.model_id != model_id:
+        raise ModelArtifactError("MODEL_ID_MISMATCH", "Manifest model_id mismatch")
+    if manifest is not None and expected_model_type not in (None, manifest.model_type_id):
+        raise ModelArtifactError("MODEL_TYPE_MISMATCH", "Unexpected model type")
+    if isinstance(manifest, TCNModelArtifactManifest):
+        _, saved_tcn = await verify_tcn_model(
+            session,
+            model_id=model_id,
+            training_run_id=manifest.training_run_id,
+            artifact_root=artifact_root,
+            manifest=manifest,
+        )
+        return LoadedModelInstance(
+            model_id=model_id,
+            model_type_id="tcn",
+            training_run_id=manifest.training_run_id,
+            origin="native_manifest",
+            manifest=manifest,
+            payload=saved_tcn,
+        )
+    if isinstance(manifest, XGBoostModelArtifactManifest):
+        _, saved_xgboost = await verify_xgboost_model(
+            session,
+            model_id=model_id,
+            training_run_id=manifest.training_run_id,
+            artifact_root=artifact_root,
+            manifest=manifest,
+        )
+        return LoadedModelInstance(
+            model_id=model_id,
+            model_type_id="xgboost",
+            training_run_id=manifest.training_run_id,
+            origin="native_manifest",
+            manifest=manifest,
+            payload=saved_xgboost,
+        )
+    tcn_run = await find_tcn_run(session, model_id)
+    if tcn_run is not None:
+        if manifest is not None or expected_model_type not in (None, "tcn"):
+            raise ModelArtifactError("MODEL_TYPE_MISMATCH", "Unexpected TCN training identity")
+        if tcn_run.status != "succeeded":
+            raise ModelArtifactError("TRAINING_RUN_NOT_SUCCEEDED", "TCN training did not succeed")
+        raise ModelArtifactError("MANIFEST_NOT_PUBLISHED", "TCN Manifest has not been published")
+
+    xgboost_run = await find_xgboost_run(session, model_id)
+    if xgboost_run is not None:
+        if manifest is not None or expected_model_type == "tcn":
+            raise ModelArtifactError(
+                "MODEL_TYPE_MISMATCH", "Manifest conflicts with the training model type"
+            )
+        if xgboost_run.status != "succeeded":
+            raise ModelArtifactError(
+                "TRAINING_RUN_NOT_SUCCEEDED", "XGBoost training did not succeed"
+            )
+        raise ModelArtifactError(
+            "MANIFEST_NOT_PUBLISHED", "XGBoost Manifest has not been published"
+        )
+
+    if manifest is None and expected_model_type == "tcn":
+        raise ModelArtifactError("TRAINING_RUN_MISSING", "TCN training record is missing")
+    if manifest is None and expected_model_type == "xgboost":
+        raise ModelArtifactError("TRAINING_RUN_MISSING", "XGBoost training record is missing")
+    if manifest is not None:
         if manifest.model_type_id == "pls":
             return await _load_pls_instance(
                 session,
@@ -363,9 +433,16 @@ def _read_manifest(path: Path) -> ModelArtifactManifest:
     if type(version) is not int or version != 1:
         raise ModelArtifactError("MANIFEST_VERSION_UNSUPPORTED", "Unsupported Manifest version")
     kind = document.get("model_type_id")
-    if kind not in ("arx", "fir", "oe", "pls"):
+    if kind == "xgboost":
+        model: type[ModelArtifactManifest] = XGBoostModelArtifactManifest
+    elif kind == "tcn":
+        model = TCNModelArtifactManifest
+    elif kind == "pls":
+        model = PLSModelArtifactManifest
+    elif kind in ("arx", "fir", "oe"):
+        model = ModelArtifactManifest
+    else:
         raise ModelArtifactError("MODEL_TYPE_UNSUPPORTED", "Unsupported Manifest model type")
-    model = PLSModelArtifactManifest if kind == "pls" else ModelArtifactManifest
     try:
         return model.model_validate(document)
     except ValueError as error:
@@ -476,8 +553,14 @@ async def publish_pls_manifest(
 ) -> PLSModelArtifactManifest:
     """Publish only a verified, already succeeded model; no database writes."""
     manifest = await build_pls_manifest(session, model_id=model_id, artifact_root=artifact_root)
+    publish_verified_manifest(artifact_root, manifest)
+    return manifest
+
+
+def publish_verified_manifest(artifact_root: Path, manifest: ModelArtifactManifest) -> None:
+    """Publish a caller-verified sidecar exclusively and accept identical retries."""
     if _existing_manifest(artifact_root, manifest):
-        return manifest
+        return
     root = artifact_root.resolve()
     directory = root / "models"
     if (
@@ -503,7 +586,6 @@ async def publish_pls_manifest(
                 raise ModelArtifactError(
                     "MANIFEST_CONFLICT", "Manifest publication conflict"
                 ) from None
-        return manifest
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)

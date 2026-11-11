@@ -10,7 +10,7 @@ from pydantic import ConfigDict, Field
 from app.schemas.common import Schema
 from app.schemas.experiment_spec import ExperimentSpec, RowSet
 
-ModelTypeId = Literal["arx", "fir", "oe", "pls"]
+ModelTypeId = Literal["arx", "fir", "oe", "pls", "xgboost", "tcn"]
 
 
 class ModelCapabilities(Schema):
@@ -33,7 +33,9 @@ class ModelTypeDefinition(Schema):
     model_config = ConfigDict(extra="forbid", frozen=True)
     model_type_id: ModelTypeId
     display_name: str
-    family: Literal["linear_dynamic", "linear_latent_regression"] = "linear_dynamic"
+    family: Literal[
+        "linear_dynamic", "linear_latent_regression", "tree_ensemble", "temporal_convolution"
+    ] = "linear_dynamic"
     supported_tasks: tuple[str, ...] = ("dynamic_system_identification",)
     availability: Literal["available", "planned"] = "available"
     maturity: Literal["established", "experimental"] = "established"
@@ -70,3 +72,18 @@ class PLSModelArtifactManifest(ModelArtifactManifest):
 
     model_type_id: Literal["pls"] = "pls"
     payload_format: Literal["indusopt_pls_json_npz_v2"] = "indusopt_pls_json_npz_v2"
+
+
+class XGBoostModelArtifactManifest(ModelArtifactManifest):
+    """Platform sidecar for the existing JSON/UBJSON payload."""
+
+    model_type_id: Literal["xgboost"] = "xgboost"
+    payload_format: Literal["indusopt_xgboost_json_ubj_v1"] = "indusopt_xgboost_json_ubj_v1"
+
+
+class TCNModelArtifactManifest(ModelArtifactManifest):
+    """Platform sidecar for the standalone TCN JSON/NPZ payload."""
+
+    model_type_id: Literal["tcn"] = "tcn"
+    payload_format: Literal["indusopt_tcn_json_npz_v1"] = "indusopt_tcn_json_npz_v1"
+    training_samples: int = Field(ge=2)

@@ -273,6 +273,26 @@ def test_unsupported_runtime_does_not_load(saved, monkeypatch):
         load(saved)
 
 
+@pytest.mark.parametrize("field", ["json", "ubj_size", "ubj_sha"])
+def test_platform_digest_is_checked_before_native_parser(saved, monkeypatch, field):
+    root, _, metadata, directory, _ = saved
+    json_sha = hashlib.sha256((directory / f"{metadata.model_id}.json").read_bytes()).hexdigest()
+    expected = {
+        "expected_json_sha256": "0" * 64 if field == "json" else json_sha,
+        "expected_ubj": (
+            metadata.ubj_size_bytes + (field == "ubj_size"),
+            "0" * 64 if field == "ubj_sha" else metadata.ubj_sha256,
+        ),
+    }
+
+    def unexpected():
+        pytest.fail("Trusted platform evidence must be checked before native restoration")
+
+    monkeypatch.setattr(artifacts, "xgboost_runtime", unexpected)
+    with pytest.raises(ValueError, match="platform evidence"):
+        artifacts.read_xgboost_artifact(model_id=metadata.model_id, artifact_root=root, **expected)
+
+
 def test_ubjson_digest_is_checked_before_native_parser(saved, monkeypatch):
     path = saved[3] / saved[2].ubj_filename
     raw = path.read_bytes()
