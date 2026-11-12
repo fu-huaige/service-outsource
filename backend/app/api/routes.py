@@ -25,6 +25,8 @@ from app.schemas.copilot import (
     CopilotEvaluateModelExecuteData,
     CopilotEvaluateModelExecuteRequest,
     CopilotExecutionSnapshotData,
+    CopilotModelExecuteRequest,
+    CopilotModelExecutionData,
     CopilotOptimizePipelineExecuteData,
     FeatureSelectionValidationData,
     FeatureSelectionValidationRequest,
@@ -162,6 +164,7 @@ from app.services.agent_lag_apply_service import (
     is_lag_apply_step,
     validate_lag_overrides,
 )
+from app.services.agent_model_execution_service import execute_confirmed_model
 from app.services.agent_service import (
     AgentDomainError,
     confirm_model_selection,
@@ -1499,6 +1502,28 @@ async def copilot_confirm(
             arx_structure_validation=arx_validation,
         ),
     )
+@router.post(
+    "/copilot/modeling/execute",
+    tags=["Copilot"],
+    response_model=SuccessEnvelope[CopilotModelExecutionData],
+    responses={**ERROR_RESPONSES, 409: {"model": ErrorEnvelope}},
+)
+async def execute_copilot_modeling(
+    request: Request,
+    payload: CopilotModelExecuteRequest,
+    factory: Annotated[SessionFactory, Depends(get_session_factory)],
+) -> SuccessEnvelope[CopilotModelExecutionData]:
+    try:
+        result = await execute_confirmed_model(
+            factory, request=payload, artifact_root=get_settings().artifact_root
+        )
+    except AgentDomainError as error:
+        raise AppError(
+            error.code, error.message, status_code=error.status_code, details=error.details
+        ) from error
+    return success(request, result)
+
+
 @router.post(
     "/copilot/optimize-pipeline/execute",
     tags=["Copilot"],

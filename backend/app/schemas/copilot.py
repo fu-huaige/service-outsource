@@ -6,6 +6,8 @@ from pydantic import Field
 
 from app.schemas.common import Schema, TaskResource
 from app.schemas.experiment_spec import Digest
+from app.schemas.model_comparison import ModelComparisonResult
+from app.schemas.model_evaluation import ModelEvaluationSuccess
 from app.schemas.model_recommendation import ModelRecommendationRequest, RecommendationModelType
 from app.schemas.timexer_platform import TimeXerForecastSpec
 
@@ -25,6 +27,7 @@ class ExecutionPlanStep(Schema):
         "profile_dataset",
         "recommend_models",
         "confirm_model_selection",
+        "execute_confirmed_model",
         "align_and_resample",
         "detect_anomalies",
         "clean_data",
@@ -199,6 +202,40 @@ class CopilotModelSelection(Schema):
     csv_sha256: Digest
     experiment_spec_hash: Digest
     forecast_spec: TimeXerForecastSpec | None = None
+
+
+class CopilotModelExecuteRequest(Schema):
+    selection_execution_id: UUID
+    copilot_run_id: UUID
+    confirmed_selection_step_id: str = Field(min_length=1, max_length=64)
+
+
+class CopilotModelExecutionData(Schema):
+    execution_id: UUID
+    selection_execution_id: UUID
+    confirmed_selection_step_id: str
+    model_type_id: RecommendationModelType
+    dataset_version_id: UUID
+    experiment_spec_hash: Digest
+    forecast_spec: TimeXerForecastSpec | None = None
+    execution_status: Literal["running", "succeeded", "failed", "unconfirmed"] = "running"
+    training_status: Literal["running", "succeeded", "failed", "unconfirmed"] = "running"
+    manifest_status: Literal["pending", "published", "failed", "unconfirmed"] = "pending"
+    model_id: UUID | None = None
+    training_run_id: UUID | None = None
+    training_error: str | None = None
+    evaluation_status: Literal[
+        "pending", "running", "succeeded", "failed", "skipped", "unconfirmed"
+    ] = "pending"
+    evaluation_run_id: UUID | None = None
+    evaluation: ModelEvaluationSuccess | None = None
+    evaluation_error: str | None = None
+    comparison_status: Literal[
+        "pending", "succeeded", "not_comparable", "failed", "skipped", "unconfirmed"
+    ] = "pending"
+    comparison: ModelComparisonResult | None = None
+    comparison_reason: str | None = None
+    compared_evaluation_run_ids: tuple[UUID, ...] = ()
 
 
 class CopilotConfirmRequest(Schema):
