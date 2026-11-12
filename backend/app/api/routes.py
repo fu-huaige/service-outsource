@@ -48,6 +48,7 @@ from app.schemas.datasets import (
     DelaySourceVersionsData,
 )
 from app.schemas.diagnostics import GeneralizationDiagnosticsData
+from app.schemas.model_comparison import ModelComparisonRequest, ModelComparisonResult
 from app.schemas.model_evaluation import (
     ModelEvaluationDetail,
     ModelEvaluationHistory,
@@ -208,6 +209,7 @@ from app.services.model_artifact_service import (
     ModelArtifactError,
     load_model_instance,
 )
+from app.services.model_comparison_service import ModelComparisonError, compare_model_evaluations
 from app.services.model_evaluation_service import (
     ModelEvaluationError,
     evaluate_saved_model,
@@ -2168,6 +2170,36 @@ async def model_evaluation_detail_api(
     result = await get_model_evaluation(session, evaluation_run_id)
     if result is None:
         raise AppError("MODEL_EVALUATION_NOT_FOUND", "指定评价记录不存在。", status_code=404)
+    return success(request, result)
+
+
+@router.post(
+    "/modeling/compare",
+    tags=["Modeling"],
+    response_model=SuccessEnvelope[ModelComparisonResult],
+    responses={**ERROR_RESPONSES, 409: {"model": ErrorEnvelope}},
+)
+async def compare_models_api(
+    request: Request,
+    payload: ModelComparisonRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    try:
+        result = await compare_model_evaluations(
+            session, request=payload, artifact_root=get_settings().artifact_root
+        )
+    except ModelComparisonError as error:
+        message = (
+            "指定评价记录不存在。"
+            if error.status_code == 404
+            else f"评价记录无法比较，请核对字段 {error.field}。"
+        )
+        raise AppError(
+            error.code,
+            message,
+            status_code=error.status_code,
+            details={"evaluation_run_id": str(error.run_id), "field": error.field},
+        ) from error
     return success(request, result)
 
 
