@@ -145,7 +145,7 @@ class TestPlanning:
         assert export.requires_confirmation is True
 
     def test_prerequisites_come_first(self) -> None:
-        steps, _, _ = plan_for("清洗后建模")
+        steps, _, _ = plan_for("清洗后做 ARX 建模")
         order = [step.tool for step in steps]
         assert order.index("profile_dataset") < order.index("detect_anomalies")
         assert order.index("detect_anomalies") < order.index("clean_data")
@@ -153,7 +153,9 @@ class TestPlanning:
         assert order.index("apply_lag_compensation") < order.index("fit_arx")
         assert order.index("fit_arx") < order.index("evaluate_model")
 
-    @pytest.mark.parametrize("message", ["ARX", "建模", "辨识", "动态模型", "完整建模流程"])
+    @pytest.mark.parametrize(
+        "message", ["ARX", "ARX 建模", "ARX 辨识", "ARX 动态模型", "完整 ARX 建模流程"]
+    )
     def test_model_goals_include_the_complete_lag_chain(self, message: str) -> None:
         steps, _, _ = plan_for(message)
         by_tool = {step.tool: step for step in steps}
@@ -457,7 +459,7 @@ class TestCompliance:
         assert gate.detail == "高影响操作均已获人工确认"
 
     def test_signature_changes_when_the_plan_changes(self) -> None:
-        first, _, _ = plan_for("清洗后建模")
+        first, _, _ = plan_for("清洗后做 ARX 建模")
         second, _, _ = plan_for("清洗数据")
         assert verify_plan(as_raw(first)).signature != verify_plan(as_raw(second)).signature
 

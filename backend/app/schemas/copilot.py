@@ -5,6 +5,9 @@ from uuid import UUID
 from pydantic import Field
 
 from app.schemas.common import Schema, TaskResource
+from app.schemas.experiment_spec import Digest
+from app.schemas.model_recommendation import ModelRecommendationRequest, RecommendationModelType
+from app.schemas.timexer_platform import TimeXerForecastSpec
 
 
 class CopilotChatRequest(Schema):
@@ -12,12 +15,16 @@ class CopilotChatRequest(Schema):
     dataset_id: UUID | None = None
     active_version_id: UUID | None = None
     context: dict[str, Any] = Field(default_factory=dict)
+    recommendation_request: ModelRecommendationRequest | None = None
+    requested_model_type_id: RecommendationModelType | None = None
 
 
 class ExecutionPlanStep(Schema):
     step_id: str
     tool: Literal[
         "profile_dataset",
+        "recommend_models",
+        "confirm_model_selection",
         "align_and_resample",
         "detect_anomalies",
         "clean_data",
@@ -182,6 +189,18 @@ class ArxStructureValidationData(Schema):
     overall_status: Literal["VALID", "INVALID"]
     issues: list[str] = Field(default_factory=list)
 
+class CopilotModelSelection(Schema):
+    recommendation_step_id: str = Field(min_length=1)
+    selected_model_type_id: RecommendationModelType
+    selected_parameters: dict[str, Any]
+    selection_source: Literal["agent_recommendation", "manual"]
+    dataset_id: UUID
+    dataset_version_id: UUID
+    csv_sha256: Digest
+    experiment_spec_hash: Digest
+    forecast_spec: TimeXerForecastSpec | None = None
+
+
 class CopilotConfirmRequest(Schema):
     copilot_run_id: UUID
     confirmation_id: str = Field(min_length=1)
@@ -196,6 +215,7 @@ class CopilotConfirmRequest(Schema):
         default_factory=ArxStructureManualOverrides
     )
     comment: str | None = Field(default=None, max_length=2_000)
+    model_selection: CopilotModelSelection | None = None
 
 
 class CopilotConfirmData(Schema):

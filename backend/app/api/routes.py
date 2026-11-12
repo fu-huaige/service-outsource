@@ -164,6 +164,7 @@ from app.services.agent_lag_apply_service import (
 )
 from app.services.agent_service import (
     AgentDomainError,
+    confirm_model_selection,
     continue_agent_execution,
     execute_approved_export_step,
     execute_approved_optimization_step,
@@ -1367,7 +1368,23 @@ async def copilot_confirm(
     arx_validation: ArxStructureValidationData | None = None
     resume_after_confirmation = False
     try:
-        if not payload.approved:
+        current = await get_execution(session, execution_id=payload.execution_id)
+        is_model_selection = any(
+            step.step_id == payload.step_id and step.tool_name == "confirm_model_selection"
+            for step in current.step_runs
+        )
+        if is_model_selection:
+            execution = await confirm_model_selection(
+                session,
+                payload=payload,
+                execution=current,
+                artifact_root=get_settings().artifact_root,
+            )
+        elif payload.model_selection is not None:
+            raise AgentDomainError(
+                "MODEL_SELECTION_STEP_REQUIRED", "模型选择必须提交到对应确认步骤。", status_code=422
+            )
+        elif not payload.approved:
             execution = await reject_step(
                 session, execution_id=payload.execution_id, step_id=payload.step_id
             )
@@ -1445,7 +1462,7 @@ async def copilot_confirm(
             status_code=status.HTTP_409_CONFLICT,
             details={"reason": str(error)},
         ) from error
-    except (LagOverrideError, FeatureSelectionError, ArxStructureError) as error:
+    except (LagOverrideError, FeatureSelectionError, ArxStructureError, AgentDomainError) as error:
         raise AppError(
             error.code,
             error.message,

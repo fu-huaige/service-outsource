@@ -25,6 +25,8 @@ from typing import Any
 # The only tools an agent may schedule. Anything else is rejected by the validator.
 TOOL_WHITELIST: tuple[str, ...] = (
     "profile_dataset",
+    "recommend_models",
+    "confirm_model_selection",
     "align_and_resample",
     "detect_anomalies",
     "clean_data",
@@ -44,6 +46,7 @@ TOOL_WHITELIST: tuple[str, ...] = (
 CONFIRMATION_REQUIRED: frozenset[str] = frozenset(
     {
         "apply_lag_compensation",
+        "confirm_model_selection",
         "select_variables",
         "fit_arx",
         "optimize_pipeline",
@@ -54,6 +57,8 @@ CONFIRMATION_REQUIRED: frozenset[str] = frozenset(
 # Ordering constraints. A tool may only run after everything it depends on.
 TOOL_PREREQUISITES: dict[str, tuple[str, ...]] = {
     "profile_dataset": (),
+    "recommend_models": (),
+    "confirm_model_selection": ("recommend_models",),
     "align_and_resample": ("profile_dataset",),
     "detect_anomalies": ("profile_dataset",),
     "clean_data": ("detect_anomalies",),
@@ -127,6 +132,7 @@ class ParsedIntent:
     goals: frozenset[str]
     parameters: dict[str, Any] = field(default_factory=dict)
     mentioned_columns: tuple[str, ...] = ()
+    requested_model_type_id: str | None = None
 
     def wants(self, goal: str) -> bool:
         return goal in self.goals
@@ -171,7 +177,33 @@ def parse_intent(message: str) -> ParsedIntent:
         parameters["max_segments"] = max(1, min(int(segments.group(1)), 100))
 
     columns = tuple(dict.fromkeys(re.findall(r"\b([uy]\d{1,2})\b", lowered)))
-    return ParsedIntent(goals=frozenset(goals), parameters=parameters, mentioned_columns=columns)
+    models = tuple(
+        dict.fromkeys(re.findall(r"(?<![a-z0-9_])(pls|xgboost|tcn|timexer)(?![a-z0-9_])", lowered))
+    )
+    legacy = re.search(r"(?<![a-z0-9_])(arx|fir|oe)(?![a-z0-9_])", lowered)
+    recommendation = any(word in lowered for word in ("推荐", "选择", "recommend", "choose")) or (
+        "比较" in lowered and "适合" in lowered
+    )
+    task_text = lowered.replace("建模数据集", "").replace("辨识报告", "")
+    general_modeling = any(
+        phrase in task_text
+        for phrase in ("建模", "辨识", "动态模型", "训练模型", "modeling", "model fitting")
+    )
+    requested_model = models[0] if len(models) == 1 else None
+    if (models and (not legacy or recommendation)) or (
+        not legacy
+        and (
+            (recommendation and ("model" in goals or "算法" in lowered or "algorithm" in lowered))
+            or (general_modeling and "optimize" not in goals)
+        )
+    ):
+        goals.add("model_recommendation")
+    return ParsedIntent(
+        goals=frozenset(goals),
+        parameters=parameters,
+        mentioned_columns=columns,
+        requested_model_type_id=requested_model if not legacy else None,
+    )
 
 
 class RuleBasedPlanner:
@@ -214,6 +246,11 @@ class RuleBasedPlanner:
             )
             emitted[tool] = step_id
             return step_id
+
+        if intent.wants("model_recommendation"):
+            emit("recommend_models")
+            emit("confirm_model_selection")
+            return steps, assumptions, ["Wait for an explicit model selection."]
 
         # Profiling is unconditional: every later decision reads the quality evidence.
         emit("profile_dataset")

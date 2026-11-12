@@ -27,7 +27,7 @@ from uuid import UUID, uuid4
 from algorithms.agent.compliance import ComplianceProof, verify_plan
 from algorithms.agent.llm import LlmProvider
 from algorithms.agent.llm_planner import LlmPlanner, PlanOutcome
-from algorithms.agent.planner import PlannedStep, parse_intent
+from algorithms.agent.planner import ParsedIntent, PlannedStep, RuleBasedPlanner, parse_intent
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -39,9 +39,11 @@ from app.schemas.copilot import (
     ComplianceProofData,
     CopilotChatData,
     CopilotChatRequest,
+    CopilotConfirmRequest,
     ExecutionPlan,
     ExecutionPlanStep,
 )
+from app.schemas.model_recommendation import ModelRecommendationRequest, ModelRecommendationResult
 from app.schemas.modeling import ArxFitRequest
 from app.schemas.optimization import OptimizationStartRequest
 from app.schemas.preprocessing import SegmentRequest
@@ -53,6 +55,7 @@ from app.services.agent_arx_modeling_service import (
 from app.services.agent_execution_service import (
     claim_approved_optimization_step,
     create_execution,
+    finish_model_selection_step,
     get_execution,
     mark_step_failed,
     mark_step_preparation_failed,
@@ -67,6 +70,9 @@ from app.services.agent_lag_apply_service import LagOverrideError, prepare_lag_c
 from app.services.agent_tool_adapter import AgentToolAdapterError, execute_agent_tool
 from app.services.cleaning_service import CleaningDomainError
 from app.services.contract_stubs import completed_task
+from app.services.dataset_csv import DatasetCsvError
+from app.services.dataset_version_io import DatasetVersionArtifactError
+from app.services.model_recommendation_service import recommend_models
 from app.services.modeling_service import ModelingDomainError, fit_arx_core
 from app.services.optimization_service import run_study
 from app.services.preprocessing_analysis_service import AnalysisDomainError
@@ -121,6 +127,10 @@ class ToolCapability:
 
 _TOOL_CAPABILITIES: dict[str, ToolCapability] = {
     "profile_dataset": ToolCapability("DIRECT_EXECUTABLE", False, "direct", "controller"),
+    "recommend_models": ToolCapability("DIRECT_EXECUTABLE", False, "recommendation", "controller"),
+    "confirm_model_selection": ToolCapability(
+        "WAITING_CONFIRMATION", True, "recommendation", "confirm"
+    ),
     "align_and_resample": ToolCapability("DIRECT_EXECUTABLE", False, "direct", "controller"),
     "detect_anomalies": ToolCapability("DIRECT_EXECUTABLE", False, "direct", "controller"),
     "clean_data": ToolCapability("FORMAL_EXECUTABLE", False, "formal", "controller"),
@@ -271,6 +281,352 @@ async def execute_pending_evaluation_step(
         processing_run_ids=result.processing_run_ids,
     )
 
+async def _run_model_recommendation(
+    session: AsyncSession,
+    *,
+    payload: CopilotChatRequest,
+    intent: ParsedIntent,
+    artifact_root: Path,
+) -> CopilotChatData:
+    request = payload.recommendation_request
+    if request is None:
+        raise AgentDomainError(
+            "NEEDS_EXPERIMENT_SPEC",
+            "模型推荐需要明确的实验契约。",
+            status_code=422,
+            details={
+                "missing_fields": [
+                    "recommendation_request.experiment_spec",
+                    "dataset_id",
+                    "dataset_version_id",
+                    "dataset_version_sha256",
+                    "target_column",
+                    "input_columns",
+                    "split",
+                    "continuous_runs",
+                ]
+            },
+        )
+    spec = request.experiment_spec
+    if payload.dataset_id not in (None, spec.dataset_id) or payload.active_version_id not in (
+        None,
+        spec.dataset_version_id,
+    ):
+        raise AgentDomainError(
+            "MODEL_RECOMMENDATION_SOURCE_MISMATCH",
+            "聊天数据版本与实验契约不一致。",
+            status_code=409,
+        )
+    requested = payload.requested_model_type_id or intent.requested_model_type_id
+    if payload.requested_model_type_id is not None and intent.requested_model_type_id not in (
+        None,
+        payload.requested_model_type_id,
+    ):
+        raise AgentDomainError(
+            "MODEL_SELECTION_INTENT_MISMATCH",
+            "结构化模型选择与消息中的模型不一致。",
+            status_code=422,
+        )
+    recommendation_intent = ParsedIntent(goals=frozenset({"model_recommendation"}))
+    planned, assumptions, stops = RuleBasedPlanner().plan(recommendation_intent)
+    _validate_plan_capabilities(planned)
+    plan = ExecutionPlan(
+        goal=payload.message,
+        dataset_id=spec.dataset_id,
+        steps=[
+            ExecutionPlanStep(
+                step_id=step.step_id,
+                tool=step.tool,
+                depends_on=list(step.depends_on),
+                requires_confirmation=step.requires_confirmation,
+            )
+            for step in planned
+        ],
+        assumptions=assumptions,
+        stop_conditions=stops,
+    )
+    proof = verify_plan([step.model_dump() for step in plan.steps], code_version=CODE_VERSION)
+    if not proof.passed:
+        raise AgentDomainError(
+            "MODEL_RECOMMENDATION_PLAN_REJECTED", "推荐计划未通过合规检查。", status_code=409
+        )
+    try:
+        result = await recommend_models(session, request=request, artifact_root=artifact_root)
+    except (ValueError, VersionDataError, DatasetCsvError, DatasetVersionArtifactError) as error:
+        raise AgentDomainError(
+            "MODEL_RECOMMENDATION_SOURCE_INVALID",
+            "无法核验模型推荐的数据版本或实验契约。",
+            status_code=422,
+        ) from error
+
+    recommendation, confirmation = plan.steps
+    copilot_run_id = uuid4()
+    execution = await create_execution(
+        session,
+        dataset_id=result.source.dataset_id,
+        initial_version_id=result.source.dataset_version_id,
+        planner_source="rule_based",
+        plan=plan,
+        compliance_proof=proof,
+        copilot_run_id=copilot_run_id,
+    )
+    execution_id = execution.id
+    await start_step(
+        session,
+        execution_id=execution_id,
+        step_id=recommendation.step_id,
+        input_payload_update={"recommendation_request": request.model_dump(mode="json")},
+    )
+    snapshot = {
+        "recommendation_step_id": recommendation.step_id,
+        "recommendation": result.model_dump(mode="json"),
+        "requested_model_type_id": requested,
+    }
+    await mark_step_succeeded(
+        session,
+        execution_id=execution_id,
+        step_id=recommendation.step_id,
+        source_version_id=result.source.dataset_version_id,
+        result_payload=snapshot,
+    )
+    execution = await start_step(
+        session,
+        execution_id=execution_id,
+        step_id=confirmation.step_id,
+        input_payload_update={
+            "recommendation_step_id": recommendation.step_id,
+            "requested_model_type_id": requested,
+        },
+    )
+    recommendation.status = "completed"
+    confirmation.status = "waiting_confirmation"
+    summary = "模型推荐已生成，等待用户确认最终选择。"
+    return CopilotChatData(
+        copilot_run_id=copilot_run_id,
+        execution_id=execution_id,
+        workflow_status=execution.workflow_status,
+        current_version_id=execution.current_version_id,
+        pending_confirmation_step_id=execution.pending_confirmation_step_id,
+        plan=plan,
+        compliance=ComplianceProofData(**proof.to_payload()),
+        step_runs=[
+            AgentStepRun(
+                step_id=recommendation.step_id,
+                tool=recommendation.tool,
+                status="completed",
+                summary=result.summary,
+                result=snapshot,
+            ),
+            AgentStepRun(
+                step_id=confirmation.step_id,
+                tool=confirmation.tool,
+                status="waiting_confirmation",
+                summary=summary,
+                result={"requested_model_type_id": requested},
+            ),
+        ],
+        conclusion=summary,
+        executed=True,
+    )
+
+
+async def confirm_model_selection(
+    session: AsyncSession,
+    *,
+    payload: CopilotConfirmRequest,
+    execution: AgentExecutionSession,
+    artifact_root: Path,
+) -> AgentExecutionSession:
+    """Revalidate the snapshot against current source data before locking a choice."""
+    step = next(item for item in execution.step_runs if item.step_id == payload.step_id)
+    if (
+        payload.confirmation_id != step.step_id
+        or payload.copilot_run_id != execution.copilot_run_id
+    ):
+        raise AgentDomainError(
+            "MODEL_SELECTION_REFERENCE_MISMATCH", "确认请求与原执行步骤不一致。", status_code=409
+        )
+    selected = payload.model_selection
+    if not payload.approved:
+        if selected is not None:
+            raise AgentDomainError(
+                "MODEL_SELECTION_ON_REJECTION", "拒绝确认时不能提交模型选择。", status_code=422
+            )
+        return await finish_model_selection_step(
+            session,
+            execution_id=execution.id,
+            step_id=step.step_id,
+            version_id=execution.current_version_id,
+            submission=None,
+            selection=None,
+        )
+    if selected is None:
+        raise AgentDomainError(
+            "MODEL_SELECTION_REQUIRED", "确认时必须明确提交模型和参数。", status_code=422
+        )
+
+    recommendation_step = next(
+        (
+            item
+            for item in execution.step_runs
+            if item.step_id == selected.recommendation_step_id
+            and item.step_id == step.input_payload.get("recommendation_step_id")
+            and item.step_id in step.input_payload.get("depends_on", [])
+            and item.tool_name == "recommend_models"
+            and item.status == "SUCCEEDED"
+        ),
+        None,
+    )
+    if recommendation_step is None:
+        raise AgentDomainError(
+            "MODEL_SELECTION_RECOMMENDATION_MISMATCH", "选择必须关联原推荐步骤。", status_code=409
+        )
+    try:
+        original = ModelRecommendationResult.model_validate(
+            recommendation_step.result_payload["recommendation"]
+        )
+        request = ModelRecommendationRequest.model_validate(
+            recommendation_step.input_payload["recommendation_request"]
+        )
+    except (ValueError, KeyError) as error:
+        raise AgentDomainError(
+            "MODEL_SELECTION_SOURCE_CHANGED", "原推荐快照已失效，请重新生成推荐。", status_code=409
+        ) from error
+    source = original.source
+    if (
+        selected.dataset_id != source.dataset_id
+        or selected.dataset_version_id != source.dataset_version_id
+        or selected.csv_sha256 != source.csv_sha256
+        or selected.experiment_spec_hash != source.experiment_spec_hash
+        or execution.dataset_id != source.dataset_id
+        or execution.current_version_id != source.dataset_version_id
+        or recommendation_step.source_version_id != source.dataset_version_id
+    ):
+        raise AgentDomainError(
+            "MODEL_SELECTION_SOURCE_CHANGED",
+            "推荐来源与当前选择不一致，请重新生成推荐。",
+            status_code=409,
+        )
+    submission = selected.model_dump(mode="json")
+    if (
+        step.confirmation_status == "APPROVED"
+        and step.input_payload.get("submitted_model_selection") != submission
+    ):
+        raise AgentDomainError(
+            "MODEL_SELECTION_CONFLICT", "该步骤已锁定另一项选择。", status_code=409
+        )
+    model_id = selected.selected_model_type_id
+    candidate = next((item for item in original.candidates if item.model_type_id == model_id), None)
+    if candidate is None:
+        raise AgentDomainError(
+            "MODEL_SELECTION_UNAVAILABLE", "该模型不在本次已开放的候选中。", status_code=422
+        )
+    forecast = selected.forecast_spec
+    if model_id == "timexer":
+        horizon = request.forecast_spec.prediction_length if request.forecast_spec else 1
+        if forecast is None or forecast.prediction_length != horizon:
+            raise AgentDomainError(
+                "MODEL_SELECTION_FORECAST_MISMATCH",
+                "TimeXer 选择需要同一预测时域的 forecast_spec。",
+                status_code=422,
+            )
+    elif forecast is not None:
+        raise AgentDomainError(
+            "MODEL_SELECTION_FORECAST_MISMATCH",
+            "仅 TimeXer 选择可携带 forecast_spec。",
+            status_code=422,
+        )
+
+    if selected.selection_source == "agent_recommendation":
+        if (
+            model_id not in original.recommended_models
+            or candidate.eligibility_status != "eligible"
+            or json.dumps(selected.selected_parameters, sort_keys=True)
+            != json.dumps(candidate.actual_parameters, sort_keys=True)
+            or forecast != candidate.forecast_spec
+        ):
+            raise AgentDomainError(
+                "MODEL_SELECTION_NOT_RECOMMENDED",
+                "接受推荐时必须使用原推荐中的模型、参数和预测契约。",
+                status_code=422,
+            )
+        overrides = request.parameters
+        request_forecast = request.forecast_spec
+    else:
+        overrides = {
+            **request.parameters,
+            model_id: {
+                **(candidate.actual_parameters or request.parameters.get(model_id, {})),
+                **(forecast.model_dump() if forecast is not None else {}),
+                **selected.selected_parameters,
+            },
+        }
+        request_forecast = forecast or request.forecast_spec
+
+    try:
+        refreshed = await recommend_models(
+            session,
+            request=ModelRecommendationRequest(
+                experiment_spec=request.experiment_spec,
+                expected_spec_hash=source.experiment_spec_hash,
+                goal=request.goal,
+                parameters=overrides,
+                forecast_spec=request_forecast,
+            ),
+            artifact_root=artifact_root,
+        )
+    except (ValueError, VersionDataError, DatasetCsvError, DatasetVersionArtifactError) as error:
+        raise AgentDomainError(
+            "MODEL_SELECTION_SOURCE_CHANGED", "推荐来源已失效，请重新生成推荐。", status_code=409
+        ) from error
+    if refreshed.source != source or refreshed.rule_version != original.rule_version:
+        raise AgentDomainError(
+            "MODEL_SELECTION_SOURCE_CHANGED",
+            "推荐来源或规则已变化，请重新生成推荐。",
+            status_code=409,
+        )
+    verified = next(item for item in refreshed.candidates if item.model_type_id == model_id)
+    if verified.eligibility_status != "eligible" or verified.forecast_spec != forecast:
+        raise AgentDomainError(
+            "MODEL_SELECTION_INELIGIBLE",
+            "所选模型未通过当前数据和参数校验。",
+            status_code=422,
+            details={
+                "eligibility_status": verified.eligibility_status,
+                "reasons": verified.reasons,
+            },
+        )
+
+    if selected.selection_source == "agent_recommendation" and (
+        verified.actual_parameters != candidate.actual_parameters
+    ):
+        raise AgentDomainError(
+            "MODEL_SELECTION_SOURCE_CHANGED", "推荐参数已变化，请重新生成推荐。", status_code=409
+        )
+
+    final = {
+        "model_type_id": model_id,
+        "parameters": verified.actual_parameters,
+        "dataset_id": str(source.dataset_id),
+        "dataset_version_id": str(source.dataset_version_id),
+        "csv_sha256": source.csv_sha256,
+        "experiment_spec_hash": source.experiment_spec_hash,
+        "forecast_spec": forecast.model_dump(mode="json") if forecast else None,
+        "selection_source": selected.selection_source,
+        "recommendation_step_id": selected.recommendation_step_id,
+        "confirmation_status": "APPROVED",
+        "confirmed_at": datetime.now(UTC).isoformat(),
+    }
+    return await finish_model_selection_step(
+        session,
+        execution_id=execution.id,
+        step_id=step.step_id,
+        version_id=source.dataset_version_id,
+        submission=submission,
+        selection=final,
+    )
+
+
 async def run_copilot(
     session: AsyncSession,
     *,
@@ -279,6 +635,16 @@ async def run_copilot(
     provider: LlmProvider | None = None,
 ) -> CopilotChatData:
     """Plan, verify, execute once, and mirror real outcomes into durable workflow state."""
+
+    intent = parse_intent(payload.message)
+    if (
+        intent.wants("model_recommendation")
+        or payload.recommendation_request is not None
+        or payload.requested_model_type_id is not None
+    ):
+        return await _run_model_recommendation(
+            session, payload=payload, intent=intent, artifact_root=artifact_root
+        )
 
     series: VersionSeries | None = None
     lag_ready: bool | None = None
@@ -311,7 +677,6 @@ async def run_copilot(
                 error.code, error.message, status_code=error.status_code, details=error.details
             ) from error
 
-    intent = parse_intent(payload.message)
     planner = LlmPlanner(provider or _resolve_provider(), code_version=CODE_VERSION)
     outcome: PlanOutcome = planner.plan(payload.message, intent, lag_ready=lag_ready)
     steps, assumptions, stop_conditions = (

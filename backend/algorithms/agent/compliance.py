@@ -206,6 +206,21 @@ def _check_ordering(steps: Sequence[Mapping[str, Any]]) -> ProofCheck:
 
 
 def _check_profile_first(steps: Sequence[Mapping[str, Any]]) -> ProofCheck:
+    tools = tuple(str(step.get("tool")) for step in steps)
+    if any(tool in {"recommend_models", "confirm_model_selection"} for tool in tools):
+        passed = (
+            tools == ("recommend_models", "confirm_model_selection")
+            and not steps[0].get("depends_on")
+            and steps[1].get("depends_on") == [steps[0].get("step_id")]
+            and not steps[0].get("requires_confirmation")
+            and steps[1].get("requires_confirmation") is True
+            and all(not step.get("parameters") for step in steps)
+        )
+        return ProofCheck(
+            name="recommendation_workflow_boundary",
+            passed=passed,
+            detail="推荐流程仅允许推荐与人工选择确认。",
+        )
     passed = not steps or str(steps[0].get("tool")) == "profile_dataset"
     return ProofCheck(
         name="profile_first",

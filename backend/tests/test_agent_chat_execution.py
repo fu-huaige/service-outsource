@@ -328,6 +328,8 @@ def test_generate_report_domain_failure_marks_execution_failed(
 def test_capability_registry_owns_report_and_export_without_deferred_steps() -> None:
     assert set(agent_service._TOOL_CAPABILITIES) == {
         "profile_dataset",
+        "recommend_models",
+        "confirm_model_selection",
         "align_and_resample",
         "detect_anomalies",
         "clean_data",

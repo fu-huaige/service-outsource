@@ -7,7 +7,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from algorithms.agent.compliance import ComplianceProof
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -338,6 +338,8 @@ async def approve_step(
 
     execution = await _load_execution(session, execution_id)
     step = _step(execution, step_id)
+    if step.tool_name == "confirm_model_selection":
+        raise _transition_error("approve_model_selection_without_payload", execution, step)
     if _is_approved_step_replay(execution, step):
         return execution
     if (
@@ -382,6 +384,8 @@ async def reject_step(
 
     execution = await _load_execution(session, execution_id)
     step = _step(execution, step_id)
+    if step.tool_name == "confirm_model_selection":
+        raise _transition_error("reject_model_selection_without_lock", execution, step)
     if (
         execution.workflow_status != "WAITING_CONFIRMATION"
         or execution.pending_confirmation_step_id != step.step_id
@@ -401,14 +405,113 @@ async def reject_step(
     return execution
 
 
+async def finish_model_selection_step(
+    session: AsyncSession,
+    *,
+    execution_id: UUID,
+    step_id: str,
+    version_id: UUID,
+    submission: dict[str, Any] | None,
+    selection: dict[str, Any] | None,
+) -> AgentExecutionSession:
+    """Complete one choice using a conditional write shared by approval and rejection."""
+    execution = await _load_execution(session, execution_id, refresh=True)
+    step = _step(execution, step_id)
+    if step.tool_name != "confirm_model_selection" or execution.current_version_id != version_id:
+        raise _transition_error("finish_model_selection", execution, step)
+    approved = selection is not None
+    if step.status == "SUCCEEDED" and step.confirmation_status == "APPROVED":
+        if approved and step.input_payload.get("submitted_model_selection") == submission:
+            return execution
+        raise _transition_error("conflicting_model_selection", execution, step)
+    if step.status == "CANCELLED" and step.confirmation_status == "REJECTED" and not approved:
+        return execution
+    if (
+        execution.workflow_status != "WAITING_CONFIRMATION"
+        or execution.pending_confirmation_step_id != step_id
+        or step.status != "WAITING_CONFIRMATION"
+        or step.confirmation_status != "PENDING"
+        or not step.requires_confirmation
+    ):
+        raise _transition_error("finish_model_selection", execution, step)
+
+    step_pk = step.id
+    input_payload = dict(step.input_payload)
+    if approved:
+        input_payload["submitted_model_selection"] = submission
+        input_payload["confirmed_model_selection"] = selection
+    # Release the read snapshot before competing for the conditional update on SQLite.
+    await session.rollback()
+    now = datetime.now(UTC)
+    try:
+        claimed = await session.execute(
+            update(AgentExecutionSession)
+            .where(
+                AgentExecutionSession.id == execution_id,
+                AgentExecutionSession.current_version_id == version_id,
+                AgentExecutionSession.workflow_status == "WAITING_CONFIRMATION",
+                AgentExecutionSession.pending_confirmation_step_id == step_id,
+            )
+            .values(
+                workflow_status="SUCCEEDED" if approved else "CANCELLED",
+                current_step_id=None,
+                pending_confirmation_step_id=None,
+                finished_at=now,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        if claimed.rowcount == 1:
+            changed = await session.execute(
+                update(AgentStepRun)
+                .where(
+                    AgentStepRun.id == step_pk,
+                    AgentStepRun.status == "WAITING_CONFIRMATION",
+                    AgentStepRun.confirmation_status == "PENDING",
+                )
+                .values(
+                    status="SUCCEEDED" if approved else "CANCELLED",
+                    confirmation_status="APPROVED" if approved else "REJECTED",
+                    source_version_id=version_id,
+                    input_payload=input_payload,
+                    result_payload={"model_selection": selection} if approved else {},
+                    started_at=now,
+                    finished_at=now,
+                )
+                .execution_options(synchronize_session=False)
+            )
+            if changed.rowcount != 1:
+                raise ExecutionStateError("model_selection_step_changed", execution_id=execution_id)
+            await session.commit()
+            return await _load_execution(session, execution_id, refresh=True)
+    except Exception:
+        await session.rollback()
+        raise
+    await session.rollback()
+    execution = await _load_execution(session, execution_id, refresh=True)
+    step = _step(execution, step_id)
+    if execution.current_version_id == version_id:
+        if (
+            approved
+            and step.status == "SUCCEEDED"
+            and step.confirmation_status == "APPROVED"
+            and step.input_payload.get("submitted_model_selection") == submission
+        ):
+            return execution
+        if not approved and step.status == "CANCELLED" and step.confirmation_status == "REJECTED":
+            return execution
+    raise _transition_error("conflicting_model_selection", execution, step)
+
+
 async def _load_execution(
-    session: AsyncSession, execution_id: UUID, *, for_update: bool = False
+    session: AsyncSession, execution_id: UUID, *, for_update: bool = False, refresh: bool = False
 ) -> AgentExecutionSession:
     statement = (
         select(AgentExecutionSession)
         .where(AgentExecutionSession.id == execution_id)
         .options(selectinload(AgentExecutionSession.step_runs))
     )
+    if refresh:
+        statement = statement.execution_options(populate_existing=True)
     if for_update:
         statement = statement.with_for_update()
     execution = await session.scalar(statement)

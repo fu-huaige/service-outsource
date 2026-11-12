@@ -62,7 +62,8 @@ GOOD_PLAN = json.dumps(
 
 def plan_with(response: str):  # type: ignore[no-untyped-def]
     planner = LlmPlanner(StaticProvider(responses=[response]))
-    return planner.plan("提取动态数据并建模", parse_intent("提取动态数据并建模"))
+    message = "提取动态数据并做 ARX 建模"
+    return planner.plan(message, parse_intent(message))
 
 
 class TestJsonExtraction:
@@ -294,7 +295,8 @@ class TestLlmPlanning:
 
     def test_an_unavailable_provider_falls_back_with_a_reason(self) -> None:
         planner = LlmPlanner(NullProvider())
-        outcome = planner.plan("清洗后建模", parse_intent("清洗后建模"))
+        message = "清洗后做 ARX 建模"
+        outcome = planner.plan(message, parse_intent(message))
         assert not outcome.llm_authored
         assert outcome.fallback_reason
         assert [step.tool for step in outcome.steps][0] == "profile_dataset"

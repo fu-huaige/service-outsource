@@ -131,6 +131,8 @@ class LlmPlanner:
             stop_conditions=list(stop_conditions),
         )
 
+        if intent.wants("model_recommendation"):
+            return baseline
         try:
             result = self._provider.complete(
                 [
@@ -155,6 +157,12 @@ class LlmPlanner:
             baseline.fallback_reason = "大模型返回了空计划。"
             baseline.provider, baseline.model = result.provider, result.model
             baseline.raw_completion = result.text
+            return baseline
+
+        if any(step.tool in {"recommend_models", "confirm_model_selection"} for step in candidate):
+            baseline.fallback_reason = (
+                "Model selection requires a structured recommendation request."
+            )
             return baseline
 
         explicit_policy = intent.parameters.get("optimization_policy")
