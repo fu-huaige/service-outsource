@@ -100,7 +100,7 @@ async def upload_csv_dataset(
 
     try:
         staged = await stage_upload(upload, artifact_root=artifact_root)
-        parsed = parse_csv(staged)
+        parsed = parse_csv(staged, allow_missing_time=True)
     except DatasetCsvError as error:
         raise DatasetDomainError(error.code, error.message, details=error.details) from error
 
@@ -149,8 +149,8 @@ async def upload_csv_dataset(
             sha256=staged.sha256,
             row_count=len(parsed.rows),
             column_count=len(parsed.headers),
-            time_range_start=min(parsed.timestamps),
-            time_range_end=max(parsed.timestamps),
+            time_range_start=min(parsed.timestamps, default=None),
+            time_range_end=max(parsed.timestamps, default=None),
             created_at=created_at,
         )
         dataset.active_version_id = version.id
@@ -533,6 +533,7 @@ async def get_dataset_versions(
             row_count=version.row_count,
             column_count=version.column_count,
             artifact_path=version.artifact_path,
+            sha256=version.sha256,
             processing_run_id=await _result_run_id(session, version.id),
             audit_summary=await _version_audit_summary(
                 session,
@@ -850,24 +851,19 @@ async def configure_dataset_columns(
     timestamp_columns = [name for name, role in roles.items() if role == "timestamp"]
     output_columns = [name for name, role in roles.items() if role == "output"]
     input_columns = [name for name, role in roles.items() if role == "input"]
-    if len(timestamp_columns) != 1:
-        raise DatasetDomainError("INVALID_DATASET_SCHEMA", "必须配置且只能配置一个时间戳列。")
+    parsed = _load_version_csv(dataset, version, artifact_root)
+    expected_time_columns = [parsed.timestamp_column] if parsed.timestamp_column else []
+    if timestamp_columns != expected_time_columns:
+        raise DatasetDomainError("INVALID_DATASET_SCHEMA", "时间列配置必须与 CSV 中的真实时间戳列一致。")
     if len(output_columns) != 1:
         raise DatasetDomainError("INVALID_DATASET_SCHEMA", "MISO 配置必须且只能配置一个输出列。")
     if not input_columns:
         raise DatasetDomainError("INVALID_DATASET_SCHEMA", "至少需要配置一个输入列。")
-    by_name = {column.name: column for column in columns}
-    timestamp = timestamp_columns[0]
-    if by_name[timestamp].inferred_type != "datetime":
-        raise DatasetDomainError(
-            "TIMESTAMP_PARSE_FAILED", "指定的时间列不是可解析的 datetime 字段。"
-        )
     for column in columns:
         column.role = roles[column.name]
         if column.name in units:
             column.unit = units[column.name]
 
-    parsed = _load_version_csv(dataset, version, artifact_root)
     profile_payload = _build_profile(dataset.id, version.id, parsed)
     profile_record = await _profile_or_error(session, dataset.id, version.id)
     profile_record.profile = profile_payload
@@ -1050,7 +1046,9 @@ def _load_version_csv(
     dataset: DatasetModel, version: DatasetVersionModel, artifact_root: Path
 ) -> ParsedCsv:
     try:
-        return load_version_csv(dataset=dataset, version=version, artifact_root=artifact_root)
+        return load_version_csv(
+            dataset=dataset, version=version, artifact_root=artifact_root, allow_missing_time=True
+        )
     except DatasetVersionArtifactError as error:
         raise DatasetDomainError(
             error.code, error.message, status_code=404, details=error.details

@@ -94,7 +94,7 @@ async def clean_dataset_version(
         )
     except DatasetVersionArtifactError as error:
         raise CleaningDomainError(
-            error.code, error.message, status_code=404, details=error.details
+            error.code, error.message, status_code=422 if error.code == "TIMESTAMP_REQUIRED" else 404, details=error.details
         ) from error
 
     parameters = _resolve_parameters(payload)

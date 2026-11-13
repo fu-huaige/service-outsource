@@ -167,6 +167,7 @@ class VersionNode(Schema):
     row_count: int = Field(ge=0)
     column_count: int = Field(ge=0)
     artifact_path: str
+    sha256: str | None = None
     processing_run_id: UUID | None = None
     audit_summary: dict[str, Any] = Field(default_factory=dict)
     provenance: dict[str, Any] = Field(default_factory=dict)

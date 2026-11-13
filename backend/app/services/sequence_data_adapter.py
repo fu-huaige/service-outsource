@@ -166,6 +166,8 @@ def _prepare(
     if any(column.dtype.kind not in "iuf" for column in columns):
         raise ValueError("Features and target must contain real numeric values")
 
+    if spec.row_order is not None:
+        raise ValueError('Sequence models require continuous timestamp evidence')
     validate_partition_coverage(spec)
     lookback = max(length for _, length in history_lengths)
     allowed = tuple(

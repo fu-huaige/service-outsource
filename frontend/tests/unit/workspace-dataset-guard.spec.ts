@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import WorkspaceView from "../../src/views/WorkspaceView.vue";
+import { useCopilotExecutionStore } from "../../src/stores/copilotExecution";
 import type { CopilotExecutionSnapshot, DatasetItem } from "../../src/types/api";
 
 const route = vi.hoisted(() => ({
@@ -44,10 +45,10 @@ function mountWorkspace(payload: {
   message: string;
   datasetId?: string | null;
   versionId?: string | null;
-}) {
+}, pinia = createPinia()) {
   const AgentComposer = defineComponent({
     name: "AgentComposer",
-    props: { submitting: Boolean },
+    props: { submitting: Boolean, modelingRequired: Boolean, initialPrompt: String },
     emits: ["submit"],
     template: '<button class="composer-submit-stub" :disabled="submitting" @click="$emit(\'submit\', payload)">submit</button>',
     setup() {
@@ -56,7 +57,7 @@ function mountWorkspace(payload: {
   });
   return shallowMount(WorkspaceView, {
     global: {
-      plugins: [createPinia()],
+      plugins: [pinia],
       stubs: {
         AgentComposer,
         AgentStream: true,
@@ -117,6 +118,39 @@ describe("WorkspaceView dataset context guard", () => {
     datasetApi.listDatasets.mockResolvedValue({ items: [] });
   });
 
+  it("consumes a Home modeling request once and does not replay it on remount", async () => {
+    const pinia = createPinia();
+    const forecast_spec = { target_window_length: 32, exogenous_window_length: 24, prediction_length: 3 };
+    const recommendationRequest = {
+      experiment_spec: {
+        spec_version: 1 as const, task_type: "supervised_regression" as const,
+        dataset_id: "dataset", dataset_version_id: "version", dataset_version_sha256: "a".repeat(64),
+        row_count: 300, target_column: "y", input_columns: ["u1"],
+        time_axis: { column: "timestamp", sample_period_seconds: 1, sampling_status: "uniform" as const, timestamp_policy: "preserve_source" as const },
+        feature_spec: { kind: "tabular" as const, prediction_horizon: 1 as const },
+        continuous_runs: [{ start: 0, stop: 300 }],
+        split: { train: [{ start: 0, stop: 150 }], validation: [{ start: 150, stop: 225 }], test: [{ start: 225, stop: 300 }] },
+        training_selection: { mode: "full_train" as const },
+        evaluation: { scopes: ["validation" as const], prediction_modes: ["prediction"] as ["prediction"] },
+      },
+      forecast_spec,
+    };
+    const task = { message: "推荐 TimeXer", datasetId: "dataset", versionId: "version",
+      recommendationRequest, requestedModelTypeId: "timexer" as const };
+    route.query.handoff = useCopilotExecutionStore(pinia).stageHomeTask(task);
+    const wrapper = mountWorkspace(task, pinia);
+    await flushPromises();
+    expect(copilotApi.chatWithCopilot).toHaveBeenCalledExactlyOnceWith({
+      message: task.message, dataset_id: "dataset", active_version_id: "version",
+      recommendation_request: recommendationRequest, requested_model_type_id: "timexer",
+    });
+    wrapper.unmount();
+    const reloaded = mountWorkspace(task, createPinia());
+    await flushPromises();
+    expect(copilotApi.chatWithCopilot).toHaveBeenCalledTimes(1);
+    reloaded.unmount();
+  });
+
   it("blocks a composer task without both dataset and version", async () => {
     const wrapper = mountWorkspace({ message: "建立 ARX 模型", datasetId: null, versionId: null });
 
@@ -125,6 +159,22 @@ describe("WorkspaceView dataset context guard", () => {
 
     expect(messageApi.warning).toHaveBeenCalledWith("请先挂载数据集后再发起 Agent 任务。");
     expect(copilotApi.chatWithCopilot).not.toHaveBeenCalled();
+  });
+
+  it("opens modeling configuration on NEEDS_EXPERIMENT_SPEC without resubmitting", async () => {
+    copilotApi.chatWithCopilot.mockRejectedValueOnce({ code: "NEEDS_EXPERIMENT_SPEC" });
+    const wrapper = mountWorkspace({
+      message: "推荐适合当前数据的模型", datasetId: "dataset-1", versionId: "version-1",
+    });
+    await wrapper.get(".composer-submit-stub").trigger("click");
+    await flushPromises();
+
+    const composer = wrapper.getComponent({ name: "AgentComposer" });
+    expect(composer.props("modelingRequired")).toBe(true);
+    expect(composer.props("initialPrompt")).toBe("推荐适合当前数据的模型");
+    expect(copilotApi.chatWithCopilot).toHaveBeenCalledTimes(1);
+    expect(routerPush).not.toHaveBeenCalled();
+    wrapper.unmount();
   });
 
   it("starts normally when dataset and version are both explicit", async () => {

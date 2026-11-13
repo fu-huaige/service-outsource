@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import Field
 
 from app.schemas.common import Schema, TaskResource
-from app.schemas.experiment_spec import Digest
+from app.schemas.experiment_spec import ConfirmedRowOrder, Digest
 from app.schemas.model_comparison import ModelComparisonResult
 from app.schemas.model_evaluation import ModelEvaluationSuccess
 from app.schemas.model_recommendation import ModelRecommendationRequest, RecommendationModelType
@@ -218,8 +218,9 @@ class CopilotModelExecutionData(Schema):
     dataset_version_id: UUID
     experiment_spec_hash: Digest
     forecast_spec: TimeXerForecastSpec | None = None
-    execution_status: Literal["running", "succeeded", "failed", "unconfirmed"] = "running"
-    training_status: Literal["running", "succeeded", "failed", "unconfirmed"] = "running"
+    execution_status: Literal["pending", "running", "succeeded", "failed", "unconfirmed"] = "running"
+    training_status: Literal["pending", "running", "succeeded", "failed", "unconfirmed"] = "running"
+    dispatch_status: Literal["pending", "queued", "started"] | None = None
     manifest_status: Literal["pending", "published", "failed", "unconfirmed"] = "pending"
     model_id: UUID | None = None
     training_run_id: UUID | None = None
@@ -253,6 +254,9 @@ class CopilotConfirmRequest(Schema):
     )
     comment: str | None = Field(default=None, max_length=2_000)
     model_selection: CopilotModelSelection | None = None
+    recommendation_request: ModelRecommendationRequest | None = None
+    row_order_confirmation: ConfirmedRowOrder | None = None
+    dispatch_training: bool = False
 
 
 class CopilotConfirmData(Schema):

@@ -308,6 +308,7 @@ export interface DatasetVersionNode {
   row_count: number;
   column_count: number;
   artifact_path: string;
+  sha256?: string | null;
   processing_run_id?: string | null;
   audit_summary?: {
     freeze?: {
@@ -1066,7 +1067,7 @@ export interface AgentStepRun {
   status: AgentStepStatus;
   parameters: Record<string, any>;
   summary: string;
-  result: Record<string, any>;
+  result: Record<string, any> & { recommendation?: ModelRecommendationResult };
   duration_ms: number | null;
   error_code: string | null;
   error_message?: string | null;
@@ -1080,11 +1081,142 @@ export interface AgentStepRun {
   finished_at?: string | null;
 }
 
+export interface ExperimentRowRange {
+  start: number;
+  stop: number;
+}
+
+export interface ExperimentRowSet {
+  ranges?: ExperimentRowRange[];
+  index_file?: { uri: string; sha256: string; count: number } | null;
+}
+
+export interface ExperimentSpec {
+  spec_version: 1;
+  task_type: "supervised_regression";
+  dataset_id: string;
+  dataset_version_id: string;
+  dataset_version_sha256: string;
+  row_count: number;
+  target_column: string;
+  input_columns: string[];
+  time_axis: {
+    column: string | null;
+    sample_period_seconds: number | null;
+    sampling_status: "uniform" | "irregular" | "unknown";
+    timestamp_policy: "preserve_source";
+  };
+  feature_spec: { kind: "tabular"; prediction_horizon: 1 };
+  continuous_runs: ExperimentRowRange[];
+  split: Record<"train" | "validation" | "test", ExperimentRowRange[]>;
+  training_selection: { mode: "full_train" };
+  evaluation: { scopes: Array<"validation" | "test">; prediction_modes: ["prediction"] };
+}
+
+export interface TimeXerForecastSpec {
+  target_window_length: number;
+  exogenous_window_length: number;
+  prediction_length: number;
+}
+
+export type RecommendationModelType = "pls" | "xgboost" | "tcn" | "timexer";
+
+export interface ModelRecommendationRequest {
+  experiment_spec: ExperimentSpec;
+  expected_spec_hash?: string;
+  goal?: "auto" | "static_regression" | "nonlinear_regression" | "temporal_forecast";
+  forecast_spec?: TimeXerForecastSpec;
+  parameters?: Partial<Record<RecommendationModelType, Record<string, unknown>>>;
+}
+
+export interface RecommendationSource {
+  dataset_id: string;
+  dataset_version_id: string;
+  csv_sha256: string;
+  experiment_spec_hash: string;
+  partition: "train";
+  train_rows: ExperimentRowSet;
+  target_name: string;
+  feature_names: string[];
+}
+
+export interface ModelCandidate {
+  model_type_id: RecommendationModelType;
+  model_name: string;
+  eligibility_status: "eligible" | "excluded" | "unknown";
+  recommendation_rank: number | null;
+  suitability: "preferred" | "compatible" | "inapplicable" | "unverified";
+  reasons: string[];
+  limitations: string[];
+  actual_parameters: Record<string, unknown> | null;
+  training_sample_count: number | null;
+  prediction_horizon: number;
+  forecast_spec: TimeXerForecastSpec | null;
+  evidence: {
+    parameter_source: "defaults" | "overrides" | "forecast_spec";
+    horizon_source: "default" | "forecast_spec";
+    anchor_rows: ExperimentRowSet | null;
+    history_lengths: Record<string, number>;
+    target_offsets: number[];
+    sample_rule: string | null;
+  };
+}
+
+export interface ModelRecommendationResult {
+  leakage?: {
+    status: "unknown" | "potential_leakage" | "verified_train_only";
+    evidence: string[];
+  } | null;
+  source: RecommendationSource;
+  profile: RecommendationSource & {
+    sample_count: number;
+    feature_count: number;
+    sampling_status: "uniform" | "irregular" | "unknown";
+    continuous_run_count: number;
+  };
+  candidates: ModelCandidate[];
+  recommended_models: RecommendationModelType[];
+  excluded_models: Partial<Record<RecommendationModelType, string[]>>;
+  rule_version: "model-recommendation-1";
+  summary: string;
+}
+
+export interface CopilotModelSelection {
+  recommendation_step_id: string;
+  selected_model_type_id: RecommendationModelType;
+  selected_parameters: Record<string, unknown>;
+  selection_source: "agent_recommendation" | "manual";
+  dataset_id: string;
+  dataset_version_id: string;
+  csv_sha256: string;
+  experiment_spec_hash: string;
+  forecast_spec: TimeXerForecastSpec | null;
+}
+
+export interface ConfirmedModelSelection {
+  model_type_id: RecommendationModelType;
+  parameters: Record<string, unknown>;
+  selection_source: CopilotModelSelection["selection_source"];
+  dataset_version_id: string;
+  forecast_spec: TimeXerForecastSpec | null;
+  confirmation_status: "APPROVED";
+}
+
+export interface AgentComposerSubmission {
+  message: string;
+  datasetId?: string | null;
+  versionId?: string | null;
+  recommendationRequest?: ModelRecommendationRequest;
+  requestedModelTypeId?: RecommendationModelType;
+}
+
 export interface CopilotChatRequest {
   message: string;
   dataset_id?: string | null;
   active_version_id?: string | null;
   context?: Record<string, any>;
+  recommendation_request?: ModelRecommendationRequest;
+  requested_model_type_id?: RecommendationModelType;
 }
 
 export interface CopilotChatResponse {
@@ -1185,6 +1317,28 @@ export interface ArxStructureValidationResponse {
   overall_status: "VALID" | "INVALID";
   issues: string[];
 }
+export interface CopilotModelExecuteRequest {
+  selection_execution_id: string;
+  copilot_run_id: string;
+  confirmed_selection_step_id: string;
+}
+
+export interface CopilotModelExecutionData {
+  execution_id: string;
+  execution_status: "pending" | "running" | "succeeded" | "failed" | "unconfirmed";
+  training_status: "pending" | "running" | "succeeded" | "failed" | "unconfirmed";
+  dispatch_status: "pending" | "queued" | "started" | null;
+  manifest_status: "pending" | "published" | "failed" | "unconfirmed";
+  model_id: string | null;
+  training_run_id: string | null;
+  evaluation_run_id: string | null;
+  evaluation_status: "pending" | "running" | "succeeded" | "failed" | "skipped" | "unconfirmed";
+  comparison_status: "pending" | "succeeded" | "not_comparable" | "failed" | "skipped" | "unconfirmed";
+  training_error: string | null;
+  evaluation_error: string | null;
+  comparison_reason: string | null;
+}
+
 export interface CopilotConfirmRequest {
   copilot_run_id: string;
   confirmation_id: string;
@@ -1197,6 +1351,10 @@ export interface CopilotConfirmRequest {
   feature_drop_columns?: string[] | null;
   arx_structure_overrides?: ArxStructureManualOverrides;
   comment?: string | null;
+  model_selection?: CopilotModelSelection;
+  dispatch_training?: boolean;
+  recommendation_request?: ModelRecommendationRequest;
+  row_order_confirmation?: { dataset_version_id: string; csv_sha256: string };
 }
 
 export interface CopilotConfirmResponse {
@@ -1212,7 +1370,7 @@ export interface CopilotConfirmResponse {
   step_status: string;
   confirmation_status: AgentConfirmationStatus;
   result_version_id?: string | null;
-  result_payload?: Record<string, any>;
+  result_payload?: Record<string, any> & { model_selection?: ConfirmedModelSelection };
   lag_override_validation?: LagOverrideValidationResponse | null;
   feature_selection_validation?: FeatureSelectionValidationResponse | null;
   arx_structure_validation?: ArxStructureValidationResponse | null;
@@ -1293,7 +1451,10 @@ export interface CopilotExecutionStepSnapshot {
   source_version_id: string | null;
   result_version_id: string | null;
   input_payload: Record<string, any>;
-  result_payload: Record<string, any>;
+  result_payload: Record<string, any> & {
+    recommendation?: ModelRecommendationResult;
+    model_selection?: ConfirmedModelSelection;
+  };
   processing_run_ids: string[];
   error_code: string | null;
   error_message: string | null;

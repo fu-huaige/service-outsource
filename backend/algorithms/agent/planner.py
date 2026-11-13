@@ -101,7 +101,7 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
     "delay": ("时滞", "滞后", "纯滞后", "延迟", "delay", "lag", "dead time"),
     "collinearity": ("共线", "相关性", "冗余", "降维", "collinear", "vif", "redundant"),
     "model": ("辨识", "建模", "模型", "arx", "identif", "model"),
-    "optimize": ("寻优", "闭环", "优化", "自动优化", "调参", "最佳", "optimi", "optuna", "closed loop", "tune"),
+    "optimize": ("寻优", "闭环", "优化", "自动优化", "调参", "optimi", "optuna", "closed loop", "tune"),
     "report": ("报告", "结论", "解释", "report", "explain"),
     "export": (
         "导出数据集",
@@ -188,9 +188,13 @@ def parse_intent(message: str) -> ParsedIntent:
     general_modeling = any(
         phrase in task_text
         for phrase in ("建模", "辨识", "动态模型", "训练模型", "modeling", "model fitting")
-    )
+    ) or bool(re.search(
+        r"(?:训练|拟合|建立|构建).{0,12}(?:模型|回归)|"
+        r"(?:train|fit|build)\s+(?:\w+\s+){0,3}(?:model|regressor)\b",
+        task_text,
+    ))
     requested_model = models[0] if len(models) == 1 else None
-    if (models and (not legacy or recommendation)) or (
+    if (models and not legacy) or (
         not legacy
         and (
             (recommendation and ("model" in goals or "算法" in lowered or "algorithm" in lowered))
@@ -198,6 +202,24 @@ def parse_intent(message: str) -> ParsedIntent:
         )
     ):
         goals.add("model_recommendation")
+    if not legacy and "model_recommendation" in goals and (
+        general_modeling
+        or (models and "训练" in lowered)
+        or bool(goals & {"clean", "collinearity", "segment", "delay"})
+        or any(word in lowered for word in ("预处理", "变量筛选", "数据质量"))
+    ):
+        goals.add("integrated_modeling")
+    if legacy:
+        goals.update({"model", "legacy_model"})
+    if any(
+        word in lowered
+        for word in ("变量筛选", "筛选变量", "选择变量", "特征筛选", "处理共线性", "feature selection")
+    ):
+        goals.add("feature_selection")
+    if any(word in lowered for word in ("数据质量", "预处理", "data quality")):
+        goals.add("quality_analysis")
+    if any(word in lowered for word in ("清洗", "去噪", "重采样", "规整", "clean", "resample")):
+        goals.add("apply_cleaning")
     return ParsedIntent(
         goals=frozenset(goals),
         parameters=parameters,
@@ -221,7 +243,9 @@ class RuleBasedPlanner:
         emitted: dict[str, str] = {}
         steps: list[PlannedStep] = []
 
-        def emit(tool: str, parameters: dict[str, Any] | None = None) -> str:
+        def emit(
+            tool: str, parameters: dict[str, Any] | None = None, *, spec_gate: bool = False
+        ) -> str:
             if tool in emitted:
                 return emitted[tool]
             prerequisites = TOOL_PREREQUISITES.get(tool, ())
@@ -234,6 +258,8 @@ class RuleBasedPlanner:
                 for prerequisite in prerequisites
                 if prerequisite in emitted
             )
+            if spec_gate:
+                depends = tuple(emitted.values())
             step_id = f"s{len(steps) + 1}"
             steps.append(
                 PlannedStep(
@@ -241,11 +267,29 @@ class RuleBasedPlanner:
                     tool=tool,
                     depends_on=depends,
                     parameters=parameters or {},
-                    requires_confirmation=tool in CONFIRMATION_REQUIRED,
+                    requires_confirmation=spec_gate or tool in CONFIRMATION_REQUIRED,
                 )
             )
             emitted[tool] = step_id
             return step_id
+
+        if intent.wants("integrated_modeling"):
+            emit("profile_dataset")
+            if any(intent.wants(goal) for goal in ("clean", "apply_cleaning", "quality_analysis")):
+                emit("detect_anomalies")
+            if intent.wants("apply_cleaning"):
+                emit("clean_data")
+            if intent.wants("segment"):
+                emit("detect_dynamic_segments", _subset(intent.parameters, ("window_size", "max_segments")))
+            if intent.wants("delay"):
+                emit("estimate_delays", _subset(intent.parameters, ("max_lag",)))
+            if intent.wants("collinearity") or intent.wants("feature_selection"):
+                emit("analyze_collinearity")
+            if intent.wants("feature_selection"):
+                emit("select_variables")
+            emit("recommend_models", spec_gate=True)
+            emit("confirm_model_selection")
+            return steps, assumptions, ["等待数据契约、人工选择及独立的训练授权。"]
 
         if intent.wants("model_recommendation"):
             emit("recommend_models")
@@ -255,10 +299,11 @@ class RuleBasedPlanner:
         # Profiling is unconditional: every later decision reads the quality evidence.
         emit("profile_dataset")
 
-        wants_model = intent.wants("model") or intent.wants("optimize")
+        wants_model = intent.wants("legacy_model") or intent.wants("optimize")
         if intent.wants("clean"):
             emit("detect_anomalies")
-            emit("clean_data")
+            if wants_model or intent.wants("apply_cleaning"):
+                emit("clean_data")
         if intent.wants("segment"):
             emit(
                 "detect_dynamic_segments",
@@ -267,9 +312,10 @@ class RuleBasedPlanner:
         if intent.wants("delay") or wants_model:
             emit("estimate_delays", _subset(intent.parameters, ("max_lag",)))
             emit("apply_lag_compensation")
-        if intent.wants("collinearity"):
+        if intent.wants("collinearity") or intent.wants("feature_selection"):
             emit("analyze_collinearity")
-            emit("select_variables")
+            if wants_model or intent.wants("feature_selection"):
+                emit("select_variables")
         if wants_model:
             if not intent.wants("segment"):
                 emit(

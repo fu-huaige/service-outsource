@@ -575,6 +575,7 @@ async def evaluate_saved_model(
                 dataset_id=context.source.dataset_id,
                 version_id=context.source.dataset_version_id,
                 artifact_root=artifact_root,
+                allow_missing_time=context.spec.row_order is not None,
             )
             await _check_version_digest(session, context.source, artifact_root)
 

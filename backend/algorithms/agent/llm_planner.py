@@ -159,6 +159,12 @@ class LlmPlanner:
             baseline.raw_completion = result.text
             return baseline
 
+        if not (intent.wants("legacy_model") or intent.wants("optimize")) and any(
+            step.tool in {"fit_arx", "optimize_pipeline", "evaluate_model"} for step in candidate
+        ):
+            baseline.fallback_reason = "数据分析任务未授权建模或寻优。"
+            return baseline
+
         if any(step.tool in {"recommend_models", "confirm_model_selection"} for step in candidate):
             baseline.fallback_reason = (
                 "Model selection requires a structured recommendation request."

@@ -1,6 +1,7 @@
+import asyncio
 import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -12,11 +13,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.routes import router
 from app.core.config import get_settings
-from app.core.db import dispose_engine
+from app.core.db import dispose_engine, get_session_factory
 from app.core.errors import AppError
 from app.core.logging import configure_logging
 from app.core.middleware import RequestContextMiddleware
 from app.schemas.common import ErrorDetail, ErrorEnvelope
+from app.services.agent_model_dispatch_service import recover_model_dispatches
 
 logger = logging.getLogger(__name__)
 _SENSITIVE_FIELD_PARTS = ("api_key", "password", "secret", "access_token")
@@ -69,11 +71,18 @@ def _error_response(
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.log_level)
-    yield
-    await dispose_engine()
+    factory_provider = app.dependency_overrides.get(get_session_factory, get_session_factory)
+    recovery = asyncio.create_task(recover_model_dispatches(factory_provider()))
+    try:
+        yield
+    finally:
+        recovery.cancel()
+        with suppress(asyncio.CancelledError):
+            await recovery
+        await dispose_engine()
 
 
 def create_app() -> FastAPI:
@@ -84,7 +93,6 @@ def create_app() -> FastAPI:
         description=(
             "IndusOpt 工模智优 API：工业时序数据管理、动态优选、系统辨识、闭环优化、Agent 执行及可追溯报告与数据交付。"
         ),
-        openapi_version="3.1.0",
         lifespan=lifespan,
     )
     app.add_middleware(RequestContextMiddleware)

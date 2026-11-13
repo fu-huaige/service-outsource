@@ -47,6 +47,7 @@ from app.services.model_data_adapter import (
     build_table_samples,
 )
 from app.services.model_registry import get_model, validate_parameters
+from app.services.pls_training_service import validate_pls_experiment_spec
 from app.services.sequence_data_adapter import build_tcn_samples, build_timexer_samples
 from app.services.version_data import VersionSeries, load_version_series
 from app.services.xgboost_modeling_service import numeric_matrix
@@ -222,6 +223,7 @@ def _candidate(
             if count < 2:
                 raise ValueError("At least two training samples are required")
             if isinstance(params, PLSParameters):
+                validate_pls_experiment_spec(spec)
                 if params.n_components > min(count, profile.feature_count):
                     raise ValueError("n_components exceeds min(N_train, F)")
                 if np.all(table.y == table.y[0]):
@@ -382,6 +384,7 @@ def _recommend(
     )
     ranks = {item.model_type_id: index for index, item in enumerate(ranked, start=1)}
     return ModelRecommendationResult(
+        leakage=spec.leakage,
         profile=profile,
         source=source,
         goal=request.goal,
@@ -432,8 +435,12 @@ async def recommend_models(
             dataset_id=spec.dataset_id,
             version_id=spec.dataset_version_id,
             artifact_root=artifact_root,
+            allow_missing_time=spec.row_order is not None,
         )
-        parsed = load_version_csv(dataset=dataset, version=version, artifact_root=artifact_root)
+        parsed = load_version_csv(
+            dataset=dataset, version=version, artifact_root=artifact_root,
+            allow_missing_time=spec.row_order is not None,
+        )
         if version.sha256 != spec.dataset_version_sha256 or not artifact_matches_sha256(
             artifact_root=artifact_root,
             relative_path=version.artifact_path,

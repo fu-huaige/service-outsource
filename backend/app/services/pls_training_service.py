@@ -52,9 +52,10 @@ class _TrainingData:
 def validate_pls_experiment_spec(spec: ExperimentSpec) -> ExperimentSpec:
     spec = ExperimentSpec.model_validate(spec.model_dump())
     feature = spec.feature_spec
+    if spec.task_type == "supervised_regression" and spec.application is None:
+        raise ValueError("PLS requires application to be 'regression' or 'soft_sensor'")
     if (
         spec.task_type != "supervised_regression"
-        or spec.application not in ("regression", "soft_sensor")
         or feature.kind != "tabular"
         or any(lags != (0,) for lags in feature.input_lags.values())
         or feature.target_lags
@@ -85,6 +86,7 @@ async def _prepare_training(
         version_id=bound.dataset_version_id,
         dataset_id=bound.dataset_id,
         artifact_root=root,
+        allow_missing_time=bound.row_order is not None,
     )
     names, target = series.resolve_columns(
         input_columns=list(bound.input_columns),

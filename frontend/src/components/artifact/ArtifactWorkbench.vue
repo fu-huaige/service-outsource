@@ -415,6 +415,7 @@ async function handleOptimisedExport() {
 const availableArtifacts = computed<ArtifactDef[]>(() => {
   return props.execution.step_runs
     .filter(r => {
+      if (r.tool === 'recommend_models' || r.tool === 'confirm_model_selection') return false;
       if (agentStepStatus(r.status) !== 'completed') return false;
       if (r.result_payload && Object.keys(r.result_payload).length > 0) return true;
       const tool = r.tool || props.execution.plan?.steps?.find(s => s.step_id === r.step_id)?.tool;

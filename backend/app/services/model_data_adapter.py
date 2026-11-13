@@ -109,9 +109,9 @@ def _select_rows(
         for interval in rows.ranges:
             if not any(
                 run.start <= interval.start and interval.stop <= run.stop
-                for run in spec.continuous_runs
+                for run in spec.ordered_record_ranges or spec.continuous_runs
             ):
-                raise ValueError("A requested range crosses a continuous-run boundary")
+                raise ValueError("A requested range crosses a continuous-run boundary or an ordered record range")
         indices = tuple(i for interval in rows.ranges for i in range(interval.start, interval.stop))
     if (
         not indices

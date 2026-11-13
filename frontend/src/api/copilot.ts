@@ -8,6 +8,8 @@ import type {
   CopilotConfirmResponse,
   CopilotEvaluateModelExecuteResponse,
   CopilotExecutionSnapshot,
+  CopilotModelExecuteRequest,
+  CopilotModelExecutionData,
   CopilotOptimizePipelineExecuteResponse,
   FeatureSelectionValidationRequest,
   FeatureSelectionValidationResponse,
@@ -28,6 +30,12 @@ export const confirmCopilotStep = (
   req: CopilotConfirmRequest
 ): Promise<CopilotConfirmResponse> =>
   apiClient.post("/copilot/confirm", req);
+
+export const executeConfirmedModel = (req: CopilotModelExecuteRequest): Promise<CopilotModelExecutionData> =>
+  apiClient.post("/copilot/modeling/execute", req, { timeout: 600_000 });
+
+export const getConfirmedModelExecution = (req: CopilotModelExecuteRequest): Promise<CopilotModelExecutionData | null> =>
+  apiClient.get("/copilot/modeling/execution", { params: req });
 
 export const validateLagOverrides = (
   req: LagOverrideValidationRequest

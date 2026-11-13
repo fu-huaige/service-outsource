@@ -106,6 +106,8 @@ const TOOL_NAMES: Record<string, string> = {
   apply_lag_compensation: '时滞补偿',
   analyze_collinearity: '共线性分析',
   select_variables: '变量筛选',
+  recommend_models: '模型推荐',
+  confirm_model_selection: '模型选择',
   fit_arx: '系统辨识',
   export_dataset: '数据导出',
 
@@ -138,7 +140,8 @@ function stepRun(stepId: string) {
 
 function hasResult(stepId: string): boolean {
   const run = stepRun(stepId);
-  return !!run && Object.keys(run.result_payload ?? {}).length > 0;
+  return !!run && !['recommend_models', 'confirm_model_selection'].includes(run.tool) &&
+    Object.keys(run.result_payload ?? {}).length > 0;
 }
 
 function stepClass(step: { status: string }): string {

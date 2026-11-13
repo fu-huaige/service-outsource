@@ -68,6 +68,7 @@ class VersionSeries:
     available_columns: tuple[str, ...] = ()
     monitored_inputs: tuple[str, ...] = ()
     input_context_versions: dict[str, str] = field(default_factory=dict)
+    time_column: str | None = None
 
     @property
     def n_samples(self) -> int:
@@ -173,6 +174,7 @@ async def load_version_series(
     version_id: UUID,
     artifact_root: Path,
     dataset_id: UUID | None = None,
+    allow_missing_time: bool = False,
 ) -> VersionSeries:
     """Resolve a version id to numeric arrays, trying the database then local artifacts."""
 
@@ -183,6 +185,7 @@ async def load_version_series(
             version=version,
             artifact_root=artifact_root,
             dataset_id=dataset_id,
+            allow_missing_time=allow_missing_time,
         )
     return _load_simulation_version(
         version_id=version_id,
@@ -197,6 +200,7 @@ async def _load_persisted_version(
     version: DatasetVersion,
     artifact_root: Path,
     dataset_id: UUID | None,
+    allow_missing_time: bool,
 ) -> VersionSeries:
     dataset = await session.get(Dataset, version.dataset_id)
     if dataset is None:
@@ -208,10 +212,14 @@ async def _load_persisted_version(
             details={"dataset_id": str(dataset_id), "version_id": str(version.id)},
         )
     try:
-        parsed = load_version_csv(dataset=dataset, version=version, artifact_root=artifact_root)
+        parsed = load_version_csv(
+            dataset=dataset, version=version, artifact_root=artifact_root,
+            allow_missing_time=allow_missing_time,
+        )
     except DatasetVersionArtifactError as error:
         raise VersionDataError(
-            error.code, error.message, status_code=404, details=error.details
+            error.code, error.message, status_code=422 if error.code == 'TIMESTAMP_REQUIRED' else 404,
+            details=error.details,
         ) from error
 
     columns = list(
@@ -266,6 +274,7 @@ async def _load_persisted_version(
         declared_output=declared_output,
         sample_period_seconds=_median_period(parsed.timestamps),
         available_columns=tuple(parsed.headers),
+        time_column=parsed.timestamp_column,
     )
 
 

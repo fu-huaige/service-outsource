@@ -79,6 +79,8 @@ const TOOL_MAP: Record<string, string> = {
   apply_lag_compensation: '时滞补偿',
   analyze_collinearity: '共线性分析',
   select_variables: '变量筛选',
+  recommend_models: '模型推荐',
+  confirm_model_selection: '模型选择',
   fit_arx: '系统辨识',
   export_dataset: '数据导出',
 
@@ -99,6 +101,7 @@ function localizedTool(t: string): string {
 }
 
 const hasResult = computed(() =>
+  !['recommend_models', 'confirm_model_selection'].includes(toolKey.value) &&
   !!props.stepRun.result_payload && Object.keys(props.stepRun.result_payload).length > 0
 );
 

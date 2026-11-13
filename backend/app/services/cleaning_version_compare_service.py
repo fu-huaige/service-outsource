@@ -391,7 +391,7 @@ def _load_verified_artifact(
         raise CleaningVersionCompareError(
             error.code,
             error.message,
-            status_code=404,
+            status_code=422 if error.code == "TIMESTAMP_REQUIRED" else 404,
             details={**error.details, "version_id": str(version.id), "side": side},
         ) from error
     if not artifact_matches_sha256(

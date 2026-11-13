@@ -161,7 +161,8 @@ async def _read_data(
 ):
     await _check_version_digest(session, spec, root)
     series = await load_version_series(
-        session, dataset_id=spec.dataset_id, version_id=spec.dataset_version_id, artifact_root=root
+        session, dataset_id=spec.dataset_id, version_id=spec.dataset_version_id, artifact_root=root,
+        allow_missing_time=spec.row_order is not None,
     )
     names, target = series.resolve_columns(
         input_columns=list(model.metadata.feature_names), output_column=model.metadata.target_name

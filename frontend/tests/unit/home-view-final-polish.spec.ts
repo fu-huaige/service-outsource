@@ -6,6 +6,7 @@ import { createPinia, setActivePinia } from "pinia";
 import HomeView from "../../src/views/HomeView.vue";
 import { listDatasets } from "../../src/api/datasets";
 import { useDatasetStore } from "../../src/stores/datasetStore";
+import { useCopilotExecutionStore } from "../../src/stores/copilotExecution";
 import type { DatasetItem } from "../../src/types/api";
 
 const push = vi.fn();
@@ -41,11 +42,11 @@ const recentExecution = (executionId: string, datasetId: string, goal: string) =
   plan: { goal },
 });
 
-const mountHome = () => mount(HomeView, {
+const mountHome = (pinia = createPinia()) => mount(HomeView, {
   global: {
-    plugins: [createPinia()],
+    plugins: [pinia],
     stubs: {
-      AgentComposer: { template: '<div data-test="agent-composer" />' },
+      AgentComposer: { name: 'AgentComposer', props: { modelingEnabled: Boolean, submitting: Boolean }, emits: ['submit'], template: '<div data-test="agent-composer" />' },
       RouterLink: RouterLinkStub,
     },
   },
@@ -58,6 +59,25 @@ beforeEach(() => {
 });
 
 describe("HomeView final polish", () => {
+  it("enables the shared modeling form and only hands a pending submission off once", async () => {
+    const pinia = createPinia();
+    const wrapper = mountHome(pinia);
+    const composer = wrapper.getComponent({ name: "AgentComposer" });
+    const payload = { message: "推荐模型", datasetId: "dataset", versionId: "version" };
+    expect(composer.props("modelingEnabled")).toBe(true);
+    composer.vm.$emit("submit", payload);
+    composer.vm.$emit("submit", payload);
+    await flushPromises();
+
+    expect(push).toHaveBeenCalledTimes(1);
+    const destination = push.mock.calls[0]![0];
+    expect(destination).toEqual({ path: "/workspace", query: { handoff: expect.any(String) } });
+    const store = useCopilotExecutionStore(pinia);
+    expect(store.takeHomeTask("other-route")).toBeUndefined();
+    expect(store.takeHomeTask(destination.query.handoff)).toEqual(payload);
+    expect(store.takeHomeTask(destination.query.handoff)).toBeUndefined();
+    wrapper.unmount();
+  });
   it("resolves recent dataset names with one list request and safely falls back when absent", async () => {
     const knownDatasetId = "2ba22e3c-known-dataset";
     const missingDatasetId = "missing-dataset-id";

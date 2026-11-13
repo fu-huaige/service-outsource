@@ -9,6 +9,8 @@
       <!-- Agent Composer (Visual Core) -->
       <AgentComposer
         class="home-composer"
+        modeling-enabled
+        :submitting="isNavigating"
         @submit="handleComposerSubmit"
       />
 
@@ -120,10 +122,13 @@ import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import AgentComposer from '../components/composer/AgentComposer.vue';
 import { useDatasetStore } from '../stores/datasetStore';
-import type { CopilotExecutionSnapshot } from '../types/api';
+import { useCopilotExecutionStore } from '../stores/copilotExecution';
+import type { AgentComposerSubmission, CopilotExecutionSnapshot } from '../types/api';
 
 const router = useRouter();
 const datasetStore = useDatasetStore();
+const executionStore = useCopilotExecutionStore();
+const isNavigating = ref(false);
 
 const recentExecutions = ref<CopilotExecutionSnapshot[]>([]);
 
@@ -155,15 +160,19 @@ const suggestedWorkflows = [
   },
 ];
 
-async function handleComposerSubmit(payload: { message: string; datasetId?: string | null; versionId?: string | null }) {
-  await router.push({
-    path: '/workspace',
-    query: {
-      prompt: payload.message,
-      dataset_id: payload.datasetId || undefined,
-      version_id: payload.versionId || undefined,
-    },
-  });
+async function handleComposerSubmit(payload: AgentComposerSubmission) {
+  if (isNavigating.value) return;
+  isNavigating.value = true;
+  const handoff = executionStore.stageHomeTask(payload);
+  try {
+    const failure = await router.push({ path: '/workspace', query: { handoff } });
+    if (failure) executionStore.takeHomeTask(handoff);
+  } catch {
+    executionStore.takeHomeTask(handoff);
+    ElMessage.error('无法打开 Agent 工作台，请重试。');
+  } finally {
+    isNavigating.value = false;
+  }
 }
 
 function handleQuickAction(action: { label: string; prompt: string }) {

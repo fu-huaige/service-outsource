@@ -88,7 +88,7 @@ def spec_hash(spec: ExperimentSpec) -> str:
 
 
 def _covering_run(spec: ExperimentSpec, interval: RowRange) -> RowRange:
-    for run in spec.continuous_runs:
+    for run in spec.ordered_record_ranges or spec.continuous_runs:
         if run.start <= interval.start and interval.stop <= run.stop:
             return run
     raise ValueError("Range is not covered by one continuous run/history boundary")
@@ -139,7 +139,10 @@ def _validate_rows(spec: ExperimentSpec, rows: RowSet, partition: str, root: Pat
     for row in iter_rows(rows, root):
         if not within(row, allowed):
             raise ValueError("Row outside its effective partition")
-        if not any(r.start <= row - lookback and row < r.stop for r in spec.continuous_runs):
+        if not any(
+            r.start <= row - lookback and row < r.stop
+            for r in spec.ordered_record_ranges or spec.continuous_runs
+        ):
             raise ValueError("Feature history crosses a continuous-run boundary")
 
 
@@ -166,7 +169,12 @@ async def bind_experiment_spec(
         expected_sha256=spec.dataset_version_sha256,
     ):
         raise ValueError("DatasetVersion SHA256 mismatch")
-    parsed = load_version_csv(dataset=dataset, version=version, artifact_root=artifact_root)
+    parsed = load_version_csv(
+        dataset=dataset, version=version, artifact_root=artifact_root,
+        allow_missing_time=spec.row_order is not None,
+    )
+    if spec.row_order is not None and parsed.timestamp_column is not None:
+        raise ValueError("Confirmed row order is only supported for CSVs without timestamps")
     # Existing readers skip blank records. Reject them here so physical record
     # positions and the existing numeric arrays are provably identical.
     with contained_path(artifact_root, version.artifact_path).open(
@@ -189,7 +197,8 @@ async def bind_experiment_spec(
     ):
         raise ValueError("CSV row count mismatch")
     series = await load_version_series(
-        session, version_id=version.id, dataset_id=dataset.id, artifact_root=artifact_root
+        session, version_id=version.id, dataset_id=dataset.id, artifact_root=artifact_root,
+        allow_missing_time=spec.row_order is not None,
     )
     series.resolve_columns(input_columns=list(spec.input_columns), output_column=spec.target_column)
     if spec.time_axis.column is not None and spec.time_axis.column != parsed.timestamp_column:

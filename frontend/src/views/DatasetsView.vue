@@ -334,7 +334,7 @@ const handleSelectDataset = (row: DatasetItem) => {
 
 const openConfigDialog = (row: DatasetItem) => {
   currentDataset.value = row;
-  configForm.time_column = row.time_column || "timestamp";
+  configForm.time_column = row.time_column ?? "";
   configForm.input_columns_str = (row.input_columns || ["u1", "u2"]).join(",");
   configForm.output_column = row.output_column || "y";
   configDialogVisible.value = true;
@@ -346,7 +346,7 @@ const saveConfig = async () => {
   try {
     const inputCols = configForm.input_columns_str.split(",").map((s) => s.trim()).filter(Boolean);
     await configureDataset(currentDataset.value.id, {
-      time_column: configForm.time_column,
+      time_column: configForm.time_column.trim() || undefined,
       input_columns: inputCols,
       output_column: configForm.output_column,
     });

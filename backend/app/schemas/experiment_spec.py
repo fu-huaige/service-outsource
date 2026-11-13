@@ -5,7 +5,13 @@ from __future__ import annotations
 from typing import Annotated, Literal, Self
 from uuid import UUID
 
-from pydantic import Field, StrictInt, model_validator
+from pydantic import (
+    Field,
+    SerializerFunctionWrapHandler,
+    StrictInt,
+    model_serializer,
+    model_validator,
+)
 
 from app.schemas.common import Schema
 
@@ -181,6 +187,14 @@ class ResourceBudget(Schema):
     enforcement: Literal["not_implemented"] = "not_implemented"
 
 
+class ConfirmedRowOrder(Schema):
+    """User attestation tied to one immutable CSV, without time continuity evidence."""
+
+    dataset_version_id: UUID
+    csv_sha256: Digest
+    row_order_status: Literal["user_confirmed"] = "user_confirmed"
+
+
 class ExperimentSpec(Schema):
     spec_version: Literal[1] = 1
     task_type: Literal["dynamic_system_identification", "supervised_regression"]
@@ -192,7 +206,11 @@ class ExperimentSpec(Schema):
     input_columns: tuple[str, ...] = Field(min_length=1)
     target_column: str | None = None
     time_axis: TimeAxis = Field(default_factory=TimeAxis)
-    continuous_runs: tuple[RowRange, ...] = Field(min_length=1, max_length=10000)
+    continuous_runs: tuple[RowRange, ...] = Field(max_length=10000)
+    ordered_record_ranges: tuple[RowRange, ...] | None = Field(
+        default=None, min_length=1, max_length=10000
+    )
+    row_order: ConfirmedRowOrder | None = None
     feature_spec: FeatureSpec
     split: SplitSpec
     training_selection: TrainingSelection = Field(default_factory=TrainingSelection)
@@ -202,8 +220,36 @@ class ExperimentSpec(Schema):
     random_seed: StrictInt | None = None
     resource_budget: ResourceBudget = Field(default_factory=ResourceBudget)
 
+    @model_serializer(mode="wrap")
+    def serialize_contract(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+        document = handler(self)
+        if self.row_order is None:
+            # Preserve legacy serialized bytes and hashes, including nested Manifest Specs.
+            document.pop("row_order", None)
+            document.pop("ordered_record_ranges", None)
+        return document
+
     @model_validator(mode="after")
     def validate_contract(self) -> Self:
+        if self.row_order is None:
+            if self.ordered_record_ranges is not None or not self.continuous_runs:
+                raise ValueError("Continuous runs are required without confirmed row order")
+        elif (
+            not self.ordered_record_ranges
+            or self.continuous_runs
+            or self.row_order.dataset_version_id != self.dataset_version_id
+            or self.row_order.csv_sha256 != self.dataset_version_sha256
+            or self.task_type != "supervised_regression"
+            or self.feature_spec.kind != "tabular"
+            or self.feature_spec.history_window
+            or self.feature_spec.input_lags
+            or self.feature_spec.target_lags
+            or self.time_axis != TimeAxis()
+            or self.training_selection.mode != "full_train"
+        ):
+            raise ValueError("Confirmed row order requires a matching static, untimed contract")
+        else:
+            validate_ranges(self.ordered_record_ranges)
         if not self.target_column or self.target_column in self.input_columns:
             raise ValueError("Current supervised tasks require a separate target")
         if any(not c for c in self.input_columns) or len(set(self.input_columns)) != len(
@@ -222,6 +268,7 @@ class ExperimentSpec(Schema):
         validate_ranges(self.continuous_runs)
         for r in (
             *self.continuous_runs,
+            *(self.ordered_record_ranges or ()),
             *self.split.train,
             *self.split.validation,
             *self.split.test,

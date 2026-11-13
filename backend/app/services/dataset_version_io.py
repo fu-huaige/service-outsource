@@ -11,7 +11,13 @@ from typing import Any
 from uuid import UUID
 
 from app.models.dataset import Dataset, DatasetVersion
-from app.services.dataset_csv import CsvPage, DatasetCsvError, ParsedCsv, load_csv_page, load_parsed_csv
+from app.services.dataset_csv import (
+    CsvPage,
+    DatasetCsvError,
+    ParsedCsv,
+    load_csv_page,
+    load_parsed_csv,
+)
 
 
 class DatasetVersionArtifactError(Exception):
@@ -25,7 +31,8 @@ class DatasetVersionArtifactError(Exception):
 
 
 def load_version_csv(
-    *, dataset: Dataset, version: DatasetVersion, artifact_root: Path
+    *, dataset: Dataset, version: DatasetVersion, artifact_root: Path,
+    allow_missing_time: bool = False,
 ) -> ParsedCsv:
     """Parse the exact CSV registered by a version, never the dataset's mutable active pointer."""
 
@@ -41,6 +48,7 @@ def load_version_csv(
             relative_path=version.artifact_path,
             encoding=encoding,
             delimiter=delimiter,
+            allow_missing_time=allow_missing_time,
         )
     except DatasetCsvError as error:
         raise DatasetVersionArtifactError(error.code, error.message, error.details) from error

@@ -188,7 +188,7 @@ async def _source(
     try:
         parsed = load_version_csv(dataset=dataset, version=source, artifact_root=artifact_root)
     except DatasetVersionArtifactError as error:
-        raise VersionedPreprocessingError(error.code, error.message, status_code=404, details=error.details) from error
+        raise VersionedPreprocessingError(error.code, error.message, status_code=422 if error.code == "TIMESTAMP_REQUIRED" else 404, details=error.details) from error
     return source, dataset, columns, parsed
 
 

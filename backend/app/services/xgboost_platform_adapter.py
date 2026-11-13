@@ -64,6 +64,7 @@ async def _prepare(
         version_id=bound.dataset_version_id,
         dataset_id=bound.dataset_id,
         artifact_root=root,
+        allow_missing_time=bound.row_order is not None,
     )
     version = await session.get(DatasetVersion, bound.dataset_version_id, populate_existing=True)
     if (

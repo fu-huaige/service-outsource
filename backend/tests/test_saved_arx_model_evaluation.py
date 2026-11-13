@@ -82,7 +82,7 @@ def _fit_saved_model(harness: EvaluationHarness, *, family: str = "ARX") -> tupl
             "version_id": str(version_id),
             "input_columns": ["u1", "u2"],
             "output_column": "y",
-            "na": 2,
+            "na": 0 if family == "FIR" else 2,
             "nb": [2, 2],
             "delays": [0, 0],
             "model_type": family,
@@ -94,6 +94,19 @@ def _fit_saved_model(harness: EvaluationHarness, *, family: str = "ARX") -> tupl
     model_id = UUID(data["model_id"])
     artifact = json.loads((harness.artifact_root / data["artifact_uri"]).read_text(encoding="utf-8"))
     return dataset_id, version_id, model_id, artifact
+
+
+def test_fir_api_artifact_replays_without_fitting(evaluation_harness, monkeypatch):
+    _, version_id, model_id, _ = _fit_saved_model(evaluation_harness, family="FIR")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Saved FIR Test evaluation must not fit")
+
+    monkeypatch.setattr(modeling_service, "fit_arx_core", forbidden)
+    result = asyncio.run(_evaluate(evaluation_harness, model_id=model_id, expected_source_version_id=version_id))
+    assert result.model_id == model_id
+    assert result.model_structure.model_type == "FIR"
+    assert result.test.free_run.rmse is not None
 
 
 def test_oe_api_artifact_replays_without_fitting(evaluation_harness, monkeypatch):

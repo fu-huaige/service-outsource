@@ -208,6 +208,28 @@ def _check_ordering(steps: Sequence[Mapping[str, Any]]) -> ProofCheck:
 def _check_profile_first(steps: Sequence[Mapping[str, Any]]) -> ProofCheck:
     tools = tuple(str(step.get("tool")) for step in steps)
     if any(tool in {"recommend_models", "confirm_model_selection"} for tool in tools):
+        if len(tools) > 2:
+            prefix, recommendation, confirmation = steps[:-2], steps[-2], steps[-1]
+            analysis_tools = {
+                "profile_dataset", "detect_anomalies", "clean_data", "detect_dynamic_segments",
+                "estimate_delays", "analyze_collinearity", "select_variables",
+            }
+            passed = (
+                tools[0] == "profile_dataset"
+                and set(tools[:-2]) <= analysis_tools
+                and tools[-2:] == ("recommend_models", "confirm_model_selection")
+                and recommendation.get("depends_on") == [step.get("step_id") for step in prefix]
+                and confirmation.get("depends_on") == [recommendation.get("step_id")]
+                and recommendation.get("requires_confirmation") is True
+                and confirmation.get("requires_confirmation") is True
+                and not recommendation.get("parameters")
+                and not confirmation.get("parameters")
+            )
+            return ProofCheck(
+                name="recommendation_workflow_boundary",
+                passed=passed,
+                detail="数据分析后只允许进入契约门控和人工模型选择。",
+            )
         passed = (
             tools == ("recommend_models", "confirm_model_selection")
             and not steps[0].get("depends_on")

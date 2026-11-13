@@ -118,6 +118,39 @@ async def test_four_candidates_use_bound_train_and_never_fit(data, monkeypatch):
     assert (data["root"] / "source.csv").read_bytes() == source_csv
 
 
+@pytest.mark.parametrize("application", [None, "regression", "soft_sensor"])
+async def test_pls_application_contract_preserves_other_candidates(data, application):
+    baseline = await recommend(data)
+    spec = spec_with(data["spec"], application=application)
+    result = await recommend(data, spec=spec)
+    by_model = candidates(result)
+    expected_status = "excluded" if application is None else "eligible"
+    assert by_model["pls"].eligibility_status == expected_status
+    if application is None:
+        assert "application" in result.excluded_models["pls"][0]
+        assert result.recommended_models == ("xgboost", "timexer", "tcn")
+    else:
+        assert result.recommended_models == baseline.recommended_models
+
+    other_models = ("xgboost", "tcn", "timexer")
+    baseline_candidates = candidates(baseline)
+    for model in other_models:
+        assert by_model[model].model_dump(exclude={"recommendation_rank"}) == (
+            baseline_candidates[model].model_dump(exclude={"recommendation_rank"})
+        )
+    assert sorted(other_models, key=lambda model: by_model[model].recommendation_rank) == sorted(
+        other_models, key=lambda model: baseline_candidates[model].recommendation_rank
+    )
+
+
+async def test_pls_recommendation_uses_training_prediction_contract(data):
+    evaluation = {**data["spec"].evaluation.model_dump(), "prediction_modes": ["one_step"]}
+    result = await recommend(data, spec=spec_with(data["spec"], evaluation=evaluation))
+    assert candidates(result)["pls"].eligibility_status == "excluded"
+    assert "Unsupported PLS experiment" in result.excluded_models["pls"][0]
+    assert result.recommended_models == ("xgboost", "timexer", "tcn")
+
+
 async def test_task_goal_changes_rank_without_changing_eligibility(data):
     nonlinear = await recommend(data, goal="nonlinear_regression")
     temporal = await recommend(data, goal="temporal_forecast")

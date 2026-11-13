@@ -37,6 +37,7 @@ from app.services.agent_service import AgentDomainError
 from app.services.dataset_csv import DatasetCsvError
 from app.services.dataset_version_io import DatasetVersionArtifactError
 from app.services.experiment_spec_service import bind_experiment_spec, spec_hash
+from app.services.job_queue import JOB_TIMEOUT_SECONDS
 from app.services.model_artifact_service import load_model_instance
 from app.services.model_comparison_service import ModelComparisonError, compare_model_evaluations
 from app.services.model_evaluation_service import (
@@ -59,6 +60,7 @@ from app.services.version_data import VersionDataError
 from app.services.xgboost_platform_adapter import XGBoostTrainingError, fit_xgboost_on_version
 
 _TOOL = "execute_confirmed_model"
+MODEL_DISPATCH_SOURCE = "queued_model_selection"
 _RECOVERY_AFTER = timedelta(minutes=15)
 _TRAINING_ERRORS = (PLSTrainingError, XGBoostTrainingError, TCNTrainingError, TimeXerTrainingError)
 
@@ -126,6 +128,14 @@ async def _selection(factory, request):
             original = recommendation_request.experiment_spec
         except (ValueError, KeyError) as error:
             raise _conflict() from error
+        version_id = execution.initial_version_id
+        for prior in sorted(execution.step_runs, key=lambda item: item.sequence):
+            if prior.sequence >= recommendation.sequence:
+                break
+            if prior.status != "SUCCEEDED" or prior.source_version_id != version_id:
+                raise _conflict()
+            if prior.result_version_id is not None:
+                version_id = prior.result_version_id
         source = snapshot.source
         if (
             step.result_payload.get("model_selection") != raw
@@ -133,7 +143,7 @@ async def _selection(factory, request):
             or locked.recommendation_step_id not in step.input_payload.get("depends_on", [])
             or recommendation.tool_name != "recommend_models"
             or recommendation.status != "SUCCEEDED"
-            or (execution.dataset_id, execution.initial_version_id, execution.current_version_id)
+            or (execution.dataset_id, version_id, execution.current_version_id)
             != (locked.dataset_id, locked.dataset_version_id, locked.dataset_version_id)
             or step.source_version_id != locked.dataset_version_id
             or recommendation.source_version_id != locked.dataset_version_id
@@ -176,7 +186,8 @@ async def _selection(factory, request):
             )
         ):
             raise _conflict()
-        if locked.selection_source == "agent_recommendation":
+        accepted_recommendation = locked.selection_source == "agent_recommendation"
+        if accepted_recommendation or step.input_payload.get("dispatch_training") is True:
             candidate = next(
                 (
                     item
@@ -186,7 +197,7 @@ async def _selection(factory, request):
                 None,
             )
             if (
-                locked.model_type_id not in snapshot.recommended_models
+                (accepted_recommendation and locked.model_type_id not in snapshot.recommended_models)
                 or candidate is None
                 or candidate.eligibility_status != "eligible"
                 or candidate.actual_parameters != locked.parameters
@@ -418,7 +429,10 @@ async def _replay(factory, identity, selection_pk, locked, root, *, interrupted=
         expired = (
             interrupted
             or data.execution_status == "unconfirmed"
-            or datetime.now(UTC) - execution.updated_at.replace(tzinfo=UTC) >= _RECOVERY_AFTER
+            or datetime.now(UTC) - execution.updated_at.replace(tzinfo=UTC) >= (
+                timedelta(seconds=JOB_TIMEOUT_SECONDS) + _RECOVERY_AFTER
+                if execution.planner_source == MODEL_DISPATCH_SOURCE else _RECOVERY_AFTER
+            )
         )
         if expired:
             data.execution_status = "unconfirmed"
@@ -515,12 +529,13 @@ async def _comparison(factory, data, locked, root):
             data.comparison_reason = reason
 
 
-async def execute_confirmed_model(
-    factory: SessionFactory, *, request: CopilotModelExecuteRequest, artifact_root: Path
-) -> CopilotModelExecutionData:
-    selection_pk, locked, recommendation_request = await _selection(factory, request)
-    data = CopilotModelExecutionData(
-        execution_id=uuid5(NAMESPACE_URL, f"indusopt/confirmed-model-execution/{selection_pk}"),
+def model_training_execution_id(selection_pk: UUID) -> UUID:
+    return uuid5(NAMESPACE_URL, f"indusopt/confirmed-model-execution/{selection_pk}")
+
+
+def _execution_identity(request, selection_pk, locked):
+    return CopilotModelExecutionData(
+        execution_id=model_training_execution_id(selection_pk),
         selection_execution_id=request.selection_execution_id,
         confirmed_selection_step_id=request.confirmed_selection_step_id,
         model_type_id=locked.model_type_id,
@@ -528,6 +543,156 @@ async def execute_confirmed_model(
         experiment_spec_hash=locked.experiment_spec_hash,
         forecast_spec=locked.forecast_spec,
     )
+
+
+def reserve_model_training(session, *, execution_id, copilot_run_id, step_id, step_pk, selection):
+    """Insert the dispatch intent in the caller's selection transaction."""
+    locked = _LockedSelection.model_validate(selection)
+    request = CopilotModelExecuteRequest(
+        selection_execution_id=execution_id,
+        copilot_run_id=copilot_run_id,
+        confirmed_selection_step_id=step_id,
+    )
+    data = _execution_identity(request, step_pk, locked)
+    data.execution_status = data.training_status = data.dispatch_status = "pending"
+    child = AgentExecutionSession(
+        id=data.execution_id,
+        copilot_run_id=copilot_run_id,
+        dataset_id=locked.dataset_id,
+        initial_version_id=locked.dataset_version_id,
+        current_version_id=locked.dataset_version_id,
+        planner_source=MODEL_DISPATCH_SOURCE,
+        workflow_status="PLANNED",
+        plan_json=ExecutionPlan(
+            goal="Execute the confirmed model selection",
+            dataset_id=locked.dataset_id,
+            steps=[ExecutionPlanStep(step_id=_TOOL, tool=_TOOL)],
+        ).model_dump(mode="json"),
+    )
+    child.step_runs.append(AgentStepRun(
+        step_id=_TOOL,
+        sequence=1,
+        tool_name=_TOOL,
+        status="PENDING",
+        source_version_id=locked.dataset_version_id,
+        input_payload={
+            "selection_step_pk": str(step_pk),
+            "selection_execution_id": str(execution_id),
+            "selection": selection,
+        },
+        result_payload=data.model_dump(mode="json"),
+    ))
+    session.add(child)
+
+
+async def run_dispatched_model(
+    factory: SessionFactory, *, execution_id: UUID, artifact_root: Path
+) -> None:
+    """Only a worker that changes the durable intent from pending to running may fit."""
+    async with factory() as session:
+        child = await session.scalar(
+            select(AgentExecutionSession)
+            .where(AgentExecutionSession.id == execution_id)
+            .options(selectinload(AgentExecutionSession.step_runs))
+        )
+        if (
+            child is None or child.planner_source != MODEL_DISPATCH_SOURCE
+            or child.workflow_status != "PLANNED" or len(child.step_runs) != 1
+        ):
+            return
+        step = child.step_runs[0]
+        if step.status != "PENDING" or step.processing_run_ids:
+            return
+        step_pk = step.id
+        data = CopilotModelExecutionData.model_validate(step.result_payload)
+        request = CopilotModelExecuteRequest(
+            selection_execution_id=data.selection_execution_id,
+            copilot_run_id=child.copilot_run_id,
+            confirmed_selection_step_id=data.confirmed_selection_step_id,
+        )
+        intent = dict(step.input_payload)
+
+    try:
+        selection_pk, locked, recommendation_request = await _selection(factory, request)
+        identity = _execution_identity(request, selection_pk, locked)
+        excluded = {"dispatch_status", "execution_status", "training_status"}
+        if (
+            identity.execution_id != execution_id
+            or data.model_dump(exclude=excluded) != identity.model_dump(exclude=excluded)
+            or intent.get("selection_step_pk") != str(selection_pk)
+            or intent.get("selection_execution_id") != str(request.selection_execution_id)
+            or _LockedSelection.model_validate(intent.get("selection")) != locked
+        ):
+            raise _conflict()
+        spec, params = await _preflight(factory, locked, recommendation_request, artifact_root)
+    except (AgentDomainError, ValueError) as error:
+        data.execution_status = data.training_status = "failed"
+        data.training_error = error.code if isinstance(error, AgentDomainError) else _conflict().code
+        data.evaluation_status = data.comparison_status = "skipped"
+        await _transition_dispatch(factory, data, step_pk, status="FAILED")
+        return
+
+    data.execution_status = data.training_status = "running"
+    data.dispatch_status = "started"
+    if await _transition_dispatch(factory, data, step_pk, status="RUNNING"):
+        await _execute_claim(factory, data, selection_pk, locked, spec, params, step_pk, artifact_root)
+
+
+async def _transition_dispatch(factory, data, step_pk, *, status):
+    now = datetime.now(UTC)
+    running = status == "RUNNING"
+    async with factory() as session:
+        claimed = await session.execute(
+            update(AgentExecutionSession)
+            .where(
+                AgentExecutionSession.id == data.execution_id,
+                AgentExecutionSession.planner_source == MODEL_DISPATCH_SOURCE,
+                AgentExecutionSession.workflow_status == "PLANNED",
+            )
+            .values(
+                workflow_status=status,
+                current_step_id=_TOOL if running else None,
+                updated_at=now,
+                finished_at=None if running else now,
+            )
+        )
+        if claimed.rowcount != 1:
+            return False
+        changed = await session.execute(
+            update(AgentStepRun)
+            .where(
+                AgentStepRun.id == step_pk,
+                AgentStepRun.status == "PENDING",
+                AgentStepRun.processing_run_ids[0].as_string().is_(None),
+            )
+            .values(
+                status=status,
+                started_at=now if running else None,
+                finished_at=None if running else now,
+                attempt_count=int(running),
+                result_payload=data.model_dump(mode="json"),
+            )
+        )
+        if changed.rowcount != 1:
+            return False
+        await session.commit()
+        return True
+
+
+async def read_confirmed_model_execution(
+    factory: SessionFactory, *, request: CopilotModelExecuteRequest, artifact_root: Path
+) -> CopilotModelExecutionData | None:
+    selection_pk, locked, _ = await _selection(factory, request)
+    return await _replay(
+        factory, _execution_identity(request, selection_pk, locked), selection_pk, locked, artifact_root
+    )
+
+
+async def execute_confirmed_model(
+    factory: SessionFactory, *, request: CopilotModelExecuteRequest, artifact_root: Path
+) -> CopilotModelExecutionData:
+    selection_pk, locked, recommendation_request = await _selection(factory, request)
+    data = _execution_identity(request, selection_pk, locked)
     existing = await _replay(factory, data, selection_pk, locked, artifact_root)
     if existing is not None:
         return existing
@@ -539,6 +704,10 @@ async def execute_confirmed_model(
             raise _conflict()
         return existing
 
+    return await _execute_claim(factory, data, selection_pk, locked, spec, params, step_pk, artifact_root)
+
+
+async def _execute_claim(factory, data, selection_pk, locked, spec, params, step_pk, artifact_root):
     try:
         trained = await _fit(
             _linked_factory(factory, step_pk, locked),

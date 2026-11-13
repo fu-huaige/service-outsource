@@ -13,14 +13,38 @@
         </svg>
       </div>
       <div class="ac-header__body">
-        <div class="ac-header__title">需要你的确认</div>
-        <div class="ac-header__sub">{{ toolLabel }}</div>
+        <div class="ac-header__title">{{ isModelSelection ? '模型选择' : '需要你的确认' }}</div>
+        <div class="ac-header__sub">{{ isModelSelection ? (lockedSelection ? '模型已锁定' : '等待确认') : toolLabel }}</div>
       </div>
       <div :data-test="`confirm-actions-${stepRun.step_id}`" style="display: none" />
     </div>
 
     <!-- ── Lag Override ─────────────────────────────────── -->
-    <template v-if="confirmationType === 'lag'">
+    <template v-if="isModelSelection">
+      <div class="ac-body">
+        <template v-if="lockedSelection">
+          <p data-test="locked-model-name">{{ lockedModelName }}</p>
+          <p>数据版本 {{ lockedSelection.dataset_version_id }}</p>
+          <p>{{ lockedSelection.selection_source === 'manual' ? '人工选择' : '接受 Agent 推荐' }}</p>
+          <p v-if="lockedSelection.forecast_spec">预测步数 H = {{ lockedSelection.forecast_spec.prediction_length }}</p>
+          <details>
+            <summary>最终确认参数 · {{ lockedParameterSummary }}</summary>
+            <ul>
+              <li v-for="(value, key) in lockedSelection.parameters" :key="key">{{ key }} = {{ value }}</li>
+            </ul>
+          </details>
+        </template>
+        <ModelSelectionFields
+          v-else-if="recommendation && recommendationStepId"
+          :recommendation="recommendation"
+          :recommendation-step-id="recommendationStepId"
+          :disabled="isSubmitting"
+          @change="selection = $event"
+        />
+        <p v-else role="status">无法读取对应的模型推荐，请重新打开任务或重新推荐。</p>
+      </div>
+    </template>
+    <template v-else-if="confirmationType === 'lag'">
       <div class="ac-body">
         <p class="ac-desc">Agent 估计了以下变量的时滞补偿量，请审查并确认（或手动覆盖）：</p>
         <div class="ac-lag-table" :data-test="`lag-recommendation-${stepRun.step_id}`">
@@ -102,8 +126,8 @@
     </template>
 
     <!-- Actions -->
-    <p v-if="!copilotRunId" class="ac-desc" role="alert">该任务缺少运行标识，请从任务历史重新打开或新建任务。</p>
-    <div class="ac-actions">
+    <p v-if="!lockedSelection && !copilotRunId" class="ac-desc" role="alert">该任务缺少运行标识，请从任务历史重新打开或新建任务。</p>
+    <div v-if="!lockedSelection" class="ac-actions">
       <button
         type="button"
         class="ac-btn ac-btn--reject"
@@ -116,12 +140,12 @@
       <button
         type="button"
         class="ac-btn ac-btn--approve"
-        :disabled="isSubmitting || !copilotRunId"
+        :disabled="isSubmitting || !copilotRunId || (isModelSelection && !selection)"
         :data-test="`approve-${stepRun.step_id}`"
         @click="handleApprove"
       >
         <svg v-if="!isSubmitting" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>
-        <span>{{ isSubmitting ? '确认中…' : '批准并继续' }}</span>
+        <span>{{ isSubmitting ? '确认中…' : isModelSelection ? '确认并开始训练' : '批准并继续' }}</span>
       </button>
     </div>
   </div>
@@ -129,7 +153,11 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import type { CopilotExecutionStepSnapshot, ExecutionPlanStep, CopilotConfirmRequest } from '../../types/api';
+import ModelSelectionFields from './ModelSelectionFields.vue';
+import type {
+  ConfirmedModelSelection, CopilotExecutionStepSnapshot, ExecutionPlanStep, CopilotConfirmRequest,
+  CopilotModelSelection, ModelRecommendationResult,
+} from '../../types/api';
 
 const props = defineProps<{
   stepRun: CopilotExecutionStepSnapshot;
@@ -137,6 +165,9 @@ const props = defineProps<{
   executionId: string;
   copilotRunId: string | null;
   submitting?: boolean;
+  recommendation?: ModelRecommendationResult;
+  recommendationStepId?: string;
+  lockedSelection?: ConfirmedModelSelection;
 }>();
 
 const emit = defineEmits<{
@@ -144,6 +175,13 @@ const emit = defineEmits<{
 }>();
 
 const isSubmitting = computed(() => props.submitting ?? false);
+const isModelSelection = computed(() => props.stepRun.tool === 'confirm_model_selection');
+const selection = ref<CopilotModelSelection | null>(null);
+const lockedParameterSummary = computed(() => Object.entries(props.lockedSelection?.parameters ?? {})
+  .slice(0, 2).map(([name, value]) => name + ' = ' + String(value)).join(' · '));
+const lockedModelName = computed(() => props.recommendation?.candidates.find(candidate =>
+  candidate.model_type_id === props.lockedSelection?.model_type_id,
+)?.model_name ?? props.lockedSelection?.model_type_id);
 
 // Determine confirmation type from tool name
 const confirmationType = computed((): 'lag' | 'arx' | 'feature' | null => {
@@ -216,7 +254,9 @@ async function handleApprove() {
       approved: true,
     };
 
-    if (confirmationType.value === 'lag') {
+    if (isModelSelection.value) {
+      if (selection.value && !props.lockedSelection) emit('confirm', { ...base, model_selection: selection.value, dispatch_training: true });
+    } else if (confirmationType.value === 'lag') {
       const overrides = lagOverrides.value
         .filter(o => o.value !== null && o.value !== '')
         .map(o => ({ variable: o.variable, value: o.value as number }));
@@ -350,7 +390,8 @@ async function handleReject() {
   background: #FAFAFA;
 }
 
-.ac-lag-input {
+.ac-lag-input,
+.ac-body :deep(.ac-lag-input) {
   width: 80px;
   padding: 4px 8px;
   background: #F5F5F7;
@@ -363,7 +404,8 @@ async function handleReject() {
   transition: border-color 0.15s ease;
 }
 
-.ac-lag-input:focus {
+.ac-lag-input:focus,
+.ac-body :deep(.ac-lag-input:focus) {
   border-color: #426340;
 }
 

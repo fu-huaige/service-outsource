@@ -55,6 +55,7 @@ async def create_execution(
     plan: ExecutionPlan,
     compliance_proof: ComplianceProof,
     copilot_run_id: UUID | None = None,
+    recommendation_context: dict[str, Any] | None = None,
 ) -> AgentExecutionSession:
     """Persist one compliance-approved plan and its ordered pending step runs."""
 
@@ -89,6 +90,11 @@ async def create_execution(
             input_payload={
                 "depends_on": list(step.depends_on),
                 "parameters": dict(step.parameters),
+                **(
+                    recommendation_context
+                    if recommendation_context and step.tool == "recommend_models"
+                    else {}
+                ),
             },
             result_payload={},
             processing_run_ids=[],
@@ -200,6 +206,37 @@ async def start_step(
     step = _step(execution, step_id)
     _require_startable(execution, step)
     _require_declared_dependencies_satisfied(execution, step)
+
+    if step.tool_name == "recommend_models" and step.requires_confirmation:
+        version_id, step_pk = execution.current_version_id, step.id
+        await session.rollback()
+        try:
+            claimed = await session.execute(
+                update(AgentExecutionSession)
+                .where(
+                    AgentExecutionSession.id == execution_id,
+                    AgentExecutionSession.workflow_status.in_(("PLANNED", "RUNNING")),
+                    AgentExecutionSession.current_version_id == version_id,
+                    AgentExecutionSession.current_step_id.is_(None),
+                )
+                .values(
+                    workflow_status="WAITING_CONFIRMATION",
+                    current_step_id=step_id,
+                    pending_confirmation_step_id=step_id,
+                )
+            )
+            opened = await session.execute(
+                update(AgentStepRun)
+                .where(AgentStepRun.id == step_pk, AgentStepRun.status == "PENDING")
+                .values(status="WAITING_CONFIRMATION")
+            )
+            if claimed.rowcount != 1 or opened.rowcount != 1:
+                raise ExecutionStateError("recommendation_gate_already_open", execution_id=execution_id)
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        return await _load_execution(session, execution_id, refresh=True)
 
     now = datetime.now(UTC)
     execution.current_step_id = step.step_id
@@ -338,7 +375,7 @@ async def approve_step(
 
     execution = await _load_execution(session, execution_id)
     step = _step(execution, step_id)
-    if step.tool_name == "confirm_model_selection":
+    if step.tool_name in {"confirm_model_selection", "recommend_models"}:
         raise _transition_error("approve_model_selection_without_payload", execution, step)
     if _is_approved_step_replay(execution, step):
         return execution
@@ -405,6 +442,116 @@ async def reject_step(
     return execution
 
 
+async def record_model_spec_requirement(
+    session: AsyncSession,
+    *,
+    execution_id: UUID,
+    step_id: str,
+    requirement: dict[str, str],
+) -> AgentExecutionSession:
+    """Publish the missing evidence while the recommendation gate is still open."""
+    await session.execute(
+        update(AgentStepRun)
+        .where(
+            AgentStepRun.execution_id == execution_id,
+            AgentStepRun.step_id == step_id,
+            AgentStepRun.tool_name == "recommend_models",
+            AgentStepRun.status == "WAITING_CONFIRMATION",
+        )
+        .values(result_payload={"spec_requirement": requirement})
+    )
+    await _commit(session)
+    return await _load_execution(session, execution_id, refresh=True)
+
+
+async def finish_recommendation_gate(
+    session: AsyncSession,
+    *,
+    execution_id: UUID,
+    step_id: str,
+    version_id: UUID,
+    request_payload: dict[str, Any],
+    result_payload: dict[str, Any],
+) -> AgentExecutionSession:
+    """Atomically bind the Spec, save the recommendation and open the next gate."""
+    execution = await _load_execution(session, execution_id, refresh=True)
+    step = _step(execution, step_id)
+    if (
+        step.tool_name == "recommend_models"
+        and step.status == "SUCCEEDED"
+        and step.source_version_id == version_id
+        and step.input_payload.get("recommendation_request") == request_payload
+    ):
+        return execution
+    selection = next(
+        (item for item in execution.step_runs if item.sequence == step.sequence + 1), None
+    )
+    if (
+        step.tool_name != "recommend_models"
+        or not step.requires_confirmation
+        or step.status != "WAITING_CONFIRMATION"
+        or step.confirmation_status != "PENDING"
+        or execution.workflow_status != "WAITING_CONFIRMATION"
+        or execution.pending_confirmation_step_id != step_id
+        or execution.current_version_id != version_id
+        or selection is None
+        or selection.tool_name != "confirm_model_selection"
+        or selection.status != "PENDING"
+        or not selection.requires_confirmation
+        or selection.input_payload.get("depends_on") != [step_id]
+    ):
+        raise _transition_error("finish_recommendation_gate", execution, step)
+    _require_declared_dependencies_satisfied(execution, step)
+
+    step_pk, selection_pk, selection_id = step.id, selection.id, selection.step_id
+    step_input = {**step.input_payload, "recommendation_request": request_payload}
+    selection_input = {
+        **selection.input_payload,
+        "recommendation_step_id": step_id,
+        "requested_model_type_id": result_payload["requested_model_type_id"],
+    }
+    now = datetime.now(UTC)
+    await session.rollback()
+    try:
+        claimed = await session.execute(
+            update(AgentExecutionSession)
+            .where(
+                AgentExecutionSession.id == execution_id,
+                AgentExecutionSession.workflow_status == "WAITING_CONFIRMATION",
+                AgentExecutionSession.pending_confirmation_step_id == step_id,
+                AgentExecutionSession.current_version_id == version_id,
+            )
+            .values(current_step_id=selection_id, pending_confirmation_step_id=selection_id)
+        )
+        if claimed.rowcount != 1:
+            raise ExecutionStateError("recommendation_gate_already_consumed", execution_id=execution_id)
+        completed = await session.execute(
+            update(AgentStepRun)
+            .where(AgentStepRun.id == step_pk, AgentStepRun.status == "WAITING_CONFIRMATION")
+            .values(
+                status="SUCCEEDED",
+                confirmation_status="APPROVED",
+                source_version_id=version_id,
+                input_payload=step_input,
+                result_payload=result_payload,
+                started_at=now,
+                finished_at=now,
+            )
+        )
+        opened = await session.execute(
+            update(AgentStepRun)
+            .where(AgentStepRun.id == selection_pk, AgentStepRun.status == "PENDING")
+            .values(status="WAITING_CONFIRMATION", input_payload=selection_input)
+        )
+        if completed.rowcount != 1 or opened.rowcount != 1:
+            raise ExecutionStateError("recommendation_step_changed", execution_id=execution_id)
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    return await _load_execution(session, execution_id, refresh=True)
+
+
 async def finish_model_selection_step(
     session: AsyncSession,
     *,
@@ -413,6 +560,7 @@ async def finish_model_selection_step(
     version_id: UUID,
     submission: dict[str, Any] | None,
     selection: dict[str, Any] | None,
+    dispatch_training: bool = False,
 ) -> AgentExecutionSession:
     """Complete one choice using a conditional write shared by approval and rejection."""
     execution = await _load_execution(session, execution_id, refresh=True)
@@ -420,8 +568,12 @@ async def finish_model_selection_step(
     if step.tool_name != "confirm_model_selection" or execution.current_version_id != version_id:
         raise _transition_error("finish_model_selection", execution, step)
     approved = selection is not None
+    same_request = (
+        step.input_payload.get("submitted_model_selection") == submission
+        and step.input_payload.get("dispatch_training", False) == dispatch_training
+    )
     if step.status == "SUCCEEDED" and step.confirmation_status == "APPROVED":
-        if approved and step.input_payload.get("submitted_model_selection") == submission:
+        if approved and same_request:
             return execution
         raise _transition_error("conflicting_model_selection", execution, step)
     if step.status == "CANCELLED" and step.confirmation_status == "REJECTED" and not approved:
@@ -440,6 +592,9 @@ async def finish_model_selection_step(
     if approved:
         input_payload["submitted_model_selection"] = submission
         input_payload["confirmed_model_selection"] = selection
+        if dispatch_training:
+            input_payload["dispatch_training"] = True
+    copilot_run_id = execution.copilot_run_id
     # Release the read snapshot before competing for the conditional update on SQLite.
     await session.rollback()
     now = datetime.now(UTC)
@@ -481,6 +636,14 @@ async def finish_model_selection_step(
             )
             if changed.rowcount != 1:
                 raise ExecutionStateError("model_selection_step_changed", execution_id=execution_id)
+            if dispatch_training:
+                from app.services.agent_model_execution_service import reserve_model_training
+
+                assert selection is not None and copilot_run_id is not None
+                reserve_model_training(
+                    session, execution_id=execution_id, copilot_run_id=copilot_run_id,
+                    step_id=step_id, step_pk=step_pk, selection=selection,
+                )
             await session.commit()
             return await _load_execution(session, execution_id, refresh=True)
     except Exception:
@@ -495,6 +658,7 @@ async def finish_model_selection_step(
             and step.status == "SUCCEEDED"
             and step.confirmation_status == "APPROVED"
             and step.input_payload.get("submitted_model_selection") == submission
+            and step.input_payload.get("dispatch_training", False) == dispatch_training
         ):
             return execution
         if not approved and step.status == "CANCELLED" and step.confirmation_status == "REJECTED":

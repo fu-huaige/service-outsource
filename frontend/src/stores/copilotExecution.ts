@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
+import type { AgentComposerSubmission } from "../types/api";
 
 export const COPILOT_ACTIVE_EXECUTION_STORAGE_KEY = "indusopt.copilot.activeExecutionId";
 
@@ -30,5 +31,21 @@ export const useCopilotExecutionStore = defineStore("copilotExecution", () => {
     }
   }
 
-  return { activeExecutionId, setActiveExecutionId, clearActiveExecutionId };
+  // The home handoff belongs to this app instance and is consumed before any request.
+  let pendingHomeTask: { id: string; payload: AgentComposerSubmission } | undefined;
+
+  function stageHomeTask(payload: AgentComposerSubmission): string {
+    const id = crypto.getRandomValues(new Uint32Array(4)).join("-");
+    pendingHomeTask = { id, payload };
+    return id;
+  }
+
+  function takeHomeTask(id: string): AgentComposerSubmission | undefined {
+    if (pendingHomeTask?.id !== id) return undefined;
+    const { payload } = pendingHomeTask;
+    pendingHomeTask = undefined;
+    return payload;
+  }
+
+  return { activeExecutionId, setActiveExecutionId, clearActiveExecutionId, stageHomeTask, takeHomeTask };
 });

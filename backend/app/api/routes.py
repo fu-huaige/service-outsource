@@ -164,7 +164,12 @@ from app.services.agent_lag_apply_service import (
     is_lag_apply_step,
     validate_lag_overrides,
 )
-from app.services.agent_model_execution_service import execute_confirmed_model
+from app.services.agent_model_dispatch_service import dispatch_model_training
+from app.services.agent_model_execution_service import (
+    execute_confirmed_model,
+    model_training_execution_id,
+    read_confirmed_model_execution,
+)
 from app.services.agent_service import (
     AgentDomainError,
     confirm_model_selection,
@@ -172,6 +177,7 @@ from app.services.agent_service import (
     execute_approved_export_step,
     execute_approved_optimization_step,
     execute_pending_evaluation_step,
+    provide_model_spec,
     run_copilot,
 )
 from app.services.agent_tool_adapter import AgentToolAdapterError
@@ -1358,6 +1364,7 @@ async def copilot_confirm(
     request: Request,
     payload: CopilotConfirmRequest,
     session: Annotated[AsyncSession, Depends(get_session)],
+    factory: Annotated[SessionFactory, Depends(get_session_factory)],
 ) -> SuccessEnvelope[CopilotConfirmData]:
     if payload.execution_id is None or payload.step_id is None:
         raise AppError(
@@ -1376,13 +1383,37 @@ async def copilot_confirm(
             step.step_id == payload.step_id and step.tool_name == "confirm_model_selection"
             for step in current.step_runs
         )
-        if is_model_selection:
+        is_spec_gate = any(
+            step.step_id == payload.step_id
+            and step.tool_name == "recommend_models"
+            and step.requires_confirmation
+            for step in current.step_runs
+        )
+        if payload.dispatch_training and (not is_model_selection or not payload.approved):
+            raise AgentDomainError(
+                "MODEL_TRAINING_AUTHORIZATION_INVALID", "训练授权仅用于批准模型选择。", status_code=422
+            )
+        if is_spec_gate and payload.approved:
+            execution = await provide_model_spec(
+                session, payload=payload, execution=current, artifact_root=get_settings().artifact_root
+            )
+        elif payload.recommendation_request is not None or payload.row_order_confirmation is not None:
+            raise AgentDomainError(
+                "MODEL_SPEC_STEP_REQUIRED", "实验契约必须提交到对应推荐步骤。", status_code=422
+            )
+        elif is_model_selection:
             execution = await confirm_model_selection(
                 session,
                 payload=payload,
                 execution=current,
                 artifact_root=get_settings().artifact_root,
             )
+            if payload.dispatch_training:
+                selection_pk = next(step.id for step in execution.step_runs if step.step_id == payload.step_id)
+                async with factory() as dispatch_session:
+                    await dispatch_model_training(
+                        dispatch_session, execution_id=model_training_execution_id(selection_pk)
+                    )
         elif payload.model_selection is not None:
             raise AgentDomainError(
                 "MODEL_SELECTION_STEP_REQUIRED", "模型选择必须提交到对应确认步骤。", status_code=422
@@ -1516,6 +1547,28 @@ async def execute_copilot_modeling(
     try:
         result = await execute_confirmed_model(
             factory, request=payload, artifact_root=get_settings().artifact_root
+        )
+    except AgentDomainError as error:
+        raise AppError(
+            error.code, error.message, status_code=error.status_code, details=error.details
+        ) from error
+    return success(request, result)
+
+
+@router.get(
+    "/copilot/modeling/execution",
+    tags=["Copilot"],
+    response_model=SuccessEnvelope[CopilotModelExecutionData | None],
+    responses={**ERROR_RESPONSES, 409: {"model": ErrorEnvelope}},
+)
+async def get_copilot_modeling_execution(
+    request: Request,
+    query: Annotated[CopilotModelExecuteRequest, Query()],
+    factory: Annotated[SessionFactory, Depends(get_session_factory)],
+) -> SuccessEnvelope[CopilotModelExecutionData | None]:
+    try:
+        result = await read_confirmed_model_execution(
+            factory, request=query, artifact_root=get_settings().artifact_root
         )
     except AgentDomainError as error:
         raise AppError(

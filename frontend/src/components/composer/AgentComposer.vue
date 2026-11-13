@@ -1,5 +1,5 @@
 <template>
-  <div ref="agentComposerRef" class="agent-composer" :class="{ 'is-focused': isFocused, 'has-content': message.trim().length > 0, 'is-submitting': isSubmitting }">
+  <div ref="agentComposerRef" class="agent-composer" :class="{ 'is-focused': isFocused, 'has-content': message.trim().length > 0, 'is-submitting': isSubmitting, 'is-modeling': modelingEnabled && showModeling }">
     <div class="composer-body">
       <!-- Attached Dataset Pill (if any) -->
       <div v-if="attachedDataset" class="composer-attachments">
@@ -47,6 +47,38 @@
           <button type="button" :disabled="isSubmitting || versionsLoading" @click="loadVersions()">重新加载</button>
         </div>
       </div>
+
+      <template v-if="modelingEnabled">
+        <button
+          type="button"
+          class="composer-btn composer-btn--modeling"
+          :aria-expanded="showModeling"
+          :aria-controls="showModeling ? modelingPanelId : undefined"
+          :disabled="isSubmitting"
+          data-test="toggle-modeling"
+          @click="showModeling = !showModeling"
+        >
+          {{ showModeling ? '退出建模配置' : '建模配置' }}
+        </button>
+        <div
+          v-if="showModeling"
+          :id="modelingPanelId"
+          class="composer-modeling-panel"
+          role="region"
+          aria-label="建模配置"
+          tabindex="0"
+        >
+          <ExperimentSpecFields
+            v-if="attachedDataset && selectedVersion"
+            :key="attachedDataset.id + ':' + selectedVersion.id"
+            :dataset-id="attachedDataset.id"
+            :version="selectedVersion"
+            :disabled="isSubmitting"
+            @change="recommendationRequest = $event"
+          />
+          <p v-else role="status">请先挂载数据集并选择版本。</p>
+        </div>
+      </template>
 
       <!-- Main Input Textarea -->
       <textarea
@@ -153,11 +185,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onBeforeUnmount, watch, type CSSProperties } from 'vue';
+import { ref, computed, nextTick, onBeforeUnmount, useId, watch, type CSSProperties } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useDatasetStore } from '../../stores/datasetStore';
 import { getDatasetVersions, listDatasets } from '../../api/datasets';
-import type { DatasetItem, DatasetVersionNode } from '../../types/api';
+import type { AgentComposerSubmission, DatasetItem, DatasetVersionNode, ModelRecommendationRequest } from '../../types/api';
+import ExperimentSpecFields from './ExperimentSpecFields.vue';
 import VersionLineagePicker from '../versioning/VersionLineagePicker.vue';
 import { versionDisplayName } from '../../utils/versionOperation';
 
@@ -166,6 +199,8 @@ const props = withDefaults(defineProps<{
   rows?: number;
   initialPrompt?: string;
   submitting?: boolean;
+  modelingEnabled?: boolean;
+  modelingRequired?: boolean;
 }>(), {
   placeholder: '描述你的工业建模或参数优化目标，例如：分析 S3 时序数据并建立 ARX 动态模型…',
   rows: 3,
@@ -174,13 +209,22 @@ const props = withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{
-  submit: [payload: { message: string; datasetId?: string | null; versionId?: string | null }];
+  submit: [payload: AgentComposerSubmission];
 }>();
 
 const datasetStore = useDatasetStore();
 const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 
 const message = ref(props.initialPrompt ?? '');
+const showModeling = ref(Boolean(props.modelingRequired));
+const modelingPanelId = useId() + '-modeling-panel';
+const recommendationRequest = ref<ModelRecommendationRequest | null>(null);
+watch(() => props.modelingRequired, required => {
+  if (required) showModeling.value = true;
+});
+watch(() => props.initialPrompt, prompt => {
+  if (prompt && !message.value.trim()) message.value = prompt;
+});
 const isFocused = ref(false);
 const localSubmitting = ref(false);
 const showDatasetPicker = ref(false);
@@ -208,9 +252,21 @@ let observedVisualViewport: VisualViewport | null = null;
 let pickerPositionListenersActive = false;
 
 const isSubmitting = computed(() => props.submitting || localSubmitting.value);
+watch([selectedVersion, showModeling], () => { recommendationRequest.value = null; }, { flush: 'sync' });
+
+const boundRecommendation = computed(() => {
+  const request = recommendationRequest.value;
+  const spec = request?.experiment_spec;
+  return props.modelingEnabled && showModeling.value && spec &&
+    spec.dataset_id === attachedDataset.value?.id &&
+    spec.dataset_version_id === selectedVersion.value?.id &&
+    spec.dataset_version_sha256 === selectedVersion.value?.sha256
+    ? request : null;
+});
 const canSubmit = computed(() =>
   message.value.trim().length > 0 && !isSubmitting.value && !versionsLoading.value
   && (!attachedDataset.value || !!selectedVersion.value)
+  && (!props.modelingEnabled || !showModeling.value || !!boundRecommendation.value)
 );
 
 function isVersionSelectable(version: DatasetVersionNode) {
@@ -280,8 +336,9 @@ async function handleSubmit() {
       message: message.value.trim(),
       datasetId: attachedDataset.value?.id ?? null,
       versionId: selectedVersion.value!.id,
+      ...(boundRecommendation.value ? { recommendationRequest: boundRecommendation.value } : {}),
     });
-    message.value = '';
+    if (!props.modelingEnabled) message.value = '';
     await nextTick();
     autoResize();
   } finally {
@@ -433,6 +490,62 @@ const vClickOutside = {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   overflow: hidden;
+}
+
+.agent-composer.is-modeling,
+.is-modeling .composer-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.is-modeling .composer-body {
+  max-height: 100%;
+}
+
+.is-modeling .composer-body > :not(.composer-modeling-panel) {
+  flex-shrink: 0;
+}
+
+.composer-btn--modeling {
+  align-self: flex-start;
+  margin: 8px 16px 0;
+}
+
+.composer-btn--modeling[aria-expanded="true"]:not(:disabled) {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.composer-modeling-panel {
+  min-height: 0;
+  max-height: min(46dvh, 440px);
+  margin: 8px 12px 0;
+  padding: 10px;
+  overflow: hidden auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-focus) transparent;
+  text-align: left;
+  background: color-mix(in srgb, var(--bg-subtle), var(--accent-soft));
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+}
+
+.composer-modeling-panel:focus-visible,
+.composer-btn--modeling:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}
+
+.composer-modeling-panel > p {
+  margin: 0;
+}
+
+.is-modeling .composer-textarea {
+  max-height: clamp(84px, 18dvh, 140px);
 }
 
 .agent-composer.is-focused .composer-body {

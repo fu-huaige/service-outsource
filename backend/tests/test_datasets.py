@@ -2,6 +2,7 @@ import asyncio
 import csv
 from collections.abc import AsyncIterator, Iterator
 from datetime import datetime, timedelta
+from hashlib import sha256
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -83,7 +84,6 @@ def _persistence_counts(client: TestClient) -> tuple[int, int]:
 @pytest.mark.parametrize(
     ("content", "expected_code"),
     [
-        (b"u1,y\n1,2\n2,3\n", "INVALID_DATASET_SCHEMA"),
         (b"timestamp,u1,y\nnot-a-time,1,2\n", "TIMESTAMP_PARSE_FAILED"),
         (b"timestamp,u1,y\n2026-01-01 00:00:00,,1\n", "INVALID_DATASET_SCHEMA"),
         (b"timestamp,u1,u1\n2026-01-01 00:00:00,1,2\n", "INVALID_DATASET_SCHEMA"),
@@ -101,6 +101,24 @@ def test_upload_rejects_malformed_csvs(
     body = response.json()
     assert body["success"] is False
     assert body["error"]["code"] == expected_code
+
+
+def test_upload_without_time_preserves_rows_and_allows_column_roles(dataset_client):
+    uploaded = _upload(dataset_client, b"u1,y\n1,2\n2,3\n")
+    dataset_id = uploaded["dataset"]["id"]
+    url = f"/api/v1/datasets/{dataset_id}"
+    response = dataset_client.post(url + "/config", json={"input_columns": ["u1"], "output_column": "y"})
+    assert response.status_code == 200, response.text
+    detail = dataset_client.get(url).json()["data"]
+    assert detail["time_column"] is None
+    assert detail["time_range_start"] is None and detail["time_range_end"] is None
+    assert [row["u1"] for row in detail["preview"]["rows"]] == [1, 2]
+    assert dataset_client.get(url + "/profile").json()["data"]["sample_period_seconds"] is None
+    unavailable = dataset_client.post(
+        "/api/v1/preprocessing/clean", json={"version_id": detail["version_id"]}
+    )
+    assert unavailable.status_code == 422, unavailable.text
+    assert unavailable.json()["error"]["code"] == "TIMESTAMP_REQUIRED"
 
 
 def test_upload_profile_config_lineage_and_delete(dataset_client: TestClient) -> None:
@@ -268,7 +286,8 @@ def test_version_preview_is_bound_to_the_requested_immutable_version(
     active_relative_path = Path("derived") / str(dataset_id) / f"{active_version_id}.csv"
     active_path = tmp_path / active_relative_path
     active_path.parent.mkdir(parents=True, exist_ok=True)
-    active_path.write_bytes(_preview_csv(120, value_offset=10_000))
+    active_csv = _preview_csv(120, value_offset=10_000)
+    active_path.write_bytes(active_csv)
 
     async def install_new_active_version() -> None:
         session_factory = dataset_client.app.state.dataset_test_session_factory
@@ -286,7 +305,7 @@ def test_version_preview_is_bound_to_the_requested_immutable_version(
                 operation_name="test.preview_isolation",
                 parameters=source_version.parameters,
                 artifact_path=active_relative_path.as_posix(),
-                sha256="0" * 64,
+                sha256=sha256(active_csv).hexdigest(),
                 row_count=120,
                 column_count=3,
                 time_range_start=source_version.time_range_start,
@@ -298,6 +317,10 @@ def test_version_preview_is_bound_to_the_requested_immutable_version(
     asyncio.run(install_new_active_version())
     lineage = dataset_client.get(f"/api/v1/datasets/{dataset_id}/versions").json()["data"]
     assert lineage["active_version_id"] == str(active_version_id)
+    assert {node["id"]: node["sha256"] for node in lineage["nodes"]} == {
+        str(source_version_id): sha256(_preview_csv(120)).hexdigest(),
+        str(active_version_id): sha256(active_csv).hexdigest(),
+    }
     counts_before = _persistence_counts(dataset_client)
 
     response = dataset_client.get(

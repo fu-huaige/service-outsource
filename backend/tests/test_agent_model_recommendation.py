@@ -170,12 +170,18 @@ async def test_manual_choice_outside_shortlist_is_locked_after_parameter_revalid
 
 
 async def test_missing_spec_version_mismatch_and_deterministic_planner(api, data):
-    for message in ("帮我选择建模算法", "我想使用 XGBoost 建模", "建模"):
-        intent = parse_intent(message)
-        plan = LlmPlanner(NullProvider()).plan(message, intent)
-        assert [step.tool for step in plan.steps] == ["recommend_models", "confirm_model_selection"]
-        failure = error(api.post(CHAT, json={"message": message}), 422)
-        assert failure["code"] == "NEEDS_EXPERIMENT_SPEC" and failure["details"]["missing_fields"]
+    message = "推荐适合当前数据的模型"
+    plan = LlmPlanner(NullProvider()).plan(message, parse_intent(message))
+    assert [step.tool for step in plan.steps] == ["recommend_models", "confirm_model_selection"]
+    failure = error(api.post(CHAT, json={"message": message}), 422)
+    assert failure["code"] == "NEEDS_EXPERIMENT_SPEC" and failure["details"]["missing_fields"]
+
+    for message in ("我想使用 XGBoost 建模", "建模"):
+        plan_only = response_data(api.post(CHAT, json={"message": message}))
+        assert plan_only["execution_id"] is None
+        assert [step["tool"] for step in plan_only["plan"]["steps"]] == [
+            "profile_dataset", "recommend_models", "confirm_model_selection",
+        ]
     invalid = chat_body(data)
     invalid["active_version_id"] = str(data["latest"])
     assert (

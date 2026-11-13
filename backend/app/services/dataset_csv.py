@@ -65,7 +65,7 @@ class ParsedCsv:
     rows: list[dict[str, str]]
     inferred_types: dict[str, str]
     nullable: dict[str, bool]
-    timestamp_column: str
+    timestamp_column: str | None
     timestamps: list[datetime]
     preview_rows: list[dict[str, str | float | int | bool | None]]
 
@@ -131,7 +131,7 @@ async def stage_upload(upload: UploadFile, *, artifact_root: Path) -> StagedUplo
     )
 
 
-def parse_csv(staged: StagedUpload) -> ParsedCsv:
+def parse_csv(staged: StagedUpload, *, allow_missing_time: bool = False) -> ParsedCsv:
     """Read and validate a staged CSV exactly once before it becomes an immutable asset."""
 
     try:
@@ -162,8 +162,8 @@ def parse_csv(staged: StagedUpload) -> ParsedCsv:
                 {"column": header},
             )
 
-    timestamp_column = _resolve_timestamp_column(headers)
-    timestamps = _parse_timestamps(rows, timestamp_column)
+    timestamp_column = _resolve_timestamp_column(headers, allow_missing_time=allow_missing_time)
+    timestamps = _parse_timestamps(rows, timestamp_column) if timestamp_column else []
     inferred_types = {
         header: _infer_type([row[header] for row in rows], is_timestamp=header == timestamp_column)
         for header in headers
@@ -201,7 +201,8 @@ def move_to_immutable_storage(staged: StagedUpload, *, artifact_root: Path, data
 
 
 def load_parsed_csv(
-    *, artifact_root: Path, relative_path: str, encoding: str, delimiter: str
+    *, artifact_root: Path, relative_path: str, encoding: str, delimiter: str,
+    allow_missing_time: bool = False,
 ) -> ParsedCsv:
     """Reparse a stored raw file for preview/profile recomputation without mutation."""
 
@@ -216,7 +217,8 @@ def load_parsed_csv(
             filename=raw_path.name,
             encoding=encoding,
             delimiter=delimiter,
-        )
+        ),
+        allow_missing_time=allow_missing_time,
     )
 
 
@@ -394,12 +396,16 @@ def _row_from_values(
     return dict(zip(headers, (value.strip() for value in values), strict=True))
 
 
-def _resolve_timestamp_column(headers: list[str]) -> str:
+def _resolve_timestamp_column(
+    headers: list[str], *, allow_missing_time: bool = False
+) -> str | None:
     candidates = [header for header in headers if _looks_like_time_header(header)]
     if not candidates:
+        if allow_missing_time:
+            return None
         raise DatasetCsvError(
-            "INVALID_DATASET_SCHEMA",
-            "未找到时间戳列；请使用 time、timestamp、datetime 或中文时间列名。",
+            "TIMESTAMP_REQUIRED",
+            "此操作需要实际时间戳列；当前数据没有时间戳。",
         )
     if len(candidates) > 1:
         raise DatasetCsvError(

@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import Field
 
 from app.schemas.common import Schema
-from app.schemas.experiment_spec import Digest, ExperimentSpec, RowRange, RowSet
+from app.schemas.experiment_spec import Digest, ExperimentSpec, LeakageAssessment, RowRange, RowSet
 from app.schemas.timexer_platform import TimeXerForecastSpec
 
 RecommendationModelType = Literal["pls", "xgboost", "tcn", "timexer"]
@@ -89,6 +89,7 @@ class ModelCandidate(Schema):
 
 
 class ModelRecommendationResult(Schema):
+    leakage: LeakageAssessment | None = None
     profile: DataProfileSummary
     source: RecommendationSource
     goal: RecommendationGoal

@@ -39,6 +39,25 @@ def run_optimization_job(study_id: str, payload: dict[str, Any]) -> dict[str, An
     return asyncio.run(_execute(UUID(study_id), payload))
 
 
+def run_model_training_job(execution_id: str) -> None:
+    """Execute one durable Agent training intent in the existing RQ worker."""
+    asyncio.run(_execute_model_training(UUID(execution_id)))
+
+
+async def _execute_model_training(execution_id: UUID) -> None:
+    from app.services.agent_model_execution_service import run_dispatched_model
+
+    settings = get_settings()
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        await run_dispatched_model(
+            factory, execution_id=execution_id, artifact_root=settings.artifact_root
+        )
+    finally:
+        await engine.dispose()
+
+
 async def _execute(study_id: UUID, payload: dict[str, Any]) -> dict[str, Any]:
     from app.services.optimization_service import execute_study
 

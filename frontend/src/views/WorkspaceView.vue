@@ -40,7 +40,7 @@
           <div class="ws-section-header">
             <span class="ws-section-label">当前任务</span>
             <span class="status-badge status-badge--sm" :class="workflowClass(execution.workflow_status)">
-              {{ workflowLabel(execution.workflow_status) }}
+              {{ workflowLabel(execution.workflow_status, execution) }}
             </span>
           </div>
           <div class="ws-sidebar__goal" :title="execution.plan?.goal">
@@ -143,7 +143,7 @@
                 <span class="ws-recent-item__goal">{{ rec.plan?.goal || 'Agent Task' }}</span>
               </div>
               <div class="ws-recent-item__bottom">
-                <span class="ws-recent-item__status-text">{{ workflowLabel(rec.workflow_status) }}</span>
+                <span class="ws-recent-item__status-text">{{ workflowLabel(rec.workflow_status, rec) }}</span>
                 <span class="ws-recent-item__time">{{ formatRelativeTime(rec.created_at) }}</span>
               </div>
             </router-link>
@@ -177,7 +177,7 @@
           </button>
           <span class="ws-top-goal">{{ execution.plan?.goal || 'Agent Task' }}</span>
           <span class="status-badge" :class="workflowClass(execution.workflow_status)">
-            {{ workflowLabel(execution.workflow_status) }}
+            {{ workflowLabel(execution.workflow_status, execution) }}
           </span>
         </div>
         <div class="ws-top-bar__right">
@@ -212,7 +212,7 @@
       </div>
 
       <!-- No execution state: show composer in center -->
-      <div v-else-if="!execution && !loading" class="ws-empty">
+      <div v-if="!execution && !loading" v-show="!isSending" :class="{ 'ws-empty': !isSending }">
         <div class="ws-empty__icon">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <rect width="18" height="10" x="3" y="11" rx="2"/>
@@ -222,7 +222,14 @@
         </div>
         <h3 class="ws-empty__title">新建 Agent 任务</h3>
         <p class="ws-empty__desc">描述你的分析目标，Agent 将自动规划执行数据清洗、时滞补偿、特征筛选、ARX 建模与 Optuna 参数寻优</p>
-        <AgentComposer class="ws-empty__composer" :submitting="isSending" @submit="handleNewTask" />
+        <AgentComposer
+          class="ws-empty__composer"
+          :submitting="isSending"
+          :initial-prompt="modelingPrompt"
+          :modeling-required="modelingRequired"
+          modeling-enabled
+          @submit="handleNewTask"
+        />
       </div>
 
       <!-- Loading state -->
@@ -237,6 +244,12 @@
         :execution="execution"
         :is-sending="isSending"
         :is-confirming="isConfirming"
+        :model-execution="modelExecution"
+        :training-pending="trainingPending"
+        :training-loading="trainingLoading"
+        :training-lookup-failed="trainingLookupFailed"
+        @refresh-model-training="refreshModelTraining()"
+        :chat-recommendation="chatRecommendation?.executionId === execution.execution_id ? chatRecommendation : undefined"
         @confirm="handleConfirm"
         @execute-evaluation="handleExecuteEvaluation"
         @execute-optimization="handleExecuteOptimization"
@@ -247,9 +260,13 @@
       <div v-if="execution && isCompleted" class="ws-followup">
         <div class="ws-followup-inner">
           <AgentComposer
+            :key="execution.execution_id"
             placeholder="继续对话或发起新分析目标…"
             :rows="2"
             :submitting="isSending"
+            :initial-prompt="modelingPrompt"
+            :modeling-required="modelingRequired"
+            modeling-enabled
             @submit="handleNewTask"
           />
         </div>
@@ -276,10 +293,16 @@ import { ElMessage } from 'element-plus';
 import AgentComposer from '../components/composer/AgentComposer.vue';
 import AgentStream from '../components/workspace/AgentStream.vue';
 import ArtifactWorkbench from '../components/artifact/ArtifactWorkbench.vue';
-import { chatWithCopilot, getCopilotExecution, confirmCopilotStep, executeModelEvaluation, executePipelineOptimization } from '../api/copilot';
+import {
+  chatWithCopilot, getCopilotExecution, confirmCopilotStep, executeModelEvaluation,
+  executePipelineOptimization, getConfirmedModelExecution,
+} from '../api/copilot';
 import { useCopilotExecutionStore } from '../stores/copilotExecution';
 import { useDatasetStore } from '../stores/datasetStore';
-import type { CopilotExecutionSnapshot, CopilotConfirmRequest } from '../types/api';
+import type {
+  AgentComposerSubmission, CopilotExecutionSnapshot, CopilotConfirmRequest, ModelRecommendationResult,
+  CopilotModelExecutionData, CopilotModelExecuteRequest,
+} from '../types/api';
 
 const route = useRoute();
 const router = useRouter();
@@ -290,7 +313,16 @@ const execution = ref<CopilotExecutionSnapshot | null>(null);
 const recentExecutions = ref<CopilotExecutionSnapshot[]>([]);
 const loading = ref(false);
 const isSending = ref(false);
+const modelingRequired = ref(false);
+const modelingPrompt = ref('');
+const chatRecommendation = ref<{ executionId: string; stepId: string; result: ModelRecommendationResult }>();
 const isConfirming = ref(false);
+const modelExecution = ref<CopilotModelExecutionData | null>(null);
+const trainingLoading = ref(false);
+const trainingPending = ref(false);
+const trainingLookupFailed = ref(false);
+let trainingReadGeneration = 0;
+let trainingTimer: ReturnType<typeof setTimeout> | undefined;
 const showArtifact = ref(true);
 const sidebarCollapsed = ref(false);
 const activeArtifactStepId = ref<string | null>(null);
@@ -315,6 +347,8 @@ const STEP_LOCALIZED_NAMES: Record<string, string> = {
   apply_lag_compensation: '时滞补偿',
   analyze_collinearity: '共线性分析',
   select_variables: '变量筛选',
+  recommend_models: '模型推荐',
+  confirm_model_selection: '模型选择',
   fit_arx: '系统辨识',
   export_dataset: '数据导出',
 
@@ -343,7 +377,11 @@ function workflowClass(status: string): string {
   return map[status] ?? 'pending';
 }
 
-function workflowLabel(status: string): string {
+function workflowLabel(status: string, snapshot?: CopilotExecutionSnapshot): string {
+  if (snapshot?.step_runs?.some(step => step.tool === 'confirm_model_selection')) {
+    if (status === 'SUCCEEDED') return '模型已锁定';
+    if (status === 'CANCELLED') return '模型选择已拒绝';
+  }
   const map: Record<string, string> = {
     RUNNING: '执行中', WAITING_CONFIRMATION: '待确认',
     WAITING_ASYNC_TASK: '处理中', SUCCEEDED: '已完成',
@@ -364,6 +402,9 @@ function formatRelativeTime(iso?: string): string {
 }
 
 function startNewTask() {
+  modelingRequired.value = false;
+  modelingPrompt.value = '';
+  chatRecommendation.value = undefined;
   execution.value = null;
   executionStore.clearActiveExecutionId();
   router.push('/workspace');
@@ -418,20 +459,34 @@ function stopPolling() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 }
 
-async function handleNewTask(payload: { message: string; datasetId?: string | null; versionId?: string | null }) {
+async function handleNewTask(payload: AgentComposerSubmission) {
   if (isSending.value) return;
   if (!payload.datasetId || !payload.versionId) {
     ElMessage.warning('请先挂载数据集后再发起 Agent 任务。');
     return;
   }
+  const spec = payload.recommendationRequest?.experiment_spec;
+  if (spec && (spec.dataset_id !== payload.datasetId || spec.dataset_version_id !== payload.versionId)) {
+    ElMessage.warning('建模配置与当前数据版本不一致，请重新配置。');
+    return;
+  }
   isSending.value = true;
+  modelingRequired.value = false;
   try {
     const res = await chatWithCopilot({
       message: payload.message,
       dataset_id: payload.datasetId || null,
       active_version_id: payload.versionId || null,
+      ...(payload.recommendationRequest ? { recommendation_request: payload.recommendationRequest } : {}),
+      ...(payload.requestedModelTypeId ? { requested_model_type_id: payload.requestedModelTypeId } : {}),
     });
+    modelingPrompt.value = '';
+    chatRecommendation.value = undefined;
     if (res.execution_id) {
+      const step = res.step_runs?.find(item => item.tool === 'recommend_models');
+      if (step?.result?.recommendation) {
+        chatRecommendation.value = { executionId: res.execution_id, stepId: step.step_id, result: step.result.recommendation };
+      }
       executionStore.setActiveExecutionId(res.execution_id);
       await router.push(`/workspace/${res.execution_id}`);
       if (execution.value?.execution_id !== res.execution_id) {
@@ -443,8 +498,14 @@ async function handleNewTask(payload: { message: string; datasetId?: string | nu
       );
     }
   } catch (err: any) {
-    console.error('Failed to start task', err);
-    ElMessage.error(err.message || '任务发起失败，请检查服务状态');
+    if (err?.code === 'NEEDS_EXPERIMENT_SPEC') {
+      modelingPrompt.value = payload.message;
+      modelingRequired.value = true;
+      ElMessage.warning('请补充建模配置，再发送模型推荐请求。');
+    } else {
+      console.error('Failed to start task', err);
+      ElMessage.error(err?.message || '任务发起失败，请检查服务状态');
+    }
   } finally {
     isSending.value = false;
   }
@@ -452,24 +513,135 @@ async function handleNewTask(payload: { message: string; datasetId?: string | nu
 
 async function handleConfirm(req: CopilotConfirmRequest) {
   if (isConfirming.value) return;
+  const dispatch = req.dispatch_training === true;
+  if (dispatch && (trainingPending.value || modelExecution.value)) return;
   isConfirming.value = true;
   stopPolling();
+  if (dispatch) {
+    trainingPending.value = true;
+    rememberTraining(trainingKey.value, true);
+  }
   try {
     await confirmCopilotStep(req);
+    if (dispatch && execution.value?.execution_id === req.execution_id) void refreshModelTraining();
     if (execution.value?.execution_id === req.execution_id) {
       execution.value = await getCopilotExecution(req.execution_id!);
       cacheRecentExecution(execution.value);
       const step = execution.value.step_runs.find(s => s.step_id === req.step_id);
-      if (step?.status === 'SUCCEEDED') handleArtifactSelect(step.step_id);
+      if (step?.status === 'SUCCEEDED' && step.tool !== 'confirm_model_selection') handleArtifactSelect(step.step_id);
     }
   } catch (err: any) {
     console.error('Confirm failed', err);
-    ElMessage.error(err?.message || '确认操作失败，请检查任务状态和服务日志');
+    if (dispatch && execution.value?.execution_id === req.execution_id) {
+      const code = typeof err?.code === 'string' ? err.code : '';
+      const rejected = code.startsWith('MODEL_SELECTION_') || code === 'REQUEST_VALIDATION_FAILED';
+      await refreshModelTraining(rejected);
+      if (rejected && !trainingPending.value && !modelExecution.value && !modelSelectionApproved.value) {
+        ElMessage.error(err?.message || '确认操作失败，请检查任务状态');
+      }
+    } else {
+      ElMessage.error(err?.message || '确认操作失败，请检查任务状态和服务日志');
+    }
   } finally {
     isConfirming.value = false;
+    if (dispatch && execution.value?.execution_id === req.execution_id && !modelExecution.value) scheduleTrainingRead();
     startPollingIfNeeded();
   }
 }
+
+const modelSelectionStep = computed(() => execution.value?.step_runs.find(step =>
+  step.tool === 'confirm_model_selection' && (
+    step.confirmation_status === 'APPROVED' ||
+    step.step_id === execution.value?.pending_confirmation_step_id
+  ),
+));
+const modelSelectionApproved = computed(() => modelSelectionStep.value?.confirmation_status === 'APPROVED');
+const trainingRequest = computed<CopilotModelExecuteRequest | null>(() => {
+  const snapshot = execution.value;
+  const selection = modelSelectionStep.value;
+  if (!snapshot?.copilot_run_id || !selection) return null;
+  return {
+    selection_execution_id: snapshot.execution_id,
+    copilot_run_id: snapshot.copilot_run_id,
+    confirmed_selection_step_id: selection.step_id,
+  };
+});
+const trainingKey = computed(() => {
+  const req = trainingRequest.value;
+  return req ? 'indusopt.model-execution:' + req.selection_execution_id + ':' + req.confirmed_selection_step_id : '';
+});
+
+function rememberTraining(key: string, pending: boolean) {
+  if (!key) return;
+  try {
+    if (pending) sessionStorage.setItem(key, 'pending');
+    else sessionStorage.removeItem(key);
+  } catch {
+    // Persisted child state is still recoverable through the read-only endpoint.
+  }
+}
+
+function scheduleTrainingRead() {
+  clearTimeout(trainingTimer);
+  const status = modelExecution.value?.execution_status;
+  if (trainingPending.value || status === 'pending' || status === 'running' ||
+      (!status && trainingLookupFailed.value && modelSelectionApproved.value)) {
+    trainingTimer = setTimeout(refreshModelTraining, 2000);
+  }
+}
+
+async function refreshModelTraining(confirmRejected = false) {
+  const req = trainingRequest.value;
+  const key = trainingKey.value;
+  if (!req || trainingLoading.value) return;
+  const generation = ++trainingReadGeneration;
+  trainingLoading.value = true;
+  try {
+    const status = await getConfirmedModelExecution(req).catch(error => {
+      // The lookup requires an approved selection. Reconcile an uncertain confirmation with its parent.
+      if (trainingPending.value && error?.code === 'MODEL_EXECUTION_SELECTION_INVALID') return null;
+      throw error;
+    });
+    if (generation !== trainingReadGeneration) return;
+    if (status) modelExecution.value = status;
+    if (trainingPending.value && !modelSelectionApproved.value) {
+      const latest = await getCopilotExecution(req.selection_execution_id);
+      if (generation !== trainingReadGeneration) return;
+      execution.value = latest;
+      cacheRecentExecution(latest);
+    }
+    if (status || (confirmRejected && !modelSelectionApproved.value)) {
+      trainingPending.value = false;
+      rememberTraining(key, false);
+    }
+    trainingLookupFailed.value = false;
+  } catch {
+    if (generation === trainingReadGeneration) trainingLookupFailed.value = true;
+  } finally {
+    if (generation === trainingReadGeneration) {
+      trainingLoading.value = false;
+      scheduleTrainingRead();
+    }
+  }
+}
+
+watch(trainingKey, key => {
+  trainingReadGeneration += 1;
+  clearTimeout(trainingTimer);
+  modelExecution.value = null;
+  trainingLoading.value = trainingLookupFailed.value = trainingPending.value = false;
+  if (!key) return;
+  try {
+    trainingPending.value = sessionStorage.getItem(key) === 'pending';
+  } catch {
+    // Persisted child state is still recoverable through the read-only endpoint.
+  }
+  if (trainingPending.value || modelSelectionApproved.value) void refreshModelTraining();
+});
+
+watch(modelSelectionApproved, approved => {
+  if (approved && !isConfirming.value && !modelExecution.value) void refreshModelTraining();
+});
 
 async function handleExecuteEvaluation() {
   if (!execution.value) return;
@@ -494,6 +666,8 @@ async function handleExecuteOptimization() {
 }
 
 function handleArtifactSelect(stepId: string) {
+  const tool = execution.value?.step_runs.find(step => step.step_id === stepId)?.tool;
+  if (tool === 'recommend_models' || tool === 'confirm_model_selection') return;
   activeArtifactStepId.value = stepId;
   showArtifact.value = true;
 }
@@ -520,14 +694,29 @@ function cacheRecentExecution(exec: CopilotExecutionSnapshot) {
 }
 
 // Route handling
-onUnmounted(stopPolling);
+onUnmounted(() => {
+  stopPolling();
+  clearTimeout(trainingTimer);
+  trainingReadGeneration += 1;
+});
 onMounted(async () => {
   refreshRecentExecutions();
   const execId = route.params.executionId as string | undefined;
   if (execId) {
     await loadExecution(execId);
   } else {
-    // Check if there's a prompt from HomeView
+    const handoff = route.query.handoff;
+    if (typeof handoff === 'string') {
+      const task = executionStore.takeHomeTask(handoff);
+      if (task) {
+        await handleNewTask(task);
+      } else {
+        ElMessage.warning('首页任务交接已失效，请重新发送。');
+      }
+      return;
+    }
+
+    // Quick actions and existing prompt links retain their original route contract.
     const prompt = route.query.prompt as string | undefined;
     if (prompt) {
       await handleNewTask({
@@ -1009,6 +1198,28 @@ watch(() => route.params.executionId, async (newId) => {
   margin: 0 auto;
 }
 
+.ws-empty:has(.is-modeling) {
+  min-height: 0;
+  justify-content: flex-start;
+  gap: 12px;
+  padding-block: clamp(12px, 3dvh, 32px);
+}
+
+.ws-empty:has(.is-modeling) > :not(.ws-empty__composer) {
+  flex-shrink: 0;
+}
+
+@media (max-height: 720px) {
+  .ws-empty:has(.is-modeling) {
+    gap: 8px;
+    padding-block: 12px;
+  }
+
+  .ws-empty:has(.is-modeling) > :is(.ws-empty__icon, .ws-empty__desc) {
+    display: none;
+  }
+}
+
 .ws-empty__icon {
   color: #8E8E93;
 }
@@ -1075,6 +1286,17 @@ watch(() => route.params.executionId, async (newId) => {
   border-top: 1px solid #E5E5E8;
   flex-shrink: 0;
   background: #FFFFFF;
+}
+
+.ws-followup:has(.is-modeling),
+.ws-followup-inner:has(.is-modeling) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ws-followup:has(.is-modeling) {
+  max-height: 76dvh;
 }
 
 .ws-followup-inner {

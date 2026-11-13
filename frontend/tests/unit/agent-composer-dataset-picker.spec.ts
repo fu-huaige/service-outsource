@@ -35,10 +35,14 @@ const versionResponse = (datasetId: string) => ({
     row_count: 1000,
     column_count: 4,
     artifact_path: `data/${datasetId}-v${index}.csv`,
+    sha256: String(index).repeat(64),
+    input_columns: ["u1", "u2"],
+    output_column: "y",
   })),
 });
 
-vi.mock("element-plus", () => ({
+vi.mock("element-plus", async (importOriginal) => ({
+  ...await importOriginal<typeof import("element-plus")>(),
   ElMessage: messageApi,
 }));
 
@@ -122,6 +126,47 @@ describe("AgentComposer dataset picker viewport positioning", () => {
       message: "分析数据", datasetId: "dataset-7", versionId: "dataset-7-v1",
     }]);
     expect(useDatasetStore().activeDataset?.version_id).toBe("version-7");
+    wrapper.unmount();
+  });
+
+  it("invalidates the prior draft when the selected version changes", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useDatasetStore().setActiveDataset(makeDataset(7));
+    const wrapper = mount(AgentComposer, {
+      props: { modelingEnabled: true }, global: { plugins: [pinia] },
+    });
+    await flushPromises();
+    await wrapper.get(".composer-textarea").setValue("推荐模型");
+    await wrapper.setProps({ modelingRequired: true });
+    expect(wrapper.get<HTMLTextAreaElement>(".composer-textarea").element.value).toBe("推荐模型");
+    const toggle = wrapper.get('[data-test="toggle-modeling"]');
+    const panel = wrapper.get('[role="region"][aria-label="建模配置"]');
+    expect(toggle.attributes("aria-controls")).toBe(panel.attributes("id"));
+    const fill = async () => {
+      await wrapper.findAll('[data-test="modeling-input"]')[0]!.setValue(true);
+      for (const [name, value] of Object.entries({
+        continuous: "0-1000", train: "0-600", validation: "600-800", test: "800-1000",
+      })) await wrapper.get('[data-test="modeling-' + name + '"]').setValue(value);
+    };
+    await fill();
+    expect(wrapper.get(".composer-submit").attributes("disabled")).toBeUndefined();
+    wrapper.getComponent({ name: "VersionLineagePicker" }).vm.$emit("select", "dataset-7-v1");
+    await wrapper.vm.$nextTick();
+    expect(wrapper.get(".composer-submit").attributes("disabled")).toBeDefined();
+    expect(wrapper.get<HTMLInputElement>('[data-test="modeling-train"]').element.value).toBe("");
+    await fill();
+    await wrapper.get(".composer-submit").trigger("click");
+    expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({
+      message: "推荐模型", versionId: "dataset-7-v1",
+      recommendationRequest: {
+        experiment_spec: { dataset_version_id: "dataset-7-v1", dataset_version_sha256: "1".repeat(64) },
+      },
+    });
+    await toggle.trigger("click");
+    expect(wrapper.find('[role="region"][aria-label="建模配置"]').exists()).toBe(false);
+    expect(toggle.attributes("aria-expanded")).toBe("false");
+    expect(wrapper.get<HTMLTextAreaElement>(".composer-textarea").element.value).toBe("推荐模型");
     wrapper.unmount();
   });
 

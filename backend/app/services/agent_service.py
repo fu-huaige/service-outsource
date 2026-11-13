@@ -56,11 +56,19 @@ from app.services.agent_execution_service import (
     claim_approved_optimization_step,
     create_execution,
     finish_model_selection_step,
+    finish_recommendation_gate,
     get_execution,
     mark_step_failed,
     mark_step_preparation_failed,
     mark_step_succeeded,
+    record_model_spec_requirement,
     start_step,
+)
+from app.services.agent_experiment_spec_service import (
+    ModelSpecInputRequired,
+    build_agent_recommendation_request,
+    has_no_known_model_gaps,
+    resolve_model_spec_target,
 )
 from app.services.agent_feature_selection_service import (
     FeatureSelectionError,
@@ -163,7 +171,8 @@ def _validate_plan_capabilities(steps: list[PlannedStep]) -> None:
                 f"工具 {step.tool} 没有合法的 Agent 执行能力。",
                 status_code=409,
             )
-        if step.requires_confirmation != capability.requires_confirmation:
+        spec_gate = step.tool == "recommend_models" and step.requires_confirmation
+        if not spec_gate and step.requires_confirmation != capability.requires_confirmation:
             raise AgentDomainError(
                 "AGENT_TOOL_CONFIRMATION_POLICY_MISMATCH",
                 f"工具 {step.tool} 的计划确认策略与执行能力不一致。",
@@ -308,6 +317,10 @@ async def _run_model_recommendation(
             },
         )
     spec = request.experiment_spec
+    if spec.row_order is not None:
+        raise AgentDomainError(
+            "MODEL_ROW_ORDER_CONFIRMATION_REQUIRED", "请在原建模任务中确认行序。", status_code=422
+        )
     if payload.dataset_id not in (None, spec.dataset_id) or payload.active_version_id not in (
         None,
         spec.dataset_version_id,
@@ -430,6 +443,159 @@ async def _run_model_recommendation(
     )
 
 
+async def _recommend_for_execution(
+    session: AsyncSession,
+    *,
+    execution: AgentExecutionSession,
+    step_id: str,
+    request: ModelRecommendationRequest,
+    artifact_root: Path,
+) -> AgentExecutionSession:
+    spec = request.experiment_spec
+    if (spec.dataset_id, spec.dataset_version_id) != (
+        execution.dataset_id, execution.current_version_id
+    ):
+        raise AgentDomainError(
+            "MODEL_RECOMMENDATION_SOURCE_MISMATCH",
+            "请为当前处理后的数据版本重新配置实验契约。",
+            status_code=409,
+        )
+    step = next(item for item in execution.step_runs if item.step_id == step_id)
+    request_payload = request.model_dump(mode="json")
+    if step.status == "SUCCEEDED":
+        if step.input_payload.get("recommendation_request") == request_payload:
+            return execution
+        raise AgentDomainError(
+            "MODEL_SPEC_ALREADY_BOUND", "当前任务已绑定另一份实验契约。", status_code=409
+        )
+    if (
+        execution.pending_confirmation_step_id != step_id
+        or step.status != "WAITING_CONFIRMATION"
+        or not step.requires_confirmation
+    ):
+        raise AgentDomainError(
+            "MODEL_SPEC_STEP_NOT_WAITING", "当前推荐步骤未等待实验契约。", status_code=409
+        )
+    try:
+        result = await recommend_models(session, request=request, artifact_root=artifact_root)
+    except (ValueError, VersionDataError, DatasetCsvError, DatasetVersionArtifactError) as error:
+        raise AgentDomainError(
+            "MODEL_RECOMMENDATION_SOURCE_INVALID",
+            "无法核验所选版本、实验契约或训练数据，请检查配置。",
+            status_code=422,
+        ) from error
+
+    evidence = [
+        {
+            "step_id": item.step_id,
+            "tool": item.tool_name,
+            "source_version_id": str(item.source_version_id) if item.source_version_id else None,
+            "result_version_id": str(item.result_version_id) if item.result_version_id else None,
+            "processing_run_ids": list(item.processing_run_ids),
+        }
+        for item in execution.step_runs
+        if item.sequence < step.sequence and item.status == "SUCCEEDED"
+    ]
+    return await finish_recommendation_gate(
+        session,
+        execution_id=execution.id,
+        step_id=step_id,
+        version_id=spec.dataset_version_id,
+        request_payload=request_payload,
+        result_payload={
+            "recommendation_step_id": step_id,
+            "recommendation": result.model_dump(mode="json"),
+            "requested_model_type_id": step.input_payload.get("requested_model_type_id"),
+            "analysis_steps": evidence,
+        },
+    )
+
+
+async def provide_model_spec(
+    session: AsyncSession,
+    *,
+    payload: CopilotConfirmRequest,
+    execution: AgentExecutionSession,
+    artifact_root: Path,
+) -> AgentExecutionSession:
+    if (
+        not payload.approved
+        or (payload.recommendation_request is None) == (payload.row_order_confirmation is None)
+        or payload.model_selection is not None
+        or payload.step_id is None
+        or payload.confirmation_id != payload.step_id
+        or payload.copilot_run_id != execution.copilot_run_id
+    ):
+        raise AgentDomainError(
+            "MODEL_SPEC_REQUEST_INVALID", "请在当前推荐步骤提交实验契约。", status_code=422
+        )
+    if payload.row_order_confirmation is not None:
+        step = next(item for item in execution.step_runs if item.step_id == payload.step_id)
+        saved_request = step.input_payload.get("recommendation_request", {})
+        if (
+            step.status == "SUCCEEDED"
+            and execution.current_version_id == payload.row_order_confirmation.dataset_version_id
+            and saved_request.get("experiment_spec", {}).get("row_order")
+            == payload.row_order_confirmation.model_dump(mode="json")
+        ):
+            return execution
+        if step.result_payload.get("spec_requirement", {}).get("field") != "row_order":
+            raise AgentDomainError(
+                "MODEL_SPEC_STEP_NOT_WAITING", "当前步骤未等待行序确认。", status_code=409
+            )
+        draft_data = step.input_payload.get("draft_recommendation_request")
+        try:
+            request = await build_agent_recommendation_request(
+                session, execution=execution, sequence=step.sequence, artifact_root=artifact_root,
+                draft=ModelRecommendationRequest.model_validate(draft_data) if draft_data else None,
+                row_order_confirmation=payload.row_order_confirmation,
+            )
+        except ModelSpecInputRequired as error:
+            raise AgentDomainError(
+                "MODEL_ROW_ORDER_INVALID", str(error), status_code=409,
+                details={"required_fields": [error.field]},
+            ) from error
+        except (ValueError, VersionDataError, DatasetCsvError, DatasetVersionArtifactError) as error:
+            raise AgentDomainError(
+                "MODEL_ROW_ORDER_INVALID", "无法核验行序确认所对应的数据版本。", status_code=422
+            ) from error
+        return await _recommend_for_execution(
+            session, execution=execution, step_id=payload.step_id, request=request,
+            artifact_root=artifact_root,
+        )
+    assert payload.recommendation_request is not None
+    spec = payload.recommendation_request.experiment_spec
+    if spec.row_order is not None:
+        raise AgentDomainError(
+            "MODEL_ROW_ORDER_CONFIRMATION_REQUIRED", "请使用当前任务的行序确认入口。", status_code=422
+        )
+    if (spec.dataset_id, spec.dataset_version_id) == (execution.dataset_id, execution.current_version_id):
+        try:
+            series = await load_version_series(
+                session, dataset_id=execution.dataset_id, version_id=execution.current_version_id,
+                artifact_root=artifact_root,
+            )
+            resolve_model_spec_target(series, spec.target_column)
+            if not has_no_known_model_gaps(series, spec.continuous_runs):
+                raise ModelSpecInputRequired("split", "连续区段跨越已核验的数据缺口，请拆分区间。")
+        except ModelSpecInputRequired as error:
+            raise AgentDomainError(
+                "NEEDS_EXPERIMENT_SPEC", str(error), status_code=422,
+                details={"required_fields": [error.field]},
+            ) from error
+        except VersionDataError as error:
+            raise AgentDomainError(
+                "MODEL_RECOMMENDATION_SOURCE_INVALID", "无法核验当前数据版本。", status_code=422
+            ) from error
+    return await _recommend_for_execution(
+        session,
+        execution=execution,
+        step_id=payload.step_id,
+        request=payload.recommendation_request,
+        artifact_root=artifact_root,
+    )
+
+
 async def confirm_model_selection(
     session: AsyncSession,
     *,
@@ -515,13 +681,30 @@ async def confirm_model_selection(
         raise AgentDomainError(
             "MODEL_SELECTION_CONFLICT", "该步骤已锁定另一项选择。", status_code=409
         )
+    if (
+        step.confirmation_status == "APPROVED"
+        and step.input_payload.get("dispatch_training", False) != payload.dispatch_training
+    ):
+        raise AgentDomainError(
+            "MODEL_SELECTION_CONFLICT", "训练授权与已保存的确认不一致。", status_code=409
+        )
     model_id = selected.selected_model_type_id
     candidate = next((item for item in original.candidates if item.model_type_id == model_id), None)
-    if candidate is None:
+    if candidate is None or (
+        (recommendation_step.requires_confirmation or payload.dispatch_training)
+        and candidate.eligibility_status != "eligible"
+    ):
         raise AgentDomainError(
             "MODEL_SELECTION_UNAVAILABLE", "该模型不在本次已开放的候选中。", status_code=422
         )
     forecast = selected.forecast_spec
+    if payload.dispatch_training and (
+        selected.selected_parameters != candidate.actual_parameters
+        or forecast != candidate.forecast_spec
+    ):
+        raise AgentDomainError(
+            "MODEL_SELECTION_PARAMETERS_CHANGED", "派发训练须使用原推荐中的候选参数。", status_code=422
+        )
     if model_id == "timexer":
         horizon = request.forecast_spec.prediction_length if request.forecast_spec else 1
         if forecast is None or forecast.prediction_length != horizon:
@@ -624,6 +807,7 @@ async def confirm_model_selection(
         version_id=source.dataset_version_id,
         submission=submission,
         selection=final,
+        dispatch_training=payload.dispatch_training,
     )
 
 
@@ -637,7 +821,18 @@ async def run_copilot(
     """Plan, verify, execute once, and mirror real outcomes into durable workflow state."""
 
     intent = parse_intent(payload.message)
+    integrated = intent.wants("integrated_modeling")
     if (
+        integrated
+        and payload.requested_model_type_id is not None
+        and intent.requested_model_type_id not in (None, payload.requested_model_type_id)
+    ):
+        raise AgentDomainError(
+            "MODEL_SELECTION_INTENT_MISMATCH",
+            "结构化模型选择与消息中的模型不一致。",
+            status_code=422,
+        )
+    if not integrated and not intent.wants("legacy_model") and (
         intent.wants("model_recommendation")
         or payload.recommendation_request is not None
         or payload.requested_model_type_id is not None
@@ -655,23 +850,33 @@ async def run_copilot(
                 version_id=payload.active_version_id,
                 artifact_root=artifact_root,
                 dataset_id=payload.dataset_id,
+                allow_missing_time=integrated,
             )
-            input_columns, _ = series.resolve_columns(input_columns=None, output_column=None)
-            try:
-                await resolve_arx_lag_provenance(
-                    session,
-                    version_id=series.version_id,
-                    input_columns=input_columns,
-                )
-            except ArxStructureError as error:
-                if error.code not in {
-                    "ARX_LAG_COMPENSATED_VERSION_REQUIRED",
-                    "ARX_LAG_PROVENANCE_INCOMPLETE",
-                }:
-                    raise
-                lag_ready = False
+            if integrated:
+                try:
+                    target = resolve_model_spec_target(series, None)
+                    if not any(name != target for name in series.values):
+                        raise ModelSpecInputRequired("input_columns", "请补充至少一个有效的输入变量。")
+                except ModelSpecInputRequired as error:
+                    raise AgentDomainError(
+                        "NEEDS_EXPERIMENT_SPEC", str(error), status_code=422,
+                        details={"required_fields": [error.field]},
+                    ) from error
             else:
-                lag_ready = True
+                input_columns, _ = series.resolve_columns(input_columns=None, output_column=None)
+                try:
+                    await resolve_arx_lag_provenance(
+                        session, version_id=series.version_id, input_columns=input_columns
+                    )
+                except ArxStructureError as error:
+                    if error.code not in {
+                        "ARX_LAG_COMPENSATED_VERSION_REQUIRED",
+                        "ARX_LAG_PROVENANCE_INCOMPLETE",
+                    }:
+                        raise
+                    lag_ready = False
+                else:
+                    lag_ready = True
         except VersionDataError as error:
             raise AgentDomainError(
                 error.code, error.message, status_code=error.status_code, details=error.details
@@ -747,8 +952,20 @@ async def run_copilot(
             plan=execution_plan,
             compliance_proof=proof,
             copilot_run_id=run_id,
+            recommendation_context=(
+                {
+                    "draft_recommendation_request": (
+                        payload.recommendation_request.model_dump(mode="json")
+                        if payload.recommendation_request else None
+                    ),
+                    "requested_model_type_id": (
+                        payload.requested_model_type_id or intent.requested_model_type_id
+                    ),
+                }
+                if integrated else None
+            ),
         )
-        if _uses_formal_tool_adapter(steps):
+        if integrated or _uses_formal_tool_adapter(steps):
             persistent_execution, executions = await _execute_with_formal_tools(
                 session,
                 execution=persistent_execution,
@@ -963,13 +1180,14 @@ async def continue_agent_execution(
     execution = await get_execution(session, execution_id=execution_id)
     if execution.workflow_status in {"SUCCEEDED", "FAILED", "CANCELLED", "WAITING_CONFIRMATION"}:
         return execution
+    plan = ExecutionPlan.model_validate(execution.plan_json)
     series = await load_version_series(
         session,
         version_id=execution.current_version_id,
         dataset_id=execution.dataset_id,
         artifact_root=artifact_root,
+        allow_missing_time=any(step.tool == 'recommend_models' and step.requires_confirmation for step in plan.steps),
     )
-    plan = ExecutionPlan.model_validate(execution.plan_json)
     steps = [
         PlannedStep(
             step_id=step.step_id,
@@ -991,6 +1209,74 @@ async def continue_agent_execution(
     return execution
 
 
+async def _run_recommendation_gate(
+    session: AsyncSession,
+    *,
+    execution: AgentExecutionSession,
+    step: PlannedStep,
+    artifact_root: Path,
+) -> tuple[AgentExecutionSession, list[StepExecution]]:
+    execution_id = execution.id
+    current = await start_step(session, execution_id=execution_id, step_id=step.step_id)
+    persisted = next(item for item in current.step_runs if item.step_id == step.step_id)
+    sequence = persisted.sequence
+    draft_data = persisted.input_payload.get("draft_recommendation_request")
+    draft = ModelRecommendationRequest.model_validate(draft_data) if draft_data else None
+    issue: dict[str, str] = {}
+    try:
+        request = await build_agent_recommendation_request(
+            session, execution=current, sequence=sequence, artifact_root=artifact_root, draft=draft
+        )
+        try:
+            current = await _recommend_for_execution(
+                session, execution=current, step_id=step.step_id, request=request,
+                artifact_root=artifact_root,
+            )
+        except AgentDomainError as error:
+            if (
+                error.code != "MODEL_RECOMMENDATION_SOURCE_INVALID"
+                or draft is None
+                or request.experiment_spec.split != draft.experiment_spec.split
+                or request.experiment_spec.dataset_version_id != draft.experiment_spec.dataset_version_id
+            ):
+                raise
+            request = await build_agent_recommendation_request(
+                session, execution=current, sequence=sequence, artifact_root=artifact_root,
+                draft=draft, keep_explicit_split=False,
+            )
+            current = await _recommend_for_execution(
+                session, execution=current, step_id=step.step_id, request=request,
+                artifact_root=artifact_root,
+            )
+    except ModelSpecInputRequired as error:
+        issue = {"field": error.field, "message": str(error)}
+    except (ValueError, DatasetCsvError, DatasetVersionArtifactError, VersionDataError):
+        issue = {"field": "split", "message": "无法核验当前数据版本的自动实验配置，请检查数据版本及分区。"}
+    except AgentDomainError as error:
+        if error.code != "MODEL_RECOMMENDATION_SOURCE_INVALID":
+            raise
+        issue = {"field": "experiment_spec", "message": error.message}
+
+    if issue:
+        current = await record_model_spec_requirement(
+            session, execution_id=execution_id, step_id=step.step_id, requirement=issue
+        )
+        return current, [
+            StepExecution(
+                step.step_id, step.tool, "waiting_confirmation", {},
+                issue["message"], {"spec_requirement": issue},
+            )
+        ]
+
+    saved = next(item for item in current.step_runs if item.step_id == step.step_id)
+    selection = next(
+        item for item in current.step_runs if item.step_id == current.pending_confirmation_step_id
+    )
+    return current, [
+        StepExecution(step.step_id, step.tool, "completed", {}, "模型推荐已生成。", dict(saved.result_payload)),
+        StepExecution(selection.step_id, selection.tool_name, "waiting_confirmation", {}, "等待人工选择模型。", {}),
+    ]
+
 async def _execute_with_formal_tools(
     session: AsyncSession,
     *,
@@ -1004,6 +1290,7 @@ async def _execute_with_formal_tools(
 
     current = await get_execution(session, execution_id=execution.id)
     executions: list[StepExecution] = []
+    integrated = any(step.tool == 'recommend_models' and step.requires_confirmation for step in steps)
 
     for step in steps:
         persisted_step = next(item for item in current.step_runs if item.step_id == step.step_id)
@@ -1012,12 +1299,20 @@ async def _execute_with_formal_tools(
         if persisted_step.status != "PENDING":
             break
 
+        if step.tool == "recommend_models" and step.requires_confirmation:
+            current, recommendation_steps = await _run_recommendation_gate(
+                session, execution=current, step=step, artifact_root=artifact_root
+            )
+            executions.extend(recommendation_steps)
+            break
+
         try:
             step_series = await load_version_series(
                 session,
                 version_id=current.current_version_id,
                 dataset_id=current.dataset_id,
                 artifact_root=artifact_root,
+                allow_missing_time=integrated and step.tool in {"profile_dataset", "detect_anomalies"},
             )
             input_columns, output_column = step_series.resolve_columns(
                 input_columns=None,
@@ -1160,6 +1455,7 @@ async def _execute_with_formal_tools(
                         "summary": summary,
                         "result": dict(result),
                     },
+                    source_version_id=step_series.version_id,
                 )
             executions.append(
                 StepExecution(
