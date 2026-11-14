@@ -107,6 +107,26 @@ async def test_unified_evaluation_uses_the_saved_model(api, data, monkeypatch, m
         assert details["parameters"]["actual_rows"] == result["actual_rows"]
         assert details["parameters"]["dataset_version_id"] == result["dataset_version_id"]
         assert str(data["root"]) not in response.text
+        url = f"{BASE}/evaluations/{result['evaluation_run_id']}/predictions"
+        artifact_response = api.get(url)
+        assert artifact_response.status_code == 200
+        assert api.get(url).content == artifact_response.content
+        artifact = artifact_response.json()
+        for key in ("evaluation_run_id", "model_id", "training_run_id", "partition",
+                    "dataset_version_id", "experiment_spec_hash"):
+            assert artifact[key] == result[key]
+        assert artifact["target_variable"] == data["spec"].target_column
+        horizons = artifact["horizons"]
+        assert len(horizons) == (3 if model_type == "timexer" else 1)
+        for step, horizon in enumerate(horizons, 1):
+            assert horizon["horizon_step"] == step
+            indices = horizon["source_row_index"]
+            assert indices == [row + step - 1 for row in artifact["forecast_anchor_rows"]]
+            assert len(indices) == len(horizon["timestamps"]) == result["sample_count"]
+            assert horizon["y_true"] == pytest.approx([data["y"][row] for row in indices])
+            assert horizon["residual"] == [
+                y - prediction for y, prediction in zip(horizon["y_true"], horizon["y_pred"], strict=True)
+            ]
         if model_type == "timexer":
             assert result["forecast_spec"]["prediction_length"] == 3
             assert [step["horizon_step"] for step in result["horizon_metrics"]] == [1, 2, 3]
@@ -125,6 +145,13 @@ async def test_unified_evaluation_uses_the_saved_model(api, data, monkeypatch, m
     assert persisted[training.id].status == training.status
     assert persisted[training.id].finished_at == training.finished_at
     assert snapshot_files(data["root"]) == artifact_bytes
+    if model_type == "pls":
+        run_id = first["evaluation_run_id"]
+        path = data["root"] / "evaluations" / f"{run_id}.json"
+        path.write_bytes(path.read_bytes() + b" ")
+        response = api.get(f"{BASE}/evaluations/{run_id}/predictions")
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "EVALUATION_PREDICTIONS_INVALID"
 
 
 async def test_history_filters_stable_pagination_and_run_type_isolation(api, data, monkeypatch):

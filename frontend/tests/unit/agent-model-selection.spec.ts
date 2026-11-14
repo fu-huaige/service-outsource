@@ -223,19 +223,19 @@ const trainingRefs = {
 
 function trainingStatus(overrides: Partial<CopilotModelExecutionData> = {}): CopilotModelExecutionData {
   return {
-    execution_id: "child", execution_status: "pending", training_status: "pending",
+    execution_id: "child", selection_execution_id: "selection-run", execution_status: "pending", training_status: "pending",
     dispatch_status: "pending", manifest_status: "pending", model_id: null, training_run_id: null,
     evaluation_run_id: null, evaluation_status: "pending", comparison_status: "pending",
     training_error: null, evaluation_error: null, comparison_reason: null, ...overrides,
   };
 }
 
-function workspace() {
+function workspace({ stubArtifacts = true } = {}) {
   return mount(WorkspaceView, {
     attachTo: document.body,
     global: {
       plugins: [createPinia()],
-      stubs: { AgentComposer: true, ArtifactWorkbench: true, RouterLink: true },
+      stubs: { AgentComposer: true, ArtifactWorkbench: stubArtifacts, RouterLink: true },
     },
   });
 }
@@ -551,6 +551,31 @@ describe("Agent model approval through WorkspaceView", () => {
     expect(api.confirmCopilotStep).toHaveBeenCalledTimes(1);
     expect(api.executeConfirmedModel).not.toHaveBeenCalled();
     restored.unmount();
+  });
+
+  it("restores the right-hand evaluation artifact from a completed execution after mounting again", async () => {
+    api.getCopilotExecution.mockResolvedValue(snapshot("locked"));
+    api.getConfirmedModelExecution.mockResolvedValue(trainingStatus({
+      execution_status: "succeeded", training_status: "succeeded", dispatch_status: "started",
+      manifest_status: "published", model_id: "saved-pls", training_run_id: "training-run",
+      evaluation_run_id: "validation-run", evaluation_status: "succeeded",
+      evaluation: {
+        evaluation_run_id: "validation-run", model_id: "saved-pls", model_type_id: "pls",
+        training_run_id: "training-run", dataset_version_id: "version",
+        experiment_spec_hash: source.experiment_spec_hash, partition: "validation",
+        evaluation_status: "succeeded", sample_count: 2, actual_rows: { ranges: [{ start: 60, stop: 62 }] },
+        metrics: { r2: 0.82, rmse: 0.2, mae: 0.1, nrmse: 0.05 },
+      },
+    }));
+    for (let mountCount = 0; mountCount < 2; mountCount++) {
+      const wrapper = workspace({ stubArtifacts: false });
+      await flushPromises();
+      expect(wrapper.get(".aw-tab").text()).toBe("模型评价");
+      expect(wrapper.get('[data-test="fixed-model-evaluation"]').text()).toContain("0.82");
+      wrapper.unmount();
+    }
+    expect(api.getConfirmedModelExecution).toHaveBeenCalledTimes(2);
+    expect(api.executeConfirmedModel).not.toHaveBeenCalled();
   });
 
   it("keeps all four steps after completion and displays the actual comparison result", async () => {

@@ -4,7 +4,7 @@ from uuid import UUID
 
 from algorithms.agent.llm import LlmUnavailableError
 from fastapi import APIRouter, Body, Depends, File, Form, Path, Query, Request, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -225,6 +225,7 @@ from app.services.model_evaluation_service import (
     evaluate_saved_model,
     get_model_evaluation,
     list_model_evaluations,
+    read_evaluation_predictions,
 )
 from app.services.model_registry import get_model
 from app.services.modeling_service import ModelingDomainError, fit_arx_on_version
@@ -2266,6 +2267,22 @@ async def model_evaluation_detail_api(
     if result is None:
         raise AppError("MODEL_EVALUATION_NOT_FOUND", "指定评价记录不存在。", status_code=404)
     return success(request, result)
+
+
+@router.get("/modeling/evaluations/{evaluation_run_id}/predictions", tags=["Modeling"])
+async def model_evaluation_predictions_api(
+    evaluation_run_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Response:
+    try:
+        content = await read_evaluation_predictions(session, evaluation_run_id, get_settings().artifact_root)
+    except (OSError, ValueError) as error:
+        raise AppError(
+            "EVALUATION_PREDICTIONS_INVALID", "评价预测文件缺失或无法通过校验。", status_code=409
+        ) from error
+    if content is None:
+        raise AppError("EVALUATION_PREDICTIONS_NOT_FOUND", "该评价没有预测文件。", status_code=404)
+    return Response(content=content, media_type="application/json")
 
 
 @router.post(

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import tempfile
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from platform import python_version
 from statistics import mean
@@ -44,14 +47,14 @@ from app.schemas.pls import PLSBoundArtifactMetadata
 from app.schemas.timexer import TimeXerParameters
 from app.schemas.timexer_platform import TimeXerForecastSpec
 from app.services.dataset_version_io import artifact_matches_sha256
-from app.services.experiment_spec_service import iter_rows, spec_hash
+from app.services.experiment_spec_service import contained_path, iter_rows, spec_hash
 from app.services.model_artifact_service import load_model_instance
 from app.services.model_data_adapter import (
     BoundSource,
     ResolvedRows,
     build_table_samples,
 )
-from app.services.modeling_service import _scores
+from app.services.modeling_service import _acf, _scores
 from app.services.pls_modeling_service import SavedPLSModel
 from app.services.sequence_data_adapter import (
     TimeXerSamples,
@@ -524,6 +527,108 @@ async def _recover(
         return "unconfirmed"
 
 
+def _prediction_path(root: Path, run_id: UUID) -> Path:
+    directory = root.resolve() / "evaluations"
+    if directory.is_symlink() or (directory / f"{run_id}.json").is_symlink():
+        raise ValueError("Unsafe evaluation Artifact path")
+    return contained_path(root, f"evaluations/{run_id}.json")
+
+
+def _save_predictions(
+    root: Path,
+    result: ModelEvaluationResult,
+    spec: ExperimentSpec,
+    timestamps: list[datetime],
+    actual: FloatArray,
+    predicted: FloatArray,
+) -> str:
+    anchors = tuple(iter_rows(result.actual_rows, root))
+    true_columns = actual.astype(np.float64).reshape(len(anchors), -1).T
+    pred_columns = predicted.astype(np.float64).reshape(len(anchors), -1).T
+    horizons = []
+    for offset, (truth, prediction) in enumerate(zip(true_columns, pred_columns, strict=True)):
+        rows = [row + offset for row in anchors]
+        times = [timestamps[row] for row in rows] if timestamps else []
+        residual = truth - prediction
+        acf = None
+        # A single contiguous acquisition with verified regular spacing is required.
+        # Descriptive ACF only: sampling evidence does not establish white-noise bounds.
+        period = spec.time_axis.sample_period_seconds
+        if (
+            len(times) >= 3 and period and period > 0
+            and spec.time_axis.sampling_status == "uniform"
+            and rows[-1] - rows[0] + 1 == len(rows)
+            and any(run.start <= rows[0] <= rows[-1] < run.stop for run in spec.continuous_runs)
+            and np.allclose(
+                [(b - a).total_seconds() for a, b in zip(times[:-1], times[1:], strict=True)],
+                period, rtol=1e-7, atol=1e-9,
+            )
+            and np.ptp(residual) > 0
+        ):
+            # Scale before calculating the descriptive coefficients to avoid overflow.
+            acf = _acf(residual / np.max(np.abs(residual))).acf_values
+        horizons.append({
+            "horizon_step": offset + 1,
+            "source_row_index": rows,
+            "timestamps": [time.isoformat() for time in times] if times else None,
+            "y_true": truth.tolist(),
+            "y_pred": prediction.tolist(),
+            "residual": residual.tolist(),
+            "acf": acf,
+        })
+    identity = result.model_dump(mode="json", include={
+        "evaluation_run_id", "model_id", "training_run_id", "model_type_id", "partition",
+        "dataset_id", "dataset_version_id", "dataset_sha256", "experiment_spec_hash",
+        "forecast_spec", "sequence_evidence", "window_length",
+    })
+    raw = json.dumps({
+        **identity, "format_version": 1, "target_variable": spec.target_column,
+        "forecast_anchor_rows": anchors, "horizons": horizons,
+    }, allow_nan=False, separators=(",", ":"), sort_keys=True).encode()
+    path = _prediction_path(root, result.evaluation_run_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".tmp", delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            os.link(temporary, path)
+        except FileExistsError:
+            if _prediction_path(root, result.evaluation_run_id).read_bytes() != raw:
+                raise ValueError("Conflicting prediction Artifact for evaluation Run") from None
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    return sha256(raw).hexdigest()
+
+
+async def read_evaluation_predictions(
+    session: AsyncSession, run_id: UUID, artifact_root: Path,
+) -> bytes | None:
+    detail = await get_model_evaluation(session, run_id)
+    result = detail.result if detail is not None and detail.status == "succeeded" else None
+    if not isinstance(result, ModelEvaluationResult) or result.prediction_artifact_sha256 is None:
+        return None
+    if (
+        result.evaluation_run_id != run_id or result.model_id != detail.model_id
+        or result.partition != detail.partition or result.training_run_id != detail.training_run_id
+        or result.dataset_version_id != detail.parameters.dataset_version_id
+        or result.experiment_spec_hash != detail.parameters.experiment_spec_hash
+    ):
+        raise ValueError("Prediction Artifact evaluation identity mismatch")
+
+    def verified_bytes() -> bytes:
+        raw = _prediction_path(artifact_root, run_id).read_bytes()
+        if sha256(raw).hexdigest() != result.prediction_artifact_sha256:
+            raise ValueError("Prediction Artifact SHA256 mismatch")
+        return raw
+
+    return await asyncio.to_thread(verified_bytes)
+
+
 async def evaluate_saved_model(
     session_factory: SessionFactory,
     *,
@@ -685,6 +790,11 @@ async def evaluate_saved_model(
             metrics=metrics,
             **sequence_details,
         )
+        stage = "save_prediction_artifact"
+        digest = await asyncio.to_thread(
+            _save_predictions, artifact_root, expected, context.spec, series.timestamps, y, predicted
+        )
+        expected = expected.model_copy(update={"prediction_artifact_sha256": digest})
         stage = "save_result"
         async with session_factory() as session:
             run = await session.get(ProcessingRun, run_id)

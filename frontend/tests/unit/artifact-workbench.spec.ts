@@ -2,9 +2,9 @@ import { defineComponent, nextTick } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ArtifactWorkbench from "../../src/components/artifact/ArtifactWorkbench.vue";
-import { ApiError } from "../../src/api/client";
+import apiClient, { ApiError } from "../../src/api/client";
 import type { ChartOption } from "../../src/components/ChartContainer.vue";
-import type { CopilotExecutionSnapshot } from "../../src/types/api";
+import type { CopilotExecutionSnapshot, CopilotModelExecutionData, ModelEvaluationResult } from "../../src/types/api";
 import { mergeSelectedSampleIndices } from "../../src/utils/segmentationArtifact";
 
 const deliveryApi = vi.hoisted(() => ({ exportDataset: vi.fn() }));
@@ -517,6 +517,107 @@ describe("ArtifactWorkbench profile_dataset rendering", () => {
     );
     expect(wrapper.find('[data-test="arx-channel-table"]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain("delay =");
+  });
+});
+
+describe("ArtifactWorkbench fixed model evaluation rendering", () => {
+  const makeStatus = (
+    model: ModelEvaluationResult["model_type_id"],
+    partition: ModelEvaluationResult["partition"],
+  ): CopilotModelExecutionData => ({
+    execution_id: "training-execution", selection_execution_id: "execution-1",
+    dispatch_status: "started", execution_status: "succeeded", training_status: "succeeded",
+    manifest_status: "published", model_id: "saved-model", training_run_id: "training-run",
+    evaluation_run_id: "evaluation-run", evaluation_status: "succeeded", comparison_status: "skipped",
+    training_error: null, evaluation_error: null, comparison_reason: null,
+    evaluation: {
+      evaluation_run_id: "evaluation-run", model_id: "saved-model", model_type_id: model,
+      training_run_id: "training-run", dataset_version_id: "version-0",
+      experiment_spec_hash: "a".repeat(64), partition, evaluation_status: "succeeded",
+      sample_count: 4, actual_rows: { ranges: [{ start: 20, stop: 24 }] },
+      metrics: { r2: 0.812, rmse: 0.31, mae: 0.25, nrmse: 0.12 },
+    },
+  });
+
+  it.each([
+    ["pls", "PLS Regression"], ["xgboost", "XGBoost"], ["tcn", "TCN"], ["timexer", "TimeXer"],
+  ] as const)("adds the persisted Validation result for %s when the response arrives", async (model, name) => {
+    const wrapper = await mountWorkbench(executionWith("confirm_model_selection", {}));
+    expect(wrapper.find(".aw-tab").exists()).toBe(false);
+    const status = makeStatus(model, "validation");
+    await wrapper.setProps({ modelExecution: { ...status, evaluation_status: "running", evaluation: null } });
+    expect(wrapper.find(".aw-tab").exists()).toBe(false);
+    await wrapper.setProps({ modelExecution: status });
+    expect(wrapper.get(".aw-tab").text()).toBe("模型评价");
+    const panel = wrapper.get('[data-test="fixed-model-evaluation"]');
+    for (const value of [name, "Validation", "已完成", "R²", "0.812", "RMSE", "0.31",
+      "MAE", "0.25", "NRMSE", "0.12", "saved-model", "evaluation-run"]) {
+      expect(panel.text()).toContain(value);
+    }
+    expect(panel.get('[data-test="fixed-evaluation-series-unavailable"]').text()).toContain("未保存");
+    expect(wrapper.findComponent(ChartContainerStub).exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it.each(["pls", "xgboost", "tcn", "timexer"] as const)("renders stored %s curves by forecast step", async model => {
+    const status = makeStatus(model, "validation");
+    const result = status.evaluation!;
+    const steps = model === "timexer" ? [1, 2] : [1];
+    result.prediction_artifact_sha256 = "b".repeat(64);
+    if (model === "timexer") result.horizon_metrics = steps.map(horizon_step => ({ ...result.metrics, horizon_step }));
+    const artifact = {
+      ...result, format_version: 1, target_variable: "temperature",
+      horizons: steps.map(horizon_step => ({
+        horizon_step, source_row_index: [19, 20, 21, 22].map(row => row + horizon_step),
+        timestamps: model === "tcn" ? [0, 1, 2, 3].map(i => new Date(i * 1000).toISOString()) : null,
+        y_true: [0, 1, 2, 3], y_pred: [0, 1, 2, 2], residual: [0, 0, 0, 1],
+        acf: model === "tcn" ? [1, -0.08, -0.17] : null,
+      })),
+    };
+    const read = vi.spyOn(apiClient, "get").mockResolvedValue(artifact);
+    const wrapper = await mountWorkbench(executionWith("confirm_model_selection", {}));
+    try {
+      await wrapper.setProps({ modelExecution: status });
+      await flushPromises();
+      expect(read.mock.calls[0]?.[0]).toBe("/modeling/evaluations/evaluation-run/predictions");
+      const charts = wrapper.findAllComponents(ChartContainerStub);
+      const firstChart = charts[0]!.props("options");
+      if (model === "tcn") {
+        expect(charts).toHaveLength(4);
+        expect(firstChart.xAxis.type).toBe("time");
+        expect(firstChart.series[1].data).toEqual([[0, 0], [1000, 1], [2000, 2], [3000, 2]]);
+        expect(charts[3]!.props("options").series[0].data).toEqual(artifact.horizons[0]!.acf);
+      } else {
+        expect(charts).toHaveLength(3);
+        expect(firstChart.xAxis.data).toEqual(["20", "21", "22", "23"]);
+        expect(firstChart.series[1].data).toEqual(artifact.horizons[0]!.y_pred);
+        expect(wrapper.text()).toContain("没有满足条件的序列");
+      }
+      if (model === "timexer") {
+        await wrapper.get('select[aria-label="预测步"]').setValue("2");
+        expect(wrapper.findAllComponents(ChartContainerStub)[0]!.props("options").xAxis.data)
+          .toEqual(["21", "22", "23", "24"]);
+      }
+    } finally {
+      wrapper.unmount();
+      read.mockRestore();
+    }
+  });
+
+  it("labels Test explicitly and ignores a stale result from another execution", async () => {
+    const wrapper = await mountWorkbench(executionWith("confirm_model_selection", {}));
+    const status = makeStatus("timexer", "test");
+    const result = status.evaluation!;
+    result.metrics = { r2: null, rmse: 0.31, mae: 0.25, nrmse: null };
+    result.horizon_metrics = [{ ...result.metrics, horizon_step: 1 }];
+    await wrapper.setProps({ modelExecution: { ...status, selection_execution_id: "another-execution" } });
+    expect(wrapper.find(".aw-tab").exists()).toBe(false);
+    await wrapper.setProps({ modelExecution: status });
+    const panel = wrapper.get('[data-test="fixed-model-evaluation"]');
+    expect(panel.get('[data-test="fixed-evaluation-scope"]').text()).toBe("Test · 独立测试集");
+    expect(panel.text()).toContain("第 1 步");
+    expect(panel.text()).not.toMatch(/Validation|NRMSE|R²/);
+    wrapper.unmount();
   });
 });
 

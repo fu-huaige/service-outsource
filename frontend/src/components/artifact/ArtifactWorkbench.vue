@@ -126,7 +126,40 @@
       </template>
 
       <template v-else-if="activeArtifact.type === 'evaluation'">
-        <ModelEvaluationArtifactRenderer :payload="activeArtifact.payload" />
+        <section v-if="activeArtifact.fixedEvaluation" class="aw-section" data-test="fixed-model-evaluation">
+          <div class="aw-kv-list">
+            <div class="aw-kv">
+              <span class="aw-kv__key">模型</span>
+              <strong>{{ evaluationModelNames[activeArtifact.fixedEvaluation.model_type_id] }}</strong>
+            </div>
+            <div class="aw-kv">
+              <span class="aw-kv__key">评价范围</span>
+              <strong data-test="fixed-evaluation-scope">{{ activeArtifact.fixedEvaluation.partition === 'validation' ? 'Validation · 验证集' : 'Test · 独立测试集' }}</strong>
+            </div>
+            <div class="aw-kv">
+              <span class="aw-kv__key">评价状态</span>
+              <strong>已完成 · {{ activeArtifact.fixedEvaluation.sample_count }} 个样本</strong>
+            </div>
+          </div>
+          <MetricStrip :metrics="fixedMetrics(activeArtifact.fixedEvaluation.metrics)" />
+          <p v-if="activeArtifact.fixedEvaluation.horizon_metrics?.length" class="aw-section__label">总体指标为各预测步的宏平均</p>
+          <details v-if="activeArtifact.fixedEvaluation.horizon_metrics?.length">
+            <summary>分预测步指标</summary>
+            <div v-for="horizon in activeArtifact.fixedEvaluation.horizon_metrics" :key="horizon.horizon_step" class="aw-section">
+              <span class="aw-section__label">第 {{ horizon.horizon_step }} 步</span>
+              <MetricStrip :metrics="fixedMetrics(horizon)" />
+            </div>
+          </details>
+          <EvaluationPredictionCharts :evaluation="activeArtifact.fixedEvaluation" />
+          <details>
+            <summary>评价详情</summary>
+            <dl class="aw-evaluation-ids">
+              <dt>模型 ID</dt><dd><code>{{ activeArtifact.fixedEvaluation.model_id }}</code></dd>
+              <dt>评价 Run ID</dt><dd><code>{{ activeArtifact.fixedEvaluation.evaluation_run_id }}</code></dd>
+            </dl>
+          </details>
+        </section>
+        <ModelEvaluationArtifactRenderer v-else :payload="activeArtifact.payload" />
       </template>
 
       <template v-else-if="activeArtifact.type === 'report'">
@@ -318,8 +351,11 @@ import FeatureSelectionArtifactRenderer from './FeatureSelectionArtifactRenderer
 import ProfileArtifactRenderer from './ProfileArtifactRenderer.vue';
 import ReportArtifactRenderer from './ReportArtifactRenderer.vue';
 import SegmentationArtifactRenderer from './SegmentationArtifactRenderer.vue';
+import EvaluationPredictionCharts from './EvaluationPredictionCharts.vue';
 import ModelEvaluationArtifactRenderer from './ModelEvaluationArtifactRenderer.vue';
-import type { CopilotExecutionSnapshot } from '../../types/api';
+import type {
+  CopilotExecutionSnapshot, CopilotModelExecutionData, ModelEvaluationResult, RegressionEvaluationMetrics,
+} from '../../types/api';
 import type { ExportDatasetResponse } from '../../types/api';
 import { exportDataset } from '../../api/delivery';
 import { ApiError } from '../../api/client';
@@ -330,6 +366,7 @@ const apiBase = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 const props = defineProps<{
   execution: CopilotExecutionSnapshot;
   activeStepId?: string | null;
+  modelExecution?: CopilotModelExecutionData | null;
 }>();
 
 defineEmits<{ toggle: [] }>();
@@ -342,6 +379,7 @@ interface ArtifactDef {
   type: 'profile' | 'anomaly' | 'alignment' | 'model' | 'evaluation' | 'optimization' | 'delay' | 'lag' | 'feature' | 'feature_selection' | 'collinearity' | 'cleaning' | 'segmentation' | 'report' | 'export' | 'generic';
   label: string;
   payload: Record<string, any>;
+  fixedEvaluation?: ModelEvaluationResult;
   sourceVersionId?: string | null;
   resultVersionId?: string | null;
 }
@@ -412,8 +450,21 @@ async function handleOptimisedExport() {
   }
 }
 
+const evaluationModelNames = {
+  pls: 'PLS Regression', xgboost: 'XGBoost', tcn: 'TCN', timexer: 'TimeXer',
+};
+const evaluationMetricLabels = { r2: 'R²', rmse: 'RMSE', mae: 'MAE', nrmse: 'NRMSE' } as const;
+const fixedMetricNumber = new Intl.NumberFormat('zh-CN', { maximumSignificantDigits: 6 });
+
+function fixedMetrics(metrics: RegressionEvaluationMetrics) {
+  return (Object.keys(evaluationMetricLabels) as (keyof RegressionEvaluationMetrics)[]).flatMap(key => {
+    const value = finiteNumber(metrics[key]);
+    return value === null ? [] : [{ label: evaluationMetricLabels[key], value: fixedMetricNumber.format(value) }];
+  });
+}
+
 const availableArtifacts = computed<ArtifactDef[]>(() => {
-  return props.execution.step_runs
+  const artifacts = props.execution.step_runs
     .filter(r => {
       if (r.tool === 'recommend_models' || r.tool === 'confirm_model_selection') return false;
       if (agentStepStatus(r.status) !== 'completed') return false;
@@ -421,7 +472,7 @@ const availableArtifacts = computed<ArtifactDef[]>(() => {
       const tool = r.tool || props.execution.plan?.steps?.find(s => s.step_id === r.step_id)?.tool;
       return tool === 'analyze_collinearity' || tool === 'select_variables' || tool === 'align_and_resample';
     })
-    .map(r => {
+    .map<ArtifactDef>(r => {
       const plan = props.execution.plan?.steps?.find(s => s.step_id === r.step_id);
       const tool = r.tool || plan?.tool || r.step_id;
       const meta = TOOL_META[tool] ?? { type: 'generic', label: tool };
@@ -434,6 +485,23 @@ const availableArtifacts = computed<ArtifactDef[]>(() => {
         resultVersionId: r.result_version_id,
       };
     });
+
+  const status = props.modelExecution;
+  const evaluation = status?.evaluation;
+  if (status?.selection_execution_id === props.execution.execution_id &&
+      status.evaluation_status === 'succeeded' && evaluation?.evaluation_status === 'succeeded' &&
+      evaluation.evaluation_run_id === status.evaluation_run_id &&
+      evaluation.model_id === status.model_id && evaluation.training_run_id === status.training_run_id &&
+      evaluation.dataset_version_id === props.execution.current_version_id) {
+    artifacts.push({
+      stepId: evaluation.evaluation_run_id,
+      type: 'evaluation',
+      label: '模型评价',
+      payload: {},
+      fixedEvaluation: evaluation,
+    });
+  }
+  return artifacts;
 });
 
 const activeArtifact = computed(() =>
@@ -812,6 +880,11 @@ function optimizationParameterGroups(art: ArtifactDef): OptimizationParameterGro
   letter-spacing: normal;
   text-transform: none;
   font-weight: 600;
+}
+
+.aw-evaluation-ids dd {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
 }
 
 /* KV List */

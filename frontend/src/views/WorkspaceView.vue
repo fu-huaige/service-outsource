@@ -278,6 +278,7 @@
       v-if="execution"
       :execution="execution"
       :active-step-id="activeArtifactStepId"
+      :model-execution="modelExecution"
       class="ws-artifact"
       :class="{ 'is-hidden': !showArtifact }"
       @toggle="showArtifact = !showArtifact"

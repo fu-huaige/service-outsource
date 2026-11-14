@@ -1323,8 +1323,33 @@ export interface CopilotModelExecuteRequest {
   confirmed_selection_step_id: string;
 }
 
+export interface RegressionEvaluationMetrics {
+  r2: number | null;
+  rmse: number;
+  mae: number;
+  nrmse: number | null;
+}
+
+export interface ModelEvaluationResult {
+  evaluation_run_id: string;
+  model_id: string;
+  model_type_id: RecommendationModelType;
+  training_run_id: string;
+  dataset_version_id: string;
+  experiment_spec_hash: string;
+  partition: "validation" | "test";
+  evaluation_status: "succeeded";
+  sample_count: number;
+  actual_rows: ExperimentRowSet;
+  metrics: RegressionEvaluationMetrics;
+  prediction_artifact_sha256?: string | null;
+  horizon_metrics?: (RegressionEvaluationMetrics & { horizon_step: number })[];
+}
+
 export interface CopilotModelExecutionData {
   execution_id: string;
+  selection_execution_id: string;
+  evaluation?: ModelEvaluationResult | null;
   execution_status: "pending" | "running" | "succeeded" | "failed" | "unconfirmed";
   training_status: "pending" | "running" | "succeeded" | "failed" | "unconfirmed";
   dispatch_status: "pending" | "queued" | "started" | null;

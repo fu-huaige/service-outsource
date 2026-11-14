@@ -44,6 +44,7 @@ class ModelEvaluationResult(Schema):
     evaluation_status: Literal["succeeded"] = "succeeded"
     actual_rows: RowSet
     metrics: RegressionMetrics
+    prediction_artifact_sha256: Digest | None = None
     implementation_version: Literal["model-evaluation-1"] = "model-evaluation-1"
 
     @model_validator(mode="after")
