@@ -91,6 +91,56 @@ async function chooseModel(wrapper: VueWrapper, model: RecommendationModelType) 
 }
 
 describe("Agent model selection fields", () => {
+  it("switches between qualified ARX and FIR with independent parameter contracts", async () => {
+    const result = recommendation();
+    const arx = candidate("arx", 1, { na: 2, nb: { u1: 3 }, delays: { u1: 0 } });
+    arx.experiment_spec_hash = "c".repeat(64);
+    arx.experiment_spec = {
+      spec_version: 1, task_type: "dynamic_system_identification",
+      dataset_id: "data", dataset_version_id: "version", dataset_version_sha256: "a".repeat(64),
+      row_count: 100, target_column: "y", input_columns: ["u1"],
+      time_axis: { column: "timestamp", sample_period_seconds: 1, sampling_status: "uniform",
+        timestamp_policy: "preserve_source" },
+      feature_spec: { kind: "dynamic_lags", input_lags: { u1: [0, 1, 2] }, prediction_horizon: 1 },
+      continuous_runs: [{ start: 0, stop: 100 }],
+      split: { train: [{ start: 0, stop: 60 }], validation: [{ start: 60, stop: 80 }],
+        test: [{ start: 80, stop: 100 }] },
+      training_selection: { mode: "full_train" },
+      evaluation: { scopes: ["validation"], prediction_modes: ["free_run", "one_step"] },
+    };
+    const fir = candidate("fir", 2, {
+      nb: { u1: 2 }, delays: { u1: 0 }, estimator: "ridge", regularization_kernel: "tc", kernel_decay: 0.8,
+    });
+    fir.experiment_spec_hash = "d".repeat(64);
+    fir.experiment_spec = { ...arx.experiment_spec,
+      feature_spec: { kind: "dynamic_lags", input_lags: { u1: [0, 1] }, prediction_horizon: 1 },
+    };
+    result.candidates = [arx, fir];
+    result.recommended_models = ["arx", "fir"];
+    const wrapper = panel(result);
+    expect(wrapper.get(modelSelect).text()).toBe("ARX");
+    expect(wrapper.findAll(".model-configuration > .configuration-card")).toHaveLength(4);
+    expect(wrapper.get('[data-test="model-overview-card"]').text()).toContain("符合条件");
+    expect(wrapper.get('[data-test="arx-candidate-contract"] tbody tr').findAll("th,td").map(cell => cell.text()))
+      .toEqual(["u1", "3", "0"]);
+    expect(selection(wrapper)).toMatchObject({
+      selected_model_type_id: "arx", selected_parameters: arx.actual_parameters,
+      experiment_spec_hash: arx.experiment_spec_hash,
+    });
+    await chooseModel(wrapper, "fir");
+    expect(wrapper.findAll(".model-configuration > .configuration-card")).toHaveLength(4);
+    const contract = wrapper.get('[data-test="fir-candidate-contract"]');
+    expect(contract.get("tbody tr").findAll("th,td").map(cell => cell.text()))
+      .toEqual(["u1", "2", "0"]);
+    expect(contract.text()).toContain("TC 核衰减");
+    expect(contract.text()).not.toContain("输出阶次");
+    expect(selection(wrapper)).toMatchObject({
+      selected_model_type_id: "fir", selected_parameters: fir.actual_parameters,
+      experiment_spec_hash: fir.experiment_spec_hash,
+    });
+    wrapper.unmount();
+  });
+
   it("defaults to the backend first choice and switches without altering the snapshot", async () => {
     const result = recommendation();
     const saved = structuredClone(result);
@@ -133,6 +183,73 @@ describe("Agent model selection fields", () => {
     wrapper.unmount();
   });
 
+  it("groups the returned catalogue and skips unavailable options for keyboard and pointer", async () => {
+    const result = recommendation();
+    const catalogue = (id: string, category: string, state: "eligible" | "not_integrated" | "task_mismatch") => ({
+      model_type_id: id, model_name: id.toUpperCase(), family: category, category,
+      description: "目录用途", eligibility_status: state,
+      reasons: state === "not_integrated" ? ["尚未接入统一训练流程。"] : ["当前任务类型不适用。"],
+    });
+    result.candidates = [candidate("arx", 1, { na: 1 }), candidate("fir", 2, { nb: { u1: 1 } })];
+    result.recommended_models = ["arx", "fir"];
+    result.catalog_models = [
+      catalogue("arx", "动态系统辨识", "eligible"), catalogue("oe", "动态系统辨识", "not_integrated"),
+      catalogue("fir", "动态系统辨识", "eligible"), catalogue("pls", "静态监督回归", "task_mismatch"),
+      catalogue("future", "其他类别", "not_integrated"),
+    ];
+    const wrapper = panel(result);
+    const menu = await openModelMenu(wrapper);
+    expect(menu.findAll('[role="group"]')).toHaveLength(3);
+    expect(menu.findAll('[role="option"]')).toHaveLength(5);
+    expect(menu.get('[data-model="arx"]').text()).toContain("Agent 首选");
+    const blocked = menu.get('[data-model="oe"]');
+    expect(blocked.attributes("aria-disabled")).toBe("true");
+    expect(blocked.text()).toContain("尚未接入统一训练流程");
+    expect(menu.get('[data-model="pls"]').text()).toContain("当前任务类型不适用");
+    await blocked.trigger("click");
+    await blocked.trigger("keydown", { key: "Enter" });
+    expect(selection(wrapper)).toMatchObject({ selected_model_type_id: "arx" });
+    const first = menu.get<HTMLElement>('[data-model="arx"]');
+    first.element.focus();
+    await first.trigger("keydown", { key: "ArrowDown" });
+    await vi.waitFor(() => expect(document.activeElement).toBe(menu.get('[data-model="fir"]').element));
+    wrapper.unmount();
+  });
+
+  it("preserves reported potential leakage evidence", () => {
+    const result = recommendation();
+    result.leakage = { status: "potential_leakage", evidence: ["清洗参数使用了 Validation 行。"] };
+    const wrapper = panel(result);
+    const note = wrapper.get('[data-test="recommendation-leakage"]');
+    expect(note.text()).toContain("检测到潜在数据泄漏风险");
+    expect(note.text()).toContain("清洗参数使用了 Validation 行。");
+    wrapper.unmount();
+  });
+
+  it("folds technical details by default and copies the complete version identifier", async () => {
+    const writeText = vi.fn(async () => {});
+    const descriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const result = recommendation();
+    result.source = { ...result.source, dataset_version_id: "05fc626f-49e0-4e19-a9c2-916e839bd08d" };
+    const wrapper = panel(result);
+    try {
+      const details = wrapper.get<HTMLDetailsElement>(".technical-details");
+      expect(details.element.open).toBe(false);
+      details.element.open = true;
+      await details.get('button[aria-label="复制完整数据版本 UUID"]').trigger("click");
+      await flushPromises();
+      expect(writeText).toHaveBeenCalledWith(result.source.dataset_version_id);
+      expect(details.text()).toContain("已复制数据版本 UUID");
+      details.element.open = false;
+      expect(details.element.open).toBe(false);
+    } finally {
+      wrapper.unmount();
+      if (descriptor) Object.defineProperty(navigator, "clipboard", descriptor);
+      else Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+
   it("excludes unavailable models from the dropdown and displays their backend reasons", async () => {
     const result = recommendation();
     result.candidates[1] = { ...result.candidates[1]!, eligibility_status: "excluded", reasons: ["不满足窗口约束"] };
@@ -150,17 +267,88 @@ describe("Agent model selection fields", () => {
     wrapper.unmount();
   });
 
+  it("shows the dedicated OE section and emits the selected OE contract", async () => {
+    const result = recommendation();
+    const arx = candidate("arx", 1, { na: 1 });
+    const fir = candidate("fir", 2, { nb: { u1: 3 } });
+    const oe = candidate("oe", 3, {
+      na: 2, nb: { u1: 2 }, delays: { u1: 0 }, initialization_policy: "fixed",
+      simulation_horizons: [1, 16, 0], sample_weights: { 30: 0 }, standardize: true, fit_intercept: true,
+    });
+    oe.experiment_spec_hash = "c".repeat(64);
+    oe.experiment_spec = {
+      spec_version: 1, task_type: "dynamic_system_identification",
+      dataset_id: "data", dataset_version_id: "version", dataset_version_sha256: "a".repeat(64),
+      row_count: 100, target_column: "y", input_columns: ["u1"],
+      time_axis: { column: "time", sample_period_seconds: 1, sampling_status: "uniform", timestamp_policy: "preserve_source" },
+      feature_spec: { kind: "dynamic_lags", prediction_horizon: 1, input_lags: { u1: [0, 1] } },
+      continuous_runs: [{ start: 0, stop: 100 }],
+      split: { train: [{ start: 0, stop: 60 }], validation: [{ start: 60, stop: 80 }], test: [{ start: 80, stop: 100 }] },
+      training_selection: { mode: "full_train" },
+      evaluation: { scopes: ["validation"], prediction_modes: ["free_run", "one_step"] },
+      oe_contract: {
+        lag_reference: "relative_to_dataset_version", loss_weighting: "equal_interval_and_horizon",
+        simulation_intervals: [{ start: 2, stop: 30, history_start: 0 }], training_data_sha256: "d".repeat(64),
+      },
+    };
+    result.candidates = [arx, fir, oe];
+    result.recommended_models = ["arx", "fir", "oe"];
+    result.catalog_models = result.candidates.map(item => ({
+      model_type_id: item.model_type_id, model_name: item.model_name,
+      family: "linear_dynamic", category: "动态系统辨识", description: "",
+      eligibility_status: "eligible", reasons: item.reasons,
+    }));
+    const wrapper = panel(result);
+    await chooseModel(wrapper, "fir");
+    expect(wrapper.get('[data-test="fir-candidate-contract"]').exists()).toBe(true);
+    await chooseModel(wrapper, "oe");
+    const contract = wrapper.get('[data-test="oe-candidate-contract"]');
+    expect(contract.text()).toContain("分母阶数");
+    expect(contract.text()).toContain("整段（0）");
+    expect(contract.text()).toContain("区间与时域等权");
+    expect(contract.find("table").exists()).toBe(false);
+    expect(wrapper.get(".technical-details").text()).toContain("sample_weights");
+    expect(selection(wrapper)).toMatchObject({
+      selected_model_type_id: "oe", selected_parameters: oe.actual_parameters, experiment_spec_hash: oe.experiment_spec_hash,
+    });
+    wrapper.unmount();
+  });
+
   it("passes through TimeXer parameters and forecast without an editable form", () => {
     const result = recommendation();
     result.candidates = [candidate("timexer", 1, { ...forecast, patch_length: 8 })];
     result.recommended_models = ["timexer"];
     const wrapper = panel(result);
     expect(wrapper.get(modelSelect).text()).toBe("TimeXer");
-    expect(wrapper.get('[data-test="selected-model-fit"]').text()).toContain("预测 3 步");
+    expect(wrapper.get('[data-test="model-core-parameters"]').text()).toContain("预测步数3");
     expect(selection(wrapper)).toMatchObject({
       selection_source: "agent_recommendation", forecast_spec: forecast,
       selected_parameters: { ...forecast, patch_length: 8 },
     });
+    wrapper.unmount();
+  });
+
+  it.each([
+    ["pls", ["潜变量成分数", "标准化"]],
+    ["xgboost", ["提升轮数", "最大树深", "学习率"]],
+    ["tcn", ["隐藏通道", "历史窗口", "预测步长", "卷积核尺寸", "膨胀率"]],
+    ["timexer", ["目标历史窗口", "外生变量窗口", "预测步数"]],
+  ] as const)("keeps all four sections with the current %s parameters", (kind, labels) => {
+    const result = recommendation();
+    const current = result.candidates.find(item => item.model_type_id === kind)!;
+    if (kind === "tcn") current.fixed_parameters = { kernel_size: 3, dilations: [1, 2, 4] };
+    result.candidates = [current];
+    result.recommended_models = [kind];
+    const wrapper = panel(result);
+    expect(wrapper.findAll(".model-configuration > .configuration-card")).toHaveLength(4);
+    expect(wrapper.get('[data-test="model-training-card"]').text()).toContain("有效训练样本60");
+    expect(wrapper.get('[data-test="model-training-card"]').text()).not.toContain("Validation 行区间");
+    const parameterText = wrapper.get('[data-test="model-core-parameters"]').text();
+    for (const label of labels) expect(parameterText).toContain(label);
+    const details = wrapper.get<HTMLDetailsElement>(".technical-details");
+    expect(details.element.open).toBe(false);
+    expect(details.text()).toContain(source.experiment_spec_hash);
+    if (kind === "tcn") expect(details.text()).toContain("epochs30");
     wrapper.unmount();
   });
 

@@ -663,7 +663,10 @@ async def confirm_model_selection(
         selected.dataset_id != source.dataset_id
         or selected.dataset_version_id != source.dataset_version_id
         or selected.csv_sha256 != source.csv_sha256
-        or selected.experiment_spec_hash != source.experiment_spec_hash
+        or (
+            selected.selected_model_type_id not in {"arx", "fir", "oe"}
+            and selected.experiment_spec_hash != source.experiment_spec_hash
+        )
         or execution.dataset_id != source.dataset_id
         or execution.current_version_id != source.dataset_version_id
         or recommendation_step.source_version_id != source.dataset_version_id
@@ -696,6 +699,14 @@ async def confirm_model_selection(
     ):
         raise AgentDomainError(
             "MODEL_SELECTION_UNAVAILABLE", "该模型不在本次已开放的候选中。", status_code=422
+        )
+    dynamic_selection = model_id in {"arx", "fir", "oe"}
+    digest = candidate.experiment_spec_hash if dynamic_selection else source.experiment_spec_hash
+    if digest != selected.experiment_spec_hash or (dynamic_selection and (
+        candidate.experiment_spec is None or selected.selected_parameters != candidate.actual_parameters
+    )):
+        raise AgentDomainError(
+            "MODEL_SELECTION_CONTRACT_CHANGED", "确认请求须匹配已核验的候选参数和实验契约。", status_code=422
         )
     forecast = selected.forecast_spec
     if payload.dispatch_training and (
@@ -749,13 +760,11 @@ async def confirm_model_selection(
     try:
         refreshed = await recommend_models(
             session,
-            request=ModelRecommendationRequest(
-                experiment_spec=request.experiment_spec,
-                expected_spec_hash=source.experiment_spec_hash,
-                goal=request.goal,
-                parameters=overrides,
-                forecast_spec=request_forecast,
-            ),
+            request=request.model_copy(update={
+                "expected_spec_hash": source.experiment_spec_hash,
+                "parameters": overrides,
+                "forecast_spec": request_forecast,
+            }),
             artifact_root=artifact_root,
         )
     except (ValueError, VersionDataError, DatasetCsvError, DatasetVersionArtifactError) as error:
@@ -769,7 +778,12 @@ async def confirm_model_selection(
             status_code=409,
         )
     verified = next(item for item in refreshed.candidates if item.model_type_id == model_id)
-    if verified.eligibility_status != "eligible" or verified.forecast_spec != forecast:
+    if (
+        verified.eligibility_status != "eligible" or verified.forecast_spec != forecast
+        or (dynamic_selection and (
+            verified.experiment_spec != candidate.experiment_spec or verified.experiment_spec_hash != digest
+        ))
+    ):
         raise AgentDomainError(
             "MODEL_SELECTION_INELIGIBLE",
             "所选模型未通过当前数据和参数校验。",
@@ -793,7 +807,7 @@ async def confirm_model_selection(
         "dataset_id": str(source.dataset_id),
         "dataset_version_id": str(source.dataset_version_id),
         "csv_sha256": source.csv_sha256,
-        "experiment_spec_hash": source.experiment_spec_hash,
+        "experiment_spec_hash": digest,
         "forecast_spec": forecast.model_dump(mode="json") if forecast else None,
         "selection_source": selected.selection_source,
         "recommendation_step_id": selected.recommendation_step_id,
@@ -821,6 +835,20 @@ async def run_copilot(
     """Plan, verify, execute once, and mirror real outcomes into durable workflow state."""
 
     intent = parse_intent(payload.message)
+    if payload.requested_model_type_id in {"arx", "fir", "oe"} or (
+        payload.recommendation_request is not None
+        and payload.recommendation_request.experiment_spec.task_type == "dynamic_system_identification"
+    ):
+        intent = ParsedIntent(
+            goals=(intent.goals - {"legacy_model"}) | {"integrated_modeling", "model_recommendation"},
+            parameters=intent.parameters,
+            mentioned_columns=intent.mentioned_columns,
+            requested_model_type_id=intent.requested_model_type_id or payload.requested_model_type_id or (
+                "oe" if payload.recommendation_request and payload.recommendation_request.experiment_spec.oe_contract
+                else "fir" if payload.recommendation_request and payload.recommendation_request.experiment_spec.fir_contract
+                else "arx"
+            ),
+        )
     integrated = intent.wants("integrated_modeling")
     if (
         integrated

@@ -19,6 +19,7 @@ from app.schemas.experiment_spec import (
     TimeAxis,
 )
 from app.schemas.model_recommendation import ModelRecommendationRequest
+from app.services.arx_platform_adapter import build_arx_spec
 from app.services.dataset_version_io import artifact_matches_sha256
 from app.services.experiment_spec_service import validate_partition_coverage
 from app.services.version_data import VersionSeries, load_version_series
@@ -194,6 +195,41 @@ async def build_agent_recommendation_request(
         raise ModelSpecInputRequired("target_column", "任务指定的目标与提交的配置冲突，请确认目标变量。")
     target = resolve_model_spec_target(series, explicit or (supplied.target_column if supplied else None))
     applied = await _applied_inputs(session, execution, sequence)
+
+    recommendation_step = next((step for step in execution.step_runs if step.sequence == sequence), None)
+    preference = recommendation_step.input_payload.get("requested_model_type_id") if recommendation_step else None
+    if supplied is not None and supplied.task_type == "dynamic_system_identification":
+        inputs = _valid_inputs(applied if applied is not None else supplied.input_columns, series, target)
+        if (
+            (supplied.dataset_id, supplied.dataset_version_id, supplied.dataset_version_sha256, supplied.row_count)
+            != (version.dataset_id, version.id, version.sha256, version.row_count)
+            or inputs != supplied.input_columns or target != supplied.target_column
+        ):
+            raise ModelSpecInputRequired("experiment_spec", "提交的动态实验契约与当前数据版本或变量不一致。")
+        # Restore an explicit draft as stored. Only qualification can authorize it for training.
+        return draft.model_copy(update={
+            "preferred_dynamic_model": (
+                preference if preference in {"arx", "fir", "oe"} else draft.preferred_dynamic_model
+            ),
+        })
+    if preference in {"arx", "fir", "oe"}:
+        if supplied is not None and supplied.training_selection.mode != "full_train":
+            raise ModelSpecInputRequired("split", "动态辨识当前仅支持明确授权的完整 Train 分区。")
+        axis, runs = _layout(series)
+        if len(runs) != 1 or axis.sampling_status != "uniform":
+            raise ModelSpecInputRequired("split", "动态辨识当前需要单一连续且等间隔的时间区段。")
+        inputs = _valid_inputs(applied if applied is not None else (
+            supplied.input_columns if supplied else series.declared_inputs
+        ), series, target)
+        mapping = draft.parameters if draft else {}
+        arguments = dict(version=version, inputs=inputs, target=target, axis=axis, runs=runs)
+        try:
+            spec = await build_arx_spec(session, **arguments, overrides=mapping.get("arx", {}))
+        except ValueError:
+            spec = await build_arx_spec(session, **arguments, overrides={})
+        return ModelRecommendationRequest(
+            experiment_spec=spec, parameters=mapping, preferred_dynamic_model=preference,
+        )
 
     untimed = series.time_column is None
     if untimed and row_order_confirmation is None:

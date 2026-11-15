@@ -28,6 +28,7 @@ from app.schemas.model_catalog import (
     XGBoostModelArtifactManifest,
 )
 from app.schemas.model_evaluation import (
+    ArxModelEvaluationResult,
     EvaluationModelType,
     HorizonMetrics,
     MetricAggregation,
@@ -46,15 +47,23 @@ from app.schemas.model_evaluation import (
 from app.schemas.pls import PLSBoundArtifactMetadata
 from app.schemas.timexer import TimeXerParameters
 from app.schemas.timexer_platform import TimeXerForecastSpec
+from app.services.arx_platform_adapter import DYNAMIC_IMPLEMENTATIONS
 from app.services.dataset_version_io import artifact_matches_sha256
-from app.services.experiment_spec_service import contained_path, iter_rows, spec_hash
+from app.services.experiment_spec_service import (
+    compact_rows,
+    contained_path,
+    effective_ranges,
+    iter_rows,
+    spec_hash,
+)
 from app.services.model_artifact_service import load_model_instance
 from app.services.model_data_adapter import (
     BoundSource,
     ResolvedRows,
     build_table_samples,
 )
-from app.services.modeling_service import _acf, _scores
+from app.services.modeling_service import SavedArxModel, _acf, _scores, evaluate_arx_partition
+from app.services.oe_platform_adapter import oe_validation_series
 from app.services.pls_modeling_service import SavedPLSModel
 from app.services.sequence_data_adapter import (
     TimeXerSamples,
@@ -66,7 +75,7 @@ from app.services.tcn_platform_adapter import _evidence as serialize_tcn_evidenc
 from app.services.timexer_modeling_service import TimeXerModel
 from app.services.timexer_platform_adapter import _evidence as serialize_timexer_evidence
 from app.services.timexer_platform_adapter import predict_saved_timexer
-from app.services.version_data import FloatArray, load_version_series
+from app.services.version_data import FloatArray, attach_model_input_context, load_version_series
 from app.services.xgboost_artifact_service import SavedXGBoostModel
 
 SessionFactory = Callable[[], AsyncSession]
@@ -91,7 +100,7 @@ class _TimeXerSource:
 
 @dataclass(frozen=True)
 class _EvaluationSource:
-    model: SavedPLSModel | SavedXGBoostModel | TCNModel | TimeXerModel
+    model: SavedArxModel | SavedPLSModel | SavedXGBoostModel | TCNModel | TimeXerModel
     model_type_id: EvaluationModelType
     training_run_id: UUID
     spec: ExperimentSpec
@@ -104,6 +113,18 @@ async def _load_source(session: AsyncSession, model_id: UUID, root: Path) -> _Ev
     with session.no_autoflush:
         instance = await load_model_instance(session, model_id=model_id, artifact_root=root)
         model, manifest = instance.payload, instance.manifest
+        if (
+            isinstance(model, SavedArxModel) and manifest is not None
+            and instance.model_type_id in DYNAMIC_IMPLEMENTATIONS
+            and DYNAMIC_IMPLEMENTATIONS[instance.model_type_id] == manifest.implementation_version
+        ):
+            spec = manifest.experiment_spec
+            return _EvaluationSource(
+                model, instance.model_type_id, manifest.training_run_id, spec,
+                BoundSource(spec.dataset_id, spec.dataset_version_id, spec.dataset_version_sha256,
+                            manifest.experiment_spec_hash),
+                manifest.effective_training_rows,
+            )
         if (
             instance.model_type_id == "pls"
             and isinstance(model, SavedPLSModel)
@@ -541,6 +562,7 @@ def _save_predictions(
     timestamps: list[datetime],
     actual: FloatArray,
     predicted: FloatArray,
+    one_step: list[float] | None = None,
 ) -> str:
     anchors = tuple(iter_rows(result.actual_rows, root))
     true_columns = actual.astype(np.float64).reshape(len(anchors), -1).T
@@ -581,9 +603,19 @@ def _save_predictions(
         "dataset_id", "dataset_version_id", "dataset_sha256", "experiment_spec_hash",
         "forecast_spec", "sequence_evidence", "window_length",
     })
+    if result.model_type_id == "oe":
+        identity["prediction_mode"] = result.prediction_mode
+        identity["initialization_rows"] = {
+            "start": anchors[0] - spec.feature_spec.history_window, "stop": anchors[0],
+        }
     raw = json.dumps({
         **identity, "format_version": 1, "target_variable": spec.target_column,
         "forecast_anchor_rows": anchors, "horizons": horizons,
+        **({"prediction_modes": {
+            "free_run": predicted.tolist(),
+            "one_step": one_step,
+            "one_step_residual": (actual - np.asarray(one_step)).tolist(),
+        }} if one_step is not None else {}),
     }, allow_nan=False, separators=(",", ":"), sort_keys=True).encode()
     path = _prediction_path(root, result.evaluation_run_id)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -683,12 +715,43 @@ async def evaluate_saved_model(
                 allow_missing_time=context.spec.row_order is not None,
             )
             await _check_version_digest(session, context.source, artifact_root)
+            if isinstance(context.model, SavedArxModel):
+                series = await attach_model_input_context(session, series, artifact_root=artifact_root)
 
+        one_step = None
         stage = "build_samples"
-        metadata = context.model.metadata
         sequence_details = {}
         result_type: type[ModelEvaluationResult] = ModelEvaluationResult
-        if isinstance(context.model, TimeXerModel):
+        if isinstance(context.model, SavedArxModel) and context.model_type_id == "oe":
+            (interval,) = effective_ranges(context.spec, "validation")
+            stage = "predict"
+            y, predicted = await asyncio.to_thread(
+                oe_validation_series, context.model, series, start=interval.start, stop=interval.stop,
+            )
+            actual_rows = RowSet(ranges=(interval,))
+            _assert_disjoint(context.training_rows, actual_rows, requested, artifact_root)
+            metrics = calculate_regression_metrics(y, predicted)
+            sequence_details = {"prediction_mode": "free_run"}
+        elif isinstance(context.model, SavedArxModel):
+            (interval,) = effective_ranges(context.spec, "validation")
+            stage = "predict"
+            dynamic = await asyncio.to_thread(
+                evaluate_arx_partition, context.model, series,
+                start=interval.start, stop=interval.stop, partition="validation",
+            )
+            aligned = dynamic.pop("series")
+            actual_rows = compact_rows(iter(aligned.sample_indices))
+            _assert_disjoint(context.training_rows, actual_rows, requested, artifact_root)
+            y = np.asarray(aligned.y_true)
+            predicted = np.asarray(aligned.free_run_prediction)
+            metrics = calculate_regression_metrics(y, predicted)
+            sequence_details = {"prediction_mode": "free_run"}
+            if context.model_type_id == "arx":
+                one_step = aligned.one_step_prediction
+                mode_metrics = dynamic.pop("metrics")
+                sequence_details.update(dynamic, validation=mode_metrics)
+                result_type = ArxModelEvaluationResult
+        elif isinstance(context.model, TimeXerModel):
             model = context.model
             timexer_samples = build_timexer_samples(
                 series,
@@ -705,6 +768,7 @@ async def evaluate_saved_model(
             )
             result_type = TimeXerModelEvaluationResult
         else:
+            metadata = context.model.metadata
             if isinstance(context.model, TCNModel):
                 tcn_metadata = context.model.metadata
                 sequence = build_tcn_samples(
@@ -754,10 +818,14 @@ async def evaluate_saved_model(
                 or target_name != metadata.target_name
             ):
                 raise ValueError("Evaluation samples differ from their row or target evidence")
-        evidence.update(actual_rows=actual_rows.model_dump(mode="json"), **sequence_details)
+        evidence["actual_rows"] = actual_rows.model_dump(mode="json")
+        if not isinstance(context.model, SavedArxModel):
+            evidence.update(sequence_details)
 
         stage = "predict"
-        if isinstance(context.model, TimeXerModel):
+        if isinstance(context.model, SavedArxModel):
+            evidence["prediction_mode"] = "free_run"
+        elif isinstance(context.model, TimeXerModel):
             predicted = await asyncio.to_thread(
                 predict_saved_timexer,
                 context.model,
@@ -792,7 +860,7 @@ async def evaluate_saved_model(
         )
         stage = "save_prediction_artifact"
         digest = await asyncio.to_thread(
-            _save_predictions, artifact_root, expected, context.spec, series.timestamps, y, predicted
+            _save_predictions, artifact_root, expected, context.spec, series.timestamps, y, predicted, one_step
         )
         expected = expected.model_copy(update={"prediction_artifact_sha256": digest})
         stage = "save_result"

@@ -8,11 +8,17 @@ from pydantic import ConfigDict, Field, StrictFloat, StrictInt, model_validator
 
 from app.schemas.common import Schema
 from app.schemas.experiment_spec import Digest, RowRange, RowSet, validate_ranges
+from app.schemas.modeling import (
+    ArxEvaluationResidualDiagnostics,
+    ArxModelHealth,
+    ArxModelStructureData,
+    ArxTestEvaluationData,
+)
 from app.schemas.timexer_platform import TimeXerForecastSpec
 
 EvaluationPartition = Literal["validation", "test"]
 EvaluationStatus = Literal["running", "succeeded", "failed"]
-EvaluationModelType = Literal["pls", "xgboost", "tcn", "timexer"]
+EvaluationModelType = Literal["arx", "fir", "oe", "pls", "xgboost", "tcn", "timexer"]
 NonnegativeMetric = Annotated[StrictFloat, Field(ge=0, allow_inf_nan=False)]
 R2Metric = Annotated[StrictFloat, Field(le=1, allow_inf_nan=False)]
 
@@ -39,7 +45,7 @@ class ModelEvaluationResult(Schema):
     dataset_sha256: Digest
     experiment_spec_hash: Digest
     partition: EvaluationPartition
-    prediction_mode: Literal["prediction"] = "prediction"
+    prediction_mode: Literal["prediction", "free_run"] = "prediction"
     sample_count: Annotated[StrictInt, Field(gt=0)]
     evaluation_status: Literal["succeeded"] = "succeeded"
     actual_rows: RowSet
@@ -54,6 +60,16 @@ class ModelEvaluationResult(Schema):
         if self.evaluation_run_id in (self.model_id, self.training_run_id):
             raise ValueError("Evaluation requires an independent run identity")
         return self
+
+
+class ArxModelEvaluationResult(ModelEvaluationResult):
+    model_type_id: Literal["arx"]
+    partition: Literal["validation"]
+    prediction_mode: Literal["free_run"] = "free_run"
+    validation: ArxTestEvaluationData
+    model_structure: ArxModelStructureData
+    model_health: ArxModelHealth
+    residual_diagnostics: ArxEvaluationResidualDiagnostics
 
 
 class TCNModelEvaluationResult(ModelEvaluationResult):
@@ -111,7 +127,7 @@ class TimeXerModelEvaluationResult(ModelEvaluationResult):
 
 
 ModelEvaluationSuccess = (
-    TCNModelEvaluationResult | TimeXerModelEvaluationResult | ModelEvaluationResult
+    ArxModelEvaluationResult | TCNModelEvaluationResult | TimeXerModelEvaluationResult | ModelEvaluationResult
 )
 EvaluationOffset = Annotated[int, Field(ge=0, le=2**63 - 1)]
 EvaluationLimit = Annotated[int, Field(ge=1, le=100)]
@@ -148,7 +164,7 @@ class ModelEvaluationParameters(ModelEvaluationRequest):
     # Persisted metadata may gain internal fields. Keep the HTTP projection explicit.
     model_config = ConfigDict(extra="ignore")
 
-    prediction_mode: Literal["prediction"]
+    prediction_mode: Literal["prediction", "free_run"]
     training_run_id: UUID | None = None
     model_type_id: EvaluationModelType | None = None
     dataset_id: UUID | None = None

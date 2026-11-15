@@ -2,11 +2,12 @@
   <section class="model-evaluation" data-test="model-evaluation-artifact-renderer">
     <header class="evaluation-header">
       <div class="evaluation-header__title">
-        <h3>最终测试集评价</h3>
-        <span class="evaluation-scope" data-test="evaluation-scope-badge">Held-out Test</span>
+        <h3>{{ validation ? "验证集评价" : "最终测试集评价" }}</h3>
+        <span class="evaluation-scope" data-test="evaluation-scope-badge">{{ validation ? "Validation" : "Held-out Test" }}</span>
       </div>
       <p data-test="evaluation-leakage-note">
-        该测试集仅用于最终评价，未参与模型训练、参数选择或闭环寻优。
+        {{ validation ? "使用训练保存的同一模型完成 Validation 固定评价。"
+          : "该测试集仅用于最终评价，未参与模型训练、参数选择或闭环寻优。" }}
       </p>
     </header>
 
@@ -37,8 +38,8 @@
     <section class="evaluation-section" data-test="evaluation-prediction-section">
       <div class="evaluation-section__heading">
         <div>
-          <h4>测试集真实值与预测值</h4>
-          <p>{{ predictionMode === "free_run" ? "自由运行预测" : "单步预测" }} · 使用完整 held-out Test 序列</p>
+          <h4>{{ validation ? "验证集" : "测试集" }}真实值与预测值</h4>
+          <p>{{ predictionMode === "free_run" ? "自由运行预测" : "单步预测" }} · {{ validation ? "使用 Validation 序列" : "使用完整 held-out Test 序列" }}</p>
         </div>
         <span>{{ predictionData?.usesTimestamps ? "时间轴" : "样本索引" }}</span>
       </div>
@@ -51,15 +52,15 @@
         @chart-viewport-change="syncResidualViewport"
       />
       <p v-else class="evaluation-empty" data-test="evaluation-prediction-empty">
-        该历史评价未保存测试序列，因此无法恢复预测曲线。
+        {{ validation ? "预测序列当前不可用。" : "该历史评价未保存测试序列，因此无法恢复预测曲线。" }}
       </p>
     </section>
 
     <section class="evaluation-section" data-test="evaluation-residual-section">
       <div class="evaluation-section__heading">
         <div>
-          <h4>测试集一步预测残差</h4>
-          <p>固定使用 Test one-step residual，不随上方预测模式切换</p>
+          <h4>{{ validation ? "验证集" : "测试集" }}一步预测残差</h4>
+          <p>固定使用 {{ validation ? "Validation" : "Test" }} one-step residual，不随上方预测模式切换</p>
         </div>
         <span>Residual</span>
       </div>
@@ -79,8 +80,8 @@
     <section class="evaluation-section" data-test="evaluation-diagnostics">
       <div class="evaluation-section__heading">
         <div>
-          <h4>Test diagnostics</h4>
-          <p>残差白度来自 Test one-step residual；不设置前端判定阈值</p>
+          <h4>{{ validation ? "Validation" : "Test" }} diagnostics</h4>
+          <p>残差白度来自 {{ validation ? "Validation" : "Test" }} one-step residual；不设置前端判定阈值</p>
         </div>
       </div>
       <div class="diagnostic-grid">
@@ -99,7 +100,7 @@
           <strong class="tabular-nums">{{ formatNumber(maxPoleModulus) }}</strong>
         </article>
         <article>
-          <span>测试样本数</span>
+          <span>{{ validation ? "验证样本数" : "测试样本数" }}</span>
           <strong class="tabular-nums">{{ sampleCountLabel }}</strong>
         </article>
       </div>
@@ -108,8 +109,8 @@
     <section class="evaluation-section" data-test="evaluation-acf-section">
       <div class="evaluation-section__heading">
         <div>
-          <h4>测试集一步预测残差自相关</h4>
-          <p>Test one-step residual · 虚线为后端返回的 95% 置信边界</p>
+          <h4>{{ validation ? "验证集" : "测试集" }}一步预测残差自相关</h4>
+          <p>{{ validation ? "Validation" : "Test" }} one-step residual · 虚线为后端返回的 95% 置信边界</p>
         </div>
         <span>ACF</span>
       </div>
@@ -120,7 +121,7 @@
         data-test="evaluation-acf-chart"
       />
       <p v-else class="evaluation-empty" data-test="evaluation-diagnostics-empty">
-        该历史评价未保存残差诊断数据。
+        {{ validation ? "本次 Validation 没有可用的残差自相关诊断。" : "该历史评价未保存残差诊断数据。" }}
       </p>
     </section>
 
@@ -177,6 +178,7 @@ type AlignedResidualData = {
 
 const props = defineProps<{
   payload?: Record<string, unknown> | null;
+  validation?: boolean;
 }>();
 
 const predictionMode = ref<PredictionMode>("free_run");
@@ -218,9 +220,10 @@ const artifact = computed<Record<string, unknown>>(() =>
   isRecord(rootPayload.value.result) ? rootPayload.value.result : rootPayload.value
 );
 
-const testData = computed<Record<string, unknown>>(() =>
-  isRecord(artifact.value.test) ? artifact.value.test : {}
-);
+const testData = computed<Record<string, unknown>>(() => {
+  const metrics = props.validation ? artifact.value.validation : artifact.value.test;
+  return isRecord(metrics) ? metrics : {};
+});
 
 const selectedMetricRecord = computed<Record<string, unknown>>(() => {
   const value = testData.value[predictionMode.value];

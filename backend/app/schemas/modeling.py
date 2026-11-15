@@ -159,7 +159,7 @@ class ArxModelStructureData(Schema):
 
 
 class ArxEvaluationSeries(Schema):
-    """Aligned observations, predictions and residuals from held-out Test only."""
+    """Aligned observations, predictions and residuals from a fixed dynamic model."""
 
     sample_indices: list[int]
     timestamps: list[datetime] = Field(default_factory=list)
@@ -179,9 +179,9 @@ class ArxModelHealth(Schema):
 
 
 class ArxEvaluationResidualDiagnostics(Schema):
-    """Held-out Test diagnostics computed from one-step residuals."""
+    """Partition-specific diagnostics computed from one-step residuals."""
 
-    partition: Literal["test"] = "test"
+    partition: Literal["validation", "test"] = "test"
     residual_type: Literal["one_step"] = "one_step"
     residual_whiteness_ratio: float | None = None
     acf_values: list[float]

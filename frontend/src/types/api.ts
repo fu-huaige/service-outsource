@@ -1093,7 +1093,7 @@ export interface ExperimentRowSet {
 
 export interface ExperimentSpec {
   spec_version: 1;
-  task_type: "supervised_regression";
+  task_type: "supervised_regression" | "dynamic_system_identification";
   dataset_id: string;
   dataset_version_id: string;
   dataset_version_sha256: string;
@@ -1106,11 +1106,24 @@ export interface ExperimentSpec {
     sampling_status: "uniform" | "irregular" | "unknown";
     timestamp_policy: "preserve_source";
   };
-  feature_spec: { kind: "tabular"; prediction_horizon: 1 };
+  feature_spec: {
+    kind: "tabular" | "dynamic_lags";
+    prediction_horizon: 1;
+    input_lags?: Record<string, number[]>;
+  };
   continuous_runs: ExperimentRowRange[];
-  split: Record<"train" | "validation" | "test", ExperimentRowRange[]>;
+  split: Record<"train" | "validation" | "test", ExperimentRowRange[]> & { history_guard?: number };
+  arx_contract?: { lag_reference: string; lag_compensation_version_id?: string | null };
+  fir_contract?: { lag_reference: string; lag_compensation_version_id?: string | null };
+  oe_contract?: {
+    lag_reference: string;
+    lag_compensation_version_id?: string | null;
+    simulation_intervals: (ExperimentRowRange & { history_start: number })[];
+    training_data_sha256: string;
+    loss_weighting: "equal_interval_and_horizon";
+  };
   training_selection: { mode: "full_train" };
-  evaluation: { scopes: Array<"validation" | "test">; prediction_modes: ["prediction"] };
+  evaluation: { scopes: Array<"validation" | "test">; prediction_modes: Array<"prediction" | "free_run" | "one_step"> };
 }
 
 export interface TimeXerForecastSpec {
@@ -1119,7 +1132,7 @@ export interface TimeXerForecastSpec {
   prediction_length: number;
 }
 
-export type RecommendationModelType = "pls" | "xgboost" | "tcn" | "timexer";
+export type RecommendationModelType = "arx" | "fir" | "oe" | "pls" | "xgboost" | "tcn" | "timexer";
 
 export interface ModelRecommendationRequest {
   experiment_spec: ExperimentSpec;
@@ -1141,6 +1154,8 @@ export interface RecommendationSource {
 }
 
 export interface ModelCandidate {
+  experiment_spec?: ExperimentSpec | null;
+  experiment_spec_hash?: string | null;
   model_type_id: RecommendationModelType;
   model_name: string;
   eligibility_status: "eligible" | "excluded" | "unknown";
@@ -1149,6 +1164,7 @@ export interface ModelCandidate {
   reasons: string[];
   limitations: string[];
   actual_parameters: Record<string, unknown> | null;
+  fixed_parameters?: Record<string, unknown>;
   training_sample_count: number | null;
   prediction_horizon: number;
   forecast_spec: TimeXerForecastSpec | null;
@@ -1162,7 +1178,20 @@ export interface ModelCandidate {
   };
 }
 
+export interface RecommendationCatalogEntry {
+  model_type_id: string;
+  model_name: string;
+  family: string;
+  category: string;
+  description: string;
+  eligibility_status: "eligible" | "task_mismatch" | "not_integrated" | "excluded" | "unknown";
+  reasons: string[];
+}
+
 export interface ModelRecommendationResult {
+  catalog_models?: RecommendationCatalogEntry[];
+  experiment_spec?: ExperimentSpec | null;
+  task_type?: ExperimentSpec['task_type'];
   leakage?: {
     status: "unknown" | "potential_leakage" | "verified_train_only";
     evidence: string[];
@@ -1173,6 +1202,7 @@ export interface ModelRecommendationResult {
     feature_count: number;
     sampling_status: "uniform" | "irregular" | "unknown";
     continuous_run_count: number;
+    sample_period_seconds?: number | null;
   };
   candidates: ModelCandidate[];
   recommended_models: RecommendationModelType[];
@@ -1331,6 +1361,10 @@ export interface RegressionEvaluationMetrics {
 }
 
 export interface ModelEvaluationResult {
+  validation?: Record<string, unknown>;
+  model_structure?: Record<string, unknown>;
+  model_health?: Record<string, unknown>;
+  residual_diagnostics?: Record<string, unknown>;
   evaluation_run_id: string;
   model_id: string;
   model_type_id: RecommendationModelType;

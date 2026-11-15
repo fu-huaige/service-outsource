@@ -126,7 +126,9 @@
       </template>
 
       <template v-else-if="activeArtifact.type === 'evaluation'">
-        <section v-if="activeArtifact.fixedEvaluation" class="aw-section" data-test="fixed-model-evaluation">
+        <ArxValidationArtifactRenderer v-if="activeArtifact.fixedEvaluation?.model_type_id === 'arx'"
+          :evaluation="activeArtifact.fixedEvaluation" />
+        <section v-else-if="activeArtifact.fixedEvaluation" class="aw-section" data-test="fixed-model-evaluation">
           <div class="aw-kv-list">
             <div class="aw-kv">
               <span class="aw-kv__key">模型</span>
@@ -135,6 +137,10 @@
             <div class="aw-kv">
               <span class="aw-kv__key">评价范围</span>
               <strong data-test="fixed-evaluation-scope">{{ activeArtifact.fixedEvaluation.partition === 'validation' ? 'Validation · 验证集' : 'Test · 独立测试集' }}</strong>
+            </div>
+            <div v-if="activeArtifact.fixedEvaluation.model_type_id === 'oe'" class="aw-kv">
+              <span class="aw-kv__key">预测模式</span>
+              <strong>自由运行仿真</strong>
             </div>
             <div class="aw-kv">
               <span class="aw-kv__key">评价状态</span>
@@ -352,6 +358,7 @@ import ProfileArtifactRenderer from './ProfileArtifactRenderer.vue';
 import ReportArtifactRenderer from './ReportArtifactRenderer.vue';
 import SegmentationArtifactRenderer from './SegmentationArtifactRenderer.vue';
 import EvaluationPredictionCharts from './EvaluationPredictionCharts.vue';
+import ArxValidationArtifactRenderer from './ArxValidationArtifactRenderer.vue';
 import ModelEvaluationArtifactRenderer from './ModelEvaluationArtifactRenderer.vue';
 import type {
   CopilotExecutionSnapshot, CopilotModelExecutionData, ModelEvaluationResult, RegressionEvaluationMetrics,
@@ -451,6 +458,9 @@ async function handleOptimisedExport() {
 }
 
 const evaluationModelNames = {
+  arx: 'ARX',
+  fir: 'FIR',
+  oe: 'Multihorizon OE',
   pls: 'PLS Regression', xgboost: 'XGBoost', tcn: 'TCN', timexer: 'TimeXer',
 };
 const evaluationMetricLabels = { r2: 'R²', rmse: 'RMSE', mae: 'MAE', nrmse: 'NRMSE' } as const;

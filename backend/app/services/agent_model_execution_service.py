@@ -28,15 +28,18 @@ from app.schemas.model_recommendation import (
     ModelRecommendationResult,
     RecommendationModelType,
 )
+from app.schemas.modeling import ArxFitRequest
 from app.schemas.pls import PLSParameters
 from app.schemas.tcn import TCNParameters
 from app.schemas.timexer import TimeXerParameters
 from app.schemas.timexer_platform import TimeXerForecastSpec
 from app.schemas.xgboost import XGBoostParameters
 from app.services.agent_service import AgentDomainError
+from app.services.arx_platform_adapter import dynamic_parameters, fit_arx_with_manifest
 from app.services.dataset_csv import DatasetCsvError
 from app.services.dataset_version_io import DatasetVersionArtifactError
 from app.services.experiment_spec_service import bind_experiment_spec, spec_hash
+from app.services.fir_platform_adapter import fit_fir_with_manifest
 from app.services.job_queue import JOB_TIMEOUT_SECONDS
 from app.services.model_artifact_service import load_model_instance
 from app.services.model_comparison_service import ModelComparisonError, compare_model_evaluations
@@ -49,6 +52,11 @@ from app.services.model_evaluation_service import (
     get_model_evaluation,
 )
 from app.services.model_registry import validate_parameters
+from app.services.oe_platform_adapter import (
+    finish_oe_publication,
+    fit_oe_with_manifest,
+    has_oe_publication_checkpoint,
+)
 from app.services.pls_training_service import (
     PLSTrainingError,
     SessionFactory,
@@ -137,6 +145,20 @@ async def _selection(factory, request):
             if prior.result_version_id is not None:
                 version_id = prior.result_version_id
         source = snapshot.source
+        candidate = next(
+            (item for item in snapshot.candidates if item.model_type_id == locked.model_type_id), None,
+        )
+        dynamic_selection = locked.model_type_id in {"arx", "fir", "oe"}
+        digest = source.experiment_spec_hash
+        if dynamic_selection:
+            if candidate is None or candidate.experiment_spec is None:
+                raise _conflict()
+            original = candidate.experiment_spec
+            digest = candidate.experiment_spec_hash
+            contract = getattr(original, f"{locked.model_type_id}_contract")
+            if contract is None or contract.parameters != locked.parameters:
+                raise _conflict()
+            recommendation_request = recommendation_request.model_copy(update={"experiment_spec": original})
         if (
             step.result_payload.get("model_selection") != raw
             or step.input_payload.get("recommendation_step_id") != locked.recommendation_step_id
@@ -151,7 +173,7 @@ async def _selection(factory, request):
                 source.dataset_id,
                 source.dataset_version_id,
                 source.csv_sha256,
-                source.experiment_spec_hash,
+                digest,
             )
             != (
                 locked.dataset_id,
@@ -187,31 +209,23 @@ async def _selection(factory, request):
         ):
             raise _conflict()
         accepted_recommendation = locked.selection_source == "agent_recommendation"
-        if accepted_recommendation or step.input_payload.get("dispatch_training") is True:
-            candidate = next(
-                (
-                    item
-                    for item in snapshot.candidates
-                    if item.model_type_id == locked.model_type_id
-                ),
-                None,
-            )
-            if (
-                (accepted_recommendation and locked.model_type_id not in snapshot.recommended_models)
-                or candidate is None
-                or candidate.eligibility_status != "eligible"
-                or candidate.actual_parameters != locked.parameters
-                or candidate.forecast_spec != locked.forecast_spec
-                or submitted.selected_parameters != locked.parameters
-            ):
-                raise _conflict()
+        if (dynamic_selection or accepted_recommendation or step.input_payload.get("dispatch_training") is True) and (
+            (accepted_recommendation and locked.model_type_id not in snapshot.recommended_models)
+            or candidate is None
+            or candidate.eligibility_status != "eligible"
+            or candidate.actual_parameters != locked.parameters
+            or candidate.forecast_spec != locked.forecast_spec
+            or submitted.selected_parameters != locked.parameters
+        ):
+            raise _conflict()
         return step.id, locked, recommendation_request
 
 
 async def _preflight(factory, locked, recommendation_request, root):
     try:
         parameters = validate_parameters(locked.model_type_id, locked.parameters)
-        if parameters.model_dump(mode="json") != locked.parameters:
+        canonical = dynamic_parameters(parameters) if isinstance(parameters, ArxFitRequest) else parameters.model_dump(mode="json")
+        if canonical != locked.parameters:
             raise ValueError("Confirmed parameters are incomplete")
         original_forecast = recommendation_request.forecast_spec
         horizon = original_forecast.prediction_length if original_forecast else 1
@@ -359,6 +373,12 @@ def _linked_factory(factory, step_pk, locked, *, model_id=None, training_run_id=
 
 
 async def _fit(factory, spec, params, forecast, root):
+    if isinstance(params, ArxFitRequest) and params.model_type == "OE" and forecast is None:
+        return await fit_oe_with_manifest(factory, spec=spec, parameters=params, artifact_root=root)
+    if isinstance(params, ArxFitRequest) and params.model_type == "FIR" and forecast is None:
+        return await fit_fir_with_manifest(factory, spec=spec, parameters=params, artifact_root=root)
+    if isinstance(params, ArxFitRequest) and params.model_type == "ARX" and forecast is None:
+        return await fit_arx_with_manifest(factory, spec=spec, parameters=params, artifact_root=root)
     if isinstance(params, PLSParameters):
         return await fit_pls_with_manifest(
             factory, spec=spec, parameters=params, artifact_root=root
@@ -459,12 +479,14 @@ async def _replay(factory, identity, selection_pk, locked, root, *, interrupted=
                                 data.manifest_status = "unconfirmed"
                 elif run.status == "failed":
                     data.training_status = "failed"
-                    data.training_error = "PLATFORM_TRAINING_FAILED"
+                    data.training_error = run.result.get("failure_code") or "PLATFORM_TRAINING_FAILED"
                     data.execution_status = "failed"
                     data.evaluation_status = data.comparison_status = "skipped"
         if expired and data.training_status == "running":
             data.training_status = "unconfirmed"
-            data.training_error = "TRAINING_REQUIRES_RECONCILIATION"
+            data.training_error = (
+                run.result.get("publication_blocked") if step.processing_run_ids and run is not None else None
+            ) or "TRAINING_REQUIRES_RECONCILIATION"
 
         if len(step.processing_run_ids) > 1 and data.training_status == "succeeded":
             evaluation_id = UUID(step.processing_run_ids[1])
@@ -501,6 +523,7 @@ async def _comparison(factory, data, locked, root):
                 ProcessingRun.source_version_id == locked.dataset_version_id,
                 ProcessingRun.parameters["dataset_sha256"].as_string() == locked.csv_sha256,
                 ProcessingRun.parameters["partition"].as_string() == "validation",
+                ProcessingRun.parameters["model_type_id"].as_string().not_in(("arx", "fir", "oe")),
                 ProcessingRun.result["model_id"].as_string() != str(data.model_id),
             )
             .order_by(ProcessingRun.created_at.desc(), ProcessingRun.id.desc())
@@ -597,20 +620,30 @@ async def run_dispatched_model(
         )
         if (
             child is None or child.planner_source != MODEL_DISPATCH_SOURCE
-            or child.workflow_status != "PLANNED" or len(child.step_runs) != 1
+            or len(child.step_runs) != 1
         ):
             return
         step = child.step_runs[0]
-        if step.status != "PENDING" or step.processing_run_ids:
-            return
         step_pk = step.id
         data = CopilotModelExecutionData.model_validate(step.result_payload)
+        resume = (
+            data.model_type_id == "oe" and child.workflow_status in {"RUNNING", "UNCONFIRMED"}
+            and step.status in {"RUNNING", "UNCONFIRMED"} and len(step.processing_run_ids) == 1
+        )
+        if not resume and (child.workflow_status != "PLANNED" or step.status != "PENDING" or step.processing_run_ids):
+            return
         request = CopilotModelExecuteRequest(
             selection_execution_id=data.selection_execution_id,
             copilot_run_id=child.copilot_run_id,
             confirmed_selection_step_id=data.confirmed_selection_step_id,
         )
         intent = dict(step.input_payload)
+        linked_run = UUID(step.processing_run_ids[0]) if resume else None
+
+    if linked_run is not None:
+        if data.execution_id == execution_id:
+            await _resume_oe(factory, data, request, step_pk, linked_run, artifact_root)
+        return
 
     try:
         selection_pk, locked, recommendation_request = await _selection(factory, request)
@@ -636,6 +669,40 @@ async def run_dispatched_model(
     data.dispatch_status = "started"
     if await _transition_dispatch(factory, data, step_pk, status="RUNNING"):
         await _execute_claim(factory, data, selection_pk, locked, spec, params, step_pk, artifact_root)
+
+
+async def _resume_oe(factory, data, request, step_pk, linked_run, root):
+    selection_pk, locked, original = await _selection(factory, request)
+    if locked.model_type_id != "oe" or data.execution_id != model_training_execution_id(selection_pk):
+        return
+    async with factory() as session:
+        run = await session.get(ProcessingRun, linked_run)
+        if not has_oe_publication_checkpoint(run) or not _record_matches(run, locked):
+            return
+        model_id = UUID(run.result["model_id"])
+        try:
+            if not await finish_oe_publication(session, run, root):
+                return
+        except ValueError:
+            await session.refresh(run)
+            if has_oe_publication_checkpoint(run):
+                run.result = {**run.result, "publication_blocked": "OE_PUBLICATION_EVIDENCE_INVALID"}
+                await session.commit()
+            return
+        await session.execute(update(AgentExecutionSession).where(
+            AgentExecutionSession.id == data.execution_id,
+            AgentExecutionSession.workflow_status.in_(("RUNNING", "UNCONFIRMED")),
+        ).values(workflow_status="RUNNING", finished_at=None))
+        await session.execute(update(AgentStepRun).where(
+            AgentStepRun.id == step_pk,
+            AgentStepRun.status.in_(("RUNNING", "UNCONFIRMED")),
+        ).values(status="RUNNING", finished_at=None))
+        await session.commit()
+    data.model_id, data.training_run_id = model_id, linked_run
+    data.execution_status = "running"
+    data.training_status, data.manifest_status = "succeeded", "published"
+    data.training_error = None
+    await _evaluate_claim(factory, data, locked, original.experiment_spec, step_pk, root)
 
 
 async def _transition_dispatch(factory, data, step_pk, *, status):
@@ -749,6 +816,10 @@ async def _execute_claim(factory, data, selection_pk, locked, spec, params, step
         await _checkpoint(factory, step_pk, recovered)
         return recovered
 
+    return await _evaluate_claim(factory, data, locked, spec, step_pk, artifact_root)
+
+
+async def _evaluate_claim(factory, data, locked, spec, step_pk, artifact_root):
     if data.manifest_status != "published" or "validation" not in spec.evaluation.scopes:
         data.evaluation_status = data.comparison_status = "skipped"
         data.evaluation_error = (
@@ -791,7 +862,11 @@ async def _execute_claim(factory, data, selection_pk, locked, spec, params, step
         if data.evaluation_status == "succeeded":
             await _checkpoint(factory, step_pk, data)
             try:
-                await _comparison(factory, data, locked, artifact_root)
+                if locked.model_type_id in {"arx", "fir", "oe"}:
+                    data.comparison_status = "not_comparable"
+                    data.comparison_reason = "DYNAMIC_COMPARISON_REQUIRES_MATCHING_PREDICTION_MODE"
+                else:
+                    await _comparison(factory, data, locked, artifact_root)
             except Exception:
                 data.comparison = None
                 data.comparison_status = "failed"

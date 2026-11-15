@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Iterator
+from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
 
@@ -21,6 +22,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 def plan_for(message: str):  # type: ignore[no-untyped-def]
     steps, assumptions, stops = RuleBasedPlanner().plan(parse_intent(message))
     return steps, assumptions, stops
+
+
+def historical_arx_intent(message: str):
+    intent = parse_intent(message)
+    return replace(
+        intent, goals=(intent.goals - {"integrated_modeling", "model_recommendation"}) | {"legacy_model"},
+        requested_model_type_id=None,
+    )
 
 
 def as_raw(steps):  # type: ignore[no-untyped-def]
@@ -54,7 +63,7 @@ class TestIntentParsing:
         assert intent.wants("model") is True
         assert intent.wants("optimize") is True
 
-        steps, _, _ = RuleBasedPlanner().plan(intent)
+        steps, _, _ = RuleBasedPlanner().plan(historical_arx_intent(message))
         by_tool = {step.tool: step for step in steps}
         ordered_tools = [step.tool for step in steps]
         assert ordered_tools.index("fit_arx") < ordered_tools.index("optimize_pipeline")
@@ -132,10 +141,10 @@ class TestPlanning:
     def test_optimized_modeling_dataset_export_is_planned_after_final_evaluation(
         self,
     ) -> None:
-        steps, _, _ = plan_for(
+        steps, _, _ = RuleBasedPlanner().plan(historical_arx_intent(
             "基于当前数据建立 ARX 模型并进行 Optuna 闭环寻优，"
             "寻优完成后导出最优建模数据集。"
-        )
+        ))
         tools = [step.tool for step in steps]
 
         assert tools.index("fit_arx") < tools.index("optimize_pipeline")
@@ -149,29 +158,23 @@ class TestPlanning:
         order = [step.tool for step in steps]
         assert order.index("profile_dataset") < order.index("detect_anomalies")
         assert order.index("detect_anomalies") < order.index("clean_data")
-        assert order.index("estimate_delays") < order.index("apply_lag_compensation")
-        assert order.index("apply_lag_compensation") < order.index("fit_arx")
-        assert order.index("fit_arx") < order.index("evaluate_model")
+        assert order.index("clean_data") < order.index("recommend_models")
+        assert order.index("recommend_models") < order.index("confirm_model_selection")
+        assert "fit_arx" not in order
 
     @pytest.mark.parametrize(
         "message", ["ARX", "ARX 建模", "ARX 辨识", "ARX 动态模型", "完整 ARX 建模流程"]
     )
-    def test_model_goals_include_the_complete_lag_chain(self, message: str) -> None:
+    def test_new_arx_goals_use_unified_recommendation(self, message: str) -> None:
         steps, _, _ = plan_for(message)
-        by_tool = {step.tool: step for step in steps}
-        order = [step.tool for step in steps]
-
-        assert order.index("estimate_delays") < order.index("apply_lag_compensation")
-        assert order.index("apply_lag_compensation") < order.index("fit_arx")
-        assert by_tool["apply_lag_compensation"].depends_on == (
-            by_tool["estimate_delays"].step_id,
-        )
-        assert by_tool["fit_arx"].depends_on == (
-            by_tool["apply_lag_compensation"].step_id,
-        )
+        tools = [step.tool for step in steps]
+        assert tools[0] == "profile_dataset"
+        assert tools[-2:] == ["recommend_models", "confirm_model_selection"]
+        assert "fit_arx" not in tools
+        assert steps[-1].depends_on == (steps[-2].step_id,)
 
     def test_optimization_modelling_uses_the_saved_model_producer_chain(self) -> None:
-        steps, _, _ = plan_for("进行 ARX 建模并闭环寻优 2 次试验")
+        steps, _, _ = RuleBasedPlanner().plan(historical_arx_intent("进行 ARX 建模并闭环寻优 2 次试验"))
         by_tool = {step.tool: step for step in steps}
         ordered_tools = [step.tool for step in steps]
 
@@ -188,7 +191,7 @@ class TestPlanning:
     def test_lag_ready_normalization_removes_redundant_direct_lag_chain(self) -> None:
         from app.services.agent_service import _normalize_plan_for_lag_context
 
-        steps, _, _ = plan_for("进行 ARX 建模")
+        steps, _, _ = RuleBasedPlanner().plan(historical_arx_intent("进行 ARX 建模"))
         normalized, removed = _normalize_plan_for_lag_context(steps, lag_ready=True)
         tools = [step.tool for step in normalized]
 
@@ -201,7 +204,7 @@ class TestPlanning:
     def test_lag_ready_normalization_preserves_post_clean_lag_chain(self) -> None:
         from app.services.agent_service import _normalize_plan_for_lag_context
 
-        steps, _, _ = plan_for("清洗后进行 ARX 建模")
+        steps, _, _ = RuleBasedPlanner().plan(historical_arx_intent("清洗后进行 ARX 建模"))
         normalized, removed = _normalize_plan_for_lag_context(steps, lag_ready=True)
         tools = [step.tool for step in normalized]
 
@@ -211,10 +214,9 @@ class TestPlanning:
         assert tools.index("estimate_delays") < tools.index("apply_lag_compensation")
         assert tools.index("apply_lag_compensation") < tools.index("fit_arx")
 
-    def test_modelling_implies_segment_selection(self) -> None:
-        steps, assumptions, _ = plan_for("直接做 ARX 辨识")
-        assert "detect_dynamic_segments" in [step.tool for step in steps]
-        assert any("D-最优" in note for note in assumptions)
+    def test_new_arx_default_uses_full_train_without_automatic_row_selection(self) -> None:
+        steps, _, _ = plan_for("直接做 ARX 辨识")
+        assert "detect_dynamic_segments" not in [step.tool for step in steps]
 
     def test_high_impact_steps_are_marked_for_confirmation(self) -> None:
         steps, _, _ = plan_for("处理共线性并导出数据集")
@@ -385,7 +387,7 @@ class TestCompliance:
 
         outcome = LlmPlanner(StaticProvider(responses=[candidate])).plan(
             message,
-            parse_intent(message),
+            historical_arx_intent(message),
             lag_ready=True,
         )
 
@@ -553,14 +555,12 @@ class TestAgentApi:
         by_tool = {run["tool"]: run for run in data["step_runs"]}
         assert by_tool["detect_dynamic_segments"]["status"] == "completed"
         assert by_tool["estimate_delays"]["status"] == "completed"
-        assert by_tool["apply_lag_compensation"]["status"] == "waiting_confirmation"
-        assert "analyze_collinearity" not in by_tool
         assert "fit_arx" not in by_tool
+        assert by_tool["analyze_collinearity"]["status"] == "completed"
 
         planned_steps = {step["tool"]: step["status"] for step in data["plan"]["steps"]}
-        assert planned_steps["fit_arx"] == "pending"
-        assert planned_steps["apply_lag_compensation"] == "waiting_confirmation"
-        assert "等待人工确认" in data["conclusion"]
+        assert "apply_lag_compensation" not in planned_steps
+        assert "confirm_model_selection" in planned_steps
 
         # Every number in the summary must come from a tool, not from the agent.
         assert by_tool["estimate_delays"]["result"]["delays"]
@@ -568,7 +568,7 @@ class TestAgentApi:
     def test_natural_language_run_prepares_arx_confirmation_from_lag_compensated_version(
         self, client: TestClient
     ) -> None:
-        """ARX planning requires formal lag lineage and stops at its confirmation gate."""
+        """New ARX planning never creates the historical approval on a Lag version."""
 
         version_id = lag_compensated_benchmark_version(client)
         response = client.post(
@@ -582,17 +582,12 @@ class TestAgentApi:
         data = response.json()["data"]
 
         by_tool = {run["tool"]: run for run in data["step_runs"]}
-        fit = by_tool["fit_arx"]
-        assert data["workflow_status"] == "WAITING_CONFIRMATION"
-        assert data["pending_confirmation_step_id"] == fit["step_id"]
-        assert fit["status"] == "waiting_confirmation"
-        recommendation = fit["result"]["arx_structure_recommendation"]
-        assert recommendation["lag_compensation_version_id"] == version_id
-        assert recommendation["recommended_delays"] == {"u1": 0, "u2": 0}
+        assert "fit_arx" not in by_tool
         planned_steps = {step["tool"]: step["status"] for step in data["plan"]["steps"]}
         assert "estimate_delays" not in planned_steps
         assert "apply_lag_compensation" not in planned_steps
-        assert planned_steps["evaluate_model"] == "pending"
+        assert "evaluate_model" not in planned_steps
+        assert "confirm_model_selection" in planned_steps
     def test_high_impact_step_waits_for_confirmation_instead_of_running(
         self, client: TestClient
     ) -> None:

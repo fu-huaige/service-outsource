@@ -8,9 +8,10 @@ from pydantic import Field
 
 from app.schemas.common import Schema
 from app.schemas.experiment_spec import Digest, ExperimentSpec, LeakageAssessment, RowRange, RowSet
+from app.schemas.model_catalog import ModelTypeId
 from app.schemas.timexer_platform import TimeXerForecastSpec
 
-RecommendationModelType = Literal["pls", "xgboost", "tcn", "timexer"]
+RecommendationModelType = Literal["arx", "fir", "oe", "pls", "xgboost", "tcn", "timexer"]
 RecommendationGoal = Literal[
     "auto", "static_regression", "nonlinear_regression", "temporal_forecast"
 ]
@@ -23,6 +24,7 @@ class ModelRecommendationRequest(Schema):
         default=None, description="Optional digest of the server-bound ExperimentSpec."
     )
     goal: RecommendationGoal = "auto"
+    preferred_dynamic_model: Literal["arx", "fir", "oe"] | None = None
     forecast_spec: TimeXerForecastSpec | None = None
     parameters: dict[RecommendationModelType, dict[str, object]] = Field(default_factory=dict)
 
@@ -74,6 +76,8 @@ class CandidateEvidence(Schema):
 
 
 class ModelCandidate(Schema):
+    experiment_spec: ExperimentSpec | None = None
+    experiment_spec_hash: Digest | None = None
     model_type_id: RecommendationModelType
     model_name: str
     eligibility_status: EligibilityStatus
@@ -82,13 +86,27 @@ class ModelCandidate(Schema):
     reasons: tuple[str, ...]
     limitations: tuple[str, ...] = ()
     actual_parameters: dict[str, object] | None = None
+    fixed_parameters: dict[str, object] = Field(default_factory=dict)
     training_sample_count: int | None = None
     prediction_horizon: int
     forecast_spec: TimeXerForecastSpec | None = None
     evidence: CandidateEvidence
 
 
+class RecommendationCatalogEntry(Schema):
+    model_type_id: ModelTypeId
+    model_name: str
+    family: str
+    category: str
+    description: str
+    eligibility_status: Literal["eligible", "task_mismatch", "not_integrated", "excluded", "unknown"]
+    reasons: tuple[str, ...] = ()
+
+
 class ModelRecommendationResult(Schema):
+    catalog_models: tuple[RecommendationCatalogEntry, ...] = ()
+    experiment_spec: ExperimentSpec | None = None
+    task_type: Literal["dynamic_system_identification", "supervised_regression"] = "supervised_regression"
     leakage: LeakageAssessment | None = None
     profile: DataProfileSummary
     source: RecommendationSource

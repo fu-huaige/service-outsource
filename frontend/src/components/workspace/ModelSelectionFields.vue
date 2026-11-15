@@ -6,38 +6,55 @@
     </div>
     <p v-else role="status" data-test="no-recommended-model">当前没有可推荐模型。</p>
 
-    <div v-if="recommendedModel" class="model-choice">
-      <label :id="selectId">当前选择</label>
+    <div v-if="recommendedModel || groups.length" class="model-choice">
+      <label :id="selectId">模型目录</label>
       <SelectRoot :model-value="selectedModel?.model_type_id" :disabled="disabled" @update:model-value="selectModel">
         <SelectTrigger class="model-select-trigger" :aria-labelledby="selectId" data-test="model-select">
-          <SelectValue>{{ selectedModel?.model_name }}</SelectValue>
+          <SelectValue placeholder="查看模型目录">{{ selectedModel?.model_name }}</SelectValue>
           <SelectIcon class="model-select-chevron"><ArrowDown aria-hidden="true" /></SelectIcon>
         </SelectTrigger>
         <SelectPortal>
           <SelectContent class="model-select-content" position="popper" :side-offset="6" :collision-padding="8">
             <SelectViewport class="model-select-viewport">
-              <SelectItem v-for="candidate in availableModels" :key="candidate.model_type_id"
-                :value="candidate.model_type_id" class="model-select-item" :data-model="candidate.model_type_id">
-                <SelectItemText>{{ candidate.model_name }}</SelectItemText>
-                <SelectItemIndicator class="model-select-check"><Check aria-hidden="true" /></SelectItemIndicator>
-              </SelectItem>
+              <SelectGroup v-for="[category, items] in groups" :key="category">
+                <SelectLabel class="model-menu-group">{{ category }}</SelectLabel>
+                <SelectItem v-for="entry in items" :key="entry.model_type_id"
+                  :value="entry.model_type_id" :disabled="!isCatalogSelectable(entry.model_type_id)"
+                  class="model-select-item model-catalog-option" :data-model="entry.model_type_id"
+                  :aria-describedby="selectId + '-' + entry.model_type_id">
+                  <div class="model-menu-body">
+                    <div class="model-menu-title">
+                      <SelectItemText>{{ entry.model_name }}</SelectItemText>
+                      <span v-if="recommendedModel?.model_type_id === entry.model_type_id" class="model-menu-recommended">Agent 首选</span>
+                      <span v-else-if="!isCatalogSelectable(entry.model_type_id)" class="model-menu-status">
+                        {{ catalogStatusLabels[entry.eligibility_status] }}
+                      </span>
+                    </div>
+                    <div :id="selectId + '-' + entry.model_type_id" class="model-menu-description">
+                      <p v-if="entry.description">{{ entry.description }}</p>
+                      <p v-if="isCatalogSelectable(entry.model_type_id)">资格通过</p>
+                      <p v-else v-for="reason in entry.reasons" :key="reason">{{ reason }}</p>
+                    </div>
+                  </div>
+                  <SelectItemIndicator class="model-select-check" aria-label="已选中"><Check aria-hidden="true" /></SelectItemIndicator>
+                </SelectItem>
+              </SelectGroup>
+              <template v-if="!groups.length">
+                <SelectItem v-for="candidate in availableModels" :key="candidate.model_type_id"
+                  :value="candidate.model_type_id" class="model-select-item" :data-model="candidate.model_type_id">
+                  <SelectItemText>{{ candidate.model_name }}</SelectItemText>
+                  <SelectItemIndicator class="model-select-check"><Check aria-hidden="true" /></SelectItemIndicator>
+                </SelectItem>
+              </template>
             </SelectViewport>
           </SelectContent>
         </SelectPortal>
       </SelectRoot>
-      <p v-if="selectedModel" class="model-fit" data-test="selected-model-fit">
-        {{ selectedModel.suitability === 'preferred' ? '优先适用' : '符合条件' }}
-        <template v-if="selectedModel.training_sample_count !== null">
-          · 有效训练样本 {{ selectedModel.training_sample_count }}
-        </template>
-        <template v-if="selectedModel.forecast_spec">
-          · 预测 {{ selectedModel.forecast_spec.prediction_length }} 步
-        </template>
-      </p>
-      <p v-if="selectedModel?.limitations[0]" class="model-fit">{{ selectedModel.limitations[0] }}</p>
     </div>
 
-    <details v-if="unavailableModels.length" :open="!recommendedModel" class="selection-details">
+    <ModelParameterSummary v-if="selectedModel" :key="selectedModel.model_type_id"
+      :candidate="selectedModel" :entry="catalog.get(selectedModel.model_type_id)" :recommendation="recommendation" />
+    <details v-if="!groups.length && unavailableModels.length" :open="!recommendedModel" class="selection-details">
       <summary>不可用模型（{{ unavailableModels.length }}）</summary>
       <ul>
         <li v-for="candidate in unavailableModels" :key="candidate.model_type_id">
@@ -48,28 +65,35 @@
       </ul>
     </details>
 
-    <p v-if="recommendation.leakage?.status === 'unknown'" data-test="recommendation-leakage">
-      <strong>数据泄漏风险尚未核实</strong>。当前无法确认所有预处理拟合操作是否严格限制在训练集内，是否发生泄漏仍待核验。
-    </p>
-    <details v-if="recommendedModel" class="selection-details">
-      <summary>数据来源</summary>
-      <p>数据版本 {{ recommendation.source.dataset_version_id }}</p>
-      <p>目标 {{ recommendation.source.target_name }} · 输入 {{ recommendation.source.feature_names.join('、') }}</p>
-    </details>
+    <aside v-if="recommendation.leakage?.status === 'unknown' || recommendation.leakage?.status === 'potential_leakage'"
+      class="leakage-notice" role="note" data-test="recommendation-leakage">
+      <template v-if="recommendation.leakage.status === 'unknown'">
+        <strong>数据泄漏风险尚未核实</strong>
+        <p>现有记录无法核实上游预处理是否只在 Train 上拟合。预处理的拟合范围待核验。</p>
+      </template>
+      <template v-else>
+        <strong>检测到潜在数据泄漏风险</strong>
+        <ul v-if="recommendation.leakage.evidence.length">
+          <li v-for="evidence in recommendation.leakage.evidence" :key="evidence">{{ evidence }}</li>
+        </ul>
+      </template>
+    </aside>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ArrowDown, Check } from '@element-plus/icons-vue';
 import {
-  SelectContent, SelectIcon, SelectItem, SelectItemIndicator, SelectItemText,
+  SelectContent, SelectGroup, SelectIcon, SelectItem, SelectItemIndicator, SelectItemText, SelectLabel,
   SelectPortal, SelectRoot, SelectTrigger, SelectValue, SelectViewport,
 } from 'reka-ui';
 import { computed, ref, useId, watch } from 'vue';
+import ModelParameterSummary from './ModelParameterSummary.vue';
 import type {
   CopilotModelSelection,
   ModelCandidate,
   ModelRecommendationResult,
+  RecommendationCatalogEntry,
   RecommendationModelType,
 } from '../../types/api';
 
@@ -80,10 +104,28 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ change: [selection: CopilotModelSelection | null] }>();
 
+const catalogStatusLabels: Record<RecommendationCatalogEntry['eligibility_status'], string> = {
+  eligible: '待核验', task_mismatch: '不适用', not_integrated: '未接入',
+  excluded: '资格未通过', unknown: '待核验',
+};
 const selectId = useId();
 const selectedId = ref<RecommendationModelType>();
+const catalog = computed(() => new Map(
+  (props.recommendation.catalog_models ?? []).map(entry => [entry.model_type_id, entry]),
+));
+const groups = computed(() => {
+  const categories = new Map<string, RecommendationCatalogEntry[]>();
+  for (const entry of catalog.value.values()) {
+    const items = categories.get(entry.category) ?? [];
+    items.push(entry);
+    categories.set(entry.category, items);
+  }
+  return [...categories];
+});
 const isSelectable = (candidate: ModelCandidate) =>
-  candidate.eligibility_status === 'eligible' && candidate.actual_parameters != null;
+  candidate.eligibility_status === 'eligible' && candidate.actual_parameters != null &&
+  (!catalog.value.size || catalog.value.get(candidate.model_type_id)?.eligibility_status === 'eligible');
+const isCatalogSelectable = (id: string) => eligibleModels.value.some(candidate => candidate.model_type_id === id);
 
 const eligibleModels = computed(() => props.recommendation.candidates.filter(isSelectable));
 const rankedModels = computed(() => props.recommendation.recommended_models.flatMap(id =>
@@ -107,7 +149,7 @@ const recommendationReason = computed(() => {
 watch(() => {
   const source = props.recommendation.source;
   return [props.recommendationStepId, source.dataset_id, source.dataset_version_id, source.csv_sha256,
-    source.experiment_spec_hash].join(':');
+    source.experiment_spec_hash, props.recommendation.task_type].join(':');
 }, () => { selectedId.value = undefined; }, { flush: 'sync' });
 
 function selectModel(value: unknown) {
@@ -129,7 +171,7 @@ const selection = computed<CopilotModelSelection | null>(() => {
     dataset_id: source.dataset_id,
     dataset_version_id: source.dataset_version_id,
     csv_sha256: source.csv_sha256,
-    experiment_spec_hash: source.experiment_spec_hash,
+    experiment_spec_hash: candidate.experiment_spec_hash ?? source.experiment_spec_hash,
     forecast_spec: candidate.forecast_spec ? { ...candidate.forecast_spec } : null,
   };
 });
@@ -183,7 +225,7 @@ watch(selection, value => emit('change', value), { immediate: true, flush: 'sync
 :global(.model-select-content) {
   z-index: 3000;
   box-sizing: border-box;
-  width: var(--reka-select-trigger-width);
+  width: max(360px, var(--reka-select-trigger-width));
   max-width: var(--reka-select-content-available-width);
   max-height: var(--reka-select-content-available-height);
   overflow: hidden;
@@ -208,9 +250,17 @@ watch(selection, value => emit('change', value), { immediate: true, flush: 'sync
 :global(.model-select-item[data-state="checked"]) { background: #eef2ef; font-weight: 600; }
 :global(.model-select-item[data-highlighted]) { outline: none; background: #e6ece8; }
 :global(.model-select-check) { color: #326549; }
-.model-fit {
-  color: var(--text-secondary);
-}
+.model-menu-group { padding: 8px 10px 4px; color: var(--text-secondary, #53645b); font-size: 12px; font-weight: 600; }
+.model-catalog-option { min-height: 44px; padding: 7px 10px; }
+.model-catalog-option[data-disabled] { color: var(--text-secondary, #53645b); cursor: default; background: #f5f7f6; }
+.model-menu-body { min-width: 0; }
+.model-menu-title { display: flex; flex-wrap: wrap; gap: 5px 10px; font-weight: 600; }
+.model-menu-description { margin-top: 2px; color: var(--text-secondary, #53645b); font-size: 12px; line-height: 1.5; }
+.model-menu-description p { margin: 0; }
+.model-menu-recommended { color: #326549; font-size: 12px; }
+.model-menu-status { color: var(--text-secondary, #53645b); font-size: 12px; font-weight: 500; }
+.leakage-notice { border-inline-start: 3px solid #a4792c; padding: 7px 11px; background: #fbf8ef; }
+.leakage-notice p { margin: 3px 0 0; }
 .selection-details summary {
   cursor: pointer;
 }

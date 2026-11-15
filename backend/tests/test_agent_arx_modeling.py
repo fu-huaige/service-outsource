@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -67,6 +67,19 @@ def arx_harness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Arx
     asyncio.run(prepare())
     monkeypatch.setattr("app.api.routes.get_settings", lambda: Settings(artifact_root=tmp_path))
     monkeypatch.setattr(agent_service, "_resolve_provider", lambda: NullProvider())
+
+    def historical_intent(message):
+        intent = parse_intent(message)
+        if intent.requested_model_type_id == "arx":
+            return replace(
+                intent,
+                goals=(intent.goals - {"integrated_modeling", "model_recommendation"}) | {"legacy_model"},
+                requested_model_type_id=None,
+            )
+        return intent
+
+    # Provision old DAGs to exercise persisted approval and evaluation through the real routes.
+    monkeypatch.setattr(agent_service, "parse_intent", historical_intent)
     app = create_app()
     app.dependency_overrides[get_session] = session_override
     with TestClient(app) as client:
@@ -461,8 +474,9 @@ async def _load_processing_run(harness: ArxHarness, run_id: UUID) -> ProcessingR
 def test_planner_requires_confirmation_for_arx_modeling() -> None:
     steps, _, _ = RuleBasedPlanner().plan(parse_intent("进行 ARX 建模"))
     by_tool = {step.tool: step for step in steps}
-    assert by_tool["fit_arx"].requires_confirmation is True
-    assert by_tool["evaluate_model"].depends_on == (by_tool["fit_arx"].step_id,)
+    assert "fit_arx" not in by_tool
+    assert by_tool["confirm_model_selection"].requires_confirmation is True
+    assert by_tool["confirm_model_selection"].depends_on == (by_tool["recommend_models"].step_id,)
     assert "evaluate_model" in agent_service._FORMAL_ADAPTER_TOOLS
     assert "evaluate_model" not in agent_service._DEFERRED_TOOLS
 

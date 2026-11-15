@@ -195,6 +195,22 @@ class ConfirmedRowOrder(Schema):
     row_order_status: Literal["user_confirmed"] = "user_confirmed"
 
 
+class ArxExperimentContract(Schema):
+    parameters: dict[str, object]
+    lag_reference: Literal["relative_to_dataset_version"] = "relative_to_dataset_version"
+    lag_compensation_version_id: UUID | None = None
+
+
+class OeSimulationInterval(RowRange):
+    history_start: Index
+
+
+class OeExperimentContract(ArxExperimentContract):
+    simulation_intervals: tuple[OeSimulationInterval, ...] = Field(min_length=1)
+    training_data_sha256: Digest
+    loss_weighting: Literal["equal_interval_and_horizon"] = "equal_interval_and_horizon"
+
+
 class ExperimentSpec(Schema):
     spec_version: Literal[1] = 1
     task_type: Literal["dynamic_system_identification", "supervised_regression"]
@@ -217,12 +233,21 @@ class ExperimentSpec(Schema):
     evaluation: EvaluationSpec = Field(default_factory=EvaluationSpec)
     preprocessing: tuple[PreprocessingStep, ...] = ()
     leakage: LeakageAssessment = Field(default_factory=LeakageAssessment)
+    arx_contract: ArxExperimentContract | None = None
+    fir_contract: ArxExperimentContract | None = None
+    oe_contract: OeExperimentContract | None = None
     random_seed: StrictInt | None = None
     resource_budget: ResourceBudget = Field(default_factory=ResourceBudget)
 
     @model_serializer(mode="wrap")
     def serialize_contract(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
         document = handler(self)
+        if self.oe_contract is None:
+            document.pop("oe_contract", None)
+        if self.fir_contract is None:
+            document.pop("fir_contract", None)
+        if self.arx_contract is None:
+            document.pop("arx_contract", None)
         if self.row_order is None:
             # Preserve legacy serialized bytes and hashes, including nested Manifest Specs.
             document.pop("row_order", None)
@@ -258,6 +283,13 @@ class ExperimentSpec(Schema):
             raise ValueError("Inputs must be nonempty, unique and ordered")
         if set(self.feature_spec.input_lags) - set(self.input_columns):
             raise ValueError("Lag features reference unknown inputs")
+        dynamic_contracts = (self.arx_contract, self.fir_contract, self.oe_contract)
+        if sum(contract is not None for contract in dynamic_contracts) > 1:
+            raise ValueError("An Experiment Spec binds only one dynamic candidate")
+        if any(dynamic_contracts) and self.task_type != "dynamic_system_identification":
+            raise ValueError("Dynamic-model parameters require a dynamic identification contract")
+        if self.fir_contract and (self.feature_spec.target_lags or "na" in self.fir_contract.parameters):
+            raise ValueError("FIR has no autoregressive target order")
         if self.task_type == "dynamic_system_identification":
             if self.feature_spec.kind != "dynamic_lags" or self.time_axis.column is None:
                 raise ValueError("Dynamic identification requires time and lag features")

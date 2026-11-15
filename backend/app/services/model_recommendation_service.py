@@ -21,17 +21,25 @@ from app.schemas.model_recommendation import (
     ModelCandidate,
     ModelRecommendationRequest,
     ModelRecommendationResult,
+    RecommendationCatalogEntry,
     RecommendationModelType,
     RecommendationSource,
 )
 from app.schemas.pls import PLSParameters
-from app.schemas.tcn import MAX_FEATURES, TCNParameters
+from app.schemas.tcn import DILATIONS, KERNEL_SIZE, MAX_FEATURES, TCNParameters
 from app.schemas.tcn_platform import MAX_FEATURE_NAME_LENGTH as TCN_NAME_LIMIT
 from app.schemas.timexer import TimeXerParameters, validate_feature_names
 from app.schemas.timexer_platform import MAX_FEATURE_NAME_LENGTH as TIMEXER_NAME_LIMIT
 from app.schemas.timexer_platform import TimeXerForecastSpec
 from app.schemas.xgboost import XGBoostParameters
 from app.schemas.xgboost_platform import MAX_FEATURE_NAME_LENGTH as XGBOOST_NAME_LIMIT
+from app.services.arx_platform_adapter import (
+    DYNAMIC_IMPLEMENTATIONS,
+    build_dynamic_spec,
+    dynamic_parameters,
+    validate_dynamic_source,
+    validate_lag_reference,
+)
 from app.services.dataset_csv import ParsedCsv
 from app.services.dataset_version_io import artifact_matches_sha256, load_version_csv
 from app.services.experiment_spec_service import (
@@ -46,7 +54,7 @@ from app.services.model_data_adapter import (
     _validate_static_spec,
     build_table_samples,
 )
-from app.services.model_registry import get_model, validate_parameters
+from app.services.model_registry import get_model, list_models, validate_parameters
 from app.services.pls_training_service import validate_pls_experiment_spec
 from app.services.sequence_data_adapter import build_tcn_samples, build_timexer_samples
 from app.services.version_data import VersionSeries, load_version_series
@@ -300,6 +308,7 @@ def _candidate(
         reasons=reasons,
         limitations=tuple(limitations),
         actual_parameters=actual_parameters,
+        fixed_parameters={"kernel_size": KERNEL_SIZE, "dilations": DILATIONS} if kind == "tcn" else {},
         training_sample_count=count,
         prediction_horizon=horizon if kind == "timexer" else 1,
         forecast_spec=forecast,
@@ -314,6 +323,7 @@ def _recommend(
     parsed: ParsedCsv,
     rows: RowSet,
     positions: tuple[int, ...],
+    dynamic_specs: dict[str, ExperimentSpec | ValueError] | None = None,
 ) -> ModelRecommendationResult:
     source = RecommendationSource(
         dataset_id=spec.dataset_id,
@@ -328,6 +338,8 @@ def _recommend(
         source.dataset_id, source.dataset_version_id, source.csv_sha256, source.experiment_spec_hash
     )
     profile = _profile(parsed, series, spec, source, positions)
+    if spec.task_type == "dynamic_system_identification":
+        return _recommend_dynamic(request, spec, series, profile, source, dynamic_specs or {})
     common_error = None
     table_error = None
     table = None
@@ -415,6 +427,117 @@ def _recommend(
     )
 
 
+def _recommend_dynamic(request, spec, series, profile, source, dynamic_specs) -> ModelRecommendationResult:
+    candidates = []
+    for definition in list_models(task_type=spec.task_type):
+        kind = definition.model_type_id
+        if kind not in DYNAMIC_IMPLEMENTATIONS:
+            continue
+        contract = dynamic_specs[kind]
+        params = rows = None
+        try:
+            if isinstance(contract, ValueError):
+                raise contract
+            if request.forecast_spec is not None:
+                raise ValueError("Dynamic identification does not accept a TimeXer forecast contract")
+            params, rows = validate_dynamic_source(contract, series, request.parameters.get(kind))
+        except ValueError as error:
+            reasons = (str(error),)
+        else:
+            response = {
+                "arx": "使用输出历史和有滞后输入。",
+                "fir": "仅使用有滞后输入估计有限脉冲响应。",
+                "oe": "已核验正权重连续目标与初始化历史，使用多时域输出误差拟合。",
+            }[kind]
+            reasons = ("已核验连续采样、滞后结构及有效 Train 样本。", response)
+        candidates.append(ModelCandidate(
+            model_type_id=kind, model_name=definition.display_name,
+            eligibility_status="eligible" if rows is not None else "excluded",
+            suitability="compatible" if rows is not None else "inapplicable",
+            reasons=reasons, prediction_horizon=1,
+            actual_parameters=dynamic_parameters(params) if params else None,
+            training_sample_count=rows.count if rows else None,
+            experiment_spec=contract if rows else None,
+            experiment_spec_hash=spec_hash(contract) if rows else None,
+            evidence=CandidateEvidence(
+                parameter_source="overrides" if request.parameters.get(kind) else "defaults",
+                horizon_source="default", anchor_rows=rows,
+            ),
+        ))
+    preferred = request.preferred_dynamic_model or ("oe" if spec.oe_contract else "fir" if spec.fir_contract else "arx")
+    ranked = sorted(
+        (candidate for candidate in candidates if candidate.eligibility_status == "eligible"),
+        key=lambda candidate: candidate.model_type_id != preferred,
+    )
+    ranks = {candidate.model_type_id: rank for rank, candidate in enumerate(ranked, 1)}
+    return ModelRecommendationResult(
+        task_type=spec.task_type, leakage=spec.leakage, profile=profile, source=source, goal=request.goal,
+        candidates=tuple(candidate.model_copy(update={
+            "recommendation_rank": ranks[candidate.model_type_id],
+            "suitability": "preferred" if ranks[candidate.model_type_id] == 1 else "compatible",
+        }) if candidate.model_type_id in ranks else candidate for candidate in candidates),
+        recommended_models=tuple(ranks),
+        excluded_models={
+            item.model_type_id: item.reasons for item in candidates if item.eligibility_status == "excluded"
+        },
+        generated_at=datetime.now(UTC),
+        summary=ranked[0].reasons[0] if ranked else "没有通过资格校验的动态模型。",
+    )
+
+
+_CATALOG_CATEGORIES = {
+    "linear_dynamic": "动态系统辨识",
+    "linear_latent_regression": "静态监督回归",
+    "tree_ensemble": "静态监督回归",
+    "temporal_convolution": "深度时序预测",
+    "time_series_transformer": "深度时序预测",
+}
+
+
+def _catalog_entries(
+    result: ModelRecommendationResult, spec: ExperimentSpec,
+) -> tuple[RecommendationCatalogEntry, ...]:
+    candidates = {item.model_type_id: item for item in result.candidates}
+    entries = []
+    for definition in list_models():
+        kind = definition.model_type_id
+        candidate = candidates.get(kind)
+        if spec.task_type not in definition.supported_tasks:
+            status, reasons = "task_mismatch", ("当前任务类型不适用。",)
+        elif definition.availability != "available" or kind not in (*_MODELS, *DYNAMIC_IMPLEMENTATIONS):
+            status, reasons = "not_integrated", ("尚未接入统一训练流程。",)
+        elif candidate is None or (
+            candidate.eligibility_status == "eligible" and candidate.actual_parameters is None
+        ):
+            status, reasons = "unknown", ("本次任务没有该模型的完整资格记录。",)
+        else:
+            status, reasons = candidate.eligibility_status, candidate.reasons
+        entries.append(RecommendationCatalogEntry(
+            model_type_id=kind, model_name=definition.display_name, family=definition.family,
+            category=_CATALOG_CATEGORIES.get(definition.family, definition.family),
+            description=definition.description, eligibility_status=status, reasons=reasons,
+        ))
+    return tuple(entries)
+
+
+def recommendation_for_display(result_payload: dict, input_payload: dict) -> dict:
+    """Add display context to historical snapshots without rewriting stored JSON."""
+    raw = result_payload.get("recommendation")
+    if not isinstance(raw, dict) or raw.get("catalog_models"):
+        return dict(result_payload)
+    try:
+        result = ModelRecommendationResult.model_validate(raw)
+        request = ModelRecommendationRequest.model_validate(input_payload.get("recommendation_request"))
+    except ValueError:
+        return dict(result_payload)
+    spec = request.experiment_spec
+    return {**result_payload, "recommendation": {
+        **raw, "task_type": spec.task_type,
+        "catalog_models": [entry.model_dump(mode="json") for entry in _catalog_entries(result, spec)],
+        "experiment_spec": spec.model_dump(mode="json"),
+    }}
+
+
 async def recommend_models(
     session: AsyncSession, *, request: ModelRecommendationRequest, artifact_root: Path
 ) -> ModelRecommendationResult:
@@ -447,8 +570,47 @@ async def recommend_models(
             expected_sha256=spec.dataset_version_sha256,
         ):
             raise ValueError("DatasetVersion SHA256 changed while reading")
-        rows = spec.training_selection.requested_indices or RowSet(
-            ranges=effective_ranges(spec, "train")
-        )
+        dynamic_specs = None
+        if spec.task_type == "dynamic_system_identification":
+            dynamic_specs = {}
+            primary = "oe" if spec.oe_contract else "fir" if spec.fir_contract else "arx"
+            for kind in DYNAMIC_IMPLEMENTATIONS:
+                try:
+                    base = spec.arx_contract or spec.fir_contract or spec.oe_contract
+                    if (
+                        base is None or spec.training_selection.mode != "full_train"
+                        or spec.evaluation.scopes != ("validation",)
+                    ):
+                        raise ValueError("Dynamic recommendations require a fixed full-Train and Validation contract")
+                    if kind == primary:
+                        candidate_spec = spec
+                    else:
+                        candidate_spec = await build_dynamic_spec(
+                            session, kind=kind, version=version, inputs=spec.input_columns,
+                            target=spec.target_column, axis=spec.time_axis, runs=spec.continuous_runs, series=series,
+                            overrides={
+                                **request.parameters.get(kind, {}),
+                                "train_ratio": base.parameters.get("train_ratio", 0.6),
+                                "validation_ratio": base.parameters.get("validation_ratio", 0.2),
+                            },
+                        )
+                        if any(
+                            getattr(candidate_spec.split, partition) != getattr(spec.split, partition)
+                            for partition in ("train", "validation", "test")
+                        ):
+                            raise ValueError("Dynamic candidates must use the same partition boundaries")
+                        candidate_spec = candidate_spec.model_copy(update={"preprocessing": spec.preprocessing})
+                        candidate_spec = await bind_experiment_spec(
+                            session, spec=candidate_spec, artifact_root=artifact_root,
+                        )
+                    await validate_lag_reference(session, candidate_spec)
+                    dynamic_specs[kind] = candidate_spec
+                except ValueError as error:
+                    dynamic_specs[kind] = error
+        ranges = effective_ranges(spec, "train")
+        if dynamic_specs is not None and not ranges:
+            ranges = spec.split.train
+        rows = spec.training_selection.requested_indices or RowSet(ranges=ranges)
         positions = tuple(iter_rows(rows, artifact_root))
-    return await asyncio.to_thread(_recommend, request, spec, series, parsed, rows, positions)
+    result = await asyncio.to_thread(_recommend, request, spec, series, parsed, rows, positions, dynamic_specs)
+    return result.model_copy(update={"catalog_models": _catalog_entries(result, spec), "experiment_spec": spec})

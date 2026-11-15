@@ -22,7 +22,7 @@ import json
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 from uuid import UUID, uuid4
 
 import numpy as np
@@ -144,6 +144,15 @@ class ArxCoreResult:
         return float(value) if value is not None and np.isfinite(value) else float("-inf")
 
 
+def _oe_experiments(inputs, output, target_rows, reliability) -> list[TrainingExperiment]:
+    times = target_rows[reliability > 0]
+    if times.size == 0:
+        raise ModelingDomainError("INSUFFICIENT_ROWS", "OE 缺少正权重连续训练区间")
+    intervals = np.split(times, np.flatnonzero(np.diff(times) != 1) + 1)
+    return [TrainingExperiment(f"selected_interval_{i}", inputs, output,
+        int(interval[0]), int(interval[-1]) + 1) for i, interval in enumerate(intervals)]
+
+
 def fit_arx_core(
     *,
     inputs: dict[str, FloatArray],
@@ -227,12 +236,7 @@ def _fit_arx_core(
         for t in full.time_indices[train_rows]
     ], dtype=float)
     if fixed_parameters is None and payload.model_type == "OE":
-        times = full.time_indices[train_rows][reliability > 0]
-        if times.size == 0:
-            raise ModelingDomainError("INSUFFICIENT_ROWS", "OE 缺少正权重连续训练区间")
-        intervals = np.split(times, np.flatnonzero(np.diff(times) != 1)+1)
-        experiments = [TrainingExperiment(f"selected_interval_{i}", inputs, output,
-            int(interval[0]), int(interval[-1])+1) for i, interval in enumerate(intervals)]
+        experiments = _oe_experiments(inputs, output, full.time_indices[train_rows], reliability)
         simulated = fit_multihorizon(experiments, structure=structure,
             horizons=tuple(payload.simulation_horizons), ridge_alpha=payload.ridge_alpha or 0.,
             max_nfev=payload.simulation_max_nfev)
@@ -497,10 +501,11 @@ def replay_saved_arx_core(
         raise ModelingDomainError(error.code, error.message, details=error.details) from error
 
 
-def load_saved_arx_model(*, model_id: UUID, artifact_root: Path) -> SavedArxModel:
+def load_saved_arx_model(*, model_id: UUID, artifact_root: Path, native: bool = False, native_kind: str = "arx") -> SavedArxModel:
     """Load one persisted ARX artifact and reconstruct its fixed structure and parameters."""
 
-    artifact_uri = (Path("models") / f"{model_id}.json").as_posix()
+    directory = Path("models") / native_kind if native else Path("models")
+    artifact_uri = (directory / f"{model_id}.json").as_posix()
     path = artifact_root / artifact_uri
     if not path.is_file():
         raise ModelingDomainError(
@@ -569,6 +574,104 @@ def load_saved_arx_model(*, model_id: UUID, artifact_root: Path) -> SavedArxMode
     )
 
 
+def evaluate_arx_partition(
+    saved: SavedArxModel,
+    series: VersionSeries,
+    *,
+    start: int,
+    stop: int,
+    partition: Literal["validation", "test"],
+) -> dict:
+    """Score one declared interval with immutable parameters and original history."""
+    input_columns, output_column = saved.payload.input_columns, saved.payload.output_column
+    inputs = {name: values[:stop] for name, values in model_input_arrays(series, input_columns).items()}
+    output = series.values[output_column][:stop]
+    regressor = build_regressor(inputs=inputs, output=output, structure=saved.structure)
+    selected_rows = _partition_rows(
+        regressor,
+        start,
+        stop,
+    )
+    if selected_rows.size == 0:
+        raise ModelingDomainError(
+            "INSUFFICIENT_ROWS",
+            "分区没有可评价的 ARX 样本。",
+            details={"model_id": str(saved.model_id)},
+        )
+    sample_indices_array = regressor.time_indices[selected_rows]
+    y_true_array = regressor.targets[selected_rows]
+    one_step_prediction_array = one_step_predict(regressor, saved.theta, intercept=saved.intercept, output=output,
+        initialization_policy=saved.payload.initialization_policy, initialization_window=saved.payload.initialization_window)[selected_rows]
+    _, full_free_run_prediction = free_run_simulate(
+        saved.theta,
+        saved.structure,
+        inputs=inputs,
+        output=output,
+        start=start,
+        stop=stop,
+        intercept=saved.intercept,
+        initialization_policy=saved.payload.initialization_policy, initialization_window=saved.payload.initialization_window,
+    )
+    free_run_offsets = sample_indices_array - start
+    if (
+        np.any(free_run_offsets < 0)
+        or np.any(free_run_offsets >= full_free_run_prediction.size)
+    ):
+        raise ModelingDomainError(
+            "MODEL_EVALUATION_ALIGNMENT_FAILED",
+            "自由仿真结果无法与来源数据行确定性对齐。",
+            details={"model_id": str(saved.model_id)},
+        )
+    free_run_prediction_array = full_free_run_prediction[free_run_offsets]
+    one_step_residual_array = y_true_array - one_step_prediction_array
+    free_run_residual_array = y_true_array - free_run_prediction_array
+
+    one_step = _to_prediction_metrics(_scores(y_true_array, one_step_prediction_array))
+    free_run_scores = _scores(y_true_array, free_run_prediction_array)
+    free_run = _to_prediction_metrics(free_run_scores)
+    sample_indices = [int(value) for value in sample_indices_array]
+    timestamps = (
+        [series.timestamps[index] for index in sample_indices]
+        if series.timestamps and max(sample_indices, default=-1) < len(series.timestamps)
+        else []
+    )
+    metrics = ArxTestEvaluationData(
+        one_step=one_step,
+        free_run=free_run,
+        n_samples=len(sample_indices),
+    )
+    acf = _acf(one_step_residual_array)
+    stable, max_pole_modulus = is_stable(saved.theta[: saved.structure.na])
+    return dict(
+        model_structure=to_model_structure_data(saved.payload, saved.structure),
+        model_health=ArxModelHealth(
+            stable=stable,
+            max_pole_modulus=_finite(max_pole_modulus),
+            input_support=assess_input_support(cast(dict[str, dict[str, Any]], saved.preprocessing.get("training_input_support", {})),
+                inputs, start=start, stop=stop),
+        ),
+        metrics=metrics,
+        series=ArxEvaluationSeries(
+            sample_indices=sample_indices,
+            timestamps=timestamps,
+            y_true=[float(value) for value in y_true_array],
+            one_step_prediction=[float(value) for value in one_step_prediction_array],
+            free_run_prediction=[float(value) for value in free_run_prediction_array],
+            one_step_residual=[float(value) for value in one_step_residual_array],
+            free_run_residual=[float(value) for value in free_run_residual_array],
+        ),
+        residual_diagnostics=ArxEvaluationResidualDiagnostics(
+            partition=partition,
+            residual_type="one_step",
+            residual_whiteness_ratio=_finite(
+                residual_whiteness_ratio(one_step_residual_array)
+            ),
+            acf_values=acf.acf_values,
+            confidence_interval=acf.confidence_interval,
+        ),
+    )
+
+
 async def evaluate_saved_arx_model(
     session: AsyncSession,
     *,
@@ -629,98 +732,14 @@ async def evaluate_saved_arx_model(
     )
     session.add(run)
     try:
-        inputs = model_input_arrays(series, input_columns)
-        output = series.values[output_column]
-        splits = _split_indices(int(np.asarray(output, dtype=float).shape[0]), saved.payload)
-        regressor = build_regressor(inputs=inputs, output=output, structure=saved.structure)
+        splits = _split_indices(series.n_samples, saved.payload)
         guard = max(saved.structure.max_history, saved.payload.history_guard or 0)
-        test_rows = _partition_rows(
-            regressor,
-            splits.val_end + guard,
-            splits.test_end,
+        detail = evaluate_arx_partition(
+            saved, series, start=splits.val_end + guard, stop=splits.test_end, partition="test"
         )
-        if test_rows.size == 0:
-            raise ModelingDomainError(
-                "INSUFFICIENT_ROWS",
-                "Test 分区没有可评价的 ARX 样本。",
-                details={"model_id": str(model_id)},
-            )
-        test_start = splits.val_end + guard
-        sample_indices_array = regressor.time_indices[test_rows]
-        y_true_array = regressor.targets[test_rows]
-        one_step_prediction_array = one_step_predict(regressor, saved.theta, intercept=saved.intercept, output=output,
-            initialization_policy=saved.payload.initialization_policy, initialization_window=saved.payload.initialization_window)[test_rows]
-        _, full_free_run_prediction = free_run_simulate(
-            saved.theta,
-            saved.structure,
-            inputs=inputs,
-            output=output,
-            start=test_start,
-            stop=splits.test_end,
-            intercept=saved.intercept,
-            initialization_policy=saved.payload.initialization_policy, initialization_window=saved.payload.initialization_window,
-        )
-        free_run_offsets = sample_indices_array - test_start
-        if (
-            np.any(free_run_offsets < 0)
-            or np.any(free_run_offsets >= full_free_run_prediction.size)
-        ):
-            raise ModelingDomainError(
-                "MODEL_EVALUATION_ALIGNMENT_FAILED",
-                "Test 自由仿真结果无法与来源数据行确定性对齐。",
-                details={"model_id": str(model_id)},
-            )
-        free_run_prediction_array = full_free_run_prediction[free_run_offsets]
-        one_step_residual_array = y_true_array - one_step_prediction_array
-        free_run_residual_array = y_true_array - free_run_prediction_array
-
-        one_step = _to_prediction_metrics(_scores(y_true_array, one_step_prediction_array))
-        free_run_scores = _scores(y_true_array, free_run_prediction_array)
-        free_run = _to_prediction_metrics(free_run_scores)
-        sample_indices = [int(value) for value in sample_indices_array]
-        timestamps = (
-            [series.timestamps[index] for index in sample_indices]
-            if series.timestamps and max(sample_indices, default=-1) < len(series.timestamps)
-            else []
-        )
-        test = ArxTestEvaluationData(
-            one_step=one_step,
-            free_run=free_run,
-            n_samples=len(sample_indices),
-        )
-        acf = _acf(one_step_residual_array)
-        stable, max_pole_modulus = is_stable(saved.theta[: saved.structure.na])
         evaluation = ArxSavedModelEvaluationData(
-            model_id=model_id,
-            source_version_id=saved.source_version_id,
-            processing_run_id=run.id,
-            evaluation_scope="test",
-            model_structure=to_model_structure_data(saved.payload, saved.structure),
-            model_health=ArxModelHealth(
-                stable=stable,
-                max_pole_modulus=_finite(max_pole_modulus),
-                input_support=assess_input_support(cast(dict[str, dict[str, Any]], saved.preprocessing.get("training_input_support", {})),
-                    inputs, start=test_start, stop=splits.test_end),
-            ),
-            test=test,
-            series=ArxEvaluationSeries(
-                sample_indices=sample_indices,
-                timestamps=timestamps,
-                y_true=[float(value) for value in y_true_array],
-                one_step_prediction=[float(value) for value in one_step_prediction_array],
-                free_run_prediction=[float(value) for value in free_run_prediction_array],
-                one_step_residual=[float(value) for value in one_step_residual_array],
-                free_run_residual=[float(value) for value in free_run_residual_array],
-            ),
-            residual_diagnostics=ArxEvaluationResidualDiagnostics(
-                partition="test",
-                residual_type="one_step",
-                residual_whiteness_ratio=_finite(
-                    residual_whiteness_ratio(one_step_residual_array)
-                ),
-                acf_values=acf.acf_values,
-                confidence_interval=acf.confidence_interval,
-            ),
+            model_id=model_id, source_version_id=saved.source_version_id, processing_run_id=run.id,
+            test=detail.pop("metrics"), **detail,
         )
         run.status = "succeeded"
         run.result = evaluation.model_dump(mode="json")
@@ -1081,10 +1100,15 @@ def _persist_artifact(
     series: VersionSeries,
     payload: ArxFitRequest,
     result: ArxCoreResult,
+    native: bool = False,
+    staged: bool = False,
 ) -> str:
     root = artifact_root / "models"
+    if native:
+        root = root / payload.model_type.lower()
     root.mkdir(parents=True, exist_ok=True)
-    path = root / f"{model_id}.json"
+    suffix = ".pending.json" if staged else ".json"
+    path = root / f"{model_id}{suffix}"
     document = {
         "model_id": str(model_id),
         "dataset_id": str(series.dataset_id),

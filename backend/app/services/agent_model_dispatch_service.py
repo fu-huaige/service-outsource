@@ -14,8 +14,10 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.config import get_settings
 from app.models.agent_execution import AgentExecutionSession, AgentStepRun
+from app.models.dataset import ProcessingRun
 from app.services.agent_model_execution_service import MODEL_DISPATCH_SOURCE
 from app.services.job_queue import JOB_TIMEOUT_SECONDS, QUEUE_NAME, RESULT_TTL_SECONDS
+from app.services.oe_platform_adapter import has_oe_publication_checkpoint
 from app.services.pls_training_service import SessionFactory
 
 logger = logging.getLogger(__name__)
@@ -107,11 +109,40 @@ async def recover_pending_model_dispatches(factory: SessionFactory) -> None:
         cursor = ids[-1]
 
 
+async def _recover_oe_publications(factory: SessionFactory) -> None:
+    """Redeliver only saved OE models that can resume without entering optimization."""
+    cursor = None
+    while True:
+        query = (select(AgentExecutionSession.id, AgentStepRun.processing_run_ids)
+                 .join(AgentStepRun).where(
+                     AgentExecutionSession.planner_source == MODEL_DISPATCH_SOURCE,
+                     AgentExecutionSession.workflow_status.in_(("RUNNING", "UNCONFIRMED")),
+                     AgentStepRun.input_payload["selection"]["model_type_id"].as_string() == "oe",
+                     AgentStepRun.processing_run_ids[0].as_string().is_not(None),
+                 ).order_by(AgentExecutionSession.id).limit(_BATCH_SIZE))
+        if cursor is not None:
+            query = query.where(AgentExecutionSession.id > cursor)
+        async with factory() as session:
+            rows = (await session.execute(query)).all()
+            ready = []
+            for execution_id, run_ids in rows:
+                if len(run_ids) == 1 and has_oe_publication_checkpoint(
+                    await session.get(ProcessingRun, UUID(run_ids[0]))
+                ):
+                    ready.append(execution_id)
+        for execution_id in ready:
+            await run_in_threadpool(_submit, execution_id)
+        if len(rows) < _BATCH_SIZE:
+            return
+        cursor = rows[-1][0]
+
+
 async def recover_model_dispatches(factory: SessionFactory) -> None:
     """Recover on startup and retry while the API process is serving."""
     while True:
         try:
             await recover_pending_model_dispatches(factory)
+            await _recover_oe_publications(factory)
         except Exception as error:
             logger.warning("Model training dispatch scan deferred (%s)", type(error).__name__)
         await asyncio.sleep(_RESCAN_SECONDS)

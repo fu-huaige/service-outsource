@@ -539,8 +539,35 @@ describe("ArtifactWorkbench fixed model evaluation rendering", () => {
     },
   });
 
+  it("renders fixed ARX Validation through the dynamic renderer", async () => {
+    const status = makeStatus("arx", "validation");
+    const result = status.evaluation!;
+    result.prediction_artifact_sha256 = "b".repeat(64);
+    result.validation = {
+      free_run: { ...result.metrics, fit: 75 }, one_step: { ...result.metrics, fit: 90 }, n_samples: 4,
+    };
+    const read = vi.spyOn(apiClient, "get").mockResolvedValue({
+      ...result, format_version: 1,
+      horizons: [{ source_row_index: [20, 21, 22, 23], timestamps: null,
+        y_true: [1, 2, 3, 4], y_pred: [1, 2, 2, 4], residual: [0, 0, 1, 0] }],
+      prediction_modes: { one_step: [1, 2, 3, 3], one_step_residual: [0, 0, 0, 1] },
+    });
+    const wrapper = await mountWorkbench(executionWith("confirm_model_selection", {}));
+    await wrapper.setProps({ modelExecution: status });
+    await flushPromises();
+    const panel = wrapper.get('[data-test="arx-validation-artifact"]');
+    expect(panel.get('[data-test="evaluation-scope-badge"]').text()).toBe("Validation");
+    expect(panel.get('[data-test="evaluation-prediction-chart"]').exists()).toBe(true);
+    expect(panel.text()).toContain("75.00%");
+    await panel.get('[data-test="prediction-mode-one-step"]').trigger("click");
+    expect(panel.text()).toContain("90.00%");
+    expect(wrapper.find('[data-test="fixed-model-evaluation"]').exists()).toBe(false);
+    read.mockRestore();
+    wrapper.unmount();
+  });
+
   it.each([
-    ["pls", "PLS Regression"], ["xgboost", "XGBoost"], ["tcn", "TCN"], ["timexer", "TimeXer"],
+    ["pls", "PLS Regression"], ["xgboost", "XGBoost"], ["tcn", "TCN"], ["timexer", "TimeXer"], ["fir", "FIR"], ["oe", "Multihorizon OE"],
   ] as const)("adds the persisted Validation result for %s when the response arrives", async (model, name) => {
     const wrapper = await mountWorkbench(executionWith("confirm_model_selection", {}));
     expect(wrapper.find(".aw-tab").exists()).toBe(false);
@@ -559,7 +586,7 @@ describe("ArtifactWorkbench fixed model evaluation rendering", () => {
     wrapper.unmount();
   });
 
-  it.each(["pls", "xgboost", "tcn", "timexer"] as const)("renders stored %s curves by forecast step", async model => {
+  it.each(["pls", "xgboost", "tcn", "timexer", "fir", "oe"] as const)("renders stored %s curves by forecast step", async model => {
     const status = makeStatus(model, "validation");
     const result = status.evaluation!;
     const steps = model === "timexer" ? [1, 2] : [1];

@@ -16,18 +16,21 @@ _MODELS = MappingProxyType(
         "arx": ModelTypeDefinition(
             model_type_id="arx",
             display_name="ARX",
+            description="结合输入及输出历史，辨识动态响应。",
             implementation_id="algorithms.identifiability.estimation.estimate_parameters",
             constraints=("na >= 1", "OLS/Ridge/Huber; stability is diagnosed, not guaranteed"),
         ),
         "fir": ModelTypeDefinition(
             model_type_id="fir",
             display_name="FIR",
+            description="从滞后输入估计有限脉冲响应。",
             implementation_id="algorithms.identifiability.estimation.estimate_parameters",
             constraints=("na = 0", "TC kernel requires standardized Ridge with positive alpha"),
         ),
         "oe": ModelTypeDefinition(
             model_type_id="oe",
             display_name="Multihorizon OE",
+            description="通过多时域仿真辨识输出误差模型。",
             maturity="experimental",
             implementation_id="algorithms.identifiability.multihorizon.fit_multihorizon",
             capabilities=ModelCapabilities(
@@ -44,6 +47,7 @@ _MODELS = MappingProxyType(
         "pls": ModelTypeDefinition(
             model_type_id="pls",
             display_name="PLS Regression",
+            description="通过潜变量预测连续目标，适用于输入共线的场景。",
             family="linear_latent_regression",
             supported_tasks=("supervised_regression",),
             maturity="experimental",
@@ -71,6 +75,7 @@ _MODELS = MappingProxyType(
         "xgboost": ModelTypeDefinition(
             model_type_id="xgboost",
             display_name="XGBoost Regression",
+            description="用提升树学习输入与连续目标之间的非线性关系。",
             family="tree_ensemble",
             supported_tasks=("supervised_regression",),
             maturity="experimental",
@@ -92,6 +97,7 @@ _MODELS = MappingProxyType(
         "tcn": ModelTypeDefinition(
             model_type_id="tcn",
             display_name="Temporal Convolutional Network",
+            description="用时间卷积对历史窗口建模。",
             family="temporal_convolution",
             supported_tasks=("supervised_regression",),
             maturity="experimental",
@@ -113,6 +119,7 @@ _MODELS = MappingProxyType(
         "timexer": ModelTypeDefinition(
             model_type_id="timexer",
             display_name="TimeXer",
+            description="结合目标历史和外生变量进行时序预测。",
             family="time_series_transformer",
             supported_tasks=("supervised_regression",),
             maturity="experimental",
@@ -167,7 +174,8 @@ def validate_parameters(
     family = model.model_type_id.upper()
     if parameters.get("model_type", family) != family:
         raise ValueError("model_type_id conflicts with model_type")
-    return ArxFitRequest.model_validate({**parameters, "model_type": family})
+    defaults = {"na": 0} if family == "FIR" else {}
+    return ArxFitRequest.model_validate({**defaults, **parameters, "model_type": family})
 
 
 def parameter_json_schema(model_type_id: str) -> dict[str, object]:

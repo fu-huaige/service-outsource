@@ -178,9 +178,9 @@ def parse_intent(message: str) -> ParsedIntent:
 
     columns = tuple(dict.fromkeys(re.findall(r"\b([uy]\d{1,2})\b", lowered)))
     models = tuple(
-        dict.fromkeys(re.findall(r"(?<![a-z0-9_])(pls|xgboost|tcn|timexer)(?![a-z0-9_])", lowered))
+        dict.fromkeys(re.findall(r"(?<![a-z0-9_])(arx|fir|oe|pls|xgboost|tcn|timexer)(?![a-z0-9_])", lowered))
     )
-    legacy = re.search(r"(?<![a-z0-9_])(arx|fir|oe)(?![a-z0-9_])", lowered)
+    oe_requested = "oe" in models or (not models and "输出误差模型" in lowered)
     recommendation = any(word in lowered for word in ("推荐", "选择", "recommend", "choose")) or (
         "比较" in lowered and "适合" in lowered
     )
@@ -193,24 +193,27 @@ def parse_intent(message: str) -> ParsedIntent:
         r"(?:train|fit|build)\s+(?:\w+\s+){0,3}(?:model|regressor)\b",
         task_text,
     ))
-    requested_model = models[0] if len(models) == 1 else None
-    if (models and not legacy) or (
-        not legacy
-        and (
+    fir_requested = "fir" in models or (not models and "有限脉冲响应" in task_text)
+    dynamic = oe_requested or fir_requested or "arx" in models or (not models and any(
+        term in task_text for term in ("辨识", "dynamic system identification", "system identification")
+    ))
+    requested_model = ("oe" if oe_requested else "fir" if fir_requested and "arx" not in models else "arx") if dynamic else (
+        models[0] if len(models) == 1 else None
+    )
+    if dynamic:
+        goals.update({"model", "model_recommendation", "integrated_modeling"})
+    if models or (
             (recommendation and ("model" in goals or "算法" in lowered or "algorithm" in lowered))
             or (general_modeling and "optimize" not in goals)
-        )
     ):
         goals.add("model_recommendation")
-    if not legacy and "model_recommendation" in goals and (
+    if "model_recommendation" in goals and (
         general_modeling
         or (models and "训练" in lowered)
         or bool(goals & {"clean", "collinearity", "segment", "delay"})
         or any(word in lowered for word in ("预处理", "变量筛选", "数据质量"))
     ):
         goals.add("integrated_modeling")
-    if legacy:
-        goals.update({"model", "legacy_model"})
     if any(
         word in lowered
         for word in ("变量筛选", "筛选变量", "选择变量", "特征筛选", "处理共线性", "feature selection")
@@ -224,7 +227,7 @@ def parse_intent(message: str) -> ParsedIntent:
         goals=frozenset(goals),
         parameters=parameters,
         mentioned_columns=columns,
-        requested_model_type_id=requested_model if not legacy else None,
+        requested_model_type_id=requested_model,
     )
 
 
@@ -289,7 +292,9 @@ class RuleBasedPlanner:
                 emit("select_variables")
             emit("recommend_models", spec_gate=True)
             emit("confirm_model_selection")
-            return steps, assumptions, ["等待数据契约、人工选择及独立的训练授权。"]
+            if intent.requested_model_type_id in {"arx", "fir", "oe"} and intent.wants("optimize"):
+                assumptions.append("本次动态模型统一建模执行固定 Validation 评价，闭环寻优未纳入此计划。")
+            return steps, assumptions, ["等待数据契约及模型确认。"]
 
         if intent.wants("model_recommendation"):
             emit("recommend_models")

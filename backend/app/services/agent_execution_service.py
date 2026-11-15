@@ -122,6 +122,7 @@ def to_copilot_execution_snapshot(
     execution: AgentExecutionSession,
 ) -> CopilotExecutionSnapshotData:
     """Serialize persisted execution control state without performing a transition."""
+    from app.services.model_recommendation_service import recommendation_for_display
 
     return CopilotExecutionSnapshotData(
         execution_id=execution.id,
@@ -152,7 +153,8 @@ def to_copilot_execution_snapshot(
                 source_version_id=step.source_version_id,
                 result_version_id=step.result_version_id,
                 input_payload=dict(step.input_payload),
-                result_payload=dict(step.result_payload),
+                result_payload=recommendation_for_display(step.result_payload, step.input_payload)
+                if step.tool_name == "recommend_models" else dict(step.result_payload),
                 processing_run_ids=list(step.processing_run_ids),
                 error_code=step.error_code,
                 error_message=step.error_message,

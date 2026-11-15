@@ -294,6 +294,13 @@ async def load_model_instance(
         raise ModelArtifactError("MODEL_ID_MISMATCH", "Manifest model_id mismatch")
     if manifest is not None and expected_model_type not in (None, manifest.model_type_id):
         raise ModelArtifactError("MODEL_TYPE_MISMATCH", "Unexpected model type")
+    from app.services.arx_platform_adapter import DYNAMIC_IMPLEMENTATIONS
+
+    if (
+        manifest is not None and manifest.model_type_id in DYNAMIC_IMPLEMENTATIONS
+        and manifest.implementation_version == DYNAMIC_IMPLEMENTATIONS[manifest.model_type_id]
+    ):
+        return await _load_native_dynamic(session, manifest, artifact_root)
     if isinstance(manifest, TimeXerModelArtifactManifest):
         _, saved_timexer = await verify_timexer_model(
             session,
@@ -444,6 +451,62 @@ async def load_model_instance(
         payload=saved,
         missing_provenance=tuple(missing),
     )
+
+
+async def _load_native_dynamic(
+    session, manifest, root: Path, *, expected_status: str = "succeeded",
+) -> LoadedModelInstance:
+    from app.services.arx_platform_adapter import (
+        dynamic_parameters,
+        validate_dynamic_source,
+        validate_lag_reference,
+    )
+    from app.services.version_data import load_version_series
+
+    model_id = manifest.model_id
+    kind = manifest.model_type_id
+    spec = manifest.experiment_spec
+    run = await session.get(ProcessingRun, manifest.training_run_id, populate_existing=True)
+    if (
+        run is None or run.status != expected_status or run.run_type != f"modeling.{kind}"
+        or (run.dataset_id, run.source_version_id) != (spec.dataset_id, spec.dataset_version_id)
+        or run.result.get("model_id") != str(model_id) or run.result.get("model_type_id") != kind
+        or run.result.get("payload_sha256") != manifest.payload_sha256
+        or run.result.get("effective_training_rows") != manifest.effective_training_rows.model_dump(mode="json")
+        or run.parameters.get("experiment_spec_hash") != manifest.experiment_spec_hash
+        or run.parameters.get("experiment_spec") != spec.model_dump(mode="json")
+        or spec_hash(spec) != manifest.experiment_spec_hash
+        or manifest.implementation_id != get_model(kind).implementation_id
+        or manifest.payload_uri != f"models/{kind}/{model_id}.json"
+    ):
+        raise ValueError("Dynamic Manifest does not match a succeeded training Run")
+    path = _checked_model_file(root, manifest.payload_uri)
+    if hashlib.sha256(path.read_bytes()).hexdigest() != manifest.payload_sha256:
+        raise ValueError("Dynamic model payload SHA256 mismatch")
+    saved = load_saved_arx_model(model_id=model_id, artifact_root=root, native=True, native_kind=kind)
+    await bind_experiment_spec(session, spec=spec, artifact_root=root)
+    await validate_lag_reference(session, spec)
+    series = await load_version_series(
+        session, dataset_id=spec.dataset_id, version_id=spec.dataset_version_id, artifact_root=root
+    )
+    parameters, rows = validate_dynamic_source(spec, series)
+    if (
+        rows != manifest.effective_training_rows or saved.payload != parameters
+        or run.parameters.get(f"{kind}_parameters") != dynamic_parameters(parameters)
+        or saved.dataset_id != spec.dataset_id or saved.source_version_id != spec.dataset_version_id
+        or json.loads(path.read_bytes()).get("training_rows") != rows.count
+    ):
+        raise ValueError("Dynamic model configuration or effective Train evidence mismatch")
+    if spec.oe_contract and (
+        saved.payload.model_type != "OE"
+        or saved.preprocessing.get("lineage") != [
+            {"name": f"selected_interval_{index}", **interval.model_dump()}
+            for index, interval in enumerate(spec.oe_contract.simulation_intervals)
+        ]
+        or saved.preprocessing.get("training_rows") != rows.count
+    ):
+        raise ValueError("OE payload does not match its simulation target and history evidence")
+    return LoadedModelInstance(model_id, kind, run.id, "native_manifest", manifest, saved)
 
 
 class ModelArtifactError(ValueError):

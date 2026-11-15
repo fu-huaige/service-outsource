@@ -34,6 +34,7 @@ class ModelTypeDefinition(Schema):
     model_config = ConfigDict(extra="forbid", frozen=True)
     model_type_id: ModelTypeId
     display_name: str
+    description: str = ""
     family: Literal[
         "linear_dynamic",
         "linear_latent_regression",
